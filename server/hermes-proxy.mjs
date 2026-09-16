@@ -169,12 +169,16 @@ async function connectUpstream() {
   }
 
   const key = randomBytes(16).toString("base64");
-  const req = httpRequest(`${HERMES_URL}/api/ws?ticket=${encodeURIComponent(ticket)}`, {
+  // Hermes WS auth: the ticket rides the Sec-WebSocket-Protocol header
+  // ("hermes-gateway-ticket.<ticket>" + "hermes-gateway-v1") — a ?ticket=
+  // query param is NOT accepted (verified: silent close, no create reply).
+  const req = httpRequest(`${HERMES_URL}/api/ws`, {
     headers: {
       "Connection": "Upgrade",
       "Upgrade": "websocket",
       "Sec-WebSocket-Key": key,
       "Sec-WebSocket-Version": "13",
+      "Sec-WebSocket-Protocol": `hermes-gateway-ticket.${ticket}, hermes-gateway-v1`,
       "Cookie": cookie
     }
   });
@@ -215,7 +219,6 @@ async function connectUpstream() {
         // respond to ping with pong
         try { socket.write(encodeFrame(frame.payload, { opcode: 0xA, masked: true })); } catch {}
       } else {
-        // text or pong
         broadcastFrame(frame.payload, frame.opcode);
       }
     });

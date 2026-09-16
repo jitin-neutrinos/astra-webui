@@ -176,7 +176,7 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
       // session.create accepts NO prompt (extra=forbid); the turn starts via
       // prompt.submit once the create reply yields the live id (pendingPromptRef).
       pendingPromptRef.current = content;
-      ws.current.send(JSON.stringify({ method: "session.create", params: {}, id: generateRpcId() }));
+      ws.current.send(JSON.stringify({ method: "session.create", params: { source: "webui" }, id: generateRpcId() }));
     } else {
       ws.current.send(JSON.stringify({
         method: "prompt.submit",
