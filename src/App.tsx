@@ -1,11 +1,25 @@
 import { useEffect, useRef, useState } from "react";
-import type { FormEvent, KeyboardEvent } from "react";
+import type { FormEvent, KeyboardEvent, ReactNode } from "react";
 import {
   MessageSquare,
   Plus,
   LogOut,
   ArrowUp,
-  Terminal,
+  Eye,
+  EyeOff,
+  Folder,
+  Cpu,
+  Settings2,
+  FileCode2,
+  Braces,
+  Blocks,
+  Plug,
+  UserRound,
+  Clock,
+  ScrollText,
+  HeartPulse,
+  BarChart3,
+  Webhook,
 } from "lucide-react";
 import { BackgroundGradientAnimation } from "@/components/ui/background-gradient-animation";
 import { cn } from "@/lib/utils";
@@ -73,6 +87,7 @@ function LoginScreen({ password, setPassword, clearError, error, busy, submit }:
   password: string; setPassword: (v: string) => void; clearError: () => void;
   error: string; busy: boolean; submit: (e: FormEvent) => void;
 }) {
+  const [showPw, setShowPw] = useState(false);
   return (
     <div className="fixed inset-0 overflow-hidden bg-void font-sans">
       <BackgroundGradientAnimation
@@ -95,9 +110,11 @@ function LoginScreen({ password, setPassword, clearError, error, busy, submit }:
       <div className="absolute inset-0 z-50 flex items-center justify-center p-6">
         <div className="w-full max-w-md rounded-2xl border border-white/10 bg-void/60 p-7 shadow-[0_0_60px_rgba(34,211,238,0.08)] backdrop-blur-xl md:p-8">
           <div className="mb-8 text-center">
-            <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-xl border border-cyanx/30 bg-black/60 shadow-[0_0_24px_rgba(34,211,238,0.25)]">
-              <Terminal aria-hidden="true" className="h-5 w-5 text-cyanx" strokeWidth={1.5} />
-            </div>
+            <img
+              src="/astra-logo.png"
+              alt="Astra"
+              className="mx-auto mb-5 h-16 w-16 rounded-xl object-cover shadow-[0_0_28px_rgba(34,211,238,0.3)]"
+            />
             <h1 className="font-display text-3xl tracking-tight text-brandtext">
               Astra
             </h1>
@@ -118,13 +135,23 @@ function LoginScreen({ password, setPassword, clearError, error, busy, submit }:
               <div className="relative rounded-lg bg-black/70">
                 <div className="pointer-events-none absolute inset-0 rounded-lg border border-white/10 transition-colors duration-200 focus-within:border-cyanx/60" />
                 <input
-                  type="password" id="password" name="password"
+                  type={showPw ? "text" : "password"} id="password" name="password"
                   autoComplete="current-password" autoFocus required
                   value={password}
                   onChange={(e) => { setPassword(e.target.value); clearError(); }}
                   placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;"
-                  className="relative z-20 w-full bg-transparent px-3 py-2.5 font-mono text-sm text-brandtext placeholder-slate-700 focus:outline-none"
+                  className="relative z-20 w-full bg-transparent px-3 py-2.5 pr-10 font-mono text-sm text-brandtext placeholder-slate-700 focus:outline-none"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPw((s) => !s)}
+                  aria-label={showPw ? "Hide password" : "Show password"}
+                  className="absolute right-3 top-1/2 z-30 -translate-y-1/2 text-slate-600 transition-colors hover:text-cyanx"
+                >
+                  {showPw
+                    ? <EyeOff className="h-4 w-4" strokeWidth={1.5} />
+                    : <Eye className="h-4 w-4" strokeWidth={1.5} />}
+                </button>
               </div>
             </div>
             {error ? (
@@ -163,36 +190,85 @@ function Shell({ onLogout }: { onLogout: () => void }) {
 }
 
 function Sidebar({ onLogout }: { onLogout: () => void }) {
+  const groups: {
+    label: string;
+    items: { name: string; icon: ReactNode; badge?: string }[];
+  }[] = [
+    {
+      label: "Work",
+      items: [
+        { name: "New chat", icon: <Plus className="h-4 w-4" strokeWidth={1.5} /> },
+        { name: "Chats", icon: <MessageSquare className="h-4 w-4" strokeWidth={1.5} />, badge: "live" },
+        { name: "Files", icon: <Folder className="h-4 w-4" strokeWidth={1.5} /> },
+      ],
+    },
+    {
+      label: "Configure",
+      items: [
+        { name: "Model", icon: <Cpu className="h-4 w-4" strokeWidth={1.5} /> },
+        { name: "Config", icon: <Settings2 className="h-4 w-4" strokeWidth={1.5} /> },
+        { name: "Env", icon: <FileCode2 className="h-4 w-4" strokeWidth={1.5} /> },
+        { name: "Skills", icon: <Braces className="h-4 w-4" strokeWidth={1.5} /> },
+        { name: "Plugins", icon: <Blocks className="h-4 w-4" strokeWidth={1.5} /> },
+        { name: "MCP", icon: <Plug className="h-4 w-4" strokeWidth={1.5} /> },
+        { name: "Profile", icon: <UserRound className="h-4 w-4" strokeWidth={1.5} /> },
+      ],
+    },
+    {
+      label: "Operations",
+      items: [
+        { name: "Cron Jobs", icon: <Clock className="h-4 w-4" strokeWidth={1.5} /> },
+        { name: "Logs", icon: <ScrollText className="h-4 w-4" strokeWidth={1.5} /> },
+        { name: "System Health", icon: <HeartPulse className="h-4 w-4" strokeWidth={1.5} /> },
+        { name: "Analytics", icon: <BarChart3 className="h-4 w-4" strokeWidth={1.5} /> },
+        { name: "Webhooks & Pairing", icon: <Webhook className="h-4 w-4" strokeWidth={1.5} /> },
+      ],
+    },
+  ];
+
   return (
     <aside className="flex h-full w-60 shrink-0 flex-col border-r border-white/[0.07] bg-midnight/60">
-      <div className="flex items-center gap-2.5 px-5 pb-4 pt-5">
-        <span className="h-2 w-2 rounded-full bg-cyanx shadow-[0_0_10px_rgba(34,211,238,0.8)]" />
-        <span className="font-display text-lg tracking-tight">Astra</span>
+      <div className="flex items-center gap-2.5 px-5 pb-3 pt-5">
+        <img src="/astra-logo.png" alt="Astra"
+          className="h-8 w-8 rounded-lg object-cover shadow-[0_0_16px_rgba(34,211,238,0.3)]" />
+        <div className="min-w-0">
+          <p className="truncate font-display text-sm tracking-tight text-brandtext">Astral Command Center</p>
+          <p className="font-mono text-[8px] uppercase tracking-[0.3em] text-cyanx/60">astra webui</p>
+        </div>
       </div>
 
-      <nav className="flex flex-col gap-1 px-3">
-        <button type="button"
-          className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-slate-300 transition-colors hover:bg-white/5 hover:text-white">
-          <Plus className="h-4 w-4 text-muted" strokeWidth={1.5} />
-          New chat
-        </button>
-        <button type="button" aria-current="page"
-          className="flex items-center gap-2.5 rounded-lg bg-cyanx/10 px-3 py-2 text-left text-sm text-cyanx transition-colors hover:bg-cyanx/15">
-          <MessageSquare className="h-4 w-4" strokeWidth={1.5} />
-          Chat
-          <span className="ml-auto font-mono text-[9px] uppercase tracking-widest text-cyanx/60">live</span>
-        </button>
+      <nav className="flex-1 overflow-y-auto px-3 pb-4">
+        {groups.map((group) => (
+          <div key={group.label} className="mb-4">
+            <p className="px-3 pb-1.5 pt-2 font-mono text-[9px] uppercase tracking-[0.25em] text-slate-600">
+              {group.label}
+            </p>
+            {group.items.map((item) => (
+              <button key={item.name} type="button"
+                aria-current={"badge" in item && item.badge ? "page" : undefined}
+                className={cn(
+                  "flex w-full items-center gap-2.5 rounded-lg px-3 py-1.5 text-left text-sm transition-colors",
+                  "badge" in item && item.badge
+                    ? "bg-cyanx/10 text-cyanx hover:bg-cyanx/15"
+                    : "text-slate-300 hover:bg-white/5 hover:text-white"
+                )}>
+                <span className="shrink-0 text-muted">{item.icon}</span>
+                <span className="truncate">{item.name}</span>
+                {"badge" in item && item.badge ? (
+                  <span className="ml-auto font-mono text-[8px] uppercase tracking-widest text-cyanx/60">{item.badge}</span>
+                ) : null}
+              </button>
+            ))}
+          </div>
+        ))}
       </nav>
 
-      <div className="mt-auto p-3">
+      <div className="border-t border-white/[0.07] p-3">
         <button type="button" onClick={onLogout}
           className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-slate-400 transition-colors hover:bg-red-500/10 hover:text-red-400">
           <LogOut className="h-4 w-4" strokeWidth={1.5} />
           Logout
         </button>
-        <p className="px-3 pb-1 pt-2 font-mono text-[9px] uppercase tracking-[0.25em] text-slate-700">
-          astra // uplink stable
-        </p>
       </div>
     </aside>
   );
