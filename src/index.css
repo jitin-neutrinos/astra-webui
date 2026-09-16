@@ -15,6 +15,7 @@
   --color-cyanx: #22d3ee;
   --color-violetx: #8b5cf6;
   --color-fuchsiax: #d946ef;
+  --color-redx: #f87171;
 }
 
 /* one-shot keyframes for the gradient blobs (component reads these class names) */
@@ -134,8 +135,14 @@ body { background: var(--color-void); }
 .chat-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 9999px; border: 1px solid rgba(248,250,252,.10); background: transparent; color: var(--color-muted); font: 400 11.5px/1 var(--font-sans); cursor: pointer; white-space: nowrap; transition: border-color 150ms ease, color 150ms ease, background-color 150ms ease; }
 .chat-chip:hover { border-color: rgba(34,211,238,.35); color: var(--color-brandtext); background: rgba(255,255,255,.03); }
 .chat-chip[aria-expanded="true"] { border-color: rgba(34,211,238,.4); color: var(--color-brandtext); }
+
+.chat-chip-yolo { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 9999px; border: 1px solid rgba(248,250,252,.10); background: transparent; color: var(--color-muted); font: 400 11.5px/1 var(--font-sans); cursor: pointer; white-space: nowrap; transition: border-color 150ms ease, color 150ms ease, background-color 150ms ease; }
+.chat-chip-yolo[aria-pressed="true"] { border-color: var(--color-redx); color: var(--color-redx); box-shadow: 0 0 12px rgba(248,113,113,.35); }
+
 .chat-chip-dot { width: 6px; height: 6px; border-radius: 9999px; background: var(--color-cyanx); box-shadow: 0 0 8px rgba(34,211,238,.7); }
 .chat-chip-caret { opacity: .6; }
+
+.chat-sys-note { font-family: var(--font-mono); font-size: 11px; color: var(--color-muted); }
 
 .chat-menu { position: absolute; bottom: calc(100% + 8px); left: 0; min-width: 230px; max-height: 320px; overflow-y: auto; background: var(--color-midnight); border: 1px solid rgba(248,250,252,.12); border-radius: 12px; padding: 6px; box-shadow: 0 12px 40px rgba(0,0,0,.55); animation: chat-enter 150ms cubic-bezier(0.23,1,0.32,1) both; z-index: 60; }
 .chat-menu-label { padding: 8px 10px 4px; font: 500 10px/1 var(--font-mono); text-transform: uppercase; letter-spacing: .18em; color: var(--color-muted); }

@@ -99,21 +99,37 @@ export async function handleHxProxy(req, res) {
     return res.end(JSON.stringify({ error: err.message }));
   }
 
-  const makeReq = () => new Promise((resolve, reject) => {
+  const contentLength = parseInt(req.headers["content-length"] || "0", 10);
+  const hasBody = contentLength > 0;
+
+  const makeReq = (pipeBody) => new Promise((resolve, reject) => {
+    const headers = { "Cookie": cookie };
+    if (req.headers["content-type"]) headers["content-type"] = req.headers["content-type"];
+    if (req.headers["content-length"]) headers["content-length"] = req.headers["content-length"];
+
     const proxyReq = httpRequest(`${HERMES_URL}${targetPath}`, {
       method: req.method,
-      headers: { "Cookie": cookie }
+      headers
     }, resolve);
     proxyReq.on("error", reject);
-    proxyReq.end();
+    if (hasBody && pipeBody) {
+      req.pipe(proxyReq);
+    } else {
+      proxyReq.end();
+    }
   });
 
   try {
-    let proxyRes = await makeReq();
+    let proxyRes = await makeReq(true);
     if (proxyRes.statusCode === 401) {
       clearHermesCookie();
-      cookie = await getHermesCookie();
-      proxyRes = await makeReq();
+      if (hasBody) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ error: "reauth" }));
+      } else {
+        cookie = await getHermesCookie();
+        proxyRes = await makeReq(false);
+      }
     }
     res.writeHead(proxyRes.statusCode, proxyRes.headers);
     proxyRes.pipe(res);

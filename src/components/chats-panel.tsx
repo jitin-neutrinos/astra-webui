@@ -100,7 +100,7 @@ export function ChatsPanel({ onBack, onSelect }: { onBack: () => void; onSelect:
         {loading && sessions.length === 0 ? (
           <div className="p-4 text-center font-mono text-xs text-slate-500">Loading...</div>
         ) : error ? (
-          <div className="p-4 flex flex-col items-center gap-2 text-center text-red-400/80">
+          <div className="p-4 flex flex-col items-center gap-2 text-center text-redx/80">
             <AlertCircle className="w-5 h-5" />
             <span className="text-sm">{error}</span>
             <button onClick={() => fetchSessions(query, offset)} className="text-xs underline hover:text-red-300">Retry</button>

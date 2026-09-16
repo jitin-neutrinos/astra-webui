@@ -1,16 +1,19 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
-import { ArrowUp, Square, AlertTriangle, RotateCcw } from "lucide-react";
+import { ArrowUp, Square, AlertTriangle, RotateCcw, PlayCircle, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useHermesWS } from "@/lib/hermes-ws";
 import type { EventPayload } from "@/lib/hermes-ws";
 import { normalizeMessages } from "@/lib/normalize-messages";
 import AITextLoading from "@/components/ui/ai-text-loading";
+import { getFileKind, } from "@/lib/session-files";
 import {
   applySegmentOps, finalizeSegments, findNewestCollapsedToolSeg, expandKeyBlocked, TurnTimeline,
   type Segment, type SegOp,
 } from "./chat-timeline";
 import { ComposerControls, type Attachment } from "./composer-controls";
+import { getHermesHome, getCatalog } from "@/lib/session-files";
+import type { CatalogPayload } from "./composer-controls";
 
 // Source: ~/.hermes/plugins/astra-brand/dashboard/dist/astra-core.js CHAT_TUI_COMMANDS
 // (the TUI's registered slash commands — submitted as plain prompt text, same as the terminal).
@@ -19,9 +22,13 @@ const TUI_COMMANDS = [
   "/skills", "/tools", "/memory", "/approvals", "/help", "/stop", "/status",
 ];
 
-type ChatMsg =
-  | { id: string; role: "user"; content: string; ts?: number }
-  | { id: string; role: "assistant"; segments: Segment[]; isStreaming: boolean; ts?: number };
+type ChatMsg = { isSysNote?: boolean; content?: string; files?: {name: string, path: string}[] } & (
+    | { id: string; role: "user"; content: string; ts?: number }
+    | { id: string; role: "assistant"; segments: Segment[]; isStreaming: boolean; ts?: number } );
+
+// home dir for upload targets (bootstrap once); in-flight XHRs by attachment id
+const hermesHomeRef: { p: Promise<string> | null } = { p: null };
+const homeP = () => hermesHomeRef.p ?? (hermesHomeRef.p = getHermesHome().catch((e) => { hermesHomeRef.p = null; throw e; }));
 
 let idSeq = 0;
 const nextId = () => `m${++idSeq}-${Date.now()}`;
@@ -65,6 +72,13 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
   const opsTimerRef = useRef<number | null>(null);
   const lastPromptRef = useRef("");
   const lastScrolledApprovalRef = useRef<string | null>(null);
+  const xhrPathRef = useRef<Promise<string> | null>(null);
+  const xhrRef = useRef<Map<string, XMLHttpRequest>>(new Map());
+  const [catalog, setCatalog] = useState<CatalogPayload | null>(null);
+  useEffect(() => {
+    xhrPathRef.current = homeP();
+    getCatalog().then((c) => setCatalog(c)).catch(() => { /* popover shows fallback rows */ });
+  }, []);
 
   const flushOps = useCallback(() => {
     opsTimerRef.current = null;
@@ -178,6 +192,16 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
 
     if (type === "tool.complete") {
       ensureActive();
+      // harvest agent-created files for the Files page "Generated media" registry
+      try {
+        const hay = typeof payload?.result === "string" ? payload.result : JSON.stringify(payload?.result || "");
+        const found = hay.match(/\/home\/notjitin\/[^"\\\s]+\.(png|jpe?g|gif|webp|mp4|webm|mov|mkv|mp3|wav|ogg|flac|m4a|opus|pdf|docx|xlsx|pptx|txt|md|csv)/gi) || [];
+        if (found.length) {
+          const reg = new Set(JSON.parse(localStorage.getItem("astra-gen-files") || "[]"));
+          for (const p of found) reg.add(p);
+          localStorage.setItem("astra-gen-files", JSON.stringify([...reg].slice(-200)));
+        }
+      } catch { /* registry is best-effort */ }
       let resultText = "";
       let exitCode: number | null = null;
       if (payload) {
@@ -218,7 +242,7 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
     }
   }, [ensureActive, pushOp, finalizeActive, resolveApproval]);
 
-  const { isStreaming, submitPrompt, interrupt, storedSessionId, setStoredSessionId, sendApprovalResponse } = useHermesWS(handleEvent);
+  const { isStreaming, submitPrompt, interrupt, storedSessionId, setStoredSessionId, sendApprovalResponse, sessionInfo, setSessionInfo, rpc, liveSessionId } = useHermesWS(handleEvent);
 
   const respondApproval = useCallback((reqId: string, choice: string) => {
     sendApprovalResponse(reqId, choice);
@@ -265,18 +289,33 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
   }, [storedSessionId]);
 
   const send = async (raw?: string) => {
-    const text = (raw ?? input).trim();
-    if (!text || isStreaming) return;
-    lastPromptRef.current = text;
+    let finalText = (raw ?? input).trim();
+    if (!finalText && attachments.length === 0) return;
+    if (isStreaming || attachments.some((a) => a.status === "uploading")) return;
+    
+    const files = attachments.map(a => ({ name: a.file.name, path: a.serverPath! }));
+    if (files.length > 0) {
+      finalText += (finalText ? "\n\n" : "") + files.map(f => `Attached file: ${f.path}`).join("\n");
+    }
+    // images reach the model as vision input too (best-effort; path-only on failure)
+    for (const f of files) {
+      if (getFileKind(f.name) === "image") {
+        rpc("image.attach", { session_id: liveSessionId || undefined, path: f.path }).catch(() => { /* path in text is the fallback */ });
+      }
+    }
+
+    lastPromptRef.current = finalText;
     setInput("");
     setSlashOpen(false);
-    setMessages((m) => [...m, { id: nextId(), role: "user", content: text, ts: Date.now() }]);
-    // Reserve the turn's activity row immediately so any event arrives with somewhere to land.
+    setAttachments([]);
+    
+    setMessages((m) => [...m, { id: nextId(), role: "user", content: (raw ?? input).trim(), ts: Date.now(), files }]);
+    
     const id = nextId();
     activeIdRef.current = id;
     setMessages((m) => [...m, { id, role: "assistant", segments: [], isStreaming: true, ts: Date.now() }]);
     setAtBottom(true);
-    setTimeout(() => submitPrompt(text), 0);
+    setTimeout(() => submitPrompt(finalText), 0);
     taRef.current?.focus();
   };
 
@@ -286,6 +325,105 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
     interrupt();
     finalizeActive();
   };
+
+  const onToggleYolo = async () => {
+    const next = !sessionInfo?.yolo;
+    // Optimistic (create a stub when no session yet — session.info reconciles later)
+    setSessionInfo((prev: any) => ({ ...(prev || {}), yolo: next }));
+    try {
+      const res = await rpc("config.set", { key: "yolo", value: next ? "1" : "0" });
+      if (res && res.key === "yolo") {
+        setMessages((m) => [...m, {
+          id: nextId(), role: "assistant", segments: [], isStreaming: false, isSysNote: true,
+          content: next ? "Yolo mode active — tool calls in this chat run without approval" : "Yolo mode off — tool calls ask for approval first"
+        } as any]);
+      }
+    } catch {
+      // Revert
+      setSessionInfo((prev: any) => ({ ...(prev || {}), yolo: !next }));
+    }
+  };
+
+  const onPickModel = async (model: string, provider: string) => {
+    const prevModel = sessionInfo?.model;
+    const prevProv = sessionInfo?.provider;
+    setSessionInfo((prev: any) => ({ ...(prev || {}), model, provider }));
+    try {
+      // Verified grammar: methods_config_set.py _set_model → parse_model_switch_args
+      await rpc("config.set", { key: "model", value: `${model} --provider ${provider} --session` });
+    } catch {
+      setSessionInfo((prev: any) => ({ ...(prev || {}), model: prevModel, provider: prevProv }));
+    }
+  };
+
+  const onPickEffort = async (effort: string) => {
+    const prev = sessionInfo?.reasoning_effort;
+    setSessionInfo((prevS: any) => ({ ...(prevS || {}), reasoning_effort: effort }));
+    try {
+      // Key is "reasoning" (_CONFIG_SETTERS), not "reasoning_effort"
+      await rpc("config.set", { key: "reasoning", value: effort });
+    } catch {
+      setSessionInfo((prevS: any) => ({ ...(prevS || {}), reasoning_effort: prev }));
+    }
+  };
+
+  // Upload one file via XHR (progress events); path targets <home>/uploads so
+  // the agent sees host paths. 503 {error:"reauth"} → one silent retry.
+  const startUpload = useCallback((a: Attachment) => {
+    const fd = new FormData();
+    fd.append("file", a.file);
+    xhrPathRef.current?.then((home) => {
+      fd.append("path", `${home}/uploads/${a.file.name}`);
+      fd.append("overwrite", "true");
+      const xhr = new XMLHttpRequest();
+      xhrRef.current.set(a.id, xhr);
+      xhr.open("POST", "/api/hx/files/upload-stream");
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          setAttachments((atts) => atts.map((x) => x.id === a.id ? { ...x, progress: Math.round((e.loaded * 100) / e.total) } : x));
+        }
+      };
+      const fail = () => setAttachments((atts) => atts.map((x) => x.id === a.id ? { ...x, status: "error" } : x));
+      const finish = () => {
+        xhrRef.current.delete(a.id);
+        if (xhr.status === 200) {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            setAttachments((atts) => atts.map((x) => x.id === a.id ? { ...x, status: "done", serverPath: data.path, progress: 100 } : x));
+          } catch { fail(); }
+        } else if (xhr.status === 503 && !a.retried) {
+          // cookie re-auth: remove and requeue once (a fresh request mints a new cookie)
+          setAttachments((atts) => atts.map((x) => x.id === a.id ? { ...x, status: "uploading", progress: 0, retried: true } : x));
+        } else {
+          fail();
+        }
+      };
+      xhr.onload = finish;
+      xhr.onerror = fail;
+      xhr.send(fd);
+    }).catch(() => setAttachments((atts) => atts.map((x) => x.id === a.id ? { ...x, status: "error" } : x)));
+  }, [setAttachments]);
+
+  // React to requeued retries without a self-refiring effect: startedRef
+  // prevents double-starting the same id.
+  const startedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    for (const a of attachments) {
+      if (a.status === "uploading" && !startedRef.current.has(a.id)) {
+        startedRef.current.add(a.id);
+        startUpload(a);
+      }
+      if (a.status === "error") startedRef.current.delete(a.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attachments]);
+
+  const removeAttachment = useCallback((id: string) => {
+    const x = xhrRef.current.get(id);
+    if (x) { x.abort(); xhrRef.current.delete(id); }
+    startedRef.current.delete(id);
+    setAttachments((list) => list.filter((a) => a.id !== id));
+  }, [setAttachments]);
 
   const onInputChange = (v: string) => {
     setInput(v);
@@ -424,21 +562,65 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
         ) : (
           <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
             {messages.map((m) => (
-              <div key={m.id} className="flex items-start gap-3">
-                {m.role === "assistant" ? (
+              <div key={m.id} className={m.isSysNote ? "chat-sys-note" : "flex items-start gap-3"}>
+                {m.isSysNote ? (
+                  <>◈ {m.content}</>
+                ) : m.role === "assistant" ? (
                   <img src="/astra-logo.png" alt="" aria-hidden="true"
                     className="mt-0.5 h-7 w-7 shrink-0 rounded-full object-cover shadow-[0_0_12px_rgba(34,211,238,0.3)]" />
                 ) : (
                   <span aria-hidden="true"
                     className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 font-mono text-xs text-slate-300">J</span>
                 )}
+                {!m.isSysNote && (
                 <div className="min-w-0 flex-1">
                   {m.ts != null && (
                     <div className="chat-turn-ts">{new Date(m.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
                   )}
                   {m.role === "user" ? (
-                    <div className="min-w-0 whitespace-pre-wrap rounded-2xl bg-white/[0.06] px-4 py-3 text-sm leading-relaxed text-slate-200">
-                      {m.content}
+                    <div>
+                      {m.files && m.files.length > 0 && (
+                        <div className="mb-2 flex flex-wrap gap-2">
+                          {m.files.map(f => {
+                            const kind = getFileKind(f.name);
+                            const enc = encodeURIComponent(f.path);
+                            return (
+                              <div key={f.path} className="overflow-hidden rounded-lg border border-white/10 bg-white/5 text-xs text-slate-300">
+                                {kind === "image" ? (
+                                  <a href={`/api/hx/files/download?path=${enc}`} target="_blank" rel="noreferrer" title="Open full image" className="block">
+                                    <img src={`/api/hx/media?path=${enc}`} alt={f.name} loading="lazy" className="max-h-44 max-w-[240px] object-cover" />
+                                  </a>
+                                ) : kind === "video" ? (
+                                  <video src={`/api/hx/files/stream?path=${enc}`} controls preload="metadata" className="max-h-44 max-w-[280px]" />
+                                ) : kind === "audio" ? (
+                                  <div className="flex w-56 items-center gap-2 p-2">
+                                    <PlayCircle className="h-4 w-4 shrink-0 text-cyanx" />
+                                    <audio src={`/api/hx/files/stream?path=${enc}`} controls preload="metadata" className="h-8 w-full" />
+                                  </div>
+                                ) : (
+                                  <a href={`/api/hx/files/download?path=${enc}`} target="_blank" rel="noreferrer"
+                                    className="flex max-w-[220px] items-center gap-2 p-2 pr-3 hover:bg-white/5" title="Download">
+                                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-black/20 text-slate-400">
+                                      <FileText className="h-3 w-3" />
+                                    </div>
+                                    <span className="truncate">{f.name}</span>
+                                  </a>
+                                )}
+                                {(kind === "image" || kind === "video" || kind === "audio") && (
+                                  <div className="flex items-center justify-between gap-2 px-2 py-1">
+                                    <span className="truncate text-[10px] text-slate-500">{f.name}</span>
+                                    <a href={`/api/hx/files/download?path=${enc}`} target="_blank" rel="noreferrer"
+                                      className="shrink-0 font-mono text-[10px] text-cyanx hover:underline">download</a>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <div className="min-w-0 whitespace-pre-wrap rounded-2xl bg-white/[0.06] px-4 py-3 text-sm leading-relaxed text-slate-200">
+                        {m.content.replace(/\n\nAttached file: .*/g, "")}
+                      </div>
                     </div>
                   ) : m.segments.length ? (
                     <TurnTimeline segments={m.segments} streaming={m.isStreaming} onToggleTool={toggleToolCollapse} onApprovalRespond={respondApproval} />
@@ -448,6 +630,7 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
                     </span>
                   ) : null}
                 </div>
+                )}
               </div>
             ))}
           </div>
@@ -479,9 +662,15 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
           />
           <div className="chat-composer-bar">
             <ComposerControls
+              disabled={isStreaming}
               attachments={attachments}
               setAttachments={setAttachments}
-              disabled={isStreaming}
+              sessionInfo={sessionInfo}
+              catalog={catalog}
+              onToggleYolo={onToggleYolo}
+              onPickModel={onPickModel}
+              onPickEffort={onPickEffort}
+              onRemoveAttachment={removeAttachment}
             />
             {!isStreaming && lastPromptRef.current && (
               <button type="button" onClick={retry} aria-label="Retry last message" title="Retry last message" className="chat-retry">

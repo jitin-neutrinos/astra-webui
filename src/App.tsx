@@ -155,7 +155,7 @@ function LoginScreen({ password, setPassword, clearError, error, busy, submit }:
               </div>
             </div>
             {error ? (
-              <p role="alert" className="font-mono text-xs tracking-wide text-red-400">
+              <p role="alert" className="font-mono text-xs tracking-wide text-redx">
                 &gt; {error}
               </p>
             ) : null}
@@ -178,31 +178,37 @@ function LoginScreen({ password, setPassword, clearError, error, busy, submit }:
   );
 }
 
+import { FilesPage } from "./components/files-page";
+
 /* ---------------- shell: sidebar + chat landing ---------------- */
 
 function Shell({ onLogout }: { onLogout: () => void }) {
   const [resetSignal, setResetSignal] = useState(0);
-  const [view, setView] = useState<'chat' | 'chats'>('chat');
+  const [view, setView] = useState<'chat' | 'chats' | 'files'>('chat');
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 
   return (
     <div className="app-shell flex w-full overflow-hidden bg-void font-sans text-brandtext">
-      <Sidebar 
+      <Sidebar
+        activeView={view}
         onLogout={onLogout} 
         onNewChat={() => { setResetSignal(r => r + 1); setView('chat'); setSelectedSessionId(null); }} 
         onOpenChats={() => setView('chats')} 
         onOpenAstra={() => setView('chat')} 
+        onOpenFiles={() => setView('files')}
       />
       {view === 'chat' ? (
         <ChatLanding resetSignal={resetSignal} selectedSessionId={selectedSessionId} />
-      ) : (
+      ) : view === 'chats' ? (
         <ChatsPanel onBack={() => setView('chat')} onSelect={(id) => { setSelectedSessionId(id); setView('chat'); }} />
+      ) : (
+        <FilesPage onBack={() => setView('chat')} />
       )}
     </div>
   );
 }
 
-function Sidebar({ onLogout, onNewChat, onOpenChats, onOpenAstra }: { onLogout: () => void; onNewChat: () => void; onOpenChats: () => void; onOpenAstra: () => void; }) {
+function Sidebar({ activeView, onLogout, onNewChat, onOpenChats, onOpenAstra, onOpenFiles }: { activeView: 'chat' | 'chats' | 'files'; onLogout: () => void; onNewChat: () => void; onOpenChats: () => void; onOpenAstra: () => void; onOpenFiles: () => void; }) {
   const groups: {
     label: string;
     items: { name: string; icon: ReactNode; badge?: string; onClick?: () => void }[];
@@ -213,7 +219,7 @@ function Sidebar({ onLogout, onNewChat, onOpenChats, onOpenAstra }: { onLogout: 
         { name: "Astra", icon: <img src="/astra-logo.png" alt="" className="h-4 w-4 rounded-full object-cover" />, onClick: onOpenAstra },
         { name: "New chat", icon: <Plus className="h-4 w-4" strokeWidth={1.5} />, onClick: onNewChat },
         { name: "Chats", icon: <MessageSquare className="h-4 w-4" strokeWidth={1.5} />, onClick: onOpenChats, badge: "live" },
-        { name: "Files", icon: <Folder className="h-4 w-4" strokeWidth={1.5} /> },
+        { name: "Files", icon: <Folder className="h-4 w-4" strokeWidth={1.5} />, onClick: onOpenFiles },
       ],
     },
     {
@@ -257,12 +263,17 @@ function Sidebar({ onLogout, onNewChat, onOpenChats, onOpenAstra }: { onLogout: 
             <p className="px-3 pb-1.5 pt-2 font-mono text-[9px] uppercase tracking-[0.25em] text-slate-600">
               {group.label}
             </p>
-            {group.items.map((item) => (
+            {group.items.map((item) => {
+              const active = item.name === "Astra" ? activeView === "chat"
+                : item.name === "Chats" ? activeView === "chats"
+                : item.name === "Files" ? activeView === "files"
+                : false;
+              return (
               <button key={item.name} type="button" onClick={item.onClick}
-                aria-current={"badge" in item && item.badge ? "page" : undefined}
+                aria-current={active ? "page" : undefined}
                 className={cn(
                   "flex w-full items-center gap-2.5 rounded-lg px-3 py-1.5 text-left text-sm transition-colors",
-                  "badge" in item && item.badge
+                  active
                     ? "bg-cyanx/10 text-cyanx hover:bg-cyanx/15"
                     : "text-slate-300 hover:bg-white/5 hover:text-white"
                 )}>
@@ -272,14 +283,15 @@ function Sidebar({ onLogout, onNewChat, onOpenChats, onOpenAstra }: { onLogout: 
                   <span className="ml-auto font-mono text-[8px] uppercase tracking-widest text-cyanx/60">{item.badge}</span>
                 ) : null}
               </button>
-            ))}
+              );
+            })}
           </div>
         ))}
       </nav>
 
       <div className="border-t border-white/[0.07] p-3">
         <button type="button" onClick={onLogout}
-          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-slate-400 transition-colors hover:bg-red-500/10 hover:text-red-400">
+          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-slate-400 transition-colors hover:bg-redx/10 hover:text-redx">
           <LogOut className="h-4 w-4" strokeWidth={1.5} />
           Logout
         </button>
