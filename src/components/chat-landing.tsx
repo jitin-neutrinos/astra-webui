@@ -1,85 +1,242 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
-import { ArrowUp, Square, AlertTriangle } from "lucide-react";
+import { ArrowUp, Square, AlertTriangle, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useHermesWS } from "@/lib/hermes-ws";
 import type { EventPayload } from "@/lib/hermes-ws";
 import { normalizeMessages } from "@/lib/normalize-messages";
-import type { Msg } from "@/lib/normalize-messages";
+import {
+  applySegmentOps, finalizeSegments, findNewestCollapsedToolSeg, TurnTimeline,
+  type Segment, type SegOp,
+} from "./chat-timeline";
 import { ComposerControls, type Attachment } from "./composer-controls";
 
+// Source: ~/.hermes/plugins/astra-brand/dashboard/dist/astra-core.js CHAT_TUI_COMMANDS
+// (the TUI's registered slash commands — submitted as plain prompt text, same as the terminal).
+const TUI_COMMANDS = [
+  "/model", "/reasoning", "/new", "/sessions", "/compact", "/usage",
+  "/skills", "/tools", "/memory", "/approvals", "/help", "/stop", "/status",
+];
+
+type ChatMsg =
+  | { id: string; role: "user"; content: string; ts?: number }
+  | { id: string; role: "assistant"; segments: Segment[]; isStreaming: boolean; ts?: number };
+
+let idSeq = 0;
+const nextId = () => `m${++idSeq}-${Date.now()}`;
+
+const BATCH_MS = 40; // ~30-60ms batching window for both text deltas and step ops
+
+function usePrefersReducedMotion() {
+  const [reduced, setReduced] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const onChange = () => setReduced(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return reduced;
+}
+
+function textOf(payload: any): string {
+  return payload?.delta?.text ?? payload?.text ?? payload?.rendered ?? "";
+}
+function thinkingOf(payload: any): string {
+  return payload?.delta?.thinking ?? payload?.text ?? payload?.rendered ?? "";
+}
+
 export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: number, selectedSessionId: string | null }) {
-  const [messages, setMessages] = useState<Msg[]>([]);
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
-  const [thinkingContent, setThinkingContent] = useState("");
-  const [isThinking, setIsThinking] = useState(false); // different from streaming, thinking is for thinking.delta
   const [errorBanner, setErrorBanner] = useState("");
-  
+  const [atBottom, setAtBottom] = useState(true);
+  const [slashOpen, setSlashOpen] = useState(false);
+  const [slashActive, setSlashActive] = useState(0);
+
   const listRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const reducedMotion = usePrefersReducedMotion();
 
-  // refs mirroring the streaming flags so the WS handler (registered once) reads fresh values
-  const pendingAssistantRef = useRef(false);
+  const activeIdRef = useRef<string | null>(null);
+  const pendingOpsRef = useRef<SegOp[]>([]);
+  const opsTimerRef = useRef<number | null>(null);
+  const lastPromptRef = useRef("");
+  const lastScrolledApprovalRef = useRef<string | null>(null);
+
+  const flushOps = useCallback(() => {
+    opsTimerRef.current = null;
+    const ops = pendingOpsRef.current;
+    pendingOpsRef.current = [];
+    const id = activeIdRef.current;
+    if (!ops.length || !id) return;
+    setMessages((m) => m.map((msg) =>
+      msg.role === "assistant" && msg.id === id
+        ? { ...msg, segments: applySegmentOps(msg.segments, ops) }
+        : msg));
+  }, []);
+
+  const scheduleFlush = useCallback(() => {
+    if (opsTimerRef.current) return;
+    opsTimerRef.current = window.setTimeout(flushOps, BATCH_MS);
+  }, [flushOps]);
+
+  const pushOp = useCallback((op: SegOp, immediate = false) => {
+    pendingOpsRef.current.push(op);
+    if (immediate) flushOps();
+    else scheduleFlush();
+  }, [flushOps, scheduleFlush]);
+
+  const ensureActive = useCallback(() => {
+    if (activeIdRef.current) return;
+    const id = nextId();
+    activeIdRef.current = id;
+    setMessages((m) => [...m, { id, role: "assistant", segments: [], isStreaming: true, ts: Date.now() }]);
+  }, []);
+
+  const finalizeActive = useCallback(() => {
+    if (opsTimerRef.current) { window.clearTimeout(opsTimerRef.current); opsTimerRef.current = null; }
+    const ops = pendingOpsRef.current;
+    pendingOpsRef.current = [];
+    const id = activeIdRef.current;
+    activeIdRef.current = null;
+    if (!id) return;
+    setMessages((m) => m
+      .map((msg) => msg.role === "assistant" && msg.id === id
+        ? { ...msg, segments: finalizeSegments(ops.length ? applySegmentOps(msg.segments, ops) : msg.segments), isStreaming: false }
+        : msg)
+      // drop a turn that ended with nothing rendered (e.g. Stop before any event arrived)
+      .filter((msg) => !(msg.role === "assistant" && msg.id === id && msg.segments.length === 0)));
+  }, []);
+
+  const resolveApproval = useCallback((reqId: string, choice: string | null) => {
+    setMessages((m) => m.map((msg) => {
+      if (msg.role !== "assistant") return msg;
+      let changed = false;
+      const segments = msg.segments.map((s) => {
+        if (s.kind === "approval" && s.reqId === reqId && s.resolved == null) {
+          changed = true;
+          return { ...s, resolved: choice ?? "cancelled", status: "done" as const };
+        }
+        return s;
+      });
+      return changed ? { ...msg, segments } : msg;
+    }));
+  }, []);
 
   const handleEvent = useCallback((ev: EventPayload) => {
     const { type, payload } = ev;
+
     if (type === "proxy.status") {
-      if (payload.state === "reconnecting") {
-        setErrorBanner("Connection lost. Reconnecting...");
-      } else {
-        setErrorBanner("");
-      }
+      setErrorBanner(payload.state === "reconnecting" ? "Connection lost. Reconnecting..." : "");
       return;
     }
 
     if (type === "message.start") {
-      // A message.start for an already-streaming target (replay/echo) must NOT
-      // append a second bubble — reuse the trailing empty assistant bubble.
-      setMessages(m => {
-        const last = m[m.length - 1];
-        if (last && last.role === "assistant" && last.content === "") return m;
-        return [...m, { role: "assistant", content: "" }];
-      });
-      pendingAssistantRef.current = true;
-      setThinkingContent("");
-      setIsThinking(false);
-    } else if (type === "message.delta" && payload?.delta?.text) {
-      setMessages(m => {
-        const last = m[m.length - 1];
-        if (!last || last.role !== "assistant") return [...m, { role: "assistant" as const, content: payload.delta.text }];
-        return [...m.slice(0, -1), { ...last, content: last.content + payload.delta.text }];
-      });
-    } else if (type === "thinking.delta") {
-      const txt = payload?.delta?.thinking ?? payload?.text ?? "";
-      if (txt) { setIsThinking(true); setThinkingContent(prev => prev + txt); }
-    } else if (type === "message.complete" || type === "message.error") {
-      // final settle: drop a still-empty trailing assistant bubble, clear thinking
-      pendingAssistantRef.current = false;
-      setMessages(m => {
-        const last = m[m.length - 1];
-        if (last && last.role === "assistant" && last.content === "") return m.slice(0, -1);
-        return m;
-      });
-      setThinkingContent("");
-      setIsThinking(false);
+      if (!activeIdRef.current) ensureActive();
+      else setMessages((m) => m.map((msg) => msg.id === activeIdRef.current ? { ...msg, isStreaming: true } : msg));
+      return;
     }
+
+    if (type === "message.delta") {
+      const text = textOf(payload);
+      if (!text) return;
+      ensureActive();
+      pushOp({ op: "text", text });
+      return;
+    }
+
+    if (type === "thinking.delta" || type === "reasoning.delta" || type === "reasoning.available") {
+      const text = thinkingOf(payload);
+      if (!text) return;
+      ensureActive();
+      pushOp({ op: "think", text });
+      return;
+    }
+
+    if (type === "tool.start") {
+      ensureActive();
+      const name = payload?.name || "tool";
+      let argsText = "";
+      if (payload?.args !== undefined) { try { argsText = JSON.stringify(payload.args, null, 2).slice(0, 6000); } catch { /* noop */ } }
+      const command = payload?.args?.command || payload?.args?.cmd || "";
+      pushOp({ op: "tool", key: payload?.tool_id, label: name, argsText, command: String(command) });
+      return;
+    }
+
+    if (type === "tool.generating") {
+      ensureActive();
+      const name = payload?.name;
+      let argsText = "";
+      if (payload?.args !== undefined) { try { argsText = JSON.stringify(payload.args, null, 2).slice(0, 6000); } catch { /* noop */ } }
+      const command = payload?.args?.command || payload?.args?.cmd || "";
+      pushOp({ op: "tool-update", key: payload?.tool_id, label: name, argsText, command: String(command || "") });
+      return;
+    }
+
+    if (type === "tool.complete") {
+      ensureActive();
+      let resultText = "";
+      let exitCode: number | null = null;
+      if (payload) {
+        if (payload.result !== undefined && payload.result !== null && payload.result !== "") {
+          try { resultText = typeof payload.result === "string" ? payload.result : JSON.stringify(payload.result, null, 2); }
+          catch { resultText = String(payload.result); }
+          if ((payload.name === "terminal" || !payload.name) && typeof payload.result === "string") {
+            try { const rj = JSON.parse(payload.result); if (rj && typeof rj === "object" && rj.exit_code != null) exitCode = rj.exit_code; } catch { /* not JSON */ }
+          }
+        }
+        if (!resultText && payload.summary) resultText = String(payload.summary);
+        resultText = resultText.slice(0, 30000);
+      }
+      pushOp({ op: "tool-done", key: payload?.tool_id, label: payload?.name, resultText, exitCode });
+      return;
+    }
+
+    if (type === "message.complete" || type === "message.error") {
+      finalizeActive();
+      return;
+    }
+
+    if (type === "approval") {
+      ensureActive();
+      pushOp({ op: "approval", reqId: payload?.id, params: payload?.params || {} }, true);
+      return;
+    }
+
+    if (type === "request.cancel") {
+      if (payload?.id) resolveApproval(payload.id, null);
+      return;
+    }
+
+    if (type === "ws.closed") {
+      // Interrupted/dropped turns never emit message.complete — finalize here too.
+      finalizeActive();
+      return;
+    }
+  }, [ensureActive, pushOp, finalizeActive, resolveApproval]);
+
+  const { isStreaming, submitPrompt, interrupt, storedSessionId, setStoredSessionId, sendApprovalResponse } = useHermesWS(handleEvent);
+
+  const respondApproval = useCallback((reqId: string, choice: string) => {
+    sendApprovalResponse(reqId, choice);
+    resolveApproval(reqId, choice);
+  }, [sendApprovalResponse, resolveApproval]);
+
+  const toggleToolCollapse = useCallback((segId: string) => {
+    setMessages((m) => m.map((msg) => msg.role === "assistant"
+      ? { ...msg, segments: msg.segments.map((s) => s.id === segId ? { ...s, collapsed: !s.collapsed } : s) }
+      : msg));
   }, []);
 
-  const { isStreaming, submitPrompt, interrupt, storedSessionId, setStoredSessionId} = useHermesWS(handleEvent);
-
   useEffect(() => {
-    if (selectedSessionId) {
-      setStoredSessionId(selectedSessionId);
-    }
+    if (selectedSessionId) setStoredSessionId(selectedSessionId);
   }, [selectedSessionId, setStoredSessionId]);
 
   useEffect(() => {
     async function loadHistory() {
-      if (!storedSessionId) {
-        setMessages([]);
-        return;
-      }
+      if (!storedSessionId) { setMessages([]); return; }
       try {
         const res = await fetch(`/api/hx/sessions/${encodeURIComponent(storedSessionId)}/messages?order=oldest&limit=500`);
         if (!res.ok) {
@@ -90,7 +247,13 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
           return;
         }
         const data = await res.json();
-        setMessages(normalizeMessages(data.messages || []));
+        // The history REST endpoint returns plain {role, content} rows only — no
+        // persisted step data — so historical turns render as a single plain text
+        // segment rather than fabricating tool/thinking blocks that never happened.
+        const rows = normalizeMessages(data.messages || []);
+        setMessages(rows.map((r): ChatMsg => r.role === "user"
+          ? { id: nextId(), role: "user", content: r.content }
+          : { id: nextId(), role: "assistant", isStreaming: false, segments: [{ id: nextId(), kind: "text", status: "done", text: r.content }] }));
         setErrorBanner("");
       } catch {
         setErrorBanner("Failed to load history.");
@@ -103,20 +266,94 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
   const send = async (raw?: string) => {
     const text = (raw ?? input).trim();
     if (!text || isStreaming) return;
+    lastPromptRef.current = text;
     setInput("");
-    setMessages(m => [...m, { role: "user", content: text }]);
-    // wait for DOM to update then submit
+    setSlashOpen(false);
+    setMessages((m) => [...m, { id: nextId(), role: "user", content: text, ts: Date.now() }]);
+    // Reserve the turn's activity row immediately so any event arrives with somewhere to land.
+    const id = nextId();
+    activeIdRef.current = id;
+    setMessages((m) => [...m, { id, role: "assistant", segments: [], isStreaming: true, ts: Date.now() }]);
+    setAtBottom(true);
     setTimeout(() => submitPrompt(text), 0);
     taRef.current?.focus();
   };
 
+  const retry = () => { if (!isStreaming && lastPromptRef.current) void send(lastPromptRef.current); };
+
+  const stop = () => {
+    interrupt();
+    finalizeActive();
+  };
+
+  const onInputChange = (v: string) => {
+    setInput(v);
+    if (v.startsWith("/") && !v.includes(" ")) { setSlashOpen(true); setSlashActive(0); }
+    else setSlashOpen(false);
+  };
+
+  const slashMatches = TUI_COMMANDS.filter((c) => c.startsWith(input));
+
+  const pickSlash = (cmd: string) => {
+    setInput(cmd + " ");
+    setSlashOpen(false);
+    taRef.current?.focus();
+  };
+
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (slashOpen && slashMatches.length) {
+      if (e.key === "ArrowDown") { e.preventDefault(); setSlashActive((i) => (i + 1) % slashMatches.length); return; }
+      if (e.key === "ArrowUp") { e.preventDefault(); setSlashActive((i) => (i - 1 + slashMatches.length) % slashMatches.length); return; }
+      if (e.key === "Escape") { setSlashOpen(false); return; }
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); pickSlash(slashMatches[slashActive] || slashMatches[0]); return; }
+    }
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); }
   };
 
+  // Ctrl+O expands the newest collapsed tool block (real key, matches the TUI).
   useEffect(() => {
-    listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
-  }, [messages, isThinking, thinkingContent]);
+    const onKeyDown = (e: globalThis.KeyboardEvent) => {
+      if (!e.ctrlKey || e.key.toLowerCase() !== "o") return;
+      e.preventDefault();
+      setMessages((m) => {
+        const target = findNewestCollapsedToolSeg(
+          m.filter((msg): msg is Extract<ChatMsg, { role: "assistant" }> => msg.role === "assistant")
+            .map((msg) => ({ id: msg.id, segments: msg.segments })),
+        );
+        if (!target) return m;
+        return m.map((msg) => msg.role === "assistant" && msg.id === target!.msgId
+          ? { ...msg, segments: msg.segments.map((s) => s.id === target!.segId ? { ...s, collapsed: false } : s) }
+          : msg);
+      });
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  // Stick-to-bottom: only auto-scroll on new content if already at bottom.
+  useEffect(() => {
+    const el = listRef.current;
+    if (el && atBottom) el.scrollTo({ top: el.scrollHeight, behavior: reducedMotion ? "auto" : "smooth" });
+  }, [messages, atBottom, reducedMotion]);
+
+  const onScroll = () => {
+    const el = listRef.current;
+    if (!el) return;
+    setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 80);
+  };
+
+  // Pin a freshly-arrived approval card into view even if the user scrolled up.
+  useEffect(() => {
+    let latest: string | null = null;
+    for (const msg of messages) {
+      if (msg.role !== "assistant") continue;
+      for (const s of msg.segments) if (s.kind === "approval" && s.resolved == null) latest = s.reqId || latest;
+    }
+    if (latest && latest !== lastScrolledApprovalRef.current) {
+      lastScrolledApprovalRef.current = latest;
+      document.getElementById(`chat-approval-${latest}`)?.scrollIntoView({ block: "nearest", behavior: reducedMotion ? "auto" : "smooth" });
+    }
+  }, [messages, reducedMotion]);
 
   useEffect(() => {
     if (resetSignal > 0) {
@@ -124,9 +361,9 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
       setMessages([]);
       setInput("");
       setAttachments([]);
-      setThinkingContent("");
-      setIsThinking(false);
       setErrorBanner("");
+      activeIdRef.current = null;
+      pendingOpsRef.current = [];
     }
   }, [resetSignal, setStoredSessionId]);
 
@@ -162,7 +399,7 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
         </span>
       </header>
 
-      <div ref={listRef} className="chat-scroll relative z-10 min-h-0 flex-1" role="log" aria-live="polite" aria-label="Conversation">
+      <div ref={listRef} onScroll={onScroll} className="chat-scroll relative z-10 min-h-0 flex-1" role="log" aria-live="polite" aria-label="Conversation">
         {empty ? (
           <div className="chat-welcome">
             <img src="/astra-logo.png" alt="" aria-hidden="true" className="chat-welcome-glyph" />
@@ -180,8 +417,8 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
           </div>
         ) : (
           <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
-            {messages.map((m, i) => (
-              <div key={i} className="flex items-start gap-3">
+            {messages.map((m) => (
+              <div key={m.id} className="flex items-start gap-3">
                 {m.role === "assistant" ? (
                   <img src="/astra-logo.png" alt="" aria-hidden="true"
                     className="mt-0.5 h-7 w-7 shrink-0 rounded-full object-cover shadow-[0_0_12px_rgba(34,211,238,0.3)]" />
@@ -189,46 +426,50 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
                   <span aria-hidden="true"
                     className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 font-mono text-xs text-slate-300">J</span>
                 )}
-                <div className={cn(
-                  "min-w-0 whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed",
-                  m.role === "user"
-                    ? "bg-white/[0.06] text-slate-200"
-                    : "border border-cyanx/15 bg-midnight/80 text-slate-200"
-                )}>
-                  {m.content}
-                  {m.role === "assistant" && i === messages.length - 1 && isThinking && (
-                    <div className="mt-2 pl-2 border-l-2 border-cyanx/30 text-xs text-slate-400 font-mono opacity-70">
-                      {thinkingContent || "Thinking..."}
-                    </div>
+                <div className="min-w-0 flex-1">
+                  {m.ts != null && (
+                    <div className="chat-turn-ts">{new Date(m.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
                   )}
+                  {m.role === "user" ? (
+                    <div className="min-w-0 whitespace-pre-wrap rounded-2xl bg-white/[0.06] px-4 py-3 text-sm leading-relaxed text-slate-200">
+                      {m.content}
+                    </div>
+                  ) : m.segments.length ? (
+                    <TurnTimeline segments={m.segments} streaming={m.isStreaming} onToggleTool={toggleToolCollapse} onApprovalRespond={respondApproval} />
+                  ) : m.isStreaming ? (
+                    <span className="flex w-fit items-center gap-1.5 rounded-2xl border border-cyanx/15 bg-midnight/80 px-4 py-3.5">
+                      {[0, 1, 2].map((d) => (
+                        <span key={d} className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyanx/70" style={{ animationDelay: `${d * 150}ms` }} />
+                      ))}
+                    </span>
+                  ) : null}
                 </div>
               </div>
             ))}
-            {isStreaming && messages[messages.length - 1]?.role !== "assistant" ? (
-              <div className="flex items-start gap-3">
-                <img src="/astra-logo.png" alt="" aria-hidden="true"
-                  className="mt-0.5 h-7 w-7 shrink-0 rounded-full object-cover shadow-[0_0_12px_rgba(34,211,238,0.3)]" />
-                <span className="flex items-center gap-1.5 rounded-2xl border border-cyanx/15 bg-midnight/80 px-4 py-3.5">
-                  {[0, 1, 2].map((d) => (
-                    <span key={d} className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyanx/70"
-                      style={{ animationDelay: `${d * 150}ms` }} />
-                  ))}
-                </span>
-              </div>
-            ) : null}
           </div>
         )}
       </div>
 
       <div className="relative z-10 px-6 pb-6">
         <div className="chat-composer mx-auto max-w-3xl">
+          {slashOpen && slashMatches.length > 0 && (
+            <div className="chat-menu chat-slash-menu" role="listbox" aria-label="Slash commands">
+              <p className="chat-menu-label">TUI commands — work here too</p>
+              {slashMatches.map((c, i) => (
+                <button key={c} type="button" className={cn("chat-menu-item", i === slashActive && "chat-menu-item-active")}
+                  aria-selected={i === slashActive} onMouseDown={(e) => { e.preventDefault(); pickSlash(c); }}>
+                  {c}
+                </button>
+              ))}
+            </div>
+          )}
           <textarea
             ref={taRef}
             rows={1}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => onInputChange(e.target.value)}
             onKeyDown={onKey}
-            placeholder={isStreaming ? "Astra is replying\u2026" : empty ? "Message Astra\u2026" : "Reply\u2026"}
+            placeholder={isStreaming ? "Astra is replying…" : empty ? "Message Astra… (/ for commands)" : "Reply…"}
             aria-label="Message Astra"
             className="chat-composer-input"
           />
@@ -238,10 +479,15 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
               setAttachments={setAttachments}
               disabled={isStreaming}
             />
+            {!isStreaming && lastPromptRef.current && (
+              <button type="button" onClick={retry} aria-label="Retry last message" title="Retry last message" className="chat-retry">
+                <RotateCcw className="h-3.5 w-3.5" strokeWidth={1.5} />
+              </button>
+            )}
             <span className="chat-composer-hint">Enter to send · Shift+Enter for newline</span>
             {isStreaming ? (
               <button
-                type="button" onClick={interrupt}
+                type="button" onClick={stop}
                 aria-label="Stop generation"
                 className="chat-send bg-red-500/20 text-red-400 hover:bg-red-500/30"
               >

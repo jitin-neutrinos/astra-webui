@@ -75,13 +75,33 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
 
     function attachHandlers(s: WebSocket) {
       s.onmessage = onMessage;
-      s.onclose = () => { setIsStreaming(false); };
+      s.onclose = () => {
+        setIsStreaming(false);
+        // Interrupted/dropped turns never emit message.complete — the consumer
+        // must finalize any open segments itself on this signal.
+        onEventRef.current({ type: "ws.closed", payload: {} });
+      };
+    }
+
+    function replayOpenRequests(result: any) {
+      const reqs = result && result.open_requests;
+      if (!Array.isArray(reqs)) return;
+      for (const r of reqs) {
+        if (!r || !r.id) continue;
+        onEventRef.current({ type: "approval", payload: { id: r.id, params: r.params || r } });
+      }
     }
 
     function onMessage(e: MessageEvent) {
       let data;
       try { data = JSON.parse(e.data); } catch { return; }
-      
+
+      // Server->client JSON-RPC request (not wrapped in {method:"event"}):
+      // approval prompts. Respond on the same socket via sendApprovalResponse.
+      if (data.method === "approval" && data.id) {
+        onEventRef.current({ type: "approval", payload: { id: data.id, params: data.params || {} } });
+      }
+
       if (data.id && pendingResumes.current.has(data.id)) {
         pendingResumes.current.delete(data.id);
         if (data.error) {
@@ -93,6 +113,7 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
           liveIdRef.current = data.result.session_id;
           setLiveSessionId(data.result.session_id);
           flushPendingPrompt(data.result.session_id);
+          replayOpenRequests(data.result);
         }
       } else if (data.id && data.result && data.result.session_id) {
         // session.create success: adopt live handle, then flush the queued first prompt
@@ -104,8 +125,9 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
           setStoredSessionIdState(stored);
         }
         flushPendingPrompt(data.result.session_id);
+        replayOpenRequests(data.result);
       }
-      
+
       if (data.method === "event" && data.params) {
         const { type, payload, session_id } = data.params;
         
@@ -164,6 +186,11 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
     }
   }, [storedSessionId, liveSessionId]);
 
+  const sendApprovalResponse = useCallback((id: string, choice: string) => {
+    if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
+    ws.current.send(JSON.stringify({ jsonrpc: "2.0", id, result: { choice } }));
+  }, []);
+
   const interrupt = useCallback(() => {
     if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
     if (liveSessionId || storedSessionId) {
@@ -176,5 +203,5 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
     setIsStreaming(false);
   }, [liveSessionId, storedSessionId]);
 
-  return { isStreaming, submitPrompt, interrupt, storedSessionId, setStoredSessionId, liveSessionId };
+  return { isStreaming, submitPrompt, interrupt, storedSessionId, setStoredSessionId, liveSessionId, sendApprovalResponse };
 }
