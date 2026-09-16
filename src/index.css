@@ -89,6 +89,11 @@
 html { color-scheme: dark; }
 body { background: var(--color-void); }
 
+/* shell root: dvh so composer + sidebar bottoms stick to the real viewport
+   (100vh overhangs on mobile browsers with collapsing URL bars) */
+.app-shell { height: 100vh; }
+@supports (height: 100dvh) { .app-shell { height: 100dvh; } }
+
 /* ---- chat replica (ported from astra.css / ChatPageV2, retinted) ---- */
 .chat-scroll { overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(248,250,252,.14) transparent; }
 

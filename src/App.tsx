@@ -186,7 +186,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-void font-sans text-brandtext">
+    <div className="app-shell flex w-full overflow-hidden bg-void font-sans text-brandtext">
       <Sidebar 
         onLogout={onLogout} 
         onNewChat={() => { setResetSignal(r => r + 1); setView('chat'); setSelectedSessionId(null); }} 
