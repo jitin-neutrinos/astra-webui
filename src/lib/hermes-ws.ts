@@ -6,6 +6,8 @@ export type EventPayload = {
   session_id?: string;
 };
 
+let sharedSocket: WebSocket | null = null;
+
 export function useHermesWS(onEvent: (ev: EventPayload) => void) {
   const ws = useRef<WebSocket | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -32,24 +34,51 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
   // Track pending RPCs to handle resume failures
   const pendingResumes = useRef<Set<string>>(new Set());
   const liveIdRef = useRef<string | null>(null);
+  const pendingPromptRef = useRef<string | null>(null);
+  const flushPendingPrompt = useCallback((sid: string) => {
+    const text = pendingPromptRef.current;
+    if (text === null) return;
+    pendingPromptRef.current = null;
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({
+        method: "prompt.submit",
+        params: { session_id: sid, text, surface: "webui" },
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`
+      }));
+    }
+  }, []);
 
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const url = `${protocol}//${window.location.host}/api/hx/ws`;
-    
-    let socket = new WebSocket(url);
-    ws.current = socket;
 
-    socket.onopen = () => {
-      const sid = sessionStorage.getItem("astra-chat-session");
-      if (sid) {
-        const id = generateRpcId();
-        pendingResumes.current.add(id);
-        socket.send(JSON.stringify({ method: "session.resume", params: { session_id: sid }, id }));
+    // Reuse a live socket across React remounts (view swaps); the browser tab
+    // keeps exactly ONE proxy socket for its lifetime. ponytail: never closes
+    // on unmount — closing would drop the shared upstream session mid-turn.
+    let socket: WebSocket;
+    if (sharedSocket && sharedSocket.readyState === WebSocket.OPEN) {
+      socket = sharedSocket;
+      if (socket.readyState === WebSocket.OPEN) {
+        // re-attach handlers on the shared socket
+        attachHandlers(socket);
+        ws.current = socket;
+        if (sessionStorage.getItem("astra-chat-session") && liveIdRef.current) {
+          // already attached upstream; nothing to do
+        }
+        return () => { ws.current = null; };
       }
-    };
+    }
+    socket = new WebSocket(url);
+    sharedSocket = socket;
+    ws.current = socket;
+    attachHandlers(socket);
 
-    socket.onmessage = (e) => {
+    function attachHandlers(s: WebSocket) {
+      s.onmessage = onMessage;
+      s.onclose = () => { setIsStreaming(false); };
+    }
+
+    function onMessage(e: MessageEvent) {
       let data;
       try { data = JSON.parse(e.data); } catch { return; }
       
@@ -63,11 +92,18 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
         } else if (data.result && data.result.session_id) {
           liveIdRef.current = data.result.session_id;
           setLiveSessionId(data.result.session_id);
+          flushPendingPrompt(data.result.session_id);
         }
       } else if (data.id && data.result && data.result.session_id) {
-        // session.create success: adopt live handle for submits
+        // session.create success: adopt live handle, then flush the queued first prompt
         liveIdRef.current = data.result.session_id;
         setLiveSessionId(data.result.session_id);
+        const stored = data.result.stored_session_id;
+        if (stored) {
+          sessionStorage.setItem("astra-chat-session", stored);
+          setStoredSessionIdState(stored);
+        }
+        flushPendingPrompt(data.result.session_id);
       }
       
       if (data.method === "event" && data.params) {
@@ -96,27 +132,29 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
 
         onEventRef.current({ type, payload, session_id });
       }
-    };
+    }
 
-    socket.onclose = () => {
-      setIsStreaming(false);
-    };
+    // resume the stored session whenever this component mounts with a fresh socket
+    if (socket.readyState === WebSocket.OPEN) {
+      const sid = sessionStorage.getItem("astra-chat-session");
+      if (sid) {
+        const id = generateRpcId();
+        pendingResumes.current.add(id);
+        socket.send(JSON.stringify({ method: "session.resume", params: { session_id: sid }, id }));
+      }
+    }
 
-    return () => {
-      socket.close();
-      ws.current = null;
-    };
+    return () => { ws.current = null; };
   }, [setStoredSessionId]);
 
   const submitPrompt = useCallback((content: string) => {
     if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
     setIsStreaming(true);
     if (!storedSessionId) {
-      ws.current.send(JSON.stringify({
-        method: "session.create",
-        params: { prompt: content },
-        id: generateRpcId()
-      }));
+      // session.create accepts NO prompt (extra=forbid); the turn starts via
+      // prompt.submit once the create reply yields the live id (pendingPromptRef).
+      pendingPromptRef.current = content;
+      ws.current.send(JSON.stringify({ method: "session.create", params: {}, id: generateRpcId() }));
     } else {
       ws.current.send(JSON.stringify({
         method: "prompt.submit",

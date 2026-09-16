@@ -19,6 +19,9 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
   const taRef = useRef<HTMLTextAreaElement>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
 
+  // refs mirroring the streaming flags so the WS handler (registered once) reads fresh values
+  const pendingAssistantRef = useRef(false);
+
   const handleEvent = useCallback((ev: EventPayload) => {
     const { type, payload } = ev;
     if (type === "proxy.status") {
@@ -29,22 +32,37 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
       }
       return;
     }
-    
+
     if (type === "message.start") {
-      setMessages(m => [...m, { role: "assistant", content: "" }]);
+      // A message.start for an already-streaming target (replay/echo) must NOT
+      // append a second bubble — reuse the trailing empty assistant bubble.
+      setMessages(m => {
+        const last = m[m.length - 1];
+        if (last && last.role === "assistant" && last.content === "") return m;
+        return [...m, { role: "assistant", content: "" }];
+      });
+      pendingAssistantRef.current = true;
       setThinkingContent("");
       setIsThinking(false);
     } else if (type === "message.delta" && payload?.delta?.text) {
       setMessages(m => {
         const last = m[m.length - 1];
-        if (!last || last.role !== "assistant") return m;
+        if (!last || last.role !== "assistant") return [...m, { role: "assistant" as const, content: payload.delta.text }];
         return [...m.slice(0, -1), { ...last, content: last.content + payload.delta.text }];
       });
-    } else if (type === "thinking.delta" && payload?.delta?.thinking) {
-      setIsThinking(true);
-      setThinkingContent(prev => prev + payload.delta.thinking);
-    } else if (type === "message.error") {
-      setErrorBanner("An error occurred during generation.");
+    } else if (type === "thinking.delta") {
+      const txt = payload?.delta?.thinking ?? payload?.text ?? "";
+      if (txt) { setIsThinking(true); setThinkingContent(prev => prev + txt); }
+    } else if (type === "message.complete" || type === "message.error") {
+      // final settle: drop a still-empty trailing assistant bubble, clear thinking
+      pendingAssistantRef.current = false;
+      setMessages(m => {
+        const last = m[m.length - 1];
+        if (last && last.role === "assistant" && last.content === "") return m.slice(0, -1);
+        return m;
+      });
+      setThinkingContent("");
+      setIsThinking(false);
     }
   }, []);
 

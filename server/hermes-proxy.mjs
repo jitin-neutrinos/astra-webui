@@ -50,6 +50,42 @@ function clearHermesCookie() {
   hermesCookie = null;
 }
 
+// WS upgrades need a single-use ticket (cookie alone 403s); 30s TTL, mint per connect
+let wsTicket = null;
+let ticketPromise = null;
+async function getWsTicket() {
+  if (wsTicket) return wsTicket;
+  if (ticketPromise) return ticketPromise;
+  ticketPromise = (async () => {
+    try {
+      const cookie = await getHermesCookie();
+      const res = await new Promise((resolve, reject) => {
+        const req = httpRequest(`${HERMES_URL}/api/auth/ws-ticket`, {
+          method: "POST",
+          headers: { "Cookie": cookie }
+        }, resolve);
+        req.on("error", reject);
+        req.end();
+      });
+      res.resume();
+      if (res.statusCode !== 200) throw new Error(`ws-ticket failed: ${res.statusCode}`);
+      const chunks = [];
+      for await (const c of res) chunks.push(c);
+      const ticket = JSON.parse(Buffer.concat(chunks).toString()).ticket;
+      if (!ticket) throw new Error("empty ticket");
+      wsTicket = ticket;
+      return ticket;
+    } finally {
+      ticketPromise = null;
+    }
+  })();
+  return ticketPromise;
+}
+
+function clearWsTicket() {
+  wsTicket = null;
+}
+
 // REST Proxy
 export async function handleHxProxy(req, res) {
   // path prefix is /api/hx. Map to /api/...
@@ -124,8 +160,16 @@ async function connectUpstream() {
     return;
   }
 
+  let ticket;
+  try {
+    ticket = await getWsTicket();
+  } catch (e) {
+    scheduleReconnect();
+    return;
+  }
+
   const key = randomBytes(16).toString("base64");
-  const req = httpRequest(`${HERMES_URL}/api/ws`, {
+  const req = httpRequest(`${HERMES_URL}/api/ws?ticket=${encodeURIComponent(ticket)}`, {
     headers: {
       "Connection": "Upgrade",
       "Upgrade": "websocket",
@@ -157,6 +201,7 @@ async function connectUpstream() {
     upstreamWs = socket;
     reconnecting = false;
     backoffStep = 0;
+    wsTicket = null; // single-use
     broadcastStatus("online");
 
     const decoder = new FrameDecoder((frame, isError) => {
@@ -191,6 +236,12 @@ async function connectUpstream() {
     });
     
     if (head && head.length > 0) decoder.push(head);
+  });
+
+  req.on("response", (res) => {
+    clearHermesCookie();
+    clearWsTicket();
+    scheduleReconnect();
   });
 
   req.on("error", () => {
