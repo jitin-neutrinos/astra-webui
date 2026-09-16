@@ -19,8 +19,9 @@ import {
   HeartPulse,
   BarChart3,
   Webhook,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
-import { BackgroundGradientAnimation } from "@/components/ui/background-gradient-animation";
 import { cn } from "@/lib/utils";
 import { ChatLanding } from "./components/chat-landing";
 import { ChatsPanel } from "./components/chats-panel";
@@ -90,22 +91,9 @@ function LoginScreen({ password, setPassword, clearError, error, busy, submit }:
   const [showPw, setShowPw] = useState(false);
   return (
     <div className="fixed inset-0 overflow-hidden bg-void font-sans">
-      <BackgroundGradientAnimation
-        gradientBackgroundStart="#0a0a0f"
-        gradientBackgroundEnd="#12121a"
-        firstColor="34, 211, 238"      /* cyan  #22d3ee */
-        secondColor="139, 92, 246"     /* violet #8b5cf6 */
-        thirdColor="217, 70, 239"      /* fuchsia #d946ef */
-        fourthColor="26, 26, 46"       /* depth */
-        fifthColor="18, 18, 26"        /* midnight */
-        pointerColor="34, 211, 238"
-        size="70%"
-        blendingValue="hard-light"
-        containerClassName="absolute inset-0"
-      >
-        <div className="pointer-events-none absolute inset-0 z-40 retro-scanlines" />
-        <div className="pointer-events-none absolute inset-0 z-40 retro-grid opacity-60" />
-      </BackgroundGradientAnimation>
+      <NeonFlow />
+      <div className="pointer-events-none absolute inset-0 z-40 retro-scanlines" />
+      <div className="pointer-events-none absolute inset-0 z-40 retro-grid opacity-40" />
 
       <div className="absolute inset-0 z-50 flex items-center justify-center p-6">
         <div className="w-full max-w-md rounded-2xl border border-white/10 bg-void/60 p-7 shadow-[0_0_60px_rgba(34,211,238,0.08)] backdrop-blur-xl md:p-8">
@@ -179,18 +167,26 @@ function LoginScreen({ password, setPassword, clearError, error, busy, submit }:
 }
 
 import { FilesPage } from "./components/files-page";
+import NeonFlow from "./components/ui/neon-flow";
 
 /* ---------------- shell: sidebar + chat landing ---------------- */
 
 function Shell({ onLogout }: { onLogout: () => void }) {
   const [resetSignal, setResetSignal] = useState(0);
   const [view, setView] = useState<'chat' | 'chats' | 'files'>('chat');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("astra-sidebar-collapsed") === "1");
+  const toggleSidebar = () => setSidebarCollapsed((c) => {
+    localStorage.setItem("astra-sidebar-collapsed", c ? "0" : "1");
+    return !c;
+  });
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 
   return (
     <div className="app-shell flex w-full overflow-hidden bg-void font-sans text-brandtext">
       <Sidebar
         activeView={view}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={toggleSidebar}
         onLogout={onLogout} 
         onNewChat={() => { setResetSignal(r => r + 1); setView('chat'); setSelectedSessionId(null); }} 
         onOpenChats={() => setView('chats')} 
@@ -208,7 +204,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
   );
 }
 
-function Sidebar({ activeView, onLogout, onNewChat, onOpenChats, onOpenAstra, onOpenFiles }: { activeView: 'chat' | 'chats' | 'files'; onLogout: () => void; onNewChat: () => void; onOpenChats: () => void; onOpenAstra: () => void; onOpenFiles: () => void; }) {
+function Sidebar({ activeView, collapsed, onToggleCollapse, onLogout, onNewChat, onOpenChats, onOpenAstra, onOpenFiles }: { activeView: 'chat' | 'chats' | 'files'; collapsed: boolean; onToggleCollapse: () => void; onLogout: () => void; onNewChat: () => void; onOpenChats: () => void; onOpenAstra: () => void; onOpenFiles: () => void; }) {
   const groups: {
     label: string;
     items: { name: string; icon: ReactNode; badge?: string; onClick?: () => void }[];
@@ -247,22 +243,40 @@ function Sidebar({ activeView, onLogout, onNewChat, onOpenChats, onOpenAstra, on
   ];
 
   return (
-    <aside className="flex h-full w-60 shrink-0 flex-col border-r border-white/[0.07] bg-midnight/60">
-      <div className="flex items-center gap-2.5 px-5 pb-3 pt-5">
-        <img src="/astra-logo.png" alt="Astra"
-          className="h-8 w-8 rounded-lg object-cover shadow-[0_0_16px_rgba(34,211,238,0.3)]" />
-        <div className="min-w-0">
-          <p className="truncate font-display text-sm tracking-tight text-brandtext">Astral Command Center</p>
-          <p className="font-mono text-[8px] uppercase tracking-[0.3em] text-cyanx/60">astra webui</p>
-        </div>
+    <aside className={cn(
+      "flex h-full shrink-0 flex-col border-r border-white/[0.07] bg-midnight/60 transition-[width] duration-150",
+      collapsed ? "w-14" : "w-60",
+    )}>
+      <div className={cn("flex items-center pb-3 pt-5", collapsed ? "justify-center px-0" : "gap-2.5 px-5")}>
+        <button type="button" onClick={onToggleCollapse}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className="rounded-lg p-1 text-slate-400 transition-colors hover:bg-white/5 hover:text-cyanx">
+          {collapsed
+            ? <PanelLeftOpen className="h-5 w-5" strokeWidth={1.5} />
+            : <PanelLeftClose className="h-5 w-5" strokeWidth={1.5} />}
+        </button>
+        {!collapsed && (
+          <>
+            <img src="/astra-logo.png" alt="Astra"
+              className="h-8 w-8 rounded-lg object-cover shadow-[0_0_16px_rgba(34,211,238,0.3)]" />
+            <div className="min-w-0">
+              <p className="truncate font-display text-sm tracking-tight text-brandtext">Astra</p>
+              <p className="font-mono text-[8px] uppercase tracking-[0.3em] text-cyanx/60">Command Center</p>
+            </div>
+          </>
+        )}
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 pb-4">
         {groups.map((group) => (
           <div key={group.label} className="mb-4">
-            <p className="px-3 pb-1.5 pt-2 font-mono text-[9px] uppercase tracking-[0.25em] text-slate-600">
-              {group.label}
-            </p>
+            {!collapsed && (
+              <p className="px-3 pb-1.5 pt-2 font-mono text-[9px] uppercase tracking-[0.25em] text-slate-600">
+                {group.label}
+              </p>
+            )}
             {group.items.map((item) => {
               const active = item.name === "Astra" ? activeView === "chat"
                 : item.name === "Chats" ? activeView === "chats"
@@ -271,15 +285,17 @@ function Sidebar({ activeView, onLogout, onNewChat, onOpenChats, onOpenAstra, on
               return (
               <button key={item.name} type="button" onClick={item.onClick}
                 aria-current={active ? "page" : undefined}
+                title={collapsed ? item.name : undefined}
                 className={cn(
-                  "flex w-full items-center gap-2.5 rounded-lg px-3 py-1.5 text-left text-sm transition-colors",
+                  "flex w-full items-center rounded-lg text-left text-sm transition-colors",
+                  collapsed ? "h-11 justify-center px-0" : "gap-2.5 px-3 py-1.5",
                   active
                     ? "bg-cyanx/10 text-cyanx hover:bg-cyanx/15"
                     : "text-slate-300 hover:bg-white/5 hover:text-white"
                 )}>
                 <span className="shrink-0 text-muted">{item.icon}</span>
-                <span className="truncate">{item.name}</span>
-                {"badge" in item && item.badge ? (
+                {!collapsed && <span className="truncate">{item.name}</span>}
+                {!collapsed && "badge" in item && item.badge ? (
                   <span className="ml-auto font-mono text-[8px] uppercase tracking-widest text-cyanx/60">{item.badge}</span>
                 ) : null}
               </button>
@@ -289,11 +305,15 @@ function Sidebar({ activeView, onLogout, onNewChat, onOpenChats, onOpenAstra, on
         ))}
       </nav>
 
-      <div className="border-t border-white/[0.07] p-3">
+      <div className={cn("border-t border-white/[0.07]", collapsed ? "p-2" : "p-3")}>
         <button type="button" onClick={onLogout}
-          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-slate-400 transition-colors hover:bg-redx/10 hover:text-redx">
+          title={collapsed ? "Logout" : undefined}
+          className={cn(
+            "flex w-full items-center rounded-lg text-sm text-slate-400 transition-colors hover:bg-redx/10 hover:text-redx",
+            collapsed ? "h-11 justify-center px-0" : "gap-2.5 px-3 py-2 text-left",
+          )}>
           <LogOut className="h-4 w-4" strokeWidth={1.5} />
-          Logout
+          {!collapsed && "Logout"}
         </button>
       </div>
     </aside>
