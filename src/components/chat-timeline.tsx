@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, ChevronDown, ChevronRight, Loader2, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { StreamingText } from "@/components/ui/streaming-text";
 import type { Segment } from "@/lib/chat-segments";
 import { turnIsRunning } from "@/lib/chat-segments";
 
@@ -119,10 +120,18 @@ function prettyPrint(text: string): string {
 
 function TextRow({ seg }: { seg: Segment }) {
   if (!seg.text) return null;
+  // Live segment: token-by-token reveal via the streaming-text component
+  // (brand caret + reduced-motion support). Finalized: markdown render.
+  if (seg.status === "run") {
+    return (
+      <div className="chat-text-seg">
+        <StreamingText text={seg.text} tokensPerSecond={90} showSkip={false} label="Astra response" />
+      </div>
+    );
+  }
   return (
     <div className="chat-text-seg whitespace-pre-wrap">
       <MiniMarkdown text={seg.text} />
-      {seg.status === "run" && <span className="chat-caret" aria-hidden="true" />}
     </div>
   );
 }

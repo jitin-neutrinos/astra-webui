@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { useHermesWS } from "@/lib/hermes-ws";
 import type { EventPayload } from "@/lib/hermes-ws";
 import { normalizeMessages } from "@/lib/normalize-messages";
+import AITextLoading from "@/components/ui/ai-text-loading";
 import {
   applySegmentOps, finalizeSegments, findNewestCollapsedToolSeg, expandKeyBlocked, TurnTimeline,
   type Segment, type SegOp,
@@ -442,10 +443,8 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
                   ) : m.segments.length ? (
                     <TurnTimeline segments={m.segments} streaming={m.isStreaming} onToggleTool={toggleToolCollapse} onApprovalRespond={respondApproval} />
                   ) : m.isStreaming ? (
-                    <span className="flex w-fit items-center gap-1.5 rounded-2xl border border-cyanx/15 bg-midnight/80 px-4 py-3.5">
-                      {[0, 1, 2].map((d) => (
-                        <span key={d} className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyanx/70" style={{ animationDelay: `${d * 150}ms` }} />
-                      ))}
+                    <span className="flex w-fit items-center rounded-2xl border border-cyanx/15 bg-midnight/80 px-3 py-1.5">
+                      <AITextLoading texts={["Thinking...", "Working on it...", "Almost there..."]} />
                     </span>
                   ) : null}
                 </div>
