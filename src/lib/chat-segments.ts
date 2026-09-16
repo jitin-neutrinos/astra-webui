@@ -76,8 +76,12 @@ export function applySegmentOps(segments: Segment[], ops: SegOp[]): Segment[] {
         out.push({ id: op.key || nextSegId(), kind: "tool", status: "run", label: op.label || "tool", argsText: op.argsText || "", command: op.command || "", collapsed: true });
       }
     } else if (op.op === "tool-done") {
-      const t = (op.key && out.find((s) => s.id === op.key && s.kind === "tool"))
-        || [...out].reverse().find((s) => s.kind === "tool" && s.status === "run");
+      // Addressed by tool_id when we have one; a key with no match must NOT
+      // close some other still-running tool (results would land on the wrong
+      // block). Keyless frames fall back to the newest running tool.
+      const t = op.key
+        ? out.find((s) => s.id === op.key && s.kind === "tool")
+        : [...out].reverse().find((s) => s.kind === "tool" && s.status === "run");
       if (t) {
         t.status = "done";
         if (op.resultText !== undefined) t.resultText = op.resultText;
@@ -110,9 +114,28 @@ export function finalizeSegments(segments: Segment[]): Segment[] {
   return segments.map((s) => ({ ...s, status: "done" as const }));
 }
 
+// A turn with an UNRESOLVED approval is paused, not streaming: the model is
+// blocked on the user, no caret/spinner should spin forever. Restored/replayed
+// approval cards (session resume mid-turn) land here too — interrupted turns
+// never emit message.complete, so running-state must not hang off streaming
+// alone. Pure so the verify script shares it.
+export function turnIsRunning(segments: Segment[], streaming: boolean): boolean {
+  return streaming && !segments.some((s) => s.kind === "approval" && s.resolved == null);
+}
+
 // Ctrl+O expands the newest collapsed >3k-char tool block across the whole
 // transcript (matches the TUI's real Ctrl+O key). Pure so both the keydown
 // handler and the verify script share one implementation.
+// Ctrl+O gate, pure so the verify script shares it: only a bare Ctrl/Cmd+O
+// outside a text field may expand (INPUT/TEXTAREA targets ignored, metaKey
+// accepted for macOS — same rule as the reference ChatPageV2).
+export function expandKeyBlocked(ctrlKey: boolean, metaKey: boolean, key: string, targetTag?: string): boolean {
+  if (!ctrlKey && !metaKey) return true;
+  if (key !== "o" && key !== "O") return true;
+  const tag = targetTag?.toUpperCase();
+  return tag === "INPUT" || tag === "TEXTAREA";
+}
+
 export function findNewestCollapsedToolSeg(
   turns: { id: string; segments: Segment[] }[],
 ): { msgId: string; segId: string } | null {

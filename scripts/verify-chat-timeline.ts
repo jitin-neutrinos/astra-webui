@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import {
-  applySegmentOps, finalizeSegments, findNewestCollapsedToolSeg,
+  applySegmentOps, finalizeSegments, findNewestCollapsedToolSeg, expandKeyBlocked, turnIsRunning,
   type Segment, type SegOp,
 } from "../src/lib/chat-segments.ts";
 
@@ -90,4 +90,57 @@ const turnB = { id: "m2", segments: segments }; // has our folded tool segment (
 const target = findNewestCollapsedToolSeg([turnA, turnB]);
 assert.deepEqual(target, { msgId: "m2", segId: "t1" }, "Ctrl+O must target the NEWEST collapsed >3k tool block, not the first");
 
-console.log("verify-chat-timeline: 10/10 checks passed");
+// 11. A1 race: approval frame arriving between tool.complete and message.start.
+//     chat-landing flushes the approval immediately, so the engine sees the
+//     batch [tool, tool-done, approval] followed by a delta batch — the card
+//     must land in its ARRIVAL slot (after the tool, before the later prose),
+//     and the post-approval text must open a NEW segment (barrier).
+let race: Segment[] = [];
+race = apply(race, [
+  { op: "tool", key: "t2", label: "terminal", command: "make test" },
+  { op: "tool-done", key: "t2", resultText: "ok", exitCode: 0 },
+  { op: "approval", reqId: "srq-2", params: { command: "make deploy", choices: ["once", "deny"] } },
+]);
+race = apply(race, [{ op: "text", text: "Deploy needs your approval." }]);
+assert.deepEqual(race.map((s) => s.kind), ["tool", "approval", "text"], "approval must sit between tool.complete and the later text, never after prose");
+assert.equal(race[0].status, "done", "tool.complete before the approval must still close the tool");
+assert.equal(race[1].reqId, "srq-2");
+assert.equal(race[1].resolved, null);
+assert.equal(race[2].status, "run", "post-approval delta opens a fresh running text segment (barrier after approval)");
+
+// 12. A3: tool.complete with a tool_id that matches NOTHING must not close an
+//     unrelated still-running tool (orphan result lands on its own segment;
+//     the running tool stays running; the right key still closes the right one).
+let multi: Segment[] = [];
+multi = apply(multi, [
+  { op: "tool", key: "tA", label: "terminal", command: "sleep 1" },
+  { op: "tool", key: "tB", label: "reader", command: "" },
+]);
+multi = apply(multi, [{ op: "tool-done", key: "tZ-missing", resultText: "orphan", exitCode: 0 }]);
+assert.equal(multi.length, 3, "mismatched tool_id appends its own done segment");
+assert.equal(multi[2].status, "done");
+assert.equal(multi[0].status, "run", "running tool tA must NOT be closed by an unrelated tool.complete");
+assert.equal(multi[1].status, "run", "running tool tB must NOT be closed by an unrelated tool.complete");
+multi = apply(multi, [{ op: "tool-done", key: "tB", resultText: "{}", exitCode: 0 }]);
+assert.equal(multi[1].status, "done", "the correctly-addressed tool.complete still closes its tool");
+assert.equal(multi[0].status, "run", "keyed tool.complete must not fall through to other running tools");
+multi = apply(multi, [{ op: "tool-done", resultText: "keyless", exitCode: 0 }]);
+assert.equal(multi[0].status, "done", "keyless tool.complete falls back to the newest running tool (tA)");
+
+// 13. A10: a turn with an UNRESOLVED approval is paused, not streaming — no
+//     infinite caret/spinner for restored mid-turn sessions.
+const openAppr: Segment[] = [{ id: "a1", kind: "approval", status: "run", reqId: "srq-9", params: {}, resolved: null }];
+assert.equal(turnIsRunning(openAppr, true), false, "open approval blocks running-state even while streaming");
+assert.equal(turnIsRunning([{ ...openAppr[0], resolved: "once", status: "done" }], true), true, "resolved approval returns the turn to running while streaming");
+assert.equal(turnIsRunning([{ ...openAppr[0], resolved: "once", status: "done" }], false), false, "no stream, no running-state");
+assert.equal(turnIsRunning([{ id: "x", kind: "text", status: "run", text: "hi" }], true), true, "plain streaming text stays running");
+
+// 14. A6: Ctrl+O key gate — bare Ctrl/Cmd+O outside a text field only.
+assert.equal(expandKeyBlocked(true, false, "o", "DIV"), false, "bare Ctrl+O over the transcript expands");
+assert.equal(expandKeyBlocked(false, true, "O", undefined), false, "Cmd+O (macOS, no target tag) expands");
+assert.equal(expandKeyBlocked(true, false, "o", "TEXTAREA"), true, "Ctrl+O while typing in the composer must be a no-op");
+assert.equal(expandKeyBlocked(true, false, "o", "INPUT"), true, "Ctrl+O inside an input must be a no-op");
+assert.equal(expandKeyBlocked(false, false, "o", "DIV"), true, "plain O without modifier must not expand");
+assert.equal(expandKeyBlocked(true, false, "x", "DIV"), true, "other Ctrl+<key> combos must not expand");
+
+console.log("verify-chat-timeline: 14/14 checks passed");

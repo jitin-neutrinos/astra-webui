@@ -6,7 +6,7 @@ import { useHermesWS } from "@/lib/hermes-ws";
 import type { EventPayload } from "@/lib/hermes-ws";
 import { normalizeMessages } from "@/lib/normalize-messages";
 import {
-  applySegmentOps, finalizeSegments, findNewestCollapsedToolSeg, TurnTimeline,
+  applySegmentOps, finalizeSegments, findNewestCollapsedToolSeg, expandKeyBlocked, TurnTimeline,
   type Segment, type SegOp,
 } from "./chat-timeline";
 import { ComposerControls, type Attachment } from "./composer-controls";
@@ -311,9 +311,11 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
   };
 
   // Ctrl+O expands the newest collapsed tool block (real key, matches the TUI).
+  // Fired only for a bare Ctrl/Cmd+O outside the composer — typing Ctrl+O while
+  // focused in the textarea must stay a no-op (reference ChatPageV2 gate).
   useEffect(() => {
     const onKeyDown = (e: globalThis.KeyboardEvent) => {
-      if (!e.ctrlKey || e.key.toLowerCase() !== "o") return;
+      if (expandKeyBlocked(e.ctrlKey, e.metaKey, e.key, e.target instanceof HTMLElement ? e.target.tagName : undefined)) return;
       e.preventDefault();
       setMessages((m) => {
         const target = findNewestCollapsedToolSeg(
@@ -331,9 +333,12 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
   }, []);
 
   // Stick-to-bottom: only auto-scroll on new content if already at bottom.
+  // Instant ("auto") on purpose: deltas land every ~40ms and a smooth scroll
+  // is cancelled+restarted by each batch, so the view lags behind the bottom
+  // during fast streaming (reference ChatPageV2 pins with scrollTop directly).
   useEffect(() => {
     const el = listRef.current;
-    if (el && atBottom) el.scrollTo({ top: el.scrollHeight, behavior: reducedMotion ? "auto" : "smooth" });
+    if (el && atBottom) el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
   }, [messages, atBottom, reducedMotion]);
 
   const onScroll = () => {

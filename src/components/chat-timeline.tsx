@@ -2,9 +2,10 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, ChevronDown, ChevronRight, Loader2, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Segment } from "@/lib/chat-segments";
+import { turnIsRunning } from "@/lib/chat-segments";
 
 export type { SegKind, Segment, SegOp } from "@/lib/chat-segments";
-export { applySegmentOps, finalizeSegments, findNewestCollapsedToolSeg } from "@/lib/chat-segments";
+export { applySegmentOps, finalizeSegments, findNewestCollapsedToolSeg, expandKeyBlocked, turnIsRunning } from "@/lib/chat-segments";
 
 // ---- minimal markdown: bold / inline code / fenced code only ------------
 // No library (none installed). Partial trailing `**`/``` never render raw —
@@ -167,8 +168,11 @@ export function TurnTimeline({ segments, streaming, onToggleTool, onApprovalResp
   onApprovalRespond: (reqId: string, choice: string) => void;
 }) {
   if (!segments.length) return null;
+  // A turn with an unresolved approval is paused, not streaming (pure helper —
+  // replayed cards must not show an infinite spinner).
+  const isRunning = turnIsRunning(segments, streaming);
   return (
-    <div className={cn("chat-turn", streaming && "running")} aria-busy={streaming}>
+    <div className={cn("chat-turn", isRunning && "running")} aria-busy={isRunning}>
       {segments.map((seg) => {
         if (seg.kind === "thinking") return <ThinkingRow key={seg.id} seg={seg} />;
         if (seg.kind === "tool") return <ToolRow key={seg.id} seg={seg} onToggle={() => onToggleTool(seg.id)} />;
