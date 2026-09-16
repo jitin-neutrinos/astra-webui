@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { BackgroundGradientAnimation } from "@/components/ui/background-gradient-animation";
 import { cn } from "@/lib/utils";
+import { ComposerControls, type Attachment } from "./components/composer-controls";
 
 type Status = "checking" | "login" | "ready";
 type Msg = { role: "user" | "assistant"; content: string };
@@ -279,6 +280,7 @@ function ChatLanding({ resetSignal }: { resetSignal: number }) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const listRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
@@ -328,7 +330,7 @@ function ChatLanding({ resetSignal }: { resetSignal: number }) {
   }, [messages, thinking]);
 
   useEffect(() => {
-    if (resetSignal > 0) { setMessages([]); setInput(""); }
+    if (resetSignal > 0) { setMessages([]); setInput(""); setAttachments([]); }
   }, [resetSignal]);
 
   const empty = messages.length === 0 && !thinking;
@@ -410,6 +412,11 @@ function ChatLanding({ resetSignal }: { resetSignal: number }) {
             className="chat-composer-input"
           />
           <div className="chat-composer-bar">
+            <ComposerControls
+              attachments={attachments}
+              setAttachments={setAttachments}
+              disabled={thinking}
+            />
             <span className="chat-composer-hint">Enter to send · Shift+Enter for newline</span>
             <button
               type="button" onClick={() => void send()}
