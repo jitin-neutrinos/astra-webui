@@ -96,6 +96,33 @@ const server = createServer(async (req, res) => {
     return res.end('{"ok":true}');
   }
 
+  if (path === "/api/chat" && req.method === "POST") {
+    const cookies = {};
+    (req.headers.cookie || "").split(";").forEach((c) => {
+      const i = c.indexOf("=");
+      if (i > 0) cookies[c.slice(0, i).trim()] = c.slice(i + 1).trim();
+    });
+    if (!validToken(cookies[COOKIE])) {
+      res.writeHead(401, { "content-type": "application/json" });
+      return res.end('{"error":"unauthenticated"}');
+    }
+    let message = "";
+    try { message = String(JSON.parse(await readBody(req)).message || ""); } catch { /* empty */ }
+    // ponytail: echo responder until the Hermes backend lands
+    res.writeHead(200, { "content-type": "application/json" });
+    return res.end(JSON.stringify({
+      reply: message
+        ? `Uplink acknowledged: "${message}". Agent backend not wired yet — this channel is scaffolded for Hermes.`
+        : "Empty transmission received.",
+    }));
+  }
+
+  if (path === "/api/logout" && req.method === "POST") {
+    res.setHeader("set-cookie", `${COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`);
+    res.writeHead(200, { "content-type": "application/json" });
+    return res.end('{"ok":true}');
+  }
+
   if (path === "/api/me") {
     const cookies = {};
     (req.headers.cookie || "").split(";").forEach((c) => {

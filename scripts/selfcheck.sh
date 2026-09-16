@@ -23,4 +23,7 @@ grep -q astra_session "$JAR" || fail "no session cookie set"
 
 curl -s "$BASE/" | grep -q '<div id="root">' || fail "index served"
 
+curl -s -b "$JAR" -c "$JAR" -o /dev/null -X POST "$BASE/api/logout"
+[ "$(curl -s -b "$JAR" "$BASE/api/me")" = '{"authenticated":false}' ] || fail "logout should clear session"
+
 echo "self-check: ALL PASS ($BASE)"

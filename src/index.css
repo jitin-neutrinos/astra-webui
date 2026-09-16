@@ -1,1 +1,90 @@
 @import "tailwindcss";
+
+/* astra-webui theme — www.jitinnair.com tokens, retro-techno treatment */
+@theme {
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Playfair Display", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --color-void: #0a0a0f;
+  --color-midnight: #12121a;
+  --color-depth: #1a1a2e;
+  --color-surface: #252538;
+  --color-brandtext: #f8fafc;
+  --color-muted: #6b7280;
+  --color-cyanx: #22d3ee;
+  --color-violetx: #8b5cf6;
+  --color-fuchsiax: #d946ef;
+}
+
+/* one-shot keyframes for the gradient blobs (component reads these class names) */
+@keyframes move-horizontal {
+  0%, 100% { transform: translateX(0) translateY(0); }
+  50% { transform: translateX(30px) translateY(-30px); }
+}
+@keyframes move-vertical {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-30px); }
+}
+@keyframes move-diagonal {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(30px, 30px); }
+}
+@keyframes move-diagonal-reverse {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(-30px, -30px); }
+}
+@keyframes move-diagonal-alt {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(-30px, 30px); }
+}
+@keyframes rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-first { animation: move-vertical 18s ease-in-out infinite alternate; }
+.animate-second { animation: move-horizontal 14s ease-in-out infinite alternate; }
+.animate-third { animation: move-diagonal 20s ease-in-out infinite alternate; }
+.animate-fourth { animation: move-diagonal-reverse 16s ease-in-out infinite alternate; }
+.animate-fifth { animation: move-diagonal-alt 22s ease-in-out infinite alternate; }
+
+/* retro techno: scanlines + soft CRT flicker on overlays only (never on text) */
+.retro-scanlines {
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.025) 0px,
+    rgba(255, 255, 255, 0.025) 1px,
+    transparent 1px,
+    transparent 4px
+  );
+}
+@keyframes crt-flicker {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.42; }
+}
+.retro-crt { animation: crt-flicker 4s ease-in-out infinite; }
+
+/* tech grid backdrop (retro-terminal staple) */
+.retro-grid {
+  background-image:
+    linear-gradient(rgba(34, 211, 238, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 211, 238, 0.06) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+
+/* reduced motion: still the animation names, not blanket bans */
+@media (prefers-reduced-motion: reduce) {
+  .animate-first, .animate-second, .animate-third, .animate-fourth, .animate-fifth {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+  .retro-crt { animation: none; }
+}
+
+html { color-scheme: dark; }
+body { background: var(--color-void); }
