@@ -1,10 +1,9 @@
-import { useEffect, useRef, useState } from "react";
-import type { CSSProperties, FormEvent, KeyboardEvent, ReactNode } from "react";
+import { useEffect, useState } from "react";
+import type { FormEvent, ReactNode } from "react";
 import {
   MessageSquare,
   Plus,
   LogOut,
-  ArrowUp,
   Eye,
   EyeOff,
   Folder,
@@ -23,10 +22,10 @@ import {
 } from "lucide-react";
 import { BackgroundGradientAnimation } from "@/components/ui/background-gradient-animation";
 import { cn } from "@/lib/utils";
-import { ComposerControls, type Attachment } from "./components/composer-controls";
+import { ChatLanding } from "./components/chat-landing";
+import { ChatsPanel } from "./components/chats-panel";
 
 type Status = "checking" | "login" | "ready";
-type Msg = { role: "user" | "assistant"; content: string };
 
 export default function App() {
   const [status, setStatus] = useState<Status>("checking");
@@ -183,15 +182,27 @@ function LoginScreen({ password, setPassword, clearError, error, busy, submit }:
 
 function Shell({ onLogout }: { onLogout: () => void }) {
   const [resetSignal, setResetSignal] = useState(0);
+  const [view, setView] = useState<'chat' | 'chats'>('chat');
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+
   return (
     <div className="flex h-screen w-full overflow-hidden bg-void font-sans text-brandtext">
-      <Sidebar onLogout={onLogout} onNewChat={() => setResetSignal((n) => n + 1)} />
-      <ChatLanding resetSignal={resetSignal} />
+      <Sidebar 
+        onLogout={onLogout} 
+        onNewChat={() => { setResetSignal(r => r + 1); setView('chat'); setSelectedSessionId(null); }} 
+        onOpenChats={() => setView('chats')} 
+        onOpenAstra={() => setView('chat')} 
+      />
+      {view === 'chat' ? (
+        <ChatLanding resetSignal={resetSignal} selectedSessionId={selectedSessionId} />
+      ) : (
+        <ChatsPanel onBack={() => setView('chat')} onSelect={(id) => { setSelectedSessionId(id); setView('chat'); }} />
+      )}
     </div>
   );
 }
 
-function Sidebar({ onLogout, onNewChat }: { onLogout: () => void; onNewChat: () => void }) {
+function Sidebar({ onLogout, onNewChat, onOpenChats, onOpenAstra }: { onLogout: () => void; onNewChat: () => void; onOpenChats: () => void; onOpenAstra: () => void; }) {
   const groups: {
     label: string;
     items: { name: string; icon: ReactNode; badge?: string; onClick?: () => void }[];
@@ -199,8 +210,9 @@ function Sidebar({ onLogout, onNewChat }: { onLogout: () => void; onNewChat: () 
     {
       label: "Work",
       items: [
+        { name: "Astra", icon: <img src="/astra-logo.png" alt="" className="h-4 w-4 rounded-full object-cover" />, onClick: onOpenAstra },
         { name: "New chat", icon: <Plus className="h-4 w-4" strokeWidth={1.5} />, onClick: onNewChat },
-        { name: "Chats", icon: <MessageSquare className="h-4 w-4" strokeWidth={1.5} />, badge: "live" },
+        { name: "Chats", icon: <MessageSquare className="h-4 w-4" strokeWidth={1.5} />, onClick: onOpenChats, badge: "live" },
         { name: "Files", icon: <Folder className="h-4 w-4" strokeWidth={1.5} /> },
       ],
     },
@@ -276,159 +288,3 @@ function Sidebar({ onLogout, onNewChat }: { onLogout: () => void; onNewChat: () 
   );
 }
 
-function ChatLanding({ resetSignal }: { resetSignal: number }) {
-  const [messages, setMessages] = useState<Msg[]>([]);
-  const [input, setInput] = useState("");
-  const [thinking, setThinking] = useState(false);
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const listRef = useRef<HTMLDivElement>(null);
-  const taRef = useRef<HTMLTextAreaElement>(null);
-
-  const hour = new Date().getHours();
-  const greeting =
-    hour < 5 ? "Working late" : hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-
-  const suggestions = [
-    { label: "System status", prompt: "/status" },
-    { label: "Token usage", prompt: "/usage" },
-    { label: "My skills", prompt: "/skills" },
-    { label: "What can you do?", prompt: "What can you do? Give me a short overview." },
-  ];
-
-  const send = async (raw?: string) => {
-    const text = (raw ?? input).trim();
-    if (!text || thinking) return;
-    setInput("");
-    setMessages((m) => [...m, { role: "user", content: text }]);
-    setThinking(true);
-    try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify({ message: text }),
-      });
-      const data = await res.json().catch(() => ({}));
-      setMessages((m) => [...m, {
-        role: "assistant",
-        content: data.reply || `Uplink acknowledged: "${text}". Agent backend not wired yet — this channel is scaffolded for Hermes.`,
-      }]);
-    } catch {
-      setMessages((m) => [...m, { role: "assistant", content: "Signal lost. Try again." }]);
-    } finally {
-      setThinking(false);
-      taRef.current?.focus();
-    }
-  };
-
-  const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); }
-  };
-
-  useEffect(() => {
-    listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
-  }, [messages, thinking]);
-
-  useEffect(() => {
-    if (resetSignal > 0) { setMessages([]); setInput(""); setAttachments([]); }
-  }, [resetSignal]);
-
-  const empty = messages.length === 0 && !thinking;
-
-  return (
-    <main className="relative flex h-full min-w-0 flex-1 flex-col">
-      <div className="pointer-events-none absolute inset-0 retro-grid opacity-40" aria-hidden="true" />
-
-      <header className="relative z-10 flex items-center justify-between border-b border-white/[0.07] px-6 py-3">
-        <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-slate-500">
-          {empty ? "new session" : `session // ${messages.length} msgs`}
-        </span>
-        <span className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.25em] text-slate-500">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> online
-        </span>
-      </header>
-
-      <div ref={listRef} className="chat-scroll relative z-10 min-h-0 flex-1" role="log" aria-live="polite" aria-label="Conversation">
-        {empty ? (
-          <div className="chat-welcome">
-            <img src="/astra-logo.png" alt="" aria-hidden="true" className="chat-welcome-glyph" />
-            <h2 className="chat-welcome-title">{greeting}, Jitin</h2>
-            <p className="chat-welcome-sub">What are we working on?</p>
-            <div className="chat-welcome-grid">
-              {suggestions.map((s, i) => (
-                <button key={s.label} type="button" className="chat-suggest" style={{ "--i": i } as CSSProperties}
-                  onClick={() => void send(s.prompt)}>
-                  <span className="chat-suggest-label">{s.label}</span>
-                  <span className="chat-suggest-hint">{s.prompt}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
-            {messages.map((m, i) => (
-              <div key={i} className="flex items-start gap-3">
-                {m.role === "assistant" ? (
-                  <img src="/astra-logo.png" alt="" aria-hidden="true"
-                    className="mt-0.5 h-7 w-7 shrink-0 rounded-full object-cover shadow-[0_0_12px_rgba(34,211,238,0.3)]" />
-                ) : (
-                  <span aria-hidden="true"
-                    className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 font-mono text-xs text-slate-300">J</span>
-                )}
-                <div className={cn(
-                  "min-w-0 whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed",
-                  m.role === "user"
-                    ? "bg-white/[0.06] text-slate-200"
-                    : "border border-cyanx/15 bg-midnight/80 text-slate-200"
-                )}>{m.content}</div>
-              </div>
-            ))}
-            {thinking ? (
-              <div className="flex items-start gap-3">
-                <img src="/astra-logo.png" alt="" aria-hidden="true"
-                  className="mt-0.5 h-7 w-7 shrink-0 rounded-full object-cover shadow-[0_0_12px_rgba(34,211,238,0.3)]" />
-                <span className="flex items-center gap-1.5 rounded-2xl border border-cyanx/15 bg-midnight/80 px-4 py-3.5">
-                  {[0, 1, 2].map((d) => (
-                    <span key={d} className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyanx/70"
-                      style={{ animationDelay: `${d * 150}ms` }} />
-                  ))}
-                </span>
-              </div>
-            ) : null}
-          </div>
-        )}
-      </div>
-
-      <div className="relative z-10 px-6 pb-6">
-        <div className="chat-composer mx-auto max-w-3xl">
-          <textarea
-            ref={taRef}
-            rows={1}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={onKey}
-            placeholder={thinking ? "Astra is replying\u2026" : empty ? "Message Astra\u2026" : "Reply\u2026"}
-            aria-label="Message Astra"
-            className="chat-composer-input"
-          />
-          <div className="chat-composer-bar">
-            <ComposerControls
-              attachments={attachments}
-              setAttachments={setAttachments}
-              disabled={thinking}
-            />
-            <span className="chat-composer-hint">Enter to send · Shift+Enter for newline</span>
-            <button
-              type="button" onClick={() => void send()}
-              disabled={!input.trim() || thinking}
-              aria-label="Send message"
-              className="chat-send"
-            >
-              <ArrowUp className="h-4 w-4" strokeWidth={1.8} />
-            </button>
-          </div>
-        </div>
-      </div>
-    </main>
-  );
-}

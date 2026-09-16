@@ -23,6 +23,16 @@ grep -q astra_session "$JAR" || fail "no session cookie set"
 
 curl -s "$BASE/" | grep -q '<div id="root">' || fail "index served"
 
+
+code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/hx/sessions")
+[ "$code" = "401" ] || fail "hx unauth should 401, got $code"
+
+code=$(curl -s -b "$JAR" -o /dev/null -w '%{http_code}' "$BASE/api/hx/sessions")
+[ "$code" = "200" ] || fail "hx sessions should 200, got $code"
+
+code=$(curl -s -b "$JAR" -o /dev/null -w '%{http_code}' "$BASE/api/hx/sessions/search?q=test")
+[ "$code" = "200" ] || fail "hx search should 200, got $code"
+
 curl -s -b "$JAR" -c "$JAR" -o /dev/null -X POST "$BASE/api/logout"
 [ "$(curl -s -b "$JAR" "$BASE/api/me")" = '{"authenticated":false}' ] || fail "logout should clear session"
 

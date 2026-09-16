@@ -1,9 +1,16 @@
 // astra-webui server: static dist + password-only auth API. ponytail: one file, zero deps.
 import { createServer } from "node:http";
+import { handleHxProxy, handleWsUpgrade } from "./hermes-proxy.mjs";
+
 import { createHmac, timingSafeEqual, randomBytes } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { join, extname, resolve, sep, normalize } from "node:path";
 
+const HERMES_PASSWORD = process.env.ASTRA_HERMES_PASSWORD;
+if (!HERMES_PASSWORD) {
+  console.error("astra-webui: ASTRA_HERMES_PASSWORD not set; refusing to start.");
+  process.exit(1);
+}
 const PASSWORD = process.env.ASTRA_WEBUI_PASSWORD;
 if (!PASSWORD) {
   console.error("astra-webui: ASTRA_WEBUI_PASSWORD not set; refusing to start.");
@@ -134,6 +141,19 @@ const server = createServer(async (req, res) => {
     return res.end(JSON.stringify({ authenticated: ok }));
   }
 
+  if (path.startsWith("/api/hx/")) {
+    const cookies = {};
+    (req.headers.cookie || "").split(";").forEach((c) => {
+      const i = c.indexOf("=");
+      if (i > 0) cookies[c.slice(0, i).trim()] = c.slice(i + 1).trim();
+    });
+    if (!validToken(cookies[COOKIE])) {
+      res.writeHead(401, { "content-type": "application/json" });
+      return res.end('{"error":"unauthenticated"}');
+    }
+    return handleHxProxy(req, res);
+  }
+
   if (path.startsWith("/api/")) {
     res.writeHead(404, { "content-type": "application/json" });
     return res.end('{"error":"not found"}');
@@ -159,6 +179,26 @@ const server = createServer(async (req, res) => {
     res.end(body);
   } catch {
     res.writeHead(404); res.end("not found");
+  }
+});
+
+
+server.on("upgrade", (req, socket, head) => {
+  const url = new URL(req.url, "http://x");
+  if (url.pathname === "/api/hx/ws") {
+    const cookies = {};
+    (req.headers.cookie || "").split(";").forEach((c) => {
+      const i = c.indexOf("=");
+      if (i > 0) cookies[c.slice(0, i).trim()] = c.slice(i + 1).trim();
+    });
+    if (!validToken(cookies[COOKIE])) {
+      socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+      socket.destroy();
+      return;
+    }
+    handleWsUpgrade(req, socket, head);
+  } else {
+    socket.destroy();
   }
 });
 

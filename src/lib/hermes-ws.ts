@@ -1,0 +1,142 @@
+import { useEffect, useRef, useState, useCallback } from "react";
+
+export type EventPayload = {
+  type: string;
+  payload: any;
+  session_id?: string;
+};
+
+export function useHermesWS(onEvent: (ev: EventPayload) => void) {
+  const ws = useRef<WebSocket | null>(null);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [liveSessionId, setLiveSessionId] = useState<string | null>(null);
+  
+  const [storedSessionId, setStoredSessionIdState] = useState<string | null>(() => {
+    return sessionStorage.getItem("astra-chat-session");
+  });
+
+  const generateRpcId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  const setStoredSessionId = useCallback((id: string | null) => {
+    if (id) sessionStorage.setItem("astra-chat-session", id);
+    else sessionStorage.removeItem("astra-chat-session");
+    setStoredSessionIdState(id);
+    liveIdRef.current = null;
+    setLiveSessionId(null);
+    setIsStreaming(false);
+  }, []);
+
+  const onEventRef = useRef(onEvent);
+  onEventRef.current = onEvent;
+
+  // Track pending RPCs to handle resume failures
+  const pendingResumes = useRef<Set<string>>(new Set());
+  const liveIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const url = `${protocol}//${window.location.host}/api/hx/ws`;
+    
+    let socket = new WebSocket(url);
+    ws.current = socket;
+
+    socket.onopen = () => {
+      const sid = sessionStorage.getItem("astra-chat-session");
+      if (sid) {
+        const id = generateRpcId();
+        pendingResumes.current.add(id);
+        socket.send(JSON.stringify({ method: "session.resume", params: { session_id: sid }, id }));
+      }
+    };
+
+    socket.onmessage = (e) => {
+      let data;
+      try { data = JSON.parse(e.data); } catch { return; }
+      
+      if (data.id && pendingResumes.current.has(data.id)) {
+        pendingResumes.current.delete(data.id);
+        if (data.error) {
+          // session.resume failure -> clear session
+          setStoredSessionIdState(null);
+          sessionStorage.removeItem("astra-chat-session");
+          setLiveSessionId(null);
+        } else if (data.result && data.result.session_id) {
+          liveIdRef.current = data.result.session_id;
+          setLiveSessionId(data.result.session_id);
+        }
+      } else if (data.id && data.result && data.result.session_id) {
+        // session.create success: adopt live handle for submits
+        liveIdRef.current = data.result.session_id;
+        setLiveSessionId(data.result.session_id);
+      }
+      
+      if (data.method === "event" && data.params) {
+        const { type, payload, session_id } = data.params;
+        
+        if (type === "proxy.status") {
+          if (payload.state === "reconnecting") {
+            setIsStreaming(false);
+          } else if (payload.state === "online") {
+            const sid = sessionStorage.getItem("astra-chat-session");
+            if (sid && ws.current?.readyState === WebSocket.OPEN) {
+              const id = generateRpcId();
+              pendingResumes.current.add(id);
+              ws.current.send(JSON.stringify({ method: "session.resume", params: { session_id: sid }, id }));
+            }
+          }
+          onEventRef.current({ type, payload });
+          return;
+        }
+
+        // two-tab guard: ignore events for other sessions (live ids differ per tab)
+        if (liveIdRef.current && session_id && liveIdRef.current !== session_id) return;
+
+        if (type === "message.start") setIsStreaming(true);
+        if (type === "message.complete" || type === "message.error") setIsStreaming(false);
+
+        onEventRef.current({ type, payload, session_id });
+      }
+    };
+
+    socket.onclose = () => {
+      setIsStreaming(false);
+    };
+
+    return () => {
+      socket.close();
+      ws.current = null;
+    };
+  }, [setStoredSessionId]);
+
+  const submitPrompt = useCallback((content: string) => {
+    if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
+    setIsStreaming(true);
+    if (!storedSessionId) {
+      ws.current.send(JSON.stringify({
+        method: "session.create",
+        params: { prompt: content },
+        id: generateRpcId()
+      }));
+    } else {
+      ws.current.send(JSON.stringify({
+        method: "prompt.submit",
+        params: { session_id: liveSessionId || storedSessionId, text: content, surface: "webui" },
+        id: generateRpcId()
+      }));
+    }
+  }, [storedSessionId, liveSessionId]);
+
+  const interrupt = useCallback(() => {
+    if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
+    if (liveSessionId || storedSessionId) {
+      ws.current.send(JSON.stringify({
+        method: "session.interrupt",
+        params: { session_id: liveSessionId || storedSessionId },
+        id: generateRpcId()
+      }));
+    }
+    setIsStreaming(false);
+  }, [liveSessionId, storedSessionId]);
+
+  return { isStreaming, submitPrompt, interrupt, storedSessionId, setStoredSessionId, liveSessionId };
+}
