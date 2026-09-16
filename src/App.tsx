@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { FormEvent, KeyboardEvent, ReactNode } from "react";
+import type { CSSProperties, FormEvent, KeyboardEvent, ReactNode } from "react";
 import {
   MessageSquare,
   Plus,
@@ -181,23 +181,24 @@ function LoginScreen({ password, setPassword, clearError, error, busy, submit }:
 /* ---------------- shell: sidebar + chat landing ---------------- */
 
 function Shell({ onLogout }: { onLogout: () => void }) {
+  const [resetSignal, setResetSignal] = useState(0);
   return (
     <div className="flex h-screen w-full overflow-hidden bg-void font-sans text-brandtext">
-      <Sidebar onLogout={onLogout} />
-      <ChatLanding />
+      <Sidebar onLogout={onLogout} onNewChat={() => setResetSignal((n) => n + 1)} />
+      <ChatLanding resetSignal={resetSignal} />
     </div>
   );
 }
 
-function Sidebar({ onLogout }: { onLogout: () => void }) {
+function Sidebar({ onLogout, onNewChat }: { onLogout: () => void; onNewChat: () => void }) {
   const groups: {
     label: string;
-    items: { name: string; icon: ReactNode; badge?: string }[];
+    items: { name: string; icon: ReactNode; badge?: string; onClick?: () => void }[];
   }[] = [
     {
       label: "Work",
       items: [
-        { name: "New chat", icon: <Plus className="h-4 w-4" strokeWidth={1.5} /> },
+        { name: "New chat", icon: <Plus className="h-4 w-4" strokeWidth={1.5} />, onClick: onNewChat },
         { name: "Chats", icon: <MessageSquare className="h-4 w-4" strokeWidth={1.5} />, badge: "live" },
         { name: "Files", icon: <Folder className="h-4 w-4" strokeWidth={1.5} /> },
       ],
@@ -244,7 +245,7 @@ function Sidebar({ onLogout }: { onLogout: () => void }) {
               {group.label}
             </p>
             {group.items.map((item) => (
-              <button key={item.name} type="button"
+              <button key={item.name} type="button" onClick={item.onClick}
                 aria-current={"badge" in item && item.badge ? "page" : undefined}
                 className={cn(
                   "flex w-full items-center gap-2.5 rounded-lg px-3 py-1.5 text-left text-sm transition-colors",
@@ -274,15 +275,26 @@ function Sidebar({ onLogout }: { onLogout: () => void }) {
   );
 }
 
-function ChatLanding() {
+function ChatLanding({ resetSignal }: { resetSignal: number }) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  const taRef = useRef<HTMLTextAreaElement>(null);
 
-  // ponytail: echo responder — wire /api/chat to Hermes when the backend lands
-  const send = async () => {
-    const text = input.trim();
+  const hour = new Date().getHours();
+  const greeting =
+    hour < 5 ? "Working late" : hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+
+  const suggestions = [
+    { label: "System status", prompt: "/status" },
+    { label: "Token usage", prompt: "/usage" },
+    { label: "My skills", prompt: "/skills" },
+    { label: "What can you do?", prompt: "What can you do? Give me a short overview." },
+  ];
+
+  const send = async (raw?: string) => {
+    const text = (raw ?? input).trim();
     if (!text || thinking) return;
     setInput("");
     setMessages((m) => [...m, { role: "user", content: text }]);
@@ -303,6 +315,7 @@ function ChatLanding() {
       setMessages((m) => [...m, { role: "assistant", content: "Signal lost. Try again." }]);
     } finally {
       setThinking(false);
+      taRef.current?.focus();
     }
   };
 
@@ -313,6 +326,10 @@ function ChatLanding() {
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [messages, thinking]);
+
+  useEffect(() => {
+    if (resetSignal > 0) { setMessages([]); setInput(""); }
+  }, [resetSignal]);
 
   const empty = messages.length === 0 && !thinking;
 
@@ -329,24 +346,29 @@ function ChatLanding() {
         </span>
       </header>
 
-      <div ref={listRef} className="relative z-10 min-h-0 flex-1 overflow-y-auto">
+      <div ref={listRef} className="chat-scroll relative z-10 min-h-0 flex-1" role="log" aria-live="polite" aria-label="Conversation">
         {empty ? (
-          <div className="flex h-full flex-col items-center justify-center px-6 text-center">
-            <span aria-hidden="true" className="font-mono text-3xl text-cyanx [text-shadow:0_0_24px_rgba(34,211,238,0.6)]">&#10035;</span>
-            <h2 className="mt-4 font-display text-3xl tracking-tight text-brandtext">
-              Good evening, Jitin
-            </h2>
-            <p className="mt-3 max-w-md text-sm font-light text-muted">
-              Astra is standing by. Ask anything, or start a task — the fleet handles the rest.
-            </p>
+          <div className="chat-welcome">
+            <img src="/astra-logo.png" alt="" aria-hidden="true" className="chat-welcome-glyph" />
+            <h2 className="chat-welcome-title">{greeting}, Jitin</h2>
+            <p className="chat-welcome-sub">What are we working on?</p>
+            <div className="chat-welcome-grid">
+              {suggestions.map((s, i) => (
+                <button key={s.label} type="button" className="chat-suggest" style={{ "--i": i } as CSSProperties}
+                  onClick={() => void send(s.prompt)}>
+                  <span className="chat-suggest-label">{s.label}</span>
+                  <span className="chat-suggest-hint">{s.prompt}</span>
+                </button>
+              ))}
+            </div>
           </div>
         ) : (
           <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
             {messages.map((m, i) => (
               <div key={i} className="flex items-start gap-3">
                 {m.role === "assistant" ? (
-                  <span aria-hidden="true"
-                    className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-cyanx/40 bg-cyanx/10 font-mono text-xs text-cyanx">A</span>
+                  <img src="/astra-logo.png" alt="" aria-hidden="true"
+                    className="mt-0.5 h-7 w-7 shrink-0 rounded-full object-cover shadow-[0_0_12px_rgba(34,211,238,0.3)]" />
                 ) : (
                   <span aria-hidden="true"
                     className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 font-mono text-xs text-slate-300">J</span>
@@ -361,8 +383,8 @@ function ChatLanding() {
             ))}
             {thinking ? (
               <div className="flex items-start gap-3">
-                <span aria-hidden="true"
-                  className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-cyanx/40 bg-cyanx/10 font-mono text-xs text-cyanx">A</span>
+                <img src="/astra-logo.png" alt="" aria-hidden="true"
+                  className="mt-0.5 h-7 w-7 shrink-0 rounded-full object-cover shadow-[0_0_12px_rgba(34,211,238,0.3)]" />
                 <span className="flex items-center gap-1.5 rounded-2xl border border-cyanx/15 bg-midnight/80 px-4 py-3.5">
                   {[0, 1, 2].map((d) => (
                     <span key={d} className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyanx/70"
@@ -376,29 +398,28 @@ function ChatLanding() {
       </div>
 
       <div className="relative z-10 px-6 pb-6">
-        <div className="mx-auto max-w-3xl">
-          <div className="relative rounded-2xl border border-white/10 bg-midnight/90 shadow-[0_0_40px_rgba(34,211,238,0.05)] backdrop-blur transition-colors focus-within:border-cyanx/40">
-            <textarea
-              rows={1}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={onKey}
-              placeholder={empty ? "Message Astra..." : "Reply..."}
-              aria-label="Message Astra"
-              className="w-full resize-none bg-transparent px-4 py-3.5 pr-12 text-sm text-brandtext placeholder-slate-600 focus:outline-none"
-            />
+        <div className="chat-composer mx-auto max-w-3xl">
+          <textarea
+            ref={taRef}
+            rows={1}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={onKey}
+            placeholder={thinking ? "Astra is replying\u2026" : empty ? "Message Astra\u2026" : "Reply\u2026"}
+            aria-label="Message Astra"
+            className="chat-composer-input"
+          />
+          <div className="chat-composer-bar">
+            <span className="chat-composer-hint">Enter to send · Shift+Enter for newline</span>
             <button
               type="button" onClick={() => void send()}
               disabled={!input.trim() || thinking}
               aria-label="Send message"
-              className="absolute bottom-2.5 right-2.5 flex h-8 w-8 items-center justify-center rounded-lg bg-cyanx text-void transition-opacity hover:opacity-90 disabled:opacity-25"
+              className="chat-send"
             >
-              <ArrowUp className="h-4 w-4" strokeWidth={2} />
+              <ArrowUp className="h-4 w-4" strokeWidth={1.8} />
             </button>
           </div>
-          <p className="mt-2 text-center font-mono text-[9px] uppercase tracking-[0.25em] text-slate-700">
-            enter to send // shift+enter newline
-          </p>
         </div>
       </div>
     </main>
