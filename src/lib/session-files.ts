@@ -34,6 +34,11 @@ export async function getCatalog() {
     res = await fetch("/api/hx/model/options");
   }
   if (!res.ok) throw new Error("Failed to load catalog");
-  catalogCache = await res.json();
+  const raw: any = await res.json();
+  // host payload: providers carry `name` (not `label`) and `models` may be null — normalize once
+  catalogCache = {
+    ...raw,
+    providers: (raw.providers || []).map((p: any) => ({ ...p, label: p.label ?? p.name ?? p.slug, models: p.models ?? [] })),
+  };
   return catalogCache;
 }

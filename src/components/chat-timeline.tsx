@@ -113,7 +113,7 @@ export function usePrefersReducedMotion() {
   return reduced;
 }
 
-const CPS = 130;
+const CPS_MIN = 120, CPS_MAX = 160; // 30-40 tokens/s (~4 chars avg): human variance band
 function useReveal(text: string, done: boolean, instant: boolean) {
   const [n, setN] = useState(0);
   const nRef = useRef(0), tRef = useRef(0);
@@ -128,7 +128,9 @@ function useReveal(text: string, done: boolean, instant: boolean) {
       const dt = Math.min(now - tRef.current, 250) / 1000; // cap tab-sleep jumps
       tRef.current = now;
       const back = text.length - nRef.current;
-      const cps = done ? Math.max(CPS * 3, back / 0.4) : CPS;  // finished turn drains <1s (exp-decay aware)
+      const cps = done
+        ? Math.max(CPS_MIN * 3, back / 0.4)                // finished turn drains <1s
+        : CPS_MIN + (Math.sin(now / 900) + 1) * (CPS_MAX - CPS_MIN) / 2; // smooth ±20% human wobble
       nRef.current = Math.min(text.length, nRef.current + cps * dt);
       setN(Math.floor(nRef.current));
       if (nRef.current < text.length) id = window.setTimeout(tick, 16);

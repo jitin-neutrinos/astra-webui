@@ -119,6 +119,16 @@ body { background: var(--color-void); }
 .chat-composer-input { display: block; width: 100%; background: transparent; border: none; color: var(--color-brandtext); font: 400 14.5px/1.5 var(--font-sans); resize: none; min-height: 24px; max-height: 200px; padding: 2px 4px 8px; outline: none; }
 .chat-composer-input::placeholder { color: var(--color-muted); }
 .chat-composer-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.chat-chip-active { border-color: rgba(34,211,238,.45); color: var(--color-cyanx); background: rgba(34,211,238,.08); }
+
+/* popout composer: floating expanded editor anchored above the composer */
+.chat-popout { position: absolute; bottom: calc(100% + 10px); left: 0; right: 0; z-index: 55; background: var(--color-midnight); border: 1px solid rgba(34,211,238,.25); border-radius: 14px; padding: 10px 12px 12px; box-shadow: 0 18px 50px rgba(0,0,0,.6); animation: chat-enter 150ms cubic-bezier(0.23,1,0.32,1) both; }
+.chat-popout-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.chat-popout-close { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: none; background: transparent; color: var(--color-muted); border-radius: 8px; cursor: pointer; transition: color 150ms ease, background-color 150ms ease; }
+.chat-popout-close:hover { color: var(--color-brandtext); background: rgba(255,255,255,.06); }
+.chat-popout-input { display: block; width: 100%; min-height: 140px; max-height: 50vh; resize: vertical; background: transparent; border: none; color: var(--color-brandtext); font: 400 14.5px/1.6 var(--font-sans); outline: none; }
+.chat-popout-input::placeholder { color: var(--color-muted); }
+@media (max-width: 1023px) { .chat-popout-input { min-height: 110px; } }
 .chat-composer-hint { flex: 1; text-align: right; font: 400 11px/1 var(--font-sans); color: var(--color-muted); white-space: nowrap; }
 .chat-send { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 9999px; border: none; background: var(--color-cyanx); color: var(--color-void); cursor: pointer; flex-shrink: 0; transition: transform 120ms ease, background-color 120ms ease, opacity 120ms ease; }
 .chat-send:hover { background: #67e8f9; }

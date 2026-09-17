@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
-import { ArrowUp, Square, AlertTriangle, RotateCcw } from "lucide-react";
+import { ArrowUp, Square, AlertTriangle, RotateCcw, Maximize2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useHermesWS } from "@/lib/hermes-ws";
 import type { EventPayload } from "@/lib/hermes-ws";
@@ -48,6 +48,8 @@ function thinkingOf(payload: any): string {
 export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: number, selectedSessionId: string | null }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
+  const [popout, setPopout] = useState(false);
+  const popTaRef = useRef<HTMLTextAreaElement>(null);
   const [errorBanner, setErrorBanner] = useState("");
   const [atBottom, setAtBottom] = useState(true);
   const [slashOpen, setSlashOpen] = useState(false);
@@ -420,6 +422,9 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
     setInput(v);
     if (v.startsWith("/") && !v.includes(" ")) { setSlashOpen(true); setSlashActive(0); }
     else setSlashOpen(false);
+    // auto-grow: height follows content up to max-height (CSS caps at 200px)
+    const ta = taRef.current;
+    if (ta) { ta.style.height = "auto"; ta.style.height = `${ta.scrollHeight}px`; }
   };
 
   const slashMatches = TUI_COMMANDS.filter((c) => c.startsWith(input));
@@ -607,7 +612,30 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
               ))}
             </div>
           )}
-          <textarea
+          {popout && (
+    <div className="chat-popout" role="dialog" aria-label="Popped out composer">
+      <div className="chat-popout-head">
+        <span className="chat-menu-label">Composer — expanded</span>
+        <button type="button" className="chat-popout-close" aria-label="Close expanded composer" title="Close"
+          onClick={() => { setPopout(false); setTimeout(() => taRef.current?.focus(), 60); }}>
+          <X className="h-4 w-4" strokeWidth={1.5} />
+        </button>
+      </div>
+      <textarea
+        ref={popTaRef}
+        value={input}
+        onChange={(e) => onInputChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!isStreaming && input.trim()) { void send(); setPopout(false); } }
+          if (e.key === "Escape") { setPopout(false); setTimeout(() => taRef.current?.focus(), 60); }
+        }}
+        placeholder={isStreaming ? "Astra is replying…" : "Message Astra…"}
+        aria-label="Message Astra (expanded)"
+        className="chat-popout-input"
+      />
+    </div>
+  )}
+  <textarea
             ref={taRef}
             rows={1}
             value={input}
@@ -618,6 +646,11 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
             className="chat-composer-input"
           />
           <div className="chat-composer-bar">
+            <button type="button" className={cn("chat-chip", popout && "chat-chip-active")} disabled={isStreaming}
+              aria-pressed={popout} aria-label="Pop out composer" title="Pop out composer"
+              onClick={() => { setPopout(!popout); setTimeout(() => popTaRef.current?.focus(), 60); }}>
+              <Maximize2 className="h-3.5 w-3.5" strokeWidth={1.5} />
+            </button>
             <ComposerControls
               disabled={isStreaming}
               attachments={attachments}
