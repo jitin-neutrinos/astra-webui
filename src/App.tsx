@@ -92,9 +92,7 @@ function LoginScreen({ password, setPassword, clearError, error, busy, submit }:
   const [showPw, setShowPw] = useState(false);
   return (
     <div className="fixed inset-0 overflow-hidden bg-void font-sans">
-      <NeonFlow />
-      <div className="pointer-events-none absolute inset-0 z-40 retro-scanlines" />
-      <div className="pointer-events-none absolute inset-0 z-40 retro-grid opacity-40" />
+      <TubesBackground />
 
       <div className="absolute inset-0 z-50 flex items-center justify-center p-6">
         <div className="w-full max-w-md rounded-2xl border border-white/10 bg-void/60 p-7 shadow-[0_0_60px_rgba(34,211,238,0.08)] backdrop-blur-xl md:p-8">
@@ -168,7 +166,7 @@ function LoginScreen({ password, setPassword, clearError, error, busy, submit }:
 }
 
 import { FilesPage } from "./components/files-page";
-import NeonFlow from "./components/ui/neon-flow";
+import TubesBackground from "./components/ui/tubes-background";
 
 /* ---------------- shell: sidebar + chat landing ---------------- */
 
