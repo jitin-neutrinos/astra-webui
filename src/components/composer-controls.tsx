@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Paperclip, X, ChevronDown, Brain, Boxes, Check, ShieldOff } from "lucide-react";
+import { Paperclip, X, Check, SlidersHorizontal } from "lucide-react";
 
 export type Attachment = { 
   id: string; 
@@ -64,11 +64,11 @@ export function ComposerControls({ attachments, setAttachments, disabled, sessio
   onToggleYolo: () => void;
   onRemoveAttachment: (id: string) => void;
 }) {
-  const [openMenu, setOpenMenu] = useState<"model" | "effort" | null>(null);
+  const [open, setOpen] = useState(false);
   const [menuProvider, setMenuProvider] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const menuRef = useDismiss(openMenu !== null, () => setOpenMenu(null));
+  const menuRef = useDismiss(open, () => setOpen(false));
 
   const pickFiles = () => fileRef.current?.click();
 
@@ -90,22 +90,18 @@ export function ComposerControls({ attachments, setAttachments, disabled, sessio
   const provider = sessionInfo?.provider || "";
   const effort = sessionInfo?.reasoning_effort || "";
 
-  // Set initial menu provider when opening model menu
+  // Set initial menu provider when opening menu
   useEffect(() => {
-    if (openMenu === "model" && !menuProvider) {
+    if (open && !menuProvider) {
       setMenuProvider(provider);
     }
-  }, [openMenu, provider, menuProvider]);
+  }, [open, provider, menuProvider]);
 
   return (
     <div className="relative flex min-w-0 flex-wrap items-center gap-1.5" ref={menuRef}>
       <input ref={fileRef} type="file" multiple className="hidden" onChange={onFiles}
         aria-hidden="true" tabIndex={-1} />
-      <button type="button" className="chat-chip" onClick={pickFiles}
-        disabled={disabled} aria-label="Attach files"
-        title="Attach files">
-        <Paperclip className="h-3.5 w-3.5" strokeWidth={1.5} />
-      </button>
+
 
       {attachments.map((a) => (
         <span key={a.id} className="chat-filechip">
@@ -121,43 +117,49 @@ export function ComposerControls({ attachments, setAttachments, disabled, sessio
         </span>
       ))}
 
-      {/* YOLO chip */}
-      <button type="button" className={yolo ? "chat-chip-yolo" : "chat-chip"} disabled={disabled}
-        aria-pressed={yolo}
-        onClick={onToggleYolo}
-        title="Yolo mode: auto-approves all tool calls for this chat">
-        <ShieldOff className="h-3.5 w-3.5" strokeWidth={1.5} />
-      </button>
-
-      {/* provider + model popover */}
       <button type="button" className="chat-chip" disabled={disabled}
-        aria-expanded={openMenu === "model"} aria-haspopup="dialog"
-        onClick={() => { setOpenMenu(openMenu === "model" ? null : "model"); setMenuProvider(provider || catalog?.current_provider || catalog?.providers[0]?.slug || null); }}
-        title="Provider & model">
-        <Boxes className="h-3.5 w-3.5" strokeWidth={1.5} />
-        <span className="text-brandtext">{model || "Model"}</span>
-        <ChevronDown className="chat-chip-caret h-3 w-3" strokeWidth={1.5} />
+        aria-haspopup="dialog" aria-expanded={open} aria-controls="composer-options"
+        aria-label="Composer options" title="Options"
+        onClick={() => setOpen(!open)}>
+        <SlidersHorizontal className="h-4 w-4" strokeWidth={1.5} />
       </button>
 
-      {/* reasoning effort dropdown */}
-      <button type="button" className="chat-chip" disabled={disabled}
-        aria-expanded={openMenu === "effort"} aria-haspopup="dialog"
-        onClick={() => setOpenMenu(openMenu === "effort" ? null : "effort")}
-        title="Reasoning effort">
-        <Brain className="h-3.5 w-3.5" strokeWidth={1.5} />
-        <span className="capitalize">{effort || "Default"}</span>
-        <ChevronDown className="chat-chip-caret h-3 w-3" strokeWidth={1.5} />
-      </button>
+      {open ? (
+        <div className="chat-menu" id="composer-options" role="dialog" aria-label="Composer options" style={{ minWidth: 260 }}>
+          <p className="chat-menu-label">Attach</p>
+          <button className="chat-menu-item" onClick={() => { pickFiles(); setOpen(false); }}>
+            Attach files<Paperclip/>
+          </button>
+          
+          <p className="chat-menu-label">Automation</p>
+          <button className="chat-menu-item" role="switch" aria-checked={yolo} onClick={onToggleYolo}>
+            <span className="flex flex-col">Yolo mode<small>Auto-approve tool calls in this chat</small></span>
+            {yolo && <Check className="h-3.5 w-3.5 text-redx"/>}
+          </button>
 
-      {openMenu === "model" ? (
-        <div className="chat-menu" role="dialog" aria-label="Provider and model">
+          <p className="chat-menu-label">Reasoning effort</p>
+          {effort === "" && (
+            <button type="button" className="chat-menu-item" aria-selected={true} disabled={true}>
+              <span className="flex flex-col">Provider default</span>
+              <Check className="h-3.5 w-3.5 text-cyanx" strokeWidth={2} />
+            </button>
+          )}
+          {EFFORTS.map((e) => (
+            <button key={e.id} type="button" className="chat-menu-item"
+              aria-selected={e.id === effort}
+              onClick={() => { onPickEffort(e.id); }}>
+              <span className="flex flex-col">{e.label}</span>
+              {e.id === effort ? <Check className="h-3.5 w-3.5 text-cyanx" strokeWidth={2} /> : null}
+            </button>
+          ))}
+
+          <p className="chat-menu-label">Provider</p>
           {!catalog ? (
             <p className="chat-menu-label">Loading catalog...</p>
           ) : catalog.providers.length === 0 ? (
             <p className="chat-menu-label text-redx">Catalog unavailable</p>
           ) : (
             <>
-              <p className="chat-menu-label">Provider</p>
               {catalog.providers.map((p) => (
                 <button key={p.slug} type="button" className="chat-menu-item"
                   aria-selected={p.slug === (menuProvider || provider)}
@@ -173,37 +175,13 @@ export function ComposerControls({ attachments, setAttachments, disabled, sessio
               {catalog.providers.find(p => p.slug === (menuProvider || provider))?.models.map((m) => (
                 <button key={m} type="button" className="chat-menu-item"
                   aria-selected={m === model}
-                  onClick={() => { onPickModel(menuProvider || provider, m); setOpenMenu(null); }}>
+                  onClick={() => { onPickModel(menuProvider || provider, m); setOpen(false); }}>
                   {m}
                   {m === model ? <Check className="h-3.5 w-3.5 text-cyanx" strokeWidth={2} /> : null}
                 </button>
               ))}
             </>
           )}
-        </div>
-      ) : null}
-
-      {openMenu === "effort" ? (
-        <div className="chat-menu" role="dialog" aria-label="Reasoning effort" style={{ minWidth: 200 }}>
-          <p className="chat-menu-label">Reasoning effort</p>
-          {effort === "" && (
-            <button type="button" className="chat-menu-item" aria-selected={true} disabled={true}>
-              <span className="flex flex-col">
-                Provider default
-              </span>
-              <Check className="h-3.5 w-3.5 text-cyanx" strokeWidth={2} />
-            </button>
-          )}
-          {EFFORTS.map((e) => (
-            <button key={e.id} type="button" className="chat-menu-item"
-              aria-selected={e.id === effort}
-              onClick={() => { onPickEffort(e.id); setOpenMenu(null); }}>
-              <span className="flex flex-col">
-                {e.label}
-              </span>
-              {e.id === effort ? <Check className="h-3.5 w-3.5 text-cyanx" strokeWidth={2} /> : null}
-            </button>
-          ))}
         </div>
       ) : null}
     </div>

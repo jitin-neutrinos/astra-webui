@@ -56,7 +56,9 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
       } else {
         pendingRpcs.current.set(id, { resolve, reject });
         if (ws.current && ws.current.readyState === 1) {
-          ws.current.send(JSON.stringify({ method, params, id }));
+          const sid = liveIdRef.current;
+          const p = sid && !params.session_id ? { ...params, session_id: sid } : params;
+          ws.current.send(JSON.stringify({ method, params: p, id }));
         } else {
           pendingRpcs.current.delete(id);
           reject(new Error("WebSocket not connected"));
@@ -242,5 +244,11 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
     setIsStreaming(false);
   }, [liveSessionId, storedSessionId]);
 
-  return { isStreaming, submitPrompt, interrupt, storedSessionId, setStoredSessionId, liveSessionId, sendApprovalResponse, rpc, sessionInfo, setSessionInfo };
+  const resetSession = useCallback(() => {
+    liveIdRef.current = null; setLiveSessionId(null);
+    setStoredSessionId(null); setSessionInfo(null);
+    pendingPreTurnRpcs.current = []; pendingPromptRef.current = null;
+  }, [setStoredSessionId, setLiveSessionId]);
+
+  return { isStreaming, submitPrompt, interrupt, storedSessionId, setStoredSessionId, liveSessionId, sendApprovalResponse, rpc, sessionInfo, setSessionInfo, resetSession };
 }

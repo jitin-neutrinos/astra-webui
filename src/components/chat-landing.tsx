@@ -242,7 +242,7 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
     }
   }, [ensureActive, pushOp, finalizeActive, resolveApproval]);
 
-  const { isStreaming, submitPrompt, interrupt, storedSessionId, setStoredSessionId, sendApprovalResponse, sessionInfo, setSessionInfo, rpc, liveSessionId } = useHermesWS(handleEvent);
+  const { isStreaming, submitPrompt, interrupt, storedSessionId, setStoredSessionId, sendApprovalResponse, sessionInfo, setSessionInfo, rpc, liveSessionId, resetSession } = useHermesWS(handleEvent);
 
   const respondApproval = useCallback((reqId: string, choice: string) => {
     sendApprovalResponse(reqId, choice);
@@ -501,7 +501,7 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
 
   useEffect(() => {
     if (resetSignal > 0) {
-      setStoredSessionId(null);
+      resetSession();
       setMessages([]);
       setInput("");
       setAttachments([]);
@@ -509,7 +509,7 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
       activeIdRef.current = null;
       pendingOpsRef.current = [];
     }
-  }, [resetSignal, setStoredSessionId]);
+  }, [resetSignal, resetSession]);
 
   const hour = new Date().getHours();
   const greeting = hour < 5 ? "Working late" : hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
