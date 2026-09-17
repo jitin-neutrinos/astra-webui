@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
-import { ArrowUp, Square, AlertTriangle, RotateCcw, Maximize2, X } from "lucide-react";
+import { ArrowUp, Square, AlertTriangle, RotateCcw, Maximize2, X, Copy, Pencil, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useHermesWS } from "@/lib/hermes-ws";
 import type { EventPayload } from "@/lib/hermes-ws";
 import { normalizeMessages } from "@/lib/normalize-messages";
+import { copyText } from "@/lib/copy-text";
 import AITextLoading from "@/components/ui/ai-text-loading";
 import { getFileKind, } from "@/lib/session-files";
 import {
@@ -60,6 +61,8 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const reducedMotion = usePrefersReducedMotion();
 
+  const liveSidRef = useRef<string | null>(null);
+  const titledRef = useRef(false);
   const activeIdRef = useRef<string | null>(null);
   const pendingOpsRef = useRef<SegOp[]>([]);
   const opsTimerRef = useRef<number | null>(null);
@@ -253,6 +256,18 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
   }, [selectedSessionId, setStoredSessionId]);
 
   useEffect(() => {
+    if (activeIdRef.current != null) liveSidRef.current = storedSessionId;
+    if (storedSessionId && lastPromptRef.current && !titledRef.current) {
+      fetch(`/api/hx/sessions/${encodeURIComponent(storedSessionId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: lastPromptRef.current.split("\n")[0].slice(0, 48) }),
+      }).catch(() => {});
+      titledRef.current = true;
+    }
+  }, [storedSessionId]);
+
+  useEffect(() => {
     async function loadHistory() {
       if (!storedSessionId) { setMessages([]); return; }
       try {
@@ -261,7 +276,7 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
           if (res.status === 401) setErrorBanner("Unauthorized. Please log in.");
           else if (res.status === 503) setErrorBanner("Agent backend busy (503).");
           else setErrorBanner("Failed to load history.");
-          setMessages([]);
+          if (liveSidRef.current !== storedSessionId) setMessages([]);
           return;
         }
         const data = await res.json();
@@ -269,13 +284,30 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
         // persisted step data — so historical turns render as a single plain text
         // segment rather than fabricating tool/thinking blocks that never happened.
         const rows = normalizeMessages(data.messages || []);
-        setMessages(rows.map((r): ChatMsg => r.role === "user"
+        
+        const norm = (s: string) => s.replace(/\n\nAttached file: .*/g, "").replace(/\s+$/g, "");
+        const sameMsg = (live: ChatMsg, row: { role: string; content: string }) => {
+          if (live.isSysNote || live.role !== row.role) return false;
+          if (live.role === "user") return norm(live.content) === norm(row.content);
+          const t = live.segments.filter((s) => s.kind === "text").map((s) => s.text ?? "").join("\n\n");
+          return norm(t) === norm(row.content) && t !== "";
+        };
+        const toMsg = (r: any): ChatMsg => r.role === "user"
           ? { id: nextId(), role: "user", content: r.content }
-          : { id: nextId(), role: "assistant", isStreaming: false, segments: [{ id: nextId(), kind: "text", status: "done", text: r.content }] }));
+          : { id: nextId(), role: "assistant", isStreaming: false, segments: [{ id: nextId(), kind: "text", status: "done", text: r.content }] };
+
+        const sid = storedSessionId;
+        setMessages((live) => {
+          if (liveSidRef.current !== sid || live.length === 0) return rows.map(toMsg);
+          if (activeIdRef.current != null) return live;
+          let li = live.length - 1, ri = rows.length - 1;
+          while (li >= 0 && ri >= 0 && sameMsg(live[li], rows[ri])) { li--; ri--; }
+          return [...rows.slice(0, ri + 1).map(toMsg), ...live.slice(li + 1)];
+        });
         setErrorBanner("");
       } catch {
         setErrorBanner("Failed to load history.");
-        setMessages([]);
+        if (liveSidRef.current !== storedSessionId) setMessages([]);
       }
     }
     loadHistory();
@@ -504,6 +536,7 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
       setErrorBanner("");
       activeIdRef.current = null;
       pendingOpsRef.current = [];
+      titledRef.current = false;
     }
   }, [resetSignal, resetSession]);
 
@@ -557,7 +590,7 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
           </div>
         ) : (
           <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
-            {messages.map((m) => (
+            {messages.map((m, idx) => (
               <div key={m.id} className={m.isSysNote ? "chat-sys-note" : "flex items-start gap-3"}>
                 {m.isSysNote ? (
                   <>◈ {m.content}</>
@@ -591,6 +624,42 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
                       <AITextLoading texts={["Thinking...", "Working on it...", "Almost there..."]} />
                     </span>
                   ) : null}
+                  {!m.isSysNote && (m.role === "user" || !m.isStreaming) && (
+                    <div className="chat-actions">
+                      {m.role === "user" ? (
+                        <>
+                          <button type="button" aria-label="Copy message" title="Copy" disabled={!m.content}
+                            onClick={() => void copyText(m.content)}>
+                            <Copy />
+                          </button>
+                          {!isStreaming && (
+                            <button type="button" aria-label="Edit message" title="Edit"
+                              onClick={() => {
+                                setInput(m.content.replace(/\n\nAttached file: .*/g, ""));
+                                setMessages(p => p.slice(0, idx));
+                                setTimeout(() => taRef.current?.focus(), 0);
+                              }}>
+                              <Pencil />
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <button type="button" aria-label="Copy message" title="Copy"
+                            disabled={!m.segments.some((s) => s.kind === "text" && !!s.text)}
+                            onClick={() => void copyText(m.segments.filter((s) => s.kind === "text").map((s) => s.text ?? "").join("\n\n"))}>
+                            <Copy />
+                          </button>
+                          {!isStreaming && idx === messages.length - 1 && m.segments.length > 0 && !m.segments.some((s) => s.kind === "approval" && s.resolved == null) && (
+                            <button type="button" aria-label="Regenerate message" title="Regenerate"
+                              onClick={() => retry()}>
+                              <RotateCcw />
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
                 )}
               </div>
@@ -601,6 +670,14 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
 
       <div className="relative z-10 px-3 pb-3 lg:px-6 lg:pb-6">
         <div className="chat-composer mx-auto max-w-3xl">
+          {isStreaming && !atBottom && (
+            <button type="button" className="chat-jump" onClick={() => {
+              listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: reducedMotion ? "auto" : "smooth" });
+              setAtBottom(true);
+            }}>
+              <ChevronDown className="h-4 w-4" strokeWidth={1.5} /> Jump to latest
+            </button>
+          )}
           {slashOpen && slashMatches.length > 0 && (
             <div className="chat-menu chat-slash-menu" role="listbox" aria-label="Slash commands">
               <p className="chat-menu-label">TUI commands — work here too</p>
@@ -646,7 +723,7 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
             className="chat-composer-input"
           />
           <div className="chat-composer-bar">
-            <button type="button" className={cn("chat-chip", popout && "chat-chip-active")} disabled={isStreaming}
+            <button type="button" className={cn("chat-chip", "chat-popout-chip", popout && "chat-chip-active")} disabled={isStreaming}
               aria-pressed={popout} aria-label="Pop out composer" title="Pop out composer"
               onClick={() => { setPopout(!popout); setTimeout(() => popTaRef.current?.focus(), 60); }}>
               <Maximize2 className="h-3.5 w-3.5" strokeWidth={1.5} />
@@ -662,11 +739,6 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
               onPickEffort={onPickEffort}
               onRemoveAttachment={removeAttachment}
             />
-            {!isStreaming && lastPromptRef.current && (
-              <button type="button" onClick={retry} aria-label="Retry last message" title="Retry last message" className="chat-retry">
-                <RotateCcw className="h-3.5 w-3.5" strokeWidth={1.5} />
-              </button>
-            )}
             <span className="chat-composer-hint">Enter to send · Shift+Enter for newline</span>
             {isStreaming ? (
               <button
