@@ -106,6 +106,8 @@ export async function handleHxProxy(req, res) {
     const headers = { "Cookie": cookie };
     if (req.headers["content-type"]) headers["content-type"] = req.headers["content-type"];
     if (req.headers["content-length"]) headers["content-length"] = req.headers["content-length"];
+    // media streaming: forward Range so Hermes can answer 206 (video seeking needs it)
+    if (req.headers["range"]) headers["range"] = req.headers["range"];
 
     const proxyReq = httpRequest(`${HERMES_URL}${targetPath}`, {
       method: req.method,
