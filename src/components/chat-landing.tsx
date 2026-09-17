@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
-import { ArrowUp, Square, AlertTriangle, RotateCcw, PlayCircle, FileText } from "lucide-react";
+import { ArrowUp, Square, AlertTriangle, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useHermesWS } from "@/lib/hermes-ws";
 import type { EventPayload } from "@/lib/hermes-ws";
@@ -9,6 +9,7 @@ import AITextLoading from "@/components/ui/ai-text-loading";
 import { getFileKind, } from "@/lib/session-files";
 import {
   applySegmentOps, finalizeSegments, findNewestCollapsedToolSeg, expandKeyBlocked, TurnTimeline,
+  usePrefersReducedMotion, MediaCard,
   type Segment, type SegOp,
 } from "./chat-timeline";
 import { ComposerControls, type Attachment } from "./composer-controls";
@@ -35,17 +36,7 @@ const nextId = () => `m${++idSeq}-${Date.now()}`;
 
 const BATCH_MS = 40; // ~30-60ms batching window for both text deltas and step ops
 
-function usePrefersReducedMotion() {
-  const [reduced, setReduced] = useState(() =>
-    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const onChange = () => setReduced(mq.matches);
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
-  return reduced;
-}
+
 
 function textOf(payload: any): string {
   return payload?.delta?.text ?? payload?.text ?? payload?.rendered ?? "";
@@ -581,41 +572,7 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
                     <div>
                       {m.files && m.files.length > 0 && (
                         <div className="mb-2 flex flex-wrap gap-2">
-                          {m.files.map(f => {
-                            const kind = getFileKind(f.name);
-                            const enc = encodeURIComponent(f.path);
-                            return (
-                              <div key={f.path} className="overflow-hidden rounded-lg border border-white/10 bg-white/5 text-xs text-slate-300">
-                                {kind === "image" ? (
-                                  <a href={`/api/hx/files/download?path=${enc}`} target="_blank" rel="noreferrer" title="Open full image" className="block">
-                                    <img src={`/api/hx/media?path=${enc}`} alt={f.name} loading="lazy" className="max-h-44 max-w-[240px] object-cover" />
-                                  </a>
-                                ) : kind === "video" ? (
-                                  <video src={`/api/hx/files/stream?path=${enc}`} controls preload="metadata" className="max-h-44 max-w-[280px]" />
-                                ) : kind === "audio" ? (
-                                  <div className="flex w-56 items-center gap-2 p-2">
-                                    <PlayCircle className="h-4 w-4 shrink-0 text-cyanx" />
-                                    <audio src={`/api/hx/files/stream?path=${enc}`} controls preload="metadata" className="h-8 w-full" />
-                                  </div>
-                                ) : (
-                                  <a href={`/api/hx/files/download?path=${enc}`} target="_blank" rel="noreferrer"
-                                    className="flex max-w-[220px] items-center gap-2 p-2 pr-3 hover:bg-white/5" title="Download">
-                                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-black/20 text-slate-400">
-                                      <FileText className="h-3 w-3" />
-                                    </div>
-                                    <span className="truncate">{f.name}</span>
-                                  </a>
-                                )}
-                                {(kind === "image" || kind === "video" || kind === "audio") && (
-                                  <div className="flex items-center justify-between gap-2 px-2 py-1">
-                                    <span className="truncate text-[10px] text-slate-500">{f.name}</span>
-                                    <a href={`/api/hx/files/download?path=${enc}`} target="_blank" rel="noreferrer"
-                                      className="shrink-0 font-mono text-[10px] text-cyanx hover:underline">download</a>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
+                          {m.files.map(f => <MediaCard key={f.path} path={f.path} name={f.name} />)}
                         </div>
                       )}
                       <div className="min-w-0 whitespace-pre-wrap rounded-2xl bg-white/[0.06] px-4 py-3 text-sm leading-relaxed text-slate-200">

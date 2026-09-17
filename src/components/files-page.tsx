@@ -37,7 +37,7 @@ function FileRow({ entry }: { entry: FileEntry }) {
     if (kind === "image") {
       return (
         <a href={`/api/hx/files/download?path=${encodeURIComponent(entry.path)}`} target="_blank" rel="noreferrer" className="block w-12 h-12 rounded bg-black/50 overflow-hidden shrink-0 border border-white/10 relative group">
-          <img src={`/api/hx/media?path=${encodeURIComponent(entry.path)}`} alt={entry.name} onError={() => setError(true)} className="w-full h-full object-cover" />
+          <img src={`/api/hx/files/download?path=${encodeURIComponent(entry.path)}`} alt={entry.name} onError={() => setError(true)} className="w-full h-full object-cover" />
           <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
             <FileImage className="w-4 h-4 text-white" />
           </div>

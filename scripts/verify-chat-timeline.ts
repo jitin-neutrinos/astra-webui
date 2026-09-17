@@ -143,4 +143,16 @@ assert.equal(expandKeyBlocked(true, false, "o", "INPUT"), true, "Ctrl+O inside a
 assert.equal(expandKeyBlocked(false, false, "o", "DIV"), true, "plain O without modifier must not expand");
 assert.equal(expandKeyBlocked(true, false, "x", "DIV"), true, "other Ctrl+<key> combos must not expand");
 
-console.log("verify-chat-timeline: 14/14 checks passed");
+import { mediaPaths } from "../src/components/chat-timeline.tsx";
+
+// 15. Media paths regex check.
+assert.deepEqual(
+  mediaPaths("see ~/.hermes/images/a.png and /home/x/uploads/b.png plus /home/x/uploads/b.png again, ~/c.mp4"),
+  ["~/.hermes/images/a.png","/home/x/uploads/b.png","~/c.mp4"]
+);
+assert.deepEqual(
+  mediaPaths("image at https://cdn.example.com/x.png end"),
+  []
+);
+
+console.log("verify-chat-timeline: 15/15 checks passed");
