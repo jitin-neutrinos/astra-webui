@@ -185,6 +185,8 @@ body { background: var(--color-void); }
 
 .chat-md p { margin-bottom: 0.75em; }
 .chat-md p:last-child { margin-bottom: 0; }
+.chat-text-seg .chat-md { display: inline; }
+.chat-text-seg .chat-md > p:last-child { display: inline; }
 .chat-md h1 { font: 600 20px/1.3 var(--font-sans); margin: 1em 0 0.5em; }
 .chat-md h2 { font: 600 17px/1.3 var(--font-sans); color: var(--color-cyanx); margin: 1em 0 0.5em; }
 .chat-md h3 { font: 600 15px/1.3 var(--font-sans); margin: 1em 0 0.5em; }
