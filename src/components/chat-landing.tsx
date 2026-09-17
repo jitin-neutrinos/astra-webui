@@ -534,7 +534,7 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
         </div>
       )}
 
-      <header className={cn("relative z-10 flex items-center justify-between border-b border-white/[0.07] px-6 py-3", errorBanner && "mt-7")}>
+      <header className={cn("relative z-10 flex items-center justify-between border-b border-white/[0.07] px-3 py-3 lg:px-6", errorBanner && "mt-7")}>
         <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-slate-500">
           {empty ? "new session" : `session // ${messages.length} msgs`}
         </span>
@@ -637,7 +637,7 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
         )}
       </div>
 
-      <div className="relative z-10 px-6 pb-6">
+      <div className="relative z-10 px-3 pb-3 lg:px-6 lg:pb-6">
         <div className="chat-composer mx-auto max-w-3xl">
           {slashOpen && slashMatches.length > 0 && (
             <div className="chat-menu chat-slash-menu" role="listbox" aria-label="Slash commands">

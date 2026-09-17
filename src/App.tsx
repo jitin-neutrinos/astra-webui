@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import type { FormEvent, ReactNode } from "react";
 import {
+  Menu,
   MessageSquare,
   Plus,
   LogOut,
@@ -181,30 +182,64 @@ function Shell({ onLogout }: { onLogout: () => void }) {
   });
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const burgerRef = useRef<HTMLButtonElement>(null);
+  const closeDrawer = () => { setDrawerOpen(false); burgerRef.current?.focus(); };
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") closeDrawer(); };
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const onMq = () => { if (mq.matches) setDrawerOpen(false); };
+    document.addEventListener("keydown", onKey);
+    mq.addEventListener("change", onMq);
+    return () => { document.removeEventListener("keydown", onKey); mq.removeEventListener("change", onMq); };
+  }, [drawerOpen]);
+
   return (
-    <div className="app-shell flex w-full overflow-hidden bg-void font-sans text-brandtext">
-      <Sidebar
-        activeView={view}
-        collapsed={sidebarCollapsed}
-        onToggleCollapse={toggleSidebar}
-        onLogout={onLogout} 
-        onNewChat={() => { setResetSignal(r => r + 1); setView('chat'); setSelectedSessionId(null); }} 
-        onOpenChats={() => setView('chats')} 
-        onOpenAstra={() => setView('chat')} 
-        onOpenFiles={() => setView('files')}
-      />
-      {view === 'chat' ? (
-        <ChatLanding resetSignal={resetSignal} selectedSessionId={selectedSessionId} />
-      ) : view === 'chats' ? (
-        <ChatsPanel onBack={() => setView('chat')} onSelect={(id) => { setSelectedSessionId(id); setView('chat'); }} />
-      ) : (
-        <FilesPage onBack={() => setView('chat')} />
+    <div className="app-shell flex w-full flex-col overflow-hidden bg-void font-sans text-brandtext">
+      {/* mobile top bar */}
+      <div className="flex shrink-0 items-center gap-2 border-b border-white/[0.07] bg-midnight/60 px-3 py-2 lg:hidden">
+        <button ref={burgerRef} type="button" onClick={() => setDrawerOpen(true)}
+          aria-label="Open navigation" aria-expanded={drawerOpen} aria-controls="astra-sidebar"
+          className="-m-1 flex h-11 w-11 items-center justify-center rounded-lg p-1 text-slate-300 hover:bg-white/5 hover:text-cyanx">
+          <Menu className="h-5 w-5" strokeWidth={1.5} />
+        </button>
+        <img src="/astra-logo.png" alt="" aria-hidden="true" className="h-6 w-6 rounded-lg object-cover" />
+        <p className="font-display text-sm tracking-tight text-brandtext">Astra</p>
+      </div>
+
+      {drawerOpen && (
+        <div onClick={closeDrawer} aria-hidden="true"
+          className="fixed inset-0 z-40 bg-void/70 backdrop-blur-sm lg:hidden" />
       )}
+
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <Sidebar
+          activeView={view}
+          collapsed={sidebarCollapsed && !drawerOpen}
+          drawerOpen={drawerOpen}
+          onCloseDrawer={closeDrawer}
+          onToggleCollapse={toggleSidebar}
+          onLogout={() => { closeDrawer(); onLogout(); }} 
+          onNewChat={() => { closeDrawer(); setResetSignal(r => r + 1); setView('chat'); setSelectedSessionId(null); }} 
+          onOpenChats={() => { closeDrawer(); setView('chats'); }} 
+          onOpenAstra={() => { closeDrawer(); setView('chat'); }} 
+          onOpenFiles={() => { closeDrawer(); setView('files'); }}
+        />
+        {view === 'chat' ? (
+          <ChatLanding resetSignal={resetSignal} selectedSessionId={selectedSessionId} />
+        ) : view === 'chats' ? (
+          <ChatsPanel onBack={() => setView('chat')} onSelect={(id) => { setSelectedSessionId(id); setView('chat'); }} />
+        ) : (
+          <FilesPage onBack={() => setView('chat')} />
+        )}
+      </div>
     </div>
   );
 }
 
-function Sidebar({ activeView, collapsed, onToggleCollapse, onLogout, onNewChat, onOpenChats, onOpenAstra, onOpenFiles }: { activeView: 'chat' | 'chats' | 'files'; collapsed: boolean; onToggleCollapse: () => void; onLogout: () => void; onNewChat: () => void; onOpenChats: () => void; onOpenAstra: () => void; onOpenFiles: () => void; }) {
+function Sidebar({ activeView, collapsed, drawerOpen, onCloseDrawer, onToggleCollapse, onLogout, onNewChat, onOpenChats, onOpenAstra, onOpenFiles }: { activeView: 'chat' | 'chats' | 'files'; collapsed: boolean; drawerOpen: boolean; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onNewChat: () => void; onOpenChats: () => void; onOpenAstra: () => void; onOpenFiles: () => void; }) {
   const groups: {
     label: string;
     items: { name: string; icon: ReactNode; badge?: string; onClick?: () => void }[];
@@ -243,16 +278,22 @@ function Sidebar({ activeView, collapsed, onToggleCollapse, onLogout, onNewChat,
   ];
 
   return (
-    <aside className={cn(
-      "flex h-full shrink-0 flex-col border-r border-white/[0.07] bg-midnight/60 transition-[width] duration-150",
-      collapsed ? "w-14" : "w-60",
-    )}>
+    <aside id="astra-sidebar" data-open={String(drawerOpen)}
+      className={cn(
+        "flex flex-col border-r border-white/[0.07] bg-midnight/60",
+        // < lg: overlay drawer
+        "fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] transition-transform duration-200 ease-out motion-reduce:transition-none",
+        drawerOpen ? "translate-x-0" : "-translate-x-full",
+        // >= lg: exact current inline sidebar, untouched
+        "lg:static lg:z-auto lg:h-full lg:w-60 lg:max-w-none lg:shrink-0 lg:translate-x-0 lg:transition-[width] lg:duration-150",
+        collapsed && "lg:w-14",
+      )}>
       <div className={cn("flex items-center pb-3 pt-5", collapsed ? "justify-center px-0" : "gap-2.5 px-5")}>
-        <button type="button" onClick={onToggleCollapse}
+        <button type="button" onClick={() => (drawerOpen ? onCloseDrawer() : onToggleCollapse())}
           aria-expanded={!collapsed}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="rounded-lg p-1 text-slate-400 transition-colors hover:bg-white/5 hover:text-cyanx">
+          aria-label={drawerOpen ? "Close navigation" : collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={drawerOpen ? "Close navigation" : collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className="flex h-11 w-11 items-center justify-center rounded-lg p-1 lg:h-auto lg:w-auto lg:p-1 text-slate-400 transition-colors hover:bg-white/5 hover:text-cyanx">
           {collapsed
             ? <PanelLeftOpen className="h-5 w-5" strokeWidth={1.5} />
             : <PanelLeftClose className="h-5 w-5" strokeWidth={1.5} />}
@@ -288,7 +329,7 @@ function Sidebar({ activeView, collapsed, onToggleCollapse, onLogout, onNewChat,
                 title={collapsed ? item.name : undefined}
                 className={cn(
                   "flex w-full items-center rounded-lg text-left text-sm transition-colors",
-                  collapsed ? "h-11 justify-center px-0" : "gap-2.5 px-3 py-1.5",
+                  collapsed ? "h-11 justify-center px-0" : "min-h-[44px] lg:min-h-0 py-2.5 lg:py-1.5 gap-2.5 px-3",
                   active
                     ? "bg-cyanx/10 text-cyanx hover:bg-cyanx/15"
                     : "text-slate-300 hover:bg-white/5 hover:text-white"
@@ -310,7 +351,7 @@ function Sidebar({ activeView, collapsed, onToggleCollapse, onLogout, onNewChat,
           title={collapsed ? "Logout" : undefined}
           className={cn(
             "flex w-full items-center rounded-lg text-sm text-slate-400 transition-colors hover:bg-redx/10 hover:text-redx",
-            collapsed ? "h-11 justify-center px-0" : "gap-2.5 px-3 py-2 text-left",
+            collapsed ? "h-11 justify-center px-0" : "min-h-[44px] lg:min-h-0 py-2.5 lg:py-1.5 gap-2.5 px-3 text-left",
           )}>
           <LogOut className="h-4 w-4" strokeWidth={1.5} />
           {!collapsed && "Logout"}

@@ -77,7 +77,7 @@ export function ChatsPanel({ onBack, onSelect }: { onBack: () => void; onSelect:
   return (
     <div className="flex h-full flex-col">
       <div className="p-4 flex items-center gap-2 border-b border-white/[0.07]">
-        <button onClick={onBack} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors">
+        <button onClick={onBack} className="nav-back-btn p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors">
           <ArrowLeft className="w-4 h-4" />
         </button>
         <span className="font-mono text-xs uppercase tracking-widest text-slate-300">Chats</span>

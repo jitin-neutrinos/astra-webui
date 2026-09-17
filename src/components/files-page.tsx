@@ -166,7 +166,7 @@ export function FilesPage({ onBack }: { onBack: () => void }) {
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-midnight">
       <header className="flex items-center gap-3 border-b border-white/[0.07] px-6 py-4">
-        <button type="button" onClick={onBack} className="p-1.5 -ml-1.5 rounded hover:bg-white/5 text-slate-400 transition" aria-label="Back">
+        <button type="button" onClick={onBack} className="nav-back-btn p-1.5 -ml-1.5 rounded hover:bg-white/5 text-slate-400 transition" aria-label="Back">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h2 className="text-lg font-medium text-slate-200">Files</h2>
