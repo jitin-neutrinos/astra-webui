@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo, type ReactNode } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { Check, ChevronDown, ChevronRight, Loader2, TriangleAlert, PlayCircle, FileText } from "lucide-react";
 import { cn } from "../lib/utils";
 import { getFileKind } from "../lib/session-files";
@@ -9,44 +9,26 @@ import { turnIsRunning } from "../lib/chat-segments";
 export type { SegKind, Segment, SegOp } from "../lib/chat-segments";
 export { applySegmentOps, finalizeSegments, findNewestCollapsedToolSeg, expandKeyBlocked, turnIsRunning } from "../lib/chat-segments";
 
-// ---- minimal markdown: bold / inline code / fenced code only ------------
-// No library (none installed). Partial trailing `**`/``` never render raw —
-// unmatched markers stay literal text, a trailing open fence renders inside
-// a stable <pre> so streaming never reflows or breaks layout.
+import { Marked } from "marked";
+import DOMPurify from "dompurify";
+import { safeTail } from "../lib/safe-tail";
 
-function renderInline(text: string, keyBase: string): ReactNode[] {
-  const nodes: ReactNode[] = [];
-  const re = /\*\*([^*]+)\*\*|`([^`]+)`/g;
-  let last = 0, m: RegExpExecArray | null, i = 0;
-  while ((m = re.exec(text))) {
-    if (m.index > last) nodes.push(text.slice(last, m.index));
-    if (m[1] !== undefined) nodes.push(<strong key={`${keyBase}b${i++}`}>{m[1]}</strong>);
-    else nodes.push(<code key={`${keyBase}c${i++}`} className="chat-inline-code">{m[2]}</code>);
-    last = m.index + m[0].length;
-  }
-  if (last < text.length) nodes.push(text.slice(last));
-  return nodes;
-}
+const md = new Marked({ gfm: true, breaks: true });
+let purifyHooked = false;
 
-function MiniMarkdown({ text }: { text: string }) {
-  const nodes: ReactNode[] = [];
-  const fenceRe = /```([\w+-]*)\n([\s\S]*?)```/g;
-  let last = 0, m: RegExpExecArray | null, key = 0;
-  while ((m = fenceRe.exec(text))) {
-    if (m.index > last) nodes.push(...renderInline(text.slice(last, m.index), `s${key}-`));
-    nodes.push(<pre key={`f${key++}`} className="chat-code-block"><code>{m[2]}</code></pre>);
-    last = m.index + m[0].length;
-  }
-  const rest = text.slice(last);
-  const partial = rest.match(/```([\w+-]*)\n?([\s\S]*)$/);
-  if (partial) {
-    const before = rest.slice(0, partial.index);
-    if (before) nodes.push(...renderInline(before, `p${key}-`));
-    nodes.push(<pre key={`fp${key++}`} className="chat-code-block chat-code-pending"><code>{partial[2]}</code></pre>);
-  } else if (rest) {
-    nodes.push(...renderInline(rest, `r${key}-`));
-  }
-  return <>{nodes}</>;
+function RichText({ text }: { text: string }) {
+  const html = useMemo(() => {
+    if (!purifyHooked) {
+      DOMPurify.addHook("afterSanitizeAttributes", (n) => {
+        if (n.tagName === "A") { n.setAttribute("target", "_blank"); n.setAttribute("rel", "noopener noreferrer"); }
+      });
+      purifyHooked = true;
+    }
+    return DOMPurify.sanitize(md.parse(text, { async: false }) as string, {
+      ADD_ATTR: ["target"], FORBID_TAGS: ["style", "form"], FORBID_ATTR: ["srcset"],
+    });
+  }, [text]);
+  return <div className="chat-md" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 // ---- segment rows ---------------------------------------------------------
@@ -159,7 +141,8 @@ function useReveal(text: string, done: boolean, instant: boolean) {
 
 export const MEDIA_RE = /(?<![\w:])(?<!\/)(?:~|\/)[\w./-]*\.(?:png|jpe?g|gif|webp|mp4|webm|mov|mkv|avi|mp3|wav|ogg|flac|m4a|opus)\b/gi;
 export function mediaPaths(text: string) {
-  return [...new Set(text.match(MEDIA_RE) ?? [])];
+  // MEDIA:<path> markers carry a colon before the path — the URL guard would reject them, so strip the marker first
+  return [...new Set(text.replace(/\bMEDIA:\s*(?=[~/])/g, "").match(MEDIA_RE) ?? [])];
 }
 
 export function MediaCard({ path, name }: { path: string; name: string }) {
@@ -198,16 +181,21 @@ export function MediaCard({ path, name }: { path: string; name: string }) {
   );
 }
 
+export function stripMediaLines(t: string) {
+  return t.replace(/^\s*MEDIA:\s*\S+\s*$/gm, "").trim();
+}
+
 function TextRow({ seg }: { seg: Segment }) {
   const text = seg.text ?? "";
   const instant = usePrefersReducedMotion();
   const n = useReveal(text, seg.status === "done", instant);
-  const shown = text.slice(0, n);
+  const shown = useMemo(() => safeTail(text.slice(0, n)), [text, n]);
   const paths = useMemo(() => mediaPaths(text), [text]);
+  const display = useMemo(() => stripMediaLines(seg.status === "done" && n >= text.length ? text : shown), [seg.status, text, n, shown]);
   if (!text) return null;
   return (
-    <div className="chat-text-seg whitespace-pre-wrap">
-      <MiniMarkdown text={shown} />
+    <div className="chat-text-seg">
+      {display && <RichText text={display} />}
       {!instant && (seg.status === "run" || n < text.length) && <span className="chat-caret" aria-hidden="true" />}
       {n >= text.length && paths.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-2">
