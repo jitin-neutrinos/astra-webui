@@ -333,7 +333,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
         </button>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-3 pb-4">
+      <nav className="sidebar-scroll flex-1 overflow-y-auto px-3 pb-4">
         {groups.map((group) => (
           <div key={group.label} className="mb-4">
             {!collapsed && (

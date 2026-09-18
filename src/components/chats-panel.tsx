@@ -108,7 +108,7 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+      <div className="sidebar-scroll flex-1 overflow-y-auto p-2 space-y-1">
         {loading && sessions.length === 0 ? (
           <div className="p-4 text-center font-mono text-xs text-slate-500">Loading...</div>
         ) : error ? (

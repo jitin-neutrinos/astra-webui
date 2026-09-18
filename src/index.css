@@ -98,6 +98,19 @@ body { background: var(--color-void); }
 /* ---- chat replica (ported from astra.css / ChatPageV2, retinted) ---- */
 .chat-scroll { overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(248,250,252,.14) transparent; }
 
+/* Minimal brand-tinted scrollbar for the nav rail and chats list — thin, transparent
+   track, cyanx thumb at low opacity so it reads as a hairline, not chrome. */
+.sidebar-scroll { scrollbar-width: thin; scrollbar-color: rgba(34,211,238,.2) transparent; }
+.sidebar-scroll::-webkit-scrollbar { width: 6px; }
+.sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background-color: rgba(34,211,238,.2);
+  border-radius: 9999px;
+  border: 1.5px solid transparent;
+  background-clip: padding-box;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb:hover { background-color: rgba(34,211,238,.4); }
+
 .chat-welcome { max-width: 640px; margin: 0 auto; padding: 8vh 24px 24px; display: flex; flex-direction: column; align-items: flex-start; }
 .chat-welcome-glyph { width: 44px; height: 44px; border-radius: 9999px; object-fit: cover; border: 1px solid rgba(34,211,238,.35); box-shadow: 0 0 18px rgba(34,211,238,.25); margin-bottom: 22px; }
 .chat-welcome-title { font: 500 34px/1.2 var(--font-display); color: var(--color-brandtext); margin: 0 0 6px; }
