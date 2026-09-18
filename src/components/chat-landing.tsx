@@ -284,6 +284,8 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
         // persisted step data — so historical turns render as a single plain text
         // segment rather than fabricating tool/thinking blocks that never happened.
         const rows = normalizeMessages(data.messages || []);
+        // Restore any saved input draft for this session
+        try { const d = sessionStorage.getItem("draft_input_" + (storedSessionId || "global")); if (d) { setInput(d); sessionStorage.removeItem("draft_input_" + (storedSessionId || "global")); } } catch { }
         
         const norm = (s: string) => s.replace(/\n\nAttached file: .*/g, "").replace(/\s+$/g, "");
         const sameMsg = (live: ChatMsg, row: { role: string; content: string }) => {
@@ -330,6 +332,7 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
     }
 
     lastPromptRef.current = finalText;
+    try { sessionStorage.setItem("draft_input_" + (liveSessionId || "global"), input); } catch { }
     setInput("");
     setSlashOpen(false);
     setAttachments([]);

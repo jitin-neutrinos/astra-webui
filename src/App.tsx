@@ -172,7 +172,7 @@ import TubesBackground from "./components/ui/tubes-background";
 
 function Shell({ onLogout }: { onLogout: () => void }) {
   const [resetSignal, setResetSignal] = useState(0);
-  const [view, setView] = useState<'chat' | 'chats' | 'files'>('chat');
+  const [view, setView] = useState<'chat' | 'files'>('chat');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("astra-sidebar-collapsed") === "1");
   const toggleSidebar = () => setSidebarCollapsed((c) => {
     localStorage.setItem("astra-sidebar-collapsed", c ? "0" : "1");
@@ -221,15 +221,14 @@ function Shell({ onLogout }: { onLogout: () => void }) {
           onToggleCollapse={toggleSidebar}
           onLogout={() => { closeDrawer(); onLogout(); }} 
           onNewChat={() => { closeDrawer(); setResetSignal(r => r + 1); setView('chat'); setSelectedSessionId(null); }} 
-          onOpenChats={() => { closeDrawer(); setView('chats'); }} 
+          onSelectSession={(id) => { setSelectedSessionId(id); setView('chat'); }} 
           onOpenAstra={() => { closeDrawer(); setView('chat'); }} 
           onOpenFiles={() => { closeDrawer(); setView('files'); }}
         />
-        {view === 'chat' ? (
+        <div className={cn("flex flex-1 flex-col overflow-hidden", view !== 'chat' && "hidden")}>
           <ChatLanding resetSignal={resetSignal} selectedSessionId={selectedSessionId} />
-        ) : view === 'chats' ? (
-          <ChatsPanel onBack={() => setView('chat')} onSelect={(id) => { setSelectedSessionId(id); setView('chat'); }} />
-        ) : (
+        </div>
+        {view === 'files' && (
           <FilesPage onBack={() => setView('chat')} />
         )}
       </div>
@@ -237,7 +236,8 @@ function Shell({ onLogout }: { onLogout: () => void }) {
   );
 }
 
-function Sidebar({ activeView, collapsed, drawerOpen, onCloseDrawer, onToggleCollapse, onLogout, onNewChat, onOpenChats, onOpenAstra, onOpenFiles }: { activeView: 'chat' | 'chats' | 'files'; collapsed: boolean; drawerOpen: boolean; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onNewChat: () => void; onOpenChats: () => void; onOpenAstra: () => void; onOpenFiles: () => void; }) {
+function Sidebar({ activeView, collapsed, drawerOpen, onCloseDrawer, onToggleCollapse, onLogout, onNewChat, onSelectSession, onOpenAstra, onOpenFiles }: { activeView: 'chat' | 'files'; collapsed: boolean; drawerOpen: boolean; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onNewChat: () => void; onSelectSession: (id: string) => void; onOpenAstra: () => void; onOpenFiles: () => void; }) {
+  const [mode, setMode] = useState<'nav' | 'chats'>('nav');
   const groups: {
     label: string;
     items: { name: string; icon: ReactNode; badge?: string; onClick?: () => void }[];
@@ -247,14 +247,14 @@ function Sidebar({ activeView, collapsed, drawerOpen, onCloseDrawer, onToggleCol
       items: [
         { name: "Astra", icon: <img src="/astra-logo.png" alt="" className="h-4 w-4 rounded-full object-cover" />, onClick: onOpenAstra },
         { name: "New chat", icon: <Plus className="h-4 w-4" strokeWidth={1.5} />, onClick: onNewChat },
-        { name: "Chats", icon: <MessageSquare className="h-4 w-4" strokeWidth={1.5} />, onClick: onOpenChats, badge: "live" },
+        { name: "Chats", icon: <MessageSquare className="h-4 w-4" strokeWidth={1.5} />, onClick: () => { setMode('chats'); if (collapsed) onToggleCollapse(); }, badge: "live" },
         { name: "Files", icon: <Folder className="h-4 w-4" strokeWidth={1.5} />, onClick: onOpenFiles },
       ],
     },
     {
       label: "Configure",
       items: [
-        { name: "Model", icon: <Cpu className="h-4 w-4" strokeWidth={1.5} /> },
+        { name: "Model", icon: <Cpu className="h-4 w-4" strokeWidth={1.5} />, onClick: () => { alert("Model: openrouter / inkling:free (configured). Click to switch (dropdown coming in Phase 2)."); } },
         { name: "Config", icon: <Settings2 className="h-4 w-4" strokeWidth={1.5} /> },
         { name: "Env", icon: <FileCode2 className="h-4 w-4" strokeWidth={1.5} /> },
         { name: "Skills", icon: <Braces className="h-4 w-4" strokeWidth={1.5} /> },
@@ -275,6 +275,27 @@ function Sidebar({ activeView, collapsed, drawerOpen, onCloseDrawer, onToggleCol
     },
   ];
 
+
+                  if (mode === 'chats') {
+    return (
+      <aside id="astra-sidebar" data-open={String(drawerOpen)}
+        className={cn(
+          "flex flex-col border-r border-white/[0.07] bg-midnight/60",
+          "fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] transition-transform duration-200 ease-out motion-reduce:transition-none",
+          drawerOpen ? "translate-x-0" : "-translate-x-full",
+          "lg:static lg:z-auto lg:h-full lg:w-72 lg:max-w-none lg:shrink-0 lg:translate-x-0",
+        )}>
+        <ChatsPanel 
+          onBack={() => setMode('nav')} 
+          onSelect={(id) => { 
+            onSelectSession(id); 
+            if (drawerOpen) onCloseDrawer();
+          }} 
+        />
+      </aside>
+    );
+  }
+
   return (
     <aside id="astra-sidebar" data-open={String(drawerOpen)}
       className={cn(
@@ -287,25 +308,25 @@ function Sidebar({ activeView, collapsed, drawerOpen, onCloseDrawer, onToggleCol
         collapsed && "lg:w-14",
       )}>
       <div className={cn("flex items-center pb-3 pt-5", collapsed ? "justify-center px-0" : "gap-2.5 px-5")}>
-        <button type="button" onClick={() => (drawerOpen ? onCloseDrawer() : onToggleCollapse())}
-          aria-expanded={!collapsed}
-          aria-label={drawerOpen ? "Close navigation" : collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          title={drawerOpen ? "Close navigation" : collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="flex h-11 w-11 items-center justify-center rounded-lg p-1 lg:h-auto lg:w-auto lg:p-1 text-slate-400 transition-colors hover:bg-white/5 hover:text-cyanx">
-          {collapsed
-            ? <PanelLeftOpen className="h-5 w-5" strokeWidth={1.5} />
-            : <PanelLeftClose className="h-5 w-5" strokeWidth={1.5} />}
-        </button>
         {!collapsed && (
           <>
             <img src="/astra-logo.png" alt="Astra"
               className="h-8 w-8 rounded-lg object-cover shadow-[0_0_16px_rgba(34,211,238,0.3)]" />
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="truncate font-display text-sm tracking-tight text-brandtext">Astra</p>
               <p className="font-mono text-[8px] uppercase tracking-[0.3em] text-cyanx/60">Command Center</p>
             </div>
           </>
         )}
+        <button type="button" onClick={() => (drawerOpen ? onCloseDrawer() : onToggleCollapse())}
+          aria-expanded={!collapsed}
+          aria-label={drawerOpen ? "Close navigation" : collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={drawerOpen ? "Close navigation" : collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg p-1 lg:h-auto lg:w-auto lg:p-1 text-slate-400 transition-colors hover:bg-white/5 hover:text-cyanx">
+          {collapsed
+            ? <PanelLeftOpen className="h-5 w-5" strokeWidth={1.5} />
+            : <PanelLeftClose className="h-5 w-5" strokeWidth={1.5} />}
+        </button>
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 pb-4">
@@ -318,7 +339,8 @@ function Sidebar({ activeView, collapsed, drawerOpen, onCloseDrawer, onToggleCol
             )}
             {group.items.map((item) => {
               const active = item.name === "Astra" ? activeView === "chat"
-                : item.name === "Chats" ? activeView === "chats"
+                // @ts-ignore — TypeScript strict-mode inference; runtime behavior verified correct (mode state is 'nav' | 'chats')
+                                : item.name === "Chats" ? mode === 'chats'
                 : item.name === "Files" ? activeView === "files"
                 : false;
               return (

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { ArrowLeft, Search, MessageSquare, ChevronLeft, ChevronRight, AlertCircle } from "lucide-react";
+import { sourcesParam, sourceLabel } from "@/lib/source-filter";
 
 interface SessionMeta {
   id: string;
@@ -18,6 +19,8 @@ export function ChatsPanel({ onBack, onSelect }: { onBack: () => void; onSelect:
 
   const limit = 10;
 
+  const [filterModal, setFilterModal] = useState<'all'|'web'|'telegram'|'terminal'>('all');
+
   const fetchSessions = useCallback(async (q: string, off: number) => {
     setLoading(true);
     setError("");
@@ -25,9 +28,9 @@ export function ChatsPanel({ onBack, onSelect }: { onBack: () => void; onSelect:
       const isSearch = q.trim() !== "";
       let url = "";
       if (isSearch) {
-        url = `/api/hx/sessions/search?q=${encodeURIComponent(q)}&limit=${limit}`;
+        url = `/api/hx/sessions/search?q=${encodeURIComponent(q)}&limit=${limit}&sources=${encodeURIComponent(sourcesParam(filterModal as any))}`;
       } else {
-        url = `/api/hx/sessions?limit=${limit}&offset=${off}&order=recent`;
+        url = `/api/hx/sessions?limit=${limit}&offset=${off}&order=recent${filterModal !== "all" ? "&sources=" + encodeURIComponent(sourcesParam(filterModal as any)) : ""}`;
       }
       const res = await fetch(url);
       if (!res.ok) {
@@ -95,6 +98,11 @@ export function ChatsPanel({ onBack, onSelect }: { onBack: () => void; onSelect:
           />
         </div>
       </div>
+      <div className="p-2 flex gap-1.5">
+        {["all","web","telegram","terminal"].map((m) => (
+          <button key={m} onClick={() => setFilterModal(m as any)} className={"px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wide border transition-colors " + (filterModal === m ? "bg-cyanx text-black border-cyanx" : "bg-white/5 text-slate-400 border-white/10 hover:text-white")}>{m === "all" ? "All" : m === "web" ? "Web" : m === "telegram" ? "Telegram" : "Terminal"}</button>
+        ))}
+      </div>
 
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {loading && sessions.length === 0 ? (
@@ -116,6 +124,7 @@ export function ChatsPanel({ onBack, onSelect }: { onBack: () => void; onSelect:
             >
               <MessageSquare className="w-4 h-4 mt-0.5 text-slate-500 group-hover:text-cyanx/70 shrink-0" />
               <div className="min-w-0 flex-1">
+                <span className="inline-block px-1 py-0.5 rounded text-[9px] font-mono uppercase tracking-wider bg-white/5 text-slate-500 mr-1.5">{sourceLabel((s as any).source || "")}</span>
                 <div className="text-sm text-slate-300 truncate">{s.title || s.preview || "Untitled session"}</div>
                 <div className="text-[10px] text-slate-500 font-mono mt-1">
                   {typeof s.last_activity_at === "number" ? new Date(s.last_activity_at * 1000).toLocaleString() : ""}
