@@ -9,7 +9,7 @@ interface SessionMeta {
   last_activity_at?: number;
 }
 
-export function ChatsPanel({ onBack, onSelect }: { onBack: () => void; onSelect: (id: string) => void }) {
+export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () => void; onSelect: (id: string) => void; activeSessionId?: string | null }) {
   const [query, setQuery] = useState("");
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
   const [total, setTotal] = useState(0);
@@ -120,13 +120,17 @@ export function ChatsPanel({ onBack, onSelect }: { onBack: () => void; onSelect:
         ) : sessions.length === 0 ? (
           <div className="p-4 text-center font-mono text-xs text-slate-500">No sessions found.</div>
         ) : (
-          sessions.map(s => (
+          sessions.map(s => {
+            const rowId = (s as any).session_id || s.id;
+            const isActive = !!activeSessionId && rowId === activeSessionId;
+            return (
             <button
               key={s.id}
-              onClick={() => onSelect((s as any).session_id || s.id)}
-              className="w-full flex items-start gap-3 p-2.5 rounded-lg text-left hover:bg-white/5 transition-colors group"
+              onClick={() => onSelect(rowId)}
+              aria-current={isActive ? "true" : undefined}
+              className={"w-full flex items-start gap-3 p-2.5 rounded-lg text-left transition-colors group " + (isActive ? "bg-cyanx/10 border border-cyanx/30" : "border border-transparent hover:bg-white/5")}
             >
-              <MessageSquare className="w-4 h-4 mt-0.5 text-slate-500 group-hover:text-cyanx/70 shrink-0" />
+              <MessageSquare className={"w-4 h-4 mt-0.5 shrink-0 " + (isActive ? "text-cyanx" : "text-slate-500 group-hover:text-cyanx/70")} />
               <div className="min-w-0 flex-1">
                 <span className="inline-block px-1 py-0.5 rounded text-[9px] font-mono uppercase tracking-wider bg-white/5 text-slate-500 mr-1.5">{sourceLabel((s as any).source || "")}</span>
                 <div className="text-sm text-slate-300 truncate">{s.title || s.preview || "Untitled session"}</div>
@@ -135,7 +139,8 @@ export function ChatsPanel({ onBack, onSelect }: { onBack: () => void; onSelect:
                 </div>
               </div>
             </button>
-          ))
+            );
+          })
         )}
       </div>
 

@@ -179,6 +179,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
     return !c;
   });
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const burgerRef = useRef<HTMLButtonElement>(null);
@@ -217,16 +218,17 @@ function Shell({ onLogout }: { onLogout: () => void }) {
           activeView={view}
           collapsed={sidebarCollapsed && !drawerOpen}
           drawerOpen={drawerOpen}
+          activeSessionId={activeSessionId}
           onCloseDrawer={closeDrawer}
           onToggleCollapse={toggleSidebar}
-          onLogout={() => { closeDrawer(); onLogout(); }} 
-          onNewChat={() => { closeDrawer(); setResetSignal(r => r + 1); setView('chat'); setSelectedSessionId(null); }} 
-          onSelectSession={(id) => { setSelectedSessionId(id); setView('chat'); }} 
-          onOpenAstra={() => { closeDrawer(); setView('chat'); }} 
+          onLogout={() => { closeDrawer(); onLogout(); }}
+          onNewChat={() => { closeDrawer(); setResetSignal(r => r + 1); setView('chat'); setSelectedSessionId(null); }}
+          onSelectSession={(id) => { setSelectedSessionId(id); setView('chat'); }}
+          onOpenAstra={() => { closeDrawer(); setView('chat'); }}
           onOpenFiles={() => { closeDrawer(); setView('files'); }}
         />
         <div className={cn("flex flex-1 flex-col overflow-hidden", view !== 'chat' && "hidden")}>
-          <ChatLanding resetSignal={resetSignal} selectedSessionId={selectedSessionId} />
+          <ChatLanding resetSignal={resetSignal} selectedSessionId={selectedSessionId} onSessionChange={setActiveSessionId} />
         </div>
         {view === 'files' && (
           <FilesPage onBack={() => setView('chat')} />
@@ -236,7 +238,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
   );
 }
 
-function Sidebar({ activeView, collapsed, drawerOpen, onCloseDrawer, onToggleCollapse, onLogout, onNewChat, onSelectSession, onOpenAstra, onOpenFiles }: { activeView: 'chat' | 'files'; collapsed: boolean; drawerOpen: boolean; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onNewChat: () => void; onSelectSession: (id: string) => void; onOpenAstra: () => void; onOpenFiles: () => void; }) {
+function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDrawer, onToggleCollapse, onLogout, onNewChat, onSelectSession, onOpenAstra, onOpenFiles }: { activeView: 'chat' | 'files'; collapsed: boolean; drawerOpen: boolean; activeSessionId: string | null; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onNewChat: () => void; onSelectSession: (id: string) => void; onOpenAstra: () => void; onOpenFiles: () => void; }) {
   const [mode, setMode] = useState<'nav' | 'chats'>('nav');
   const groups: {
     label: string;
@@ -286,6 +288,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, onCloseDrawer, onToggleCol
           "lg:static lg:z-auto lg:h-full lg:w-72 lg:max-w-none lg:shrink-0 lg:translate-x-0",
         )}>
         <ChatsPanel
+          activeSessionId={activeSessionId}
           onBack={() => setMode('nav')}
           onSelect={(id) => {
             onSelectSession(id);

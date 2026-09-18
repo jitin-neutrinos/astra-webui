@@ -47,7 +47,7 @@ function thinkingOf(payload: any): string {
   return payload?.delta?.thinking ?? payload?.text ?? payload?.rendered ?? "";
 }
 
-export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: number, selectedSessionId: string | null }) {
+export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }: { resetSignal: number, selectedSessionId: string | null, onSessionChange?: (id: string | null) => void }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [popout, setPopout] = useState(false);
@@ -260,6 +260,10 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
   useEffect(() => {
     if (selectedSessionId) setStoredSessionId(selectedSessionId);
   }, [selectedSessionId, setStoredSessionId]);
+
+  useEffect(() => {
+    onSessionChange?.(storedSessionId);
+  }, [storedSessionId, onSessionChange]);
 
   useEffect(() => {
     // A real session switch (sidebar chat click, not a same-session re-affirm) means
