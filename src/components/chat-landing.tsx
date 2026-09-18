@@ -66,6 +66,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
   const titledRef = useRef(false);
   const activeIdRef = useRef<string | null>(null);
   const prevStoredSidRef = useRef<string | null>(null);
+  const greetPendingRef = useRef(false);
   const pendingOpsRef = useRef<SegOp[]>([]);
   const opsTimerRef = useRef<number | null>(null);
   const lastPromptRef = useRef("");
@@ -333,11 +334,11 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
     loadHistory();
   }, [storedSessionId]);
 
-  const send = async (raw?: string) => {
+  const send = async (raw?: string, opts?: { silent?: boolean }) => {
     let finalText = (raw ?? input).trim();
     if (!finalText && attachments.length === 0) return;
     if (isStreaming || attachments.some((a) => a.status === "uploading")) return;
-    
+
     const files = attachments.map(a => ({ name: a.file.name, path: a.serverPath! }));
     if (files.length > 0) {
       finalText += (finalText ? "\n\n" : "") + files.map(f => `Attached file: ${f.path}`).join("\n");
@@ -349,14 +350,23 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
       }
     }
 
-    lastPromptRef.current = finalText;
-    try { sessionStorage.setItem("draft_input_" + (liveSessionId || "global"), input); } catch { }
-    setInput("");
+    // Silent kickoffs (auto-greet) must not become lastPromptRef, or the title-PATCH
+    // effect below titles the chat with the hidden instruction instead of the user's
+    // actual first message, and Regenerate on the greeting would leak it as a visible bubble.
+    if (!opts?.silent) lastPromptRef.current = finalText;
+    if (!opts?.silent) {
+      try { sessionStorage.setItem("draft_input_" + (liveSessionId || "global"), input); } catch { }
+      setInput("");
+    }
     setSlashOpen(false);
     setAttachments([]);
-    
-    setMessages((m) => [...m, { id: nextId(), role: "user", content: (raw ?? input).trim(), ts: Date.now(), files }]);
-    
+
+    // A silent kickoff (the auto-greet on New chat) submits a prompt to Hermes without
+    // showing it as a user bubble — the user should only see Hermes speaking first.
+    if (!opts?.silent) {
+      setMessages((m) => [...m, { id: nextId(), role: "user", content: (raw ?? input).trim(), ts: Date.now(), files }]);
+    }
+
     const id = nextId();
     activeIdRef.current = id;
     setMessages((m) => [...m, { id, role: "assistant", segments: [], isStreaming: true, ts: Date.now() }]);
@@ -560,8 +570,18 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
       activeIdRef.current = null;
       pendingOpsRef.current = [];
       titledRef.current = false;
+      greetPendingRef.current = true;
     }
   }, [resetSignal, resetSession]);
+
+  // Fires once resetSession's state clear has actually landed (storedSessionId back to
+  // null) — a real "New chat" opens with Hermes speaking first, not a static welcome card.
+  useEffect(() => {
+    if (greetPendingRef.current && !storedSessionId && !isStreaming) {
+      greetPendingRef.current = false;
+      void send("New chat just started. Greet me briefly and naturally, then ask what I'd like to work on.", { silent: true });
+    }
+  }, [storedSessionId, isStreaming]);
 
   const hour = new Date().getHours();
   const greeting = hour < 5 ? "Working late" : hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
