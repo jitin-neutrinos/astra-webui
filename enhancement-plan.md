@@ -866,7 +866,7 @@ Run in order. Each phase ends with its §5 battery and a commit. Do not start a 
 ```bash
 npm run build                                  # tsc -b must pass
 npm run lint                                   # oxlint
-node scripts/verify-chat-timeline.ts           # must print N/N passed, exit 0
+npx tsx scripts/verify-chat-timeline.ts        # must print N/N passed, exit 0
 node src/lib/safe-tail.check.ts                # "ok"
 node src/lib/model-switch.check.ts             # "ok"  (from Phase 1)
 systemctl --user restart astra-webui.service

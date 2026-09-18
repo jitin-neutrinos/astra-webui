@@ -1,4 +1,4 @@
-import { sourcesParam, sourceLabel } from "./source-filter";
+import { sourcesParam, sourceLabel } from "./source-filter.ts";
 
 function eq(a: any, b: any, msg: string) { if (a !== b) throw new Error(msg + ': ' + a + ' !== ' + b); }
 
