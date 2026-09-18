@@ -89,26 +89,26 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
     const queue = pendingPreTurnRpcs.current;
     pendingPreTurnRpcs.current = [];
     // Await all pending config.set/image.attach RPCs
+    armWatchdog();
     const sent = queue.map(req => {
       if (ws.current && ws.current.readyState === 1) {
         const params = { ...req.params, session_id: sid };
-        pendingRpcs.current.set(req.id, { resolve: req.resolve, reject: req.reject });
         ws.current.send(JSON.stringify({ method: req.method, params, id: req.id }));
-        return new Promise<void>(resolve => {
-          const origResolve = req.resolve;
-          const h = (v: any) => { origResolve(v); resolve(); };
-          pendingRpcs.current.set(req.id, { resolve: h, reject: req.reject });
+        return new Promise<void>((done) => {
+          pendingRpcs.current.set(req.id, {
+            resolve: (v: any) => { req.resolve(v); done(); },
+            reject:  (e: any) => { req.reject(e);  done(); },
+          });
         });
       }
       return Promise.resolve();
     });
-    await Promise.all(sent).catch(() => {});
+    await Promise.allSettled(sent);
 
     const text = pendingPromptRef.current;
     if (text === null) return;
     pendingPromptRef.current = null;
     if (ws.current && ws.current.readyState === 1) {
-      armWatchdog();
       rpc("prompt.submit", { session_id: sid, text, surface: "webui" })
         .catch((err: any) => {
           setIsStreaming(false);

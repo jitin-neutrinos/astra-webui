@@ -163,10 +163,7 @@ export function ComposerControls({ attachments, setAttachments, disabled, sessio
               {catalog.providers.map((p) => (
                 <button key={p.slug} type="button" className="chat-menu-item"
                   aria-selected={p.slug === (menuProvider || provider)}
-                  onClick={() => {
-                    setMenuProvider(p.slug);
-                    onPickModel({ provider: p.slug, model: p.models[0] });
-                  }}>
+                  onClick={() => setMenuProvider(p.slug)}>
                   {p.label}
                   {p.slug === (menuProvider || provider) ? <Check className="h-3.5 w-3.5 text-cyanx" strokeWidth={2} /> : null}
                 </button>

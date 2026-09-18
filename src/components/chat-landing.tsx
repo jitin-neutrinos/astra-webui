@@ -6,6 +6,7 @@ import { useHermesWS } from "@/lib/hermes-ws";
 import type { EventPayload } from "@/lib/hermes-ws";
 import { normalizeMessages } from "@/lib/normalize-messages";
 import { copyText } from "@/lib/copy-text";
+import { modelSwitchValue } from "@/lib/model-switch";
 import AITextLoading from "@/components/ui/ai-text-loading";
 import { getFileKind, } from "@/lib/session-files";
 import {
@@ -216,6 +217,10 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
     }
 
     if (type === "message.complete" || type === "message.error") {
+      if (type === "message.error") {
+        const msg = payload?.error?.message || payload?.error || "The agent turn failed.";
+        setErrorBanner(typeof msg === "string" ? msg : JSON.stringify(msg));
+      }
       finalizeActive();
       return;
     }
@@ -379,7 +384,6 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
     setSessionInfo((prev: any) => ({ ...(prev || {}), model, provider }));
     try {
       // Verified grammar: methods_config_set.py _set_model → parse_model_switch_args
-      const { modelSwitchValue } = await import("../lib/model-switch");
       await rpc("config.set", { key: "model", value: modelSwitchValue({ provider, model }) });
     } catch {
       setSessionInfo((prev: any) => ({ ...(prev || {}), model: prevModel, provider: prevProv }));
