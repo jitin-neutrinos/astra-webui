@@ -285,12 +285,13 @@ function Sidebar({ activeView, collapsed, drawerOpen, onCloseDrawer, onToggleCol
           drawerOpen ? "translate-x-0" : "-translate-x-full",
           "lg:static lg:z-auto lg:h-full lg:w-72 lg:max-w-none lg:shrink-0 lg:translate-x-0",
         )}>
-        <ChatsPanel 
-          onBack={() => setMode('nav')} 
-          onSelect={(id) => { 
-            onSelectSession(id); 
+        <ChatsPanel
+          onBack={() => setMode('nav')}
+          onSelect={(id) => {
+            onSelectSession(id);
+            setMode('nav');
             if (drawerOpen) onCloseDrawer();
-          }} 
+          }}
         />
       </aside>
     );

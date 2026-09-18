@@ -65,6 +65,7 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
   const liveSidRef = useRef<string | null>(null);
   const titledRef = useRef(false);
   const activeIdRef = useRef<string | null>(null);
+  const prevStoredSidRef = useRef<string | null>(null);
   const pendingOpsRef = useRef<SegOp[]>([]);
   const opsTimerRef = useRef<number | null>(null);
   const lastPromptRef = useRef("");
@@ -261,6 +262,14 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
   }, [selectedSessionId, setStoredSessionId]);
 
   useEffect(() => {
+    // A real session switch (sidebar chat click, not a same-session re-affirm) means
+    // any still-open turn belonged to the PREVIOUS session — stop guarding it here, or
+    // the loadHistory effect below mistakes an unrelated stale turn for a live one on
+    // the newly selected session and refuses to load its history.
+    if (prevStoredSidRef.current !== null && prevStoredSidRef.current !== storedSessionId) {
+      activeIdRef.current = null;
+    }
+    prevStoredSidRef.current = storedSessionId;
     if (activeIdRef.current != null) liveSidRef.current = storedSessionId;
     if (storedSessionId && lastPromptRef.current && !titledRef.current) {
       fetch(`/api/hx/sessions/${encodeURIComponent(storedSessionId)}`, {

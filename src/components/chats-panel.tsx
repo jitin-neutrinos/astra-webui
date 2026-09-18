@@ -61,7 +61,11 @@ export function ChatsPanel({ onBack, onSelect }: { onBack: () => void; onSelect:
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [filterModal]);
+
+  useEffect(() => {
+    setOffset(0);
+  }, [filterModal]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -73,7 +77,7 @@ export function ChatsPanel({ onBack, onSelect }: { onBack: () => void; onSelect:
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [query, offset, fetchSessions]);
+  }, [query, offset, filterModal, fetchSessions]);
 
   const maxOffset = Math.max(0, total - (total % limit || limit));
 
