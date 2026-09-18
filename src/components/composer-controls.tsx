@@ -59,7 +59,7 @@ export function ComposerControls({ attachments, setAttachments, disabled, sessio
   disabled?: boolean;
   sessionInfo: any;
   catalog: CatalogPayload | null;
-  onPickModel: (provider: string, model: string) => void;
+  onPickModel: (params: { provider: string; model: string }) => void;
   onPickEffort: (effort: string) => void;
   onToggleYolo: () => void;
   onRemoveAttachment: (id: string) => void;
@@ -165,7 +165,7 @@ export function ComposerControls({ attachments, setAttachments, disabled, sessio
                   aria-selected={p.slug === (menuProvider || provider)}
                   onClick={() => {
                     setMenuProvider(p.slug);
-                    onPickModel(p.slug, p.models[0]);
+                    onPickModel({ provider: p.slug, model: p.models[0] });
                   }}>
                   {p.label}
                   {p.slug === (menuProvider || provider) ? <Check className="h-3.5 w-3.5 text-cyanx" strokeWidth={2} /> : null}
@@ -175,7 +175,7 @@ export function ComposerControls({ attachments, setAttachments, disabled, sessio
               {catalog.providers.find(p => p.slug === (menuProvider || provider))?.models.map((m) => (
                 <button key={m} type="button" className="chat-menu-item"
                   aria-selected={m === model}
-                  onClick={() => { onPickModel(menuProvider || provider, m); setOpen(false); }}>
+                  onClick={() => { onPickModel({ provider: menuProvider || provider, model: m }); setOpen(false); }}>
                   {m}
                   {m === model ? <Check className="h-3.5 w-3.5 text-cyanx" strokeWidth={2} /> : null}
                 </button>

@@ -12,6 +12,10 @@ export type SessionInfo = {
 // Simple ID generator for RPCs
 const generateRpcId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
+// ponytail: fixed ceiling, sized for high reasoning effort (ultra turns legitimately
+// run minutes of silent reasoning). Make it per-model only if a real turn trips it.
+const TURN_WATCHDOG_MS = 120_000;
+
 // Export last session info globally (safe since there's one session at a time)
 export let lastSessionInfo: SessionInfo | null = null;
 export function getLastSessionInfo() { return lastSessionInfo; }
@@ -48,6 +52,19 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
   const pendingRpcs = useRef<Map<string, { resolve: (val: any) => void, reject: (err: any) => void }>>(new Map());
   const pendingPreTurnRpcs = useRef<{id: string, method: string, params: any, resolve: any, reject: any}[]>([]);
 
+  const watchdogRef = useRef<number | null>(null);
+  const clearWatchdog = useCallback(() => {
+    if (watchdogRef.current) { window.clearTimeout(watchdogRef.current); watchdogRef.current = null; }
+  }, []);
+  const armWatchdog = useCallback(() => {
+    clearWatchdog();
+    watchdogRef.current = window.setTimeout(() => {
+      watchdogRef.current = null;
+      setIsStreaming(false);
+      onEventRef.current({ type: "message.error", payload: { error: "No response from the agent (timed out after 120s)." } });
+    }, TURN_WATCHDOG_MS);
+  }, [clearWatchdog]);
+
   const rpc = useCallback((method: string, params: any): Promise<any> => {
     return new Promise((resolve, reject) => {
       const id = generateRpcId();
@@ -68,28 +85,40 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
   }, []);
 
   const pendingPromptRef = useRef<string | null>(null);
-  const flushPendingPrompt = useCallback((sid: string) => {
+  const flushPendingPrompt = useCallback(async (sid: string) => {
     const queue = pendingPreTurnRpcs.current;
     pendingPreTurnRpcs.current = [];
-    for (const req of queue) {
+    // Await all pending config.set/image.attach RPCs
+    const sent = queue.map(req => {
       if (ws.current && ws.current.readyState === 1) {
-        req.params.session_id = sid;
+        const params = { ...req.params, session_id: sid };
         pendingRpcs.current.set(req.id, { resolve: req.resolve, reject: req.reject });
-        ws.current.send(JSON.stringify({ method: req.method, params: req.params, id: req.id }));
+        ws.current.send(JSON.stringify({ method: req.method, params, id: req.id }));
+        return new Promise<void>(resolve => {
+          const origResolve = req.resolve;
+          const h = (v: any) => { origResolve(v); resolve(); };
+          pendingRpcs.current.set(req.id, { resolve: h, reject: req.reject });
+        });
       }
-    }
+      return Promise.resolve();
+    });
+    await Promise.all(sent).catch(() => {});
 
     const text = pendingPromptRef.current;
     if (text === null) return;
     pendingPromptRef.current = null;
     if (ws.current && ws.current.readyState === 1) {
-      ws.current.send(JSON.stringify({
-        method: "prompt.submit",
-        params: { session_id: sid, text, surface: "webui" },
-        id: generateRpcId()
-      }));
+      armWatchdog();
+      rpc("prompt.submit", { session_id: sid, text, surface: "webui" })
+        .catch((err: any) => {
+          setIsStreaming(false);
+          onEventRef.current({
+            type: "message.error",
+            payload: { error: err?.message || err?.data?.message || String(err) },
+          });
+        });
     }
-  }, []);
+  }, [rpc, armWatchdog]);
 
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -113,6 +142,7 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
     function attachHandlers(s: WebSocket) {
       s.onmessage = onMessage;
       s.onclose = () => {
+        clearWatchdog();
         setIsStreaming(false);
         onEventRef.current({ type: "ws.closed", payload: {} });
       };
@@ -167,6 +197,15 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
         replayOpenRequests(data.result);
       }
 
+      // Any {id, error} reply nobody is tracking — a fire-and-forget send whose
+      // rejection would otherwise be dropped. One guard covers every present and
+      // future raw send on this socket.
+      if (data.id && data.error && !pendingRpcs.current.has(data.id)) {
+        setIsStreaming(false);
+        onEventRef.current({ type: "message.error", payload: { error: data.error?.message || JSON.stringify(data.error) } });
+        return;
+      }
+
       if (data.method === "event" && data.params) {
         const { type, payload, session_id } = data.params;
         
@@ -193,8 +232,17 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
           lastSessionInfo = payload;
         }
 
+        // Clear watchdog on first sign of life
+        if (type === "message.start" || type === "message.delta" || type === "thinking.delta" || type === "reasoning.delta" || type === "tool.start") {
+          clearWatchdog();
+        }
+
         if (type === "message.start") setIsStreaming(true);
-        if (type === "message.complete" || type === "message.error") setIsStreaming(false);
+        // Clear watchdog again on completion/error
+        if (type === "message.complete" || type === "message.error") {
+          clearWatchdog();
+          setIsStreaming(false);
+        }
 
         onEventRef.current({ type, payload, session_id });
       }
@@ -210,7 +258,7 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
     }
 
     return () => { ws.current = null; };
-  }, [setStoredSessionId]);
+  }, [setStoredSessionId, setLiveSessionId, flushPendingPrompt, clearWatchdog]);
 
   const submitPrompt = useCallback((content: string) => {
     if (!ws.current || ws.current.readyState !== 1) return;
@@ -219,13 +267,17 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
       pendingPromptRef.current = content;
       ws.current.send(JSON.stringify({ method: "session.create", params: { source: "webui" }, id: generateRpcId() }));
     } else {
-      ws.current.send(JSON.stringify({
-        method: "prompt.submit",
-        params: { session_id: liveSessionId || storedSessionId, text: content, surface: "webui" },
-        id: generateRpcId()
-      }));
+      armWatchdog();
+      rpc("prompt.submit", { session_id: liveSessionId || storedSessionId, text: content, surface: "webui" })
+        .catch((err: any) => {
+          setIsStreaming(false);
+          onEventRef.current({
+            type: "message.error",
+            payload: { error: err?.message || err?.data?.message || String(err) },
+          });
+        });
     }
-  }, [storedSessionId, liveSessionId]);
+  }, [storedSessionId, liveSessionId, rpc, armWatchdog]);
 
   const sendApprovalResponse = useCallback((id: string, choice: string) => {
     if (!ws.current || ws.current.readyState !== 1) return;
@@ -233,6 +285,7 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
   }, []);
 
   const interrupt = useCallback(() => {
+    clearWatchdog();
     if (!ws.current || ws.current.readyState !== 1) return;
     if (liveSessionId || storedSessionId) {
       ws.current.send(JSON.stringify({
@@ -242,13 +295,14 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
       }));
     }
     setIsStreaming(false);
-  }, [liveSessionId, storedSessionId]);
+  }, [liveSessionId, storedSessionId, clearWatchdog]);
 
   const resetSession = useCallback(() => {
+    clearWatchdog();
     liveIdRef.current = null; setLiveSessionId(null);
     setStoredSessionId(null); setSessionInfo(null);
     pendingPreTurnRpcs.current = []; pendingPromptRef.current = null;
-  }, [setStoredSessionId, setLiveSessionId]);
+  }, [setStoredSessionId, setLiveSessionId, clearWatchdog]);
 
   return { isStreaming, submitPrompt, interrupt, storedSessionId, setStoredSessionId, liveSessionId, sendApprovalResponse, rpc, sessionInfo, setSessionInfo, resetSession };
 }

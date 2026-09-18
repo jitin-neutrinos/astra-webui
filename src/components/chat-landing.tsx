@@ -372,13 +372,15 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
     }
   };
 
-  const onPickModel = async (model: string, provider: string) => {
+  const onPickModel = async (params: { provider: string; model: string }) => {
+    const { provider, model } = params;
     const prevModel = sessionInfo?.model;
     const prevProv = sessionInfo?.provider;
     setSessionInfo((prev: any) => ({ ...(prev || {}), model, provider }));
     try {
       // Verified grammar: methods_config_set.py _set_model → parse_model_switch_args
-      await rpc("config.set", { key: "model", value: `${model} --provider ${provider} --session` });
+      const { modelSwitchValue } = await import("../lib/model-switch");
+      await rpc("config.set", { key: "model", value: modelSwitchValue({ provider, model }) });
     } catch {
       setSessionInfo((prev: any) => ({ ...(prev || {}), model: prevModel, provider: prevProv }));
     }
@@ -389,7 +391,8 @@ export function ChatLanding({ resetSignal, selectedSessionId }: { resetSignal: n
     setSessionInfo((prevS: any) => ({ ...(prevS || {}), reasoning_effort: effort }));
     try {
       // Key is "reasoning" (_CONFIG_SETTERS), not "reasoning_effort"
-      await rpc("config.set", { key: "reasoning", value: effort });
+      // scope: "session" prevents this menu pick from rewriting the global config
+      await rpc("config.set", { key: "reasoning", value: effort, scope: "session" });
     } catch {
       setSessionInfo((prevS: any) => ({ ...(prevS || {}), reasoning_effort: prev }));
     }
