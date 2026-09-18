@@ -89,7 +89,7 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
     const queue = pendingPreTurnRpcs.current;
     pendingPreTurnRpcs.current = [];
     // Await all pending config.set/image.attach RPCs
-    armWatchdog();
+    if (pendingPromptRef.current !== null) armWatchdog();
     const sent = queue.map(req => {
       if (ws.current && ws.current.readyState === 1) {
         const params = { ...req.params, session_id: sid };
@@ -162,6 +162,7 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
       try { data = JSON.parse(e.data); } catch { return; }
 
       if (data.method === "approval" && data.id) {
+        clearWatchdog();
         onEventRef.current({ type: "approval", payload: { id: data.id, params: data.params || {} } });
       }
 
@@ -179,6 +180,7 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
           setStoredSessionIdState(null);
           sessionStorage.removeItem("astra-chat-session");
           setLiveSessionId(null);
+          return;
         } else if (data.result && data.result.session_id) {
           liveIdRef.current = data.result.session_id;
           setLiveSessionId(data.result.session_id);
