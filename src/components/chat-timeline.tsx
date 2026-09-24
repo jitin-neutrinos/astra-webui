@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from "react";
-import { Check, ChevronDown, ChevronRight, Loader2, TriangleAlert, PlayCircle, FileText } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Loader2, TriangleAlert, PlayCircle, FileText, Copy } from "lucide-react";
 import { cn } from "../lib/utils";
 import { getFileKind } from "../lib/session-files";
 
@@ -47,7 +47,20 @@ function RichText({ text }: { text: string }) {
     });
   }, [html]);
 
-  return <div ref={containerRef} className="chat-md" dangerouslySetInnerHTML={{ __html: html }} />;
+  return (
+    <div className="relative group">
+      <button
+        type="button"
+        className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity bg-midnight/80 text-cyanx border border-white/10 rounded-md px-2 py-0.5 text-[10px] font-mono hover:bg-cyanx/20 focus:outline-none focus:ring-1 focus:ring-cyanx/40"
+        onClick={() => void copyText(text)}
+        aria-label="Copy message content"
+        title="Copy"
+      >
+        <Copy className="h-3 w-3" strokeWidth={1.5} />
+      </button>
+      <div ref={containerRef} className="chat-md" dangerouslySetInnerHTML={{ __html: html }} />
+    </div>
+  );
 }
 
 // ---- segment rows ---------------------------------------------------------
@@ -232,13 +245,16 @@ const APPROVAL_LABELS: Record<string, string> = { once: "Approve once", session:
 function ApprovalRow({ seg, onRespond }: { seg: Segment; onRespond: (reqId: string, choice: string) => void }) {
   const p = seg.params || {};
   const choices = p.choices?.length ? p.choices : ["once", "deny"];
+  const isCommandApproval = !!p.command;
+  const titleText = isCommandApproval ? "Approval needed" : (p.description ? "Choice required" : "Clarify");
+  const subText = p.description || (isCommandApproval ? "Astra wants to run a command" : "Select an option to continue.");
   return (
-    <div id={`chat-approval-${seg.reqId}`} className="chat-approval" role="alertdialog" aria-label="Command approval">
+    <div id={`chat-approval-${seg.reqId}`} className="chat-approval" role="alertdialog" aria-label={isCommandApproval ? "Command approval" : "Choice / Clarify"}>
       <div className="chat-approval-head">
         <span className="chat-approval-badge" aria-hidden="true">!</span>
-        <span className="chat-approval-title">Approval needed</span>
+        <span className="chat-approval-title">{titleText}</span>
       </div>
-      <p className="chat-approval-sub">{p.description || "Astra wants to run a command"}</p>
+      <p className="chat-approval-sub">{subText}</p>
       {!!p.command && <pre className="chat-approval-cmd" tabIndex={0}>{p.command}</pre>}
       {seg.resolved ? (
         <div className="chat-approval-resolved">{seg.resolved === "cancelled" ? "Request withdrawn" : `Resolved: ${APPROVAL_LABELS[seg.resolved] || seg.resolved}`}</div>
@@ -268,12 +284,29 @@ export function TurnTimeline({ segments, streaming, onToggleTool, onApprovalResp
   onApprovalRespond: (reqId: string, choice: string) => void;
 }) {
   if (!segments.length) return null;
-  // A turn with an unresolved approval is paused, not streaming (pure helper —
-  // replayed cards must not show an infinite spinner).
+  // Action-based chronological: preserve arrival order, but ensure any
+  // thinking that follows the first text is shown before that text
+  // (so reasoning never trails behind the final response).
+  const firstTextIdx = segments.findIndex(s => s.kind === "text");
+  let orderedSegments = segments;
+  if (firstTextIdx > 0) {
+    const beforeText = segments.slice(0, firstTextIdx);
+    const afterText = segments.slice(firstTextIdx);
+    const trailingThink = afterText.filter(s => s.kind === "thinking");
+    const afterTextNoThink = afterText.filter(s => s.kind !== "thinking");
+    if (trailingThink.length > 0) {
+      orderedSegments = [
+        ...beforeText.filter(s => s.kind === "thinking"),
+        ...beforeText.filter(s => s.kind !== "thinking"),
+        ...trailingThink,
+        ...afterTextNoThink,
+      ];
+    }
+  }
   const isRunning = turnIsRunning(segments, streaming);
   return (
     <div className={cn("chat-turn", isRunning && "running")} aria-busy={isRunning}>
-      {segments.map((seg) => {
+      {orderedSegments.map((seg) => {
         if (seg.kind === "thinking") return <ThinkingRow key={seg.id} seg={seg} />;
         if (seg.kind === "tool") return <ToolRow key={seg.id} seg={seg} onToggle={() => onToggleTool(seg.id)} />;
         if (seg.kind === "approval") return <ApprovalRow key={seg.id} seg={seg} onRespond={onApprovalRespond} />;

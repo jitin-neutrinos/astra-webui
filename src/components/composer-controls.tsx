@@ -132,7 +132,7 @@ export function ComposerControls({ attachments, setAttachments, disabled, sessio
           </button>
           
           <p className="chat-menu-label">Automation</p>
-          <button className="chat-menu-item" role="switch" aria-checked={yolo} onClick={onToggleYolo}>
+          <button className="chat-menu-item" role="radio" aria-checked={yolo} aria-label="Yolo mode toggle" onClick={onToggleYolo}>
             <span className="flex flex-col">Yolo mode<small>Auto-approve tool calls in this chat</small></span>
             {yolo && <Check className="h-3.5 w-3.5 text-redx"/>}
           </button>

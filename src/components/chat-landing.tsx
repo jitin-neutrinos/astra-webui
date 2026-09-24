@@ -248,7 +248,11 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
   const { isStreaming, submitPrompt, interrupt, storedSessionId, setStoredSessionId, sendApprovalResponse, sessionInfo, setSessionInfo, rpc, liveSessionId, resetSession } = useHermesWS(handleEvent);
 
   const respondApproval = useCallback((reqId: string, choice: string) => {
-    sendApprovalResponse(reqId, choice);
+    const sent = sendApprovalResponse(reqId, choice);
+    if (!sent) {
+      setErrorBanner("Approval response not delivered — connection lost. Try again or reconnect.");
+      return;
+    }
     resolveApproval(reqId, choice);
   }, [sendApprovalResponse, resolveApproval]);
 
@@ -753,6 +757,34 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
         aria-label="Message Astra (expanded)"
         className="chat-popout-input"
       />
+      <div className="chat-popout-bar flex items-center gap-2 px-2 py-2 border-t border-white/5">
+        <ComposerControls
+          disabled={isStreaming}
+          attachments={attachments}
+          setAttachments={setAttachments}
+          sessionInfo={sessionInfo}
+          catalog={catalog}
+          onToggleYolo={onToggleYolo}
+          onPickModel={onPickModel}
+          onPickEffort={onPickEffort}
+          onRemoveAttachment={removeAttachment}
+        />
+        <span className="flex-1 text-[10px] font-mono text-muted">Enter to send · Shift+Enter for newline</span>
+        {isStreaming ? (
+          <button type="button" onClick={stop}
+            aria-label="Stop generation"
+            className="chat-send bg-red-500/20 text-red-400 hover:bg-red-500/30">
+            <Square className="h-3.5 w-3.5" fill="currentColor" />
+          </button>
+        ) : (
+          <button type="button" onClick={() => { void send(); setPopout(false); }}
+            disabled={!input.trim()}
+            aria-label="Send message (expanded)"
+            className="chat-send">
+            <ArrowUp className="h-4 w-4" strokeWidth={1.8} />
+          </button>
+        )}
+      </div>
     </div>
   )}
   <textarea

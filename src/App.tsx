@@ -26,6 +26,7 @@ import {
 import { cn } from "@/lib/utils";
 import { ChatLanding } from "./components/chat-landing";
 import { ChatsPanel } from "./components/chats-panel";
+import TokenTrackerPage from "./components/token-tracker";
 
 type Status = "checking" | "login" | "ready";
 
@@ -172,7 +173,7 @@ import TubesBackground from "./components/ui/tubes-background";
 
 function Shell({ onLogout }: { onLogout: () => void }) {
   const [resetSignal, setResetSignal] = useState(0);
-  const [view, setView] = useState<'chat' | 'files'>('chat');
+  const [view, setView] = useState<'chat' | 'files' | 'tracker'>('chat');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("astra-sidebar-collapsed") === "1");
   const toggleSidebar = () => setSidebarCollapsed((c) => {
     localStorage.setItem("astra-sidebar-collapsed", c ? "0" : "1");
@@ -226,19 +227,25 @@ function Shell({ onLogout }: { onLogout: () => void }) {
           onSelectSession={(id) => { setSelectedSessionId(id); setView('chat'); }}
           onOpenAstra={() => { closeDrawer(); setView('chat'); }}
           onOpenFiles={() => { closeDrawer(); setView('files'); }}
+          onOpenTracker={() => { closeDrawer(); setView('tracker'); }}
         />
-        <div className={cn("flex flex-1 flex-col overflow-hidden", view !== 'chat' && "hidden")}>
+        <div className={cn("flex flex-1 flex-col overflow-hidden", view !== 'chat' && view !== 'tracker' && "hidden")}>
           <ChatLanding resetSignal={resetSignal} selectedSessionId={selectedSessionId} onSessionChange={setActiveSessionId} />
         </div>
         {view === 'files' && (
           <FilesPage onBack={() => setView('chat')} />
+        )}
+        {view === 'tracker' && (
+          <div className="flex-1 overflow-auto bg-void p-6 lg:p-10">
+            <TokenTrackerPage />
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDrawer, onToggleCollapse, onLogout, onNewChat, onSelectSession, onOpenAstra, onOpenFiles }: { activeView: 'chat' | 'files'; collapsed: boolean; drawerOpen: boolean; activeSessionId: string | null; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onNewChat: () => void; onSelectSession: (id: string) => void; onOpenAstra: () => void; onOpenFiles: () => void; }) {
+function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDrawer, onToggleCollapse, onLogout, onNewChat, onSelectSession, onOpenAstra, onOpenFiles, onOpenTracker }: { activeView: 'chat' | 'files' | 'tracker'; collapsed: boolean; drawerOpen: boolean; activeSessionId: string | null; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onNewChat: () => void; onSelectSession: (id: string) => void; onOpenAstra: () => void; onOpenFiles: () => void; onOpenTracker?: () => void; }) {
   const [mode, setMode] = useState<'nav' | 'chats'>('nav');
   const groups: {
     label: string;
@@ -273,6 +280,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
         { name: "System Health", icon: <HeartPulse className="h-4 w-4" strokeWidth={1.5} /> },
         { name: "Analytics", icon: <BarChart3 className="h-4 w-4" strokeWidth={1.5} /> },
         { name: "Webhooks & Pairing", icon: <Webhook className="h-4 w-4" strokeWidth={1.5} /> },
+        { name: "Global Token Tracker", icon: <BarChart3 className="h-4 w-4" strokeWidth={1.5} />, onClick: () => { onOpenTracker?.(); } },
       ],
     },
   ];
@@ -346,6 +354,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
                 // @ts-ignore — TypeScript strict-mode inference; runtime behavior verified correct (mode state is 'nav' | 'chats')
                                 : item.name === "Chats" ? mode === 'chats'
                 : item.name === "Files" ? activeView === "files"
+                : item.name === "Global Token Tracker" ? activeView === "tracker"
                 : false;
               return (
               <button key={item.name} type="button" onClick={item.onClick}

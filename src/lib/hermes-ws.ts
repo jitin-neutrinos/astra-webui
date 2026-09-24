@@ -282,8 +282,9 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
   }, [storedSessionId, liveSessionId, rpc, armWatchdog]);
 
   const sendApprovalResponse = useCallback((id: string, choice: string) => {
-    if (!ws.current || ws.current.readyState !== 1) return;
+    if (!ws.current || ws.current.readyState !== 1) return false;
     ws.current.send(JSON.stringify({ jsonrpc: "2.0", id, result: { choice } }));
+    return true;
   }, []);
 
   const interrupt = useCallback(() => {
