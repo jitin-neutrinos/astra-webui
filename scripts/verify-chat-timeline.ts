@@ -155,4 +155,42 @@ assert.deepEqual(
   []
 );
 
-console.log("verify-chat-timeline: 15/15 checks passed");
+// 16. Generative UI — clarify cards: batch questions normalize into a clarify
+//     segment; an open card blocks running-state; answering marks resolved.
+let cl: Segment[] = [];
+cl = apply(cl, [
+  { op: "text", text: "Let me check preferences first." },
+  { op: "clarify", reqId: "srq-abc123", params: { questions: [
+    { qid: "q1", question: "Keep it per turn or global?", choices: ["Per turn", "Global"] },
+    { qid: "q2", question: "Which surfaces?", choices: ["Chat", "Files"], multi_select: true },
+  ] } },
+]);
+assert.equal(cl.length, 2, "clarify op appends its own segment after text");
+assert.equal(cl[1].kind, "clarify");
+assert.equal(cl[1].questions?.length, 2, "batch questions carried through");
+assert.equal(turnIsRunning(cl, true), false, "open clarify card pauses the turn");
+
+// Single-question shorthand (question + choices, no qid) normalizes to one question.
+let cl1: Segment[] = [];
+cl1 = apply(cl1, [{ op: "clarify", reqId: "srq-def456", params: { question: "Proceed?", choices: ["yes", "no"] } }]);
+assert.equal(cl1[0].questions?.length, 1, "single question normalized");
+assert.equal(cl1[0].questions?.[0].choices.join("|"), "yes|no");
+
+// Replayed locked answers (session.resume open_requests) prefill the card.
+let clLocked: Segment[] = [];
+clLocked = apply(clLocked, [{ op: "clarify", reqId: "srq-ghi789", params: { questions: [
+  { qid: "q1", question: "Q?", choices: ["a", "b"] },
+], answers: { q1: "a" } } }]);
+assert.equal(clLocked[0].answers?.q1, "a", "locked answers survive replay");
+
+// Resolution: answers set + resolved flips running-state back on.
+const answered = apply(cl, [{ op: "tool-done", key: "t1", resultText: "ok", exitCode: 0 }]);
+void answered; // unrelated op safety
+cl = applySegmentOps(cl, []); // no-op pass-through
+const resolvedCl = cl.map((s, i) => i === 1
+  ? { ...s, answers: { q1: "Per turn", q2: "Chat" }, resolved: "answered", status: "done" as const }
+  : s);
+assert.equal(turnIsRunning(resolvedCl, true), true, "answered clarify returns the turn to running");
+assert.equal(resolvedCl[1].answers?.q1, "Per turn");
+
+console.log("verify-chat-timeline: 16/16 checks passed");

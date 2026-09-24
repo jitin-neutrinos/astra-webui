@@ -139,6 +139,22 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
     }));
   }, []);
 
+  // Mark a clarify card resolved (with the submitted answers) or cancelled.
+  const resolveClarify = useCallback((reqId: string, answers: Record<string, string> | null) => {
+    setMessages((m) => m.map((msg) => {
+      if (msg.role !== "assistant") return msg;
+      let changed = false;
+      const segments = msg.segments.map((s) => {
+        if (s.kind === "clarify" && s.reqId === reqId && s.resolved == null) {
+          changed = true;
+          return { ...s, answers: answers ?? s.answers, resolved: answers ? "answered" : "cancelled", status: "done" as const };
+        }
+        return s;
+      });
+      return changed ? { ...msg, segments } : msg;
+    }));
+  }, []);
+
   const handleEvent = useCallback((ev: EventPayload) => {
     const { type, payload } = ev;
 
@@ -234,8 +250,16 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
       return;
     }
 
+    // Generative UI: the agent's clarify tool arrives as a server→client request
+    // (method "clarify", srq-* id). Rendered as an interactive question card.
+    if (type === "clarify") {
+      ensureActive();
+      pushOp({ op: "clarify", reqId: payload?.id, params: payload?.params || {} }, true);
+      return;
+    }
+
     if (type === "request.cancel") {
-      if (payload?.id) resolveApproval(payload.id, null);
+      if (payload?.id) { resolveApproval(payload.id, null); resolveClarify(payload.id, null); }
       return;
     }
 
@@ -244,9 +268,9 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
       finalizeActive();
       return;
     }
-  }, [ensureActive, pushOp, finalizeActive, resolveApproval]);
+  }, [ensureActive, pushOp, finalizeActive, resolveApproval, resolveClarify]);
 
-  const { isStreaming, submitPrompt, interrupt, storedSessionId, setStoredSessionId, sendApprovalResponse, sessionInfo, setSessionInfo, rpc, liveSessionId, resetSession } = useHermesWS(handleEvent);
+  const { isStreaming, submitPrompt, interrupt, storedSessionId, setStoredSessionId, sendApprovalResponse, sendServerResponse, sessionInfo, setSessionInfo, rpc, liveSessionId, resetSession } = useHermesWS(handleEvent);
 
   const respondApproval = useCallback((reqId: string, choice: string) => {
     const sent = sendApprovalResponse(reqId, choice);
@@ -256,6 +280,17 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
     }
     resolveApproval(reqId, choice);
   }, [sendApprovalResponse, resolveApproval]);
+
+  // Send the clarify answer to the gateway (JSON-RPC response frame with the
+  // request's srq id), then flip the card to its answered state.
+  const respondClarify = useCallback((reqId: string, result: { answer?: string; answers?: Record<string, string> }) => {
+    const sent = sendServerResponse(reqId, result);
+    if (!sent) {
+      setErrorBanner("Answer not delivered — connection lost. Try again or reconnect.");
+      return;
+    }
+    resolveClarify(reqId, result.answers || {});
+  }, [sendServerResponse, resolveClarify]);
 
   const toggleToolCollapse = useCallback((segId: string) => {
     setMessages((m) => m.map((msg) => msg.role === "assistant"
@@ -726,7 +761,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
                       </div>
                     </div>
                   ) : m.segments.length ? (
-                    <TurnTimeline segments={m.segments} streaming={m.isStreaming} onToggleTool={toggleToolCollapse} onApprovalRespond={respondApproval} />
+                    <TurnTimeline segments={m.segments} streaming={m.isStreaming} onToggleTool={toggleToolCollapse} onApprovalRespond={respondApproval} onClarifyAnswer={respondClarify} />
                   ) : m.isStreaming ? (
                     <span className="flex w-fit items-center rounded-2xl border border-cyanx/15 bg-midnight/80 px-3 py-1.5">
                       <AITextLoading texts={["Thinking...", "Working on it...", "Almost there..."]} />

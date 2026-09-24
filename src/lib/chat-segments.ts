@@ -5,7 +5,7 @@
 // exactly as the model emitted them — this is the fix for the old "one
 // block, then all text below" bug.
 
-export type SegKind = "thinking" | "tool" | "text" | "approval";
+export type SegKind = "thinking" | "tool" | "text" | "approval" | "clarify";
 
 export interface Segment {
   id: string;
@@ -24,6 +24,16 @@ export interface Segment {
   reqId?: string;
   params?: { session_id?: string; request_id?: string; command?: string; description?: string; choices?: string[] };
   resolved?: string | null;
+  // clarify (generative UI question card)
+  questions?: ClarifyQuestion[];
+  answers?: Record<string, string>; // qid -> chosen answer (locked/submitted)
+}
+
+export interface ClarifyQuestion {
+  qid?: string;
+  question: string;
+  choices: string[];
+  multi_select?: boolean;
 }
 
 export type SegOp =
@@ -32,7 +42,8 @@ export type SegOp =
   | { op: "tool-update"; key?: string; label?: string; argsText?: string; command?: string }
   | { op: "tool-done"; key?: string; label?: string; resultText?: string; exitCode?: number | null }
   | { op: "text"; text: string }
-  | { op: "approval"; reqId: string; params: Segment["params"] };
+  | { op: "approval"; reqId: string; params: Segment["params"] }
+  | { op: "clarify"; reqId: string; params: { questions?: ClarifyQuestion[]; question?: string; choices?: string[]; multi_select?: boolean; answers?: Record<string, string> } };
 
 let segSeq = 0;
 const nextSegId = () => `seg${++segSeq}-${Date.now()}`;
@@ -105,6 +116,17 @@ export function applySegmentOps(segments: Segment[], ops: SegOp[]): Segment[] {
       closeRunningThink(out);
       barrier = true;
       out.push({ id: nextSegId(), kind: "approval", status: "run", reqId: op.reqId, params: op.params, resolved: null });
+    } else if (op.op === "clarify") {
+      closeRunningThink(out);
+      barrier = true;
+      const p = op.params;
+      const questions: ClarifyQuestion[] = p.questions?.length
+        ? p.questions
+        : [{ question: p.question || "A question for you", choices: p.choices || [], multi_select: p.multi_select }];
+      out.push({
+        id: nextSegId(), kind: "clarify", status: "run", reqId: op.reqId,
+        questions, answers: { ...(p.answers || {}) }, resolved: null,
+      });
     }
   }
   return out;
@@ -120,7 +142,9 @@ export function finalizeSegments(segments: Segment[]): Segment[] {
 // never emit message.complete, so running-state must not hang off streaming
 // alone. Pure so the verify script shares it.
 export function turnIsRunning(segments: Segment[], streaming: boolean): boolean {
-  return streaming && !segments.some((s) => s.kind === "approval" && s.resolved == null);
+  const blocked = (s: Segment) =>
+    (s.kind === "approval" || s.kind === "clarify") && s.resolved == null;
+  return streaming && !segments.some(blocked);
 }
 
 // Ctrl+O expands the newest collapsed >3k-char tool block across the whole

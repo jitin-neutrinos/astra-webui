@@ -153,7 +153,9 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
       if (!Array.isArray(reqs)) return;
       for (const r of reqs) {
         if (!r || !r.id) continue;
-        onEventRef.current({ type: "approval", payload: { id: r.id, params: r.params || r } });
+        // Preserve the request kind (approval / clarify / …) so restored cards
+        // render with their own UI instead of everything becoming approvals.
+        onEventRef.current({ type: r.method || "approval", payload: { id: r.id, params: r.params || r } });
       }
     }
 
@@ -164,6 +166,13 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
       if (data.method === "approval" && data.id) {
         clearWatchdog();
         onEventRef.current({ type: "approval", payload: { id: data.id, params: data.params || {} } });
+      }
+
+      // Generic server→client request bridge (ids are minted "srq-<hex>" by the
+      // gateway): today covers "clarify", tomorrow any new interactive kind.
+      if (data.method && data.method !== "approval" && typeof data.id === "string" && data.id.startsWith("srq-")) {
+        clearWatchdog();
+        onEventRef.current({ type: data.method, payload: { id: data.id, params: data.params || {} } });
       }
 
       if (data.id && pendingRpcs.current.has(data.id)) {
@@ -251,6 +260,9 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
     }
 
     if (socket.readyState === 1) {
+      // Advertise that this client answers server→client requests (clarify cards,
+      // approvals, …). Without it the gateway fails these fast instead of asking.
+      socket.send(JSON.stringify({ jsonrpc: "2.0", id: generateRpcId(), method: "client.capabilities", params: { server_requests: true } }));
       const sid = sessionStorage.getItem("astra-chat-session");
       if (sid) {
         const id = generateRpcId();
@@ -287,6 +299,13 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
     return true;
   }, []);
 
+  // Generic answer to any server→client request (clarify: {answer} | {answers}).
+  const sendServerResponse = useCallback((id: string, result: Record<string, unknown>) => {
+    if (!ws.current || ws.current.readyState !== 1) return false;
+    ws.current.send(JSON.stringify({ jsonrpc: "2.0", id, result }));
+    return true;
+  }, []);
+
   const interrupt = useCallback(() => {
     clearWatchdog();
     if (!ws.current || ws.current.readyState !== 1) return;
@@ -307,5 +326,5 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
     pendingPreTurnRpcs.current = []; pendingPromptRef.current = null;
   }, [setStoredSessionId, setLiveSessionId, clearWatchdog]);
 
-  return { isStreaming, submitPrompt, interrupt, storedSessionId, setStoredSessionId, liveSessionId, sendApprovalResponse, rpc, sessionInfo, setSessionInfo, resetSession };
+  return { isStreaming, submitPrompt, interrupt, storedSessionId, setStoredSessionId, liveSessionId, sendApprovalResponse, sendServerResponse, rpc, sessionInfo, setSessionInfo, resetSession };
 }

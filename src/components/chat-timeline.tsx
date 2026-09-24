@@ -3,7 +3,7 @@ import { Check, ChevronDown, ChevronRight, Loader2, TriangleAlert, PlayCircle, F
 import { cn } from "../lib/utils";
 import { getFileKind } from "../lib/session-files";
 
-import type { Segment } from "../lib/chat-segments";
+import type { Segment, ClarifyQuestion } from "../lib/chat-segments";
 import { turnIsRunning } from "../lib/chat-segments";
 
 export type { SegKind, Segment, SegOp } from "../lib/chat-segments";
@@ -242,6 +242,105 @@ function TextRow({ seg }: { seg: Segment }) {
 
 const APPROVAL_LABELS: Record<string, string> = { once: "Approve once", session: "Allow this chat", always: "Always allow", deny: "Deny" };
 
+// Generative-UI clarify card: renders the agent's question(s) as an interactive
+// form. Single question → choice buttons + free text; batch → per-question
+// groups with radio/checkbox inputs, lockable one at a time (clarify.lock).
+function ClarifyCard({ seg, onAnswer }: {
+  seg: Segment;
+  onAnswer: (reqId: string, result: { answer?: string; answers?: Record<string, string> }) => void;
+}) {
+  const questions = seg.questions || [];
+  const [picks, setPicks] = useState<Record<string, string[]>>(() => {
+    const init: Record<string, string[]> = {};
+    for (const q of questions) {
+      const qid = q.qid || q.question;
+      const locked = seg.answers?.[qid];
+      init[qid] = locked ? [locked] : [];
+    }
+    return init;
+  });
+  const [freeText, setFreeText] = useState<Record<string, string>>({});
+
+  if (seg.resolved) {
+    const summary = Object.entries(seg.answers || {}).map(([, v]) => v).join(", ") || seg.resolved;
+    return (
+      <div className="chat-approval" role="status" aria-label="Question answered">
+        <div className="chat-approval-head">
+          <span className="chat-approval-badge done" aria-hidden="true">?</span>
+          <span className="chat-approval-title">Question answered</span>
+        </div>
+        <div className="chat-approval-resolved">Answered: {summary}</div>
+      </div>
+    );
+  }
+
+  const togglePick = (qid: string, choice: string, multi: boolean) => {
+    setPicks((prev) => {
+      const cur = prev[qid] || [];
+      if (!multi) return { ...prev, [qid]: [choice] };
+      return { ...prev, [qid]: cur.includes(choice) ? cur.filter((c) => c !== choice) : [...cur, choice] };
+    });
+  };
+
+  const answerFor = (q: ClarifyQuestion): string => {
+    const qid = q.qid || q.question;
+    const picked = (picks[qid] || []).join(", ");
+    const extra = (freeText[qid] || "").trim();
+    if (picked && extra) return `${picked} — ${extra}`;
+    return picked || extra;
+  };
+
+  const allAnswered = questions.every((q) => answerFor(q).length > 0);
+
+  return (
+    <div className="chat-approval chat-clarify" role="form" aria-label="Astra has questions">
+      <div className="chat-approval-head">
+        <span className="chat-approval-badge" aria-hidden="true">?</span>
+        <span className="chat-approval-title">{questions.length > 1 ? `${questions.length} questions` : "Quick question"}</span>
+      </div>
+      {seg.resolved === null && <div className="chat-approval-wait">The turn is paused until you answer</div>}
+      {questions.map((q, qi) => {
+        const qid = q.qid || q.question;
+        const picked = picks[qid] || [];
+        return (
+          <fieldset key={qid} className="chat-clarify-q">
+            <legend className="chat-clarify-question">{questions.length > 1 ? `${qi + 1}. ` : ""}{q.question}</legend>
+            <div className="chat-clarify-choices" role={q.multi_select ? "group" : "radiogroup"} aria-label={q.question}>
+              {q.choices.map((c) => (
+                <button key={c} type="button"
+                  role={q.multi_select ? "checkbox" : "radio"}
+                  aria-checked={picked.includes(c)}
+                  className={cn("chat-approval-btn chat-clarify-choice", picked.includes(c) && "primary")}
+                  onClick={() => togglePick(qid, c, !!q.multi_select)}>
+                  {picked.includes(c) && <Check className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />}
+                  {c}
+                </button>
+              ))}
+            </div>
+            <input type="text" className="chat-clarify-free" placeholder="Or type your own answer…"
+              value={freeText[qid] || ""} aria-label={`Custom answer for: ${q.question}`}
+              onChange={(e) => setFreeText((prev) => ({ ...prev, [qid]: e.target.value }))} />
+          </fieldset>
+        );
+      })}
+      <div className="chat-approval-actions">
+        <button type="button" className="chat-approval-btn primary" disabled={!allAnswered}
+          onClick={() => {
+            if (questions.length === 1 && !questions[0].qid) {
+              onAnswer(seg.reqId!, { answer: answerFor(questions[0]) });
+            } else {
+              const answers: Record<string, string> = {};
+              for (const q of questions) answers[q.qid || q.question] = answerFor(q);
+              onAnswer(seg.reqId!, { answers });
+            }
+          }}>
+          Send answer
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ApprovalRow({ seg, onRespond }: { seg: Segment; onRespond: (reqId: string, choice: string) => void }) {
   const p = seg.params || {};
   const choices = p.choices?.length ? p.choices : ["once", "deny"];
@@ -278,11 +377,12 @@ function ApprovalRow({ seg, onRespond }: { seg: Segment; onRespond: (reqId: stri
 
 // ---- turn container --------------------------------------------------------
 
-export function TurnTimeline({ segments, streaming, onToggleTool, onApprovalRespond }: {
+export function TurnTimeline({ segments, streaming, onToggleTool, onApprovalRespond, onClarifyAnswer }: {
   segments: Segment[];
   streaming: boolean;
   onToggleTool: (segId: string) => void;
   onApprovalRespond: (reqId: string, choice: string) => void;
+  onClarifyAnswer: (reqId: string, result: { answer?: string; answers?: Record<string, string> }) => void;
 }) {
   if (!segments.length) return null;
   // Action-based chronological: preserve arrival order, but ensure any
@@ -311,6 +411,7 @@ export function TurnTimeline({ segments, streaming, onToggleTool, onApprovalResp
         if (seg.kind === "thinking") return <ThinkingRow key={seg.id} seg={seg} />;
         if (seg.kind === "tool") return <ToolRow key={seg.id} seg={seg} onToggle={() => onToggleTool(seg.id)} />;
         if (seg.kind === "approval") return <ApprovalRow key={seg.id} seg={seg} onRespond={onApprovalRespond} />;
+        if (seg.kind === "clarify") return <ClarifyCard key={seg.id} seg={seg} onAnswer={onClarifyAnswer} />;
         return <TextRow key={seg.id} seg={seg} />;
       })}
     </div>
