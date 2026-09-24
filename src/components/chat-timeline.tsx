@@ -243,8 +243,10 @@ function TextRow({ seg }: { seg: Segment }) {
 const APPROVAL_LABELS: Record<string, string> = { once: "Approve once", session: "Allow this chat", always: "Always allow", deny: "Deny" };
 
 // Generative-UI clarify card: renders the agent's question(s) as an interactive
-// form. Single question → choice buttons + free text; batch → per-question
-// groups with radio/checkbox inputs, lockable one at a time (clarify.lock).
+// form. Design language: left-aligned document card (not an alert dialog) —
+// eyebrow label, vertical choice rows with radio/checkbox affordances, quiet
+// free-text line, single left-aligned submit. Single question → one group;
+// batch → numbered groups; multi_select → checkbox rows.
 function ClarifyCard({ seg, onAnswer }: {
   seg: Segment;
   onAnswer: (reqId: string, result: { answer?: string; answers?: Record<string, string> }) => void;
@@ -262,14 +264,24 @@ function ClarifyCard({ seg, onAnswer }: {
   const [freeText, setFreeText] = useState<Record<string, string>>({});
 
   if (seg.resolved) {
-    const summary = Object.entries(seg.answers || {}).map(([, v]) => v).join(", ") || seg.resolved;
+    const answered = questions.length > 0
+      ? questions.map((q, i) => ({ k: questions.length > 1 ? `Q${i + 1}` : "", v: seg.answers?.[q.qid || q.question] || "" }))
+      : [];
     return (
-      <div className="chat-approval" role="status" aria-label="Question answered">
-        <div className="chat-approval-head">
-          <span className="chat-approval-badge done" aria-hidden="true">?</span>
-          <span className="chat-approval-title">Question answered</span>
-        </div>
-        <div className="chat-approval-resolved">Answered: {summary}</div>
+      <div className="chat-clarify" role="status" aria-label="Question answered">
+        <p className="chat-clarify-eyebrow">Answered</p>
+        {answered.length > 0 ? (
+          <dl className="chat-clarify-answer-list">
+            {answered.map((a, i) => (
+              <div key={i} className="chat-clarify-answer-row">
+                {a.k && <dt className="chat-clarify-answer-key">{a.k}</dt>}
+                <dd className="chat-clarify-answer-val">{a.v || "—"}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : (
+          <p className="chat-clarify-answer-val">{Object.values(seg.answers || {}).join(", ") || "Done"}</p>
+        )}
       </div>
     );
   }
@@ -293,38 +305,42 @@ function ClarifyCard({ seg, onAnswer }: {
   const allAnswered = questions.every((q) => answerFor(q).length > 0);
 
   return (
-    <div className="chat-approval chat-clarify" role="form" aria-label="Astra has questions">
-      <div className="chat-approval-head">
-        <span className="chat-approval-badge" aria-hidden="true">?</span>
-        <span className="chat-approval-title">{questions.length > 1 ? `${questions.length} questions` : "Quick question"}</span>
-      </div>
-      {seg.resolved === null && <div className="chat-approval-wait">The turn is paused until you answer</div>}
+    <div className="chat-clarify" role="form" aria-label="Astra has questions">
+      <p className="chat-clarify-eyebrow">{questions.length > 1 ? `${questions.length} quick questions` : "Quick question"}</p>
       {questions.map((q, qi) => {
         const qid = q.qid || q.question;
         const picked = picks[qid] || [];
+        const multi = !!q.multi_select;
         return (
-          <fieldset key={qid} className="chat-clarify-q">
-            <legend className="chat-clarify-question">{questions.length > 1 ? `${qi + 1}. ` : ""}{q.question}</legend>
-            <div className="chat-clarify-choices" role={q.multi_select ? "group" : "radiogroup"} aria-label={q.question}>
-              {q.choices.map((c) => (
-                <button key={c} type="button"
-                  role={q.multi_select ? "checkbox" : "radio"}
-                  aria-checked={picked.includes(c)}
-                  className={cn("chat-approval-btn chat-clarify-choice", picked.includes(c) && "primary")}
-                  onClick={() => togglePick(qid, c, !!q.multi_select)}>
-                  {picked.includes(c) && <Check className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />}
-                  {c}
-                </button>
-              ))}
+          <fieldset key={qid} className="chat-clarify-q" style={{ ["--i" as any]: qi }}>
+            <legend className="chat-clarify-question">{questions.length > 1 ? `${qi + 1}.  ` : ""}{q.question}</legend>
+            <div className="chat-clarify-choices" role={multi ? "group" : "radiogroup"} aria-label={q.question}>
+              {q.choices.map((c) => {
+                const on = picked.includes(c);
+                return (
+                  <button key={c} type="button"
+                    role={multi ? "checkbox" : "radio"}
+                    aria-checked={on}
+                    className={cn("chat-clarify-row", on && "selected")}
+                    onClick={() => togglePick(qid, c, multi)}>
+                    <span className={cn("chat-clarify-control", multi && "box")} aria-hidden="true">
+                      {multi
+                        ? (on && <Check className="h-3 w-3" strokeWidth={2.5} />)
+                        : <span className="chat-clarify-dot" />}
+                    </span>
+                    <span className="chat-clarify-label">{c}</span>
+                  </button>
+                );
+              })}
             </div>
-            <input type="text" className="chat-clarify-free" placeholder="Or type your own answer…"
+            <input type="text" className="chat-clarify-free" placeholder="Or write your own…"
               value={freeText[qid] || ""} aria-label={`Custom answer for: ${q.question}`}
               onChange={(e) => setFreeText((prev) => ({ ...prev, [qid]: e.target.value }))} />
           </fieldset>
         );
       })}
-      <div className="chat-approval-actions">
-        <button type="button" className="chat-approval-btn primary" disabled={!allAnswered}
+      <div className="chat-clarify-actions">
+        <button type="button" className="chat-clarify-submit" disabled={!allAnswered}
           onClick={() => {
             if (questions.length === 1 && !questions[0].qid) {
               onAnswer(seg.reqId!, { answer: answerFor(questions[0]) });
@@ -334,7 +350,7 @@ function ClarifyCard({ seg, onAnswer }: {
               onAnswer(seg.reqId!, { answers });
             }
           }}>
-          Send answer
+          Answer
         </button>
       </div>
     </div>
