@@ -261,9 +261,10 @@ function ApprovalRow({ seg, onRespond }: { seg: Segment; onRespond: (reqId: stri
       ) : (
         <>
           <div className="chat-approval-actions">
-            {choices.map((c) => (
+            {choices.map((c: string, i: number) => (
               <button key={c} type="button" className={cn("chat-approval-btn", c === "deny" && "deny", c === "once" && "primary")}
                 onClick={() => onRespond(seg.reqId!, c)}>
+                <span className="chat-approval-key">{i + 1}</span>
                 {APPROVAL_LABELS[c] || c}
               </button>
             ))}

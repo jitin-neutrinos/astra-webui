@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
-import { ArrowUp, Square, AlertTriangle, RotateCcw, Maximize2, X, Copy, Pencil, ChevronDown } from "lucide-react";
+import { ArrowUp, Square, AlertTriangle, RotateCcw, Maximize2, X, Copy, Pencil, ChevronDown, Link2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useHermesWS } from "@/lib/hermes-ws";
 import type { EventPayload } from "@/lib/hermes-ws";
@@ -148,6 +148,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
     }
 
     if (type === "message.start") {
+      setErrorBanner("");
       if (!activeIdRef.current) ensureActive();
       else setMessages((m) => m.map((msg) => msg.id === activeIdRef.current ? { ...msg, isStreaming: true } : msg));
       return;
@@ -271,6 +272,20 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
   }, [storedSessionId, onSessionChange]);
 
   useEffect(() => {
+    if (storedSessionId) {
+      if (location.pathname !== `/c/${storedSessionId}`) {
+        history.pushState({}, "", `/c/${storedSessionId}`);
+      }
+      document.title = "Chat — Astra";
+    } else {
+      if (location.pathname.startsWith("/c/")) {
+        history.replaceState({}, "", "/");
+      }
+      document.title = "Astra";
+    }
+  }, [storedSessionId]);
+
+  useEffect(() => {
     // A real session switch (sidebar chat click, not a same-session re-affirm) means
     // any still-open turn belonged to the PREVIOUS session — stop guarding it here, or
     // the loadHistory effect below mistakes an unrelated stale turn for a live one on
@@ -359,7 +374,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
     // actual first message, and Regenerate on the greeting would leak it as a visible bubble.
     if (!opts?.silent) lastPromptRef.current = finalText;
     if (!opts?.silent) {
-      try { sessionStorage.setItem("draft_input_" + (liveSessionId || "global"), input); } catch { }
+      try { sessionStorage.setItem("draft_input_" + (storedSessionId || "global"), input); } catch { }
       setInput("");
     }
     setSlashOpen(false);
@@ -494,6 +509,8 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
     // auto-grow: height follows content up to max-height (CSS caps at 200px)
     const ta = taRef.current;
     if (ta) { ta.style.height = "auto"; ta.style.height = `${ta.scrollHeight}px`; }
+    const pTa = popTaRef.current;
+    if (pTa) { pTa.style.height = "auto"; pTa.style.height = `${pTa.scrollHeight}px`; }
   };
 
   const slashMatches = TUI_COMMANDS.filter((c) => c.startsWith(input));
@@ -514,11 +531,42 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); }
   };
 
+  const messagesRef = useRef(messages);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
+
   // Ctrl+O expands the newest collapsed tool block (real key, matches the TUI).
   // Fired only for a bare Ctrl/Cmd+O outside the composer — typing Ctrl+O while
   // focused in the textarea must stay a no-op (reference ChatPageV2 gate).
   useEffect(() => {
     const onKeyDown = (e: globalThis.KeyboardEvent) => {
+      const ae = document.activeElement as HTMLElement;
+      if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable)) return;
+
+      let lastApproval: { reqId: string; choices: string[] } | null = null;
+      const m = messagesRef.current;
+      for (let i = m.length - 1; i >= 0; i--) {
+        const msg = m[i];
+        if (msg.role === "assistant") {
+          for (let j = msg.segments.length - 1; j >= 0; j--) {
+            const s = msg.segments[j];
+            if (s.kind === "approval" && s.resolved == null) {
+              lastApproval = { reqId: s.reqId!, choices: s.params?.choices?.length ? s.params.choices : ["once", "deny"] };
+              break;
+            }
+          }
+          if (lastApproval) break;
+        }
+      }
+
+      if (lastApproval && /^[1-9]$/.test(e.key)) {
+        const idx = parseInt(e.key, 10) - 1;
+        if (idx >= 0 && idx < lastApproval.choices.length) {
+          e.preventDefault();
+          respondApproval(lastApproval.reqId, lastApproval.choices[idx]);
+          return;
+        }
+      }
+
       if (expandKeyBlocked(e.ctrlKey, e.metaKey, e.key, e.target instanceof HTMLElement ? e.target.tagName : undefined)) return;
       e.preventDefault();
       setMessages((m) => {
@@ -534,7 +582,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [respondApproval]);
 
   // Stick-to-bottom: only auto-scroll on new content if already at bottom.
   // Instant ("auto") on purpose: deltas land every ~40ms and a smooth scroll
@@ -611,8 +659,18 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
       )}
 
       <header className={cn("relative z-10 flex items-center justify-between border-b border-white/[0.07] px-3 py-3 lg:px-6", errorBanner && "mt-7")}>
-        <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-slate-500">
-          {empty ? "new session" : `session // ${messages.length} msgs`}
+        <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-slate-500 flex items-center gap-2">
+          {empty ? "new session" : `session // ${storedSessionId ? storedSessionId.slice(0, 8) + ' · ' : ''}${messages.length} msgs`}
+          {!empty && storedSessionId && (
+            <button
+              type="button"
+              onClick={() => void copyText(location.origin + '/c/' + storedSessionId)}
+              aria-label="Copy chat link"
+              className="chat-head-link rounded p-1 hover:bg-white/5 hover:text-cyanx transition-colors text-slate-500"
+            >
+              <Link2 className="h-3.5 w-3.5" strokeWidth={1.5} />
+            </button>
+          )}
         </span>
         <span className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.25em] text-slate-500">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> online
@@ -778,7 +836,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
           </button>
         ) : (
           <button type="button" onClick={() => { void send(); setPopout(false); }}
-            disabled={!input.trim()}
+            disabled={!input.trim() || attachments.some(a => a.status === "uploading")}
             aria-label="Send message (expanded)"
             className="chat-send">
             <ArrowUp className="h-4 w-4" strokeWidth={1.8} />
@@ -826,7 +884,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
             ) : (
               <button
                 type="button" onClick={() => void send()}
-                disabled={!input.trim()}
+                disabled={!input.trim() || attachments.some(a => a.status === "uploading")}
                 aria-label="Send message"
                 className="chat-send"
               >

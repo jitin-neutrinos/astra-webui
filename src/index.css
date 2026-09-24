@@ -312,3 +312,10 @@ body { background: var(--color-void); }
 .chat-code-copy { position:absolute; top:6px; right:6px; width:44px; height:44px; background:rgba(10,10,15,.8); border:1px solid rgba(255,255,255,.1); border-radius:6px; color:var(--color-muted); cursor:pointer; display:flex; align-items:center; justify-content:center; padding: 0; }
 .chat-code-copy:hover { color:var(--color-cyanx); }
 .chat-code-copy svg { width:16px; height:16px; }
+
+/* ---- chat head link ---- */
+.chat-head-link { display:inline-flex; align-items:center; justify-content:center; padding:2px; border-radius:4px; color:var(--color-muted); cursor:pointer; background:transparent; border:none; transition:color 0.15s, background 0.15s; }
+.chat-head-link:hover { color:var(--color-cyanx); background:rgba(255,255,255,0.05); }
+
+/* ---- approval key hint ---- */
+.chat-approval-key { font:400 9px var(--font-mono); border:1px solid rgba(255,255,255,0.15); border-radius:4px; color:var(--color-muted); padding:1px 4px; display:inline-block; margin-right:6px; }

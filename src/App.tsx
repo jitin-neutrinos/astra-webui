@@ -179,8 +179,23 @@ function Shell({ onLogout }: { onLogout: () => void }) {
     localStorage.setItem("astra-sidebar-collapsed", c ? "0" : "1");
     return !c;
   });
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  // Parse /c/<id> into the INITIAL state: chat-landing's URL-sync effect runs on
+  // mount before any parent effect and would replaceState("/") a null session away,
+  // destroying the deep link before it could be read.
+  const parseSessionPath = () => {
+    const match = location.pathname.match(/^\/c\/([A-Za-z0-9_-]+)$/);
+    return match ? match[1] : null;
+  };
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(parseSessionPath);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const onPop = () => {
+      setSelectedSessionId(parseSessionPath());
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const burgerRef = useRef<HTMLButtonElement>(null);
