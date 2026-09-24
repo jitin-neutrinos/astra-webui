@@ -224,6 +224,13 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
           if (payload.state === "reconnecting") {
             setIsStreaming(false);
           } else if (payload.state === "online") {
+            // This fresh upstream transport may never have seen our
+            // capabilities (its connect raced our socket open). Re-advertise
+            // BEFORE resuming or the gateway fast-fails every clarify/approval
+            // with "the attached client predates server→client requests".
+            if (ws.current?.readyState === 1) {
+              ws.current.send(JSON.stringify({ jsonrpc: "2.0", id: generateRpcId(), method: "client.capabilities", params: { server_requests: true } }));
+            }
             const sid = sessionStorage.getItem("astra-chat-session");
             if (sid && ws.current?.readyState === 1) {
               const id = generateRpcId();

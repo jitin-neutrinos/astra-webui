@@ -148,6 +148,38 @@ let reconnecting = false;
 let backoffStep = 0;
 const BACKOFF_TABLE = [1000, 2000, 4000, 8000];
 
+// Browser frames that arrived while the upstream connection was still being
+// minted (cookie + single-use ticket are async). Without buffering, the
+// browser's client.capabilities + session.resume — sent the instant its
+// socket opens — are silently dropped, the gateway never learns this client
+// answers server→client requests, and every clarify/approval fast-fails with
+// "the attached client predates server→client requests". Capped; oldest
+// dropped if upstream never comes up (ordering is preserved for the cap).
+const pendingBrowserFrames = [];
+const PENDING_FRAME_CAP = 100;
+
+function forwardToUpstream(payload) {
+  if (!upstreamWs) return false;
+  try {
+    upstreamWs.write(encodeFrame(payload, { opcode: 0x1, masked: true }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function bufferBrowserFrame(payload) {
+  pendingBrowserFrames.push(payload);
+  if (pendingBrowserFrames.length > PENDING_FRAME_CAP) pendingBrowserFrames.shift();
+}
+
+function flushPendingFrames() {
+  while (pendingBrowserFrames.length && upstreamWs) {
+    const payload = pendingBrowserFrames.shift();
+    if (!forwardToUpstream(payload)) break;
+  }
+}
+
 function broadcastStatus(state) {
   const msg = JSON.stringify({
     method: "event",
@@ -224,6 +256,7 @@ async function connectUpstream() {
     reconnecting = false;
     backoffStep = 0;
     wsTicket = null; // single-use
+    flushPendingFrames(); // deliver frames the browser sent while we were connecting
     broadcastStatus("online");
 
     const decoder = new FrameDecoder((frame, isError) => {
@@ -318,9 +351,9 @@ export function handleWsUpgrade(req, socket, head) {
     } else if (frame.opcode === 0x9) {
       try { socket.write(encodeFrame(frame.payload, { opcode: 0xA, masked: false })); } catch {}
     } else if (frame.opcode === 0x1) {
-      // forward to upstream if connected
-      if (upstreamWs) {
-        try { upstreamWs.write(encodeFrame(frame.payload, { opcode: 0x1, masked: true })); } catch {}
+      // forward to upstream if connected, else buffer until it is
+      if (!forwardToUpstream(frame.payload)) {
+        bufferBrowserFrame(frame.payload);
       }
     }
   });
