@@ -655,6 +655,9 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
         <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-center gap-2 bg-red-500/10 py-1.5 px-4 text-xs font-mono text-red-400 border-b border-red-500/20 backdrop-blur-sm">
           <AlertTriangle className="w-3.5 h-3.5" />
           {errorBanner}
+          {!isStreaming && lastPromptRef.current && (
+            <button type="button" onClick={retry} className="ml-1 underline decoration-dotted underline-offset-2 hover:text-red-300 font-mono">retry</button>
+          )}
         </div>
       )}
 
