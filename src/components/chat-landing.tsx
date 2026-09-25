@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
 import { ArrowUp, Square, TriangleAlert, RotateCcw, Maximize2, X, Copy, Pencil, ChevronDown, Link2, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -19,6 +19,11 @@ import { ComposerControls, filesToAttachments, type Attachment } from "./compose
 import { Lightbox } from "./lightbox";
 import { getHermesHome, getCatalog } from "@/lib/session-files";
 import type { CatalogPayload } from "./composer-controls";
+
+import { computePhases } from "../lib/plan-phases";
+import { computeStats } from "../lib/session-stats";
+import { type PlanResponse, type Plan, type ReportBlock, extractPlans, extractResponses, extractReports, serializeDecision } from "../lib/plan-block";
+import { PlanGateContext } from "./chat-timeline";
 
 // Source: ~/.hermes/plugins/astra-brand/dashboard/dist/astra-core.js CHAT_TUI_COMMANDS
 // (the TUI's registered slash commands — submitted as plain prompt text, same as the terminal).
@@ -695,6 +700,76 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     }
   }, [storedSessionId, isStreaming]);
 
+
+  const planGateValues = useMemo(() => {
+    const decisions = new Map<string, PlanResponse>();
+    const phases = new Map<string, any[]>();
+    const stats = new Map<string, any>();
+    const reports = new Map<string, ReportBlock>();
+
+    for (const m of messages) {
+      if (m.role === "user" && m.content) {
+         const rs = extractResponses(m.content);
+         for (const r of rs) {
+           decisions.set(r.planId, r);
+         }
+      }
+    }
+
+    let currentPlanId: string | null = null;
+    let segsAfterApproval: import("./chat-timeline").Segment[] = [];
+    let turnStreaming = false;
+    let hasReport = false;
+    let firstTs: number | undefined = undefined;
+    let lastTs: number | undefined = undefined;
+    let declared: any[] = [];
+
+    const commitPlan = () => {
+      if (currentPlanId) {
+        phases.set(currentPlanId, computePhases(declared, segsAfterApproval, hasReport, turnStreaming));
+        stats.set(currentPlanId, computeStats(segsAfterApproval, firstTs, lastTs));
+      }
+    };
+
+    for (const m of messages) {
+      if (m.role === "assistant" && "segments" in m) {
+        turnStreaming = m.isStreaming;
+        for (const seg of m.segments) {
+           const pText = seg.text || "";
+           const ps = extractPlans(pText);
+           if (ps.length > 0) {
+             commitPlan();
+             currentPlanId = ps[ps.length - 1].id;
+             declared = ps[ps.length - 1].phases;
+             segsAfterApproval = [];
+             hasReport = false;
+             firstTs = undefined;
+             lastTs = undefined;
+           }
+           const reps = extractReports(pText);
+           if (reps.length > 0) {
+             hasReport = true;
+             if (currentPlanId) reports.set(currentPlanId, reps[reps.length - 1]);
+           }
+        }
+        
+        if (currentPlanId && decisions.has(currentPlanId) && decisions.get(currentPlanId)!.decision === "approved") {
+           segsAfterApproval.push(...m.segments);
+           if (firstTs === undefined) firstTs = m.ts;
+           lastTs = m.ts;
+        }
+      }
+    }
+    commitPlan();
+
+    return { decisions, phases, stats, reports };
+  }, [messages]);
+
+  const respondPlanGate = useCallback((plan: Plan, decision: PlanResponse["decision"], note: string, edited: boolean) => {
+    const text = serializeDecision(plan, decision, note, edited);
+    void send(text, { silent: false });
+  }, [send]);
+
   const hour = new Date().getHours();
   const greeting = hour < 5 ? "Working late" : hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
@@ -770,9 +845,10 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
             </div>
           </div>
         ) : (
-          <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
-            {messages.map((m, idx) => (
-              <div key={m.id} className={m.isSysNote ? "chat-sys-note" : "flex items-start gap-3"}>
+          <PlanGateContext.Provider value={{ sessionId: storedSessionId || "", ...planGateValues, onDecide: respondPlanGate, busy: isStreaming }}>
+            <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
+              {messages.map((m, idx) => (
+                <div key={m.id} className={m.isSysNote ? "chat-sys-note" : "flex items-start gap-3"}>
                 {m.isSysNote ? (
                   <>◈ {m.content}</>
                 ) : m.role === "assistant" ? (
@@ -799,7 +875,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
                       </div>
                     </div>
                   ) : m.segments.length ? (
-                    <TurnTimeline segments={m.segments} streaming={m.isStreaming} onToggleTool={toggleToolCollapse} onApprovalRespond={respondApproval} onClarifyAnswer={respondClarify} onOpenImage={(url, alt) => setLightbox({ open: true, url, alt })} />
+                    <TurnTimeline segments={m.segments} streaming={m.isStreaming} sessionId={storedSessionId || ""} onToggleTool={toggleToolCollapse} onApprovalRespond={respondApproval} onGateRespond={() => {}} onClarifyAnswer={respondClarify} onOpenImage={(url, alt) => setLightbox({ open: true, url, alt })} />
                   ) : m.isStreaming ? (
                     <span className="flex w-fit items-center rounded-2xl border border-cyanx/15 bg-midnight/80 px-3 py-1.5">
                       <AITextLoading texts={["Thinking...", "Working on it...", "Almost there..."]} />
@@ -846,6 +922,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
               </div>
             ))}
           </div>
+          </PlanGateContext.Provider>
         )}
       </div>
 
