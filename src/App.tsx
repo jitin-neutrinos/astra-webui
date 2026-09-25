@@ -20,8 +20,7 @@ import {
   HeartPulse,
   BarChart3,
   Webhook,
-  PanelLeftClose,
-  PanelLeftOpen,
+  ChevronsRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ChatLanding } from "./components/chat-landing";
@@ -323,6 +322,11 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
     );
   }
 
+  // 21st.dev "Dashboard with Collapsible Sidebar" (id 5556) DNA, retinted to Astra tokens:
+  // logo always in header, fixed w-12 icon column + h-11 rows, 2px left-border active marker,
+  // bottom full-width collapse bar with rotating chevron (vendor ToggleClose).
+  const expanded = drawerOpen || !collapsed;
+
   return (
     <aside id="astra-sidebar" data-open={String(drawerOpen)}
       className={cn(
@@ -330,36 +334,26 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
         // < lg: overlay drawer
         "fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] transition-transform duration-200 ease-out motion-reduce:transition-none",
         drawerOpen ? "translate-x-0" : "-translate-x-full",
-        // >= lg: exact current inline sidebar, untouched
-        "lg:static lg:z-auto lg:h-full lg:w-60 lg:max-w-none lg:shrink-0 lg:translate-x-0 lg:transition-[width] lg:duration-150",
-        collapsed && "lg:w-14",
+        // >= lg: inline sidebar; width animates on collapse (vendor: w-64 / w-16)
+        "lg:static lg:z-auto lg:h-full lg:w-64 lg:max-w-none lg:shrink-0 lg:translate-x-0 lg:transition-[width] lg:duration-200 lg:ease-in-out",
+        collapsed && "lg:w-16",
       )}>
-      <div className={cn("flex items-center pb-3 pt-5", collapsed ? "justify-center px-0" : "gap-2.5 px-5")}>
-        {!collapsed && (
-          <>
-            <img src="/astra-logo.png" alt="Astra"
-              className="h-8 w-8 rounded-lg object-cover shadow-[0_0_16px_rgba(34,211,238,0.3)]" />
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-display text-sm tracking-tight text-brandtext">Astra</p>
-              <p className="font-mono text-[8px] uppercase tracking-[0.3em] text-cyanx/60">Command Center</p>
-            </div>
-          </>
+      <div className={cn("flex shrink-0 items-center border-b border-white/[0.07] pb-4 pt-5",
+        expanded ? "gap-3 px-4" : "justify-center px-2")}>
+        <img src="/astra-logo.png" alt="Astra"
+          className="h-9 w-9 shrink-0 rounded-lg object-cover shadow-[0_0_16px_rgba(34,211,238,0.3)]" />
+        {expanded && (
+          <div className="min-w-0">
+            <p className="truncate font-display text-sm font-semibold tracking-tight text-brandtext">Astra</p>
+            <p className="truncate font-mono text-[8px] uppercase tracking-[0.3em] text-cyanx/60">Command Center</p>
+          </div>
         )}
-        <button type="button" onClick={() => (drawerOpen ? onCloseDrawer() : onToggleCollapse())}
-          aria-expanded={!collapsed}
-          aria-label={drawerOpen ? "Close navigation" : collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          title={drawerOpen ? "Close navigation" : collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg p-1 lg:h-auto lg:w-auto lg:p-1 text-slate-400 transition-colors hover:bg-white/5 hover:text-cyanx">
-          {collapsed
-            ? <PanelLeftOpen className="h-5 w-5" strokeWidth={1.5} />
-            : <PanelLeftClose className="h-5 w-5" strokeWidth={1.5} />}
-        </button>
       </div>
 
-      <nav className="sidebar-scroll flex-1 overflow-y-auto px-3 pb-4">
+      <nav className="sidebar-scroll flex-1 overflow-y-auto px-2 py-2">
         {groups.map((group) => (
-          <div key={group.label} className="mb-4">
-            {!collapsed && (
+          <div key={group.label} className="mb-3">
+            {expanded && (
               <p className="px-3 pb-1.5 pt-2 font-mono text-[9px] uppercase tracking-[0.25em] text-slate-600">
                 {group.label}
               </p>
@@ -374,18 +368,17 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
               return (
               <button key={item.name} type="button" onClick={item.onClick}
                 aria-current={active ? "page" : undefined}
-                title={collapsed ? item.name : undefined}
+                title={!expanded ? item.name : undefined}
                 className={cn(
-                  "flex w-full items-center rounded-lg text-left text-sm transition-colors",
-                  collapsed ? "h-11 justify-center px-0" : "min-h-[44px] lg:min-h-0 py-2.5 lg:py-1.5 gap-2.5 px-3",
+                  "relative flex h-11 w-full items-center rounded-md border-l-2 transition-colors duration-200",
                   active
-                    ? "bg-cyanx/10 text-cyanx hover:bg-cyanx/15"
-                    : "text-slate-300 hover:bg-white/5 hover:text-white"
+                    ? "border-cyanx bg-cyanx/10 text-cyanx"
+                    : "border-transparent text-slate-300 hover:bg-white/5 hover:text-white",
                 )}>
-                <span className="shrink-0 text-muted">{item.icon}</span>
-                {!collapsed && <span className="truncate">{item.name}</span>}
-                {!collapsed && "badge" in item && item.badge ? (
-                  <span className="ml-auto font-mono text-[8px] uppercase tracking-widest text-cyanx/60">{item.badge}</span>
+                <span className="grid h-full w-12 shrink-0 place-content-center text-muted">{item.icon}</span>
+                {expanded && <span className="truncate text-sm font-medium">{item.name}</span>}
+                {expanded && "badge" in item && item.badge ? (
+                  <span className="ml-auto mr-3 font-mono text-[8px] uppercase tracking-widest text-cyanx/60">{item.badge}</span>
                 ) : null}
               </button>
               );
@@ -394,17 +387,33 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
         ))}
       </nav>
 
-      <div className={cn("border-t border-white/[0.07]", collapsed ? "p-2" : "p-3")}>
+      <div className="shrink-0 px-2 pb-2">
         <button type="button" onClick={onLogout}
-          title={collapsed ? "Logout" : undefined}
-          className={cn(
-            "flex w-full items-center rounded-lg text-sm text-slate-400 transition-colors hover:bg-redx/10 hover:text-redx",
-            collapsed ? "h-11 justify-center px-0" : "min-h-[44px] lg:min-h-0 py-2.5 lg:py-1.5 gap-2.5 px-3 text-left",
-          )}>
-          <LogOut className="h-4 w-4" strokeWidth={1.5} />
-          {!collapsed && "Logout"}
+          title={!expanded ? "Logout" : undefined}
+          className="relative flex h-11 w-full items-center rounded-md border-l-2 border-transparent text-slate-400 transition-colors duration-200 hover:border-redx/60 hover:bg-redx/10 hover:text-redx">
+          <span className="grid h-full w-12 shrink-0 place-content-center">
+            <LogOut className="h-4 w-4" strokeWidth={1.5} />
+          </span>
+          {expanded && <span className="truncate text-sm font-medium">Logout</span>}
         </button>
       </div>
+
+      <button type="button"
+        onClick={() => (drawerOpen ? onCloseDrawer() : onToggleCollapse())}
+        aria-expanded={!collapsed}
+        aria-label={drawerOpen ? "Close navigation" : collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        title={drawerOpen ? "Close navigation" : collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        className="flex w-full shrink-0 items-center border-t border-white/[0.07] transition-colors duration-200 hover:bg-white/5">
+        <span className="grid h-12 w-12 shrink-0 place-content-center text-slate-400">
+          <ChevronsRight className={cn("h-4 w-4 transition-transform duration-300 motion-reduce:transition-none",
+            expanded && "rotate-180")} strokeWidth={1.5} />
+        </span>
+        {expanded && (
+          <span className="truncate pr-3 text-sm font-medium text-slate-400">
+            {drawerOpen ? "Close" : "Hide"}
+          </span>
+        )}
+      </button>
     </aside>
   );
 }
