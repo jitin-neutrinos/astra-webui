@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
-import { ArrowUp, Square, TriangleAlert, RotateCcw, Maximize2, X, Copy, Pencil, ChevronDown, Link2 } from "lucide-react";
+import { ArrowUp, Square, TriangleAlert, RotateCcw, Maximize2, X, Copy, Pencil, ChevronDown, Link2, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useHermesWS } from "@/lib/hermes-ws";
 import type { EventPayload } from "@/lib/hermes-ws";
@@ -49,7 +49,7 @@ function thinkingOf(payload: any): string {
   return payload?.delta?.thinking ?? payload?.text ?? payload?.rendered ?? "";
 }
 
-export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }: { resetSignal: number, selectedSessionId: string | null, onSessionChange?: (id: string | null) => void }) {
+export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, onNewChat }: { resetSignal: number, selectedSessionId: string | null, onSessionChange?: (id: string | null) => void, onNewChat?: () => void }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [lightbox, setLightbox] = useState<{ open: boolean; url: string; alt: string }>({ open: false, url: "", alt: "" });
   const [input, setInput] = useState("");
@@ -446,6 +446,13 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
     finalizeActive();
   };
 
+  // New chat via the chat header: reuse the exact sidebar New-chat path from App
+  // (URL sync + selection clear + drawer close). App is the only consumer, so the
+  // prop is required.
+  const sendReset = useCallback(() => {
+    onNewChat?.();
+  }, [onNewChat]);
+
   const onToggleYolo = async () => {
     const next = !sessionInfo?.yolo;
     // Optimistic (create a stub when no session yet — session.info reconciles later)
@@ -736,6 +743,11 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
           )}
         </span>
         <span className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.25em] text-slate-500">
+          <button type="button" onClick={() => { void sendReset(); }}
+            aria-label="New chat" title="New chat"
+            className="chat-head-link" >
+            <Plus className="h-3.5 w-3.5" strokeWidth={1.5} />
+          </button>
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> online
         </span>
       </header>

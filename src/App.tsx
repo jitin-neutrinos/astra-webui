@@ -3,7 +3,6 @@ import type { FormEvent, ReactNode } from "react";
 import {
   Menu,
   MessageSquare,
-  Plus,
   LogOut,
   Eye,
   EyeOff,
@@ -20,9 +19,8 @@ import {
   HeartPulse,
   BarChart3,
   Webhook,
-  ChevronsRight,
   ChevronDown,
-} from "lucide-react";
+  } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ChatLanding } from "./components/chat-landing";
 import { ChatsPanel } from "./components/chats-panel";
@@ -238,14 +236,14 @@ function Shell({ onLogout }: { onLogout: () => void }) {
           onCloseDrawer={closeDrawer}
           onToggleCollapse={toggleSidebar}
           onLogout={() => { closeDrawer(); onLogout(); }}
-          onNewChat={() => { closeDrawer(); setResetSignal(r => r + 1); setView('chat'); setSelectedSessionId(null); }}
           onSelectSession={(id) => { setSelectedSessionId(id); setView('chat'); }}
           onOpenAstra={() => { closeDrawer(); setView('chat'); }}
           onOpenFiles={() => { closeDrawer(); setView('files'); }}
           onOpenTracker={() => { closeDrawer(); setView('tracker'); }}
         />
         <div className={cn("flex flex-1 flex-col overflow-hidden", view !== 'chat' && view !== 'tracker' && "hidden")}>
-          <ChatLanding resetSignal={resetSignal} selectedSessionId={selectedSessionId} onSessionChange={setActiveSessionId} />
+          <ChatLanding resetSignal={resetSignal} selectedSessionId={selectedSessionId} onSessionChange={setActiveSessionId}
+            onNewChat={() => { setResetSignal(r => r + 1); setView('chat'); setSelectedSessionId(null); }} />
         </div>
         {view === 'files' && (
           <FilesPage onBack={() => setView('chat')} />
@@ -260,7 +258,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
   );
 }
 
-function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDrawer, onToggleCollapse, onLogout, onNewChat, onSelectSession, onOpenAstra, onOpenFiles, onOpenTracker }: { activeView: 'chat' | 'files' | 'tracker'; collapsed: boolean; drawerOpen: boolean; activeSessionId: string | null; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onNewChat: () => void; onSelectSession: (id: string) => void; onOpenAstra: () => void; onOpenFiles: () => void; onOpenTracker?: () => void; }) {
+function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDrawer, onToggleCollapse, onLogout, onSelectSession, onOpenAstra, onOpenFiles, onOpenTracker }: { activeView: 'chat' | 'files' | 'tracker'; collapsed: boolean; drawerOpen: boolean; activeSessionId: string | null; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onSelectSession: (id: string) => void; onOpenAstra: () => void; onOpenFiles: () => void; onOpenTracker?: () => void; }) {
   const [mode, setMode] = useState<'nav' | 'chats'>('nav');
   // Per-group accordion. Owner mandate: Configure + Operations start collapsed;
   // Work starts open. Persisted in localStorage. Collapsed rail shows icons only,
@@ -286,7 +284,6 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
       label: "Work",
       items: [
         { name: "Astra", icon: <img src="/astra-logo.png" alt="" className="h-4 w-4 rounded-full object-cover" />, onClick: onOpenAstra },
-        { name: "New chat", icon: <Plus className="h-4 w-4" strokeWidth={1.5} />, onClick: onNewChat },
         { name: "Chats", icon: <MessageSquare className="h-4 w-4" strokeWidth={1.5} />, onClick: () => { setMode('chats'); if (collapsed) onToggleCollapse(); } },
         { name: "Files", icon: <Folder className="h-4 w-4" strokeWidth={1.5} />, onClick: onOpenFiles },
       ],
@@ -355,10 +352,15 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
         "lg:static lg:z-auto lg:h-full lg:w-64 lg:max-w-none lg:shrink-0 lg:translate-x-0 lg:transition-[width] lg:duration-200 lg:ease-in-out",
         collapsed && "lg:w-16",
       )}>
-      <div className={cn("flex shrink-0 items-center border-b border-white/[0.07] pb-4 pt-5",
-        expanded ? "gap-3 px-4" : "justify-center px-2")}>
-        <img src="/astra-logo.png" alt="Astra"
-          className="h-9 w-9 shrink-0 rounded-lg object-cover shadow-[0_0_16px_rgba(34,211,238,0.3)]" />
+      <div className={cn("flex shrink-0 border-b border-white/[0.07] py-4",
+        expanded ? "items-center gap-3 px-4" : "items-center justify-center px-2")}>
+        <button type="button" onClick={onToggleCollapse} disabled={drawerOpen}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={expanded ? "Collapse" : "Expand"}
+          className="rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyanx/60">
+          <img src="/astra-logo.png" alt="Astra"
+            className="h-9 w-9 shrink-0 rounded-lg object-cover" />
+        </button>
         {expanded && (
           <div className="min-w-0">
             <p className="truncate font-display text-sm font-semibold tracking-tight text-brandtext">Astra</p>
@@ -369,21 +371,19 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
 
       <nav className="sidebar-scroll flex-1 overflow-y-auto px-2 py-2">
         {groups.map((group) => {
-          // Collapsed rail shows icons only — groups are meaningless there, force open.
-          const open = collapsed || !!groupOpen[group.label];
+          // Group dropdowns are IDENTICAL in rail mode: same shared open state,
+          // headers render as chevron-only toggles, items show icons only.
+          const open = !!groupOpen[group.label];
           return (
           <div key={group.label} className="mb-3">
-            {expanded && (
               <button type="button"
                 onClick={() => setGroupOpen((o) => ({ ...o, [group.label]: !o[group.label] }))}
                 aria-expanded={open}
                 title={`Toggle ${group.label}`}
-                className="flex h-8 w-full items-center justify-between rounded-md px-3 text-left font-mono text-[9px] uppercase tracking-[0.25em] text-slate-600 transition-colors duration-200 hover:text-slate-400">
-                <span>{group.label}</span>
+                className="flex h-8 w-full items-center justify-center rounded-md text-left font-mono text-[9px] uppercase tracking-[0.25em] text-slate-600 transition-colors duration-200 hover:text-slate-400">
                 <ChevronDown className={cn("h-3 w-3 shrink-0 transition-transform duration-200 motion-reduce:transition-none",
                   open && "rotate-180")} strokeWidth={1.5} />
               </button>
-            )}
             <div className={cn("grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none",
               open ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
               <div className="overflow-hidden">
@@ -431,23 +431,6 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
           {expanded && <span className="truncate text-sm font-medium">Logout</span>}
         </button>
       </div>
-
-      <button type="button"
-        onClick={() => (drawerOpen ? onCloseDrawer() : onToggleCollapse())}
-        aria-expanded={!collapsed}
-        aria-label={drawerOpen ? "Close navigation" : collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        title={drawerOpen ? "Close navigation" : collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        className="flex w-full shrink-0 items-center border-t border-white/[0.07] transition-colors duration-200 hover:bg-white/5">
-        <span className="grid h-12 w-12 shrink-0 place-content-center text-slate-400">
-          <ChevronsRight className={cn("h-4 w-4 transition-transform duration-300 motion-reduce:transition-none",
-            expanded && "rotate-180")} strokeWidth={1.5} />
-        </span>
-        {expanded && (
-          <span className="truncate pr-3 text-sm font-medium text-slate-400">
-            {drawerOpen ? "Close" : "Hide"}
-          </span>
-        )}
-      </button>
     </aside>
   );
 }
