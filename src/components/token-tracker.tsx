@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BarChart3, ShieldCheck, Zap, TrendingUp, Activity, Cpu } from "lucide-react";
+import { BarChart3, ShieldCheck, Zap, TrendingUp, Activity, Cpu, ArrowLeft } from "lucide-react";
 
 /* Token usage data fetched from the local tracker collector (port 8788).
    The collector polls headroom /stats every 30s and serves JSON with CORS headers.
@@ -37,7 +37,7 @@ function formatUSD(n: number): string {
   return "$" + n.toFixed(2);
 }
 
-export default function TokenTrackerPage() {
+export default function TokenTrackerPage({ onBack }: { onBack?: () => void }) {
   const [data, setData] = useState<TrackerData | null>(null);
 
   const fetchData = async () => {
@@ -86,12 +86,19 @@ export default function TokenTrackerPage() {
   const rows = data?.summary_rows_30d || [];
 
   return (
-    <div className="min-h-screen bg-void text-brandtext font-sans p-6 lg:p-10">
+    <div className="flex-1 overflow-auto bg-void text-brandtext font-sans p-6 lg:p-10">
       {/* Header */}
-      <div className="max-w-5xl mx-auto mb-8">
-        <h2 className="font-display text-3xl tracking-tight text-brandtext">Global Token Tracker</h2>
-        <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-cyanx/70 mt-1">Live harness usage / token optimization observability</p>
-        <p className="text-xs text-muted mt-2">Source: headroom proxy (127.0.0.1:8787) + collector (8788). Refresh: every 30s. Provider rates embedded from official docs (Sep 2026).</p>
+      <div className="max-w-5xl mx-auto mb-8 flex items-start gap-4">
+        {onBack && (
+          <button type="button" onClick={onBack} className="p-2 -ml-2 rounded-lg hover:bg-white/5 text-slate-400 transition lg:hidden" aria-label="Back to chat">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+        )}
+        <div>
+          <h2 className="font-display text-3xl tracking-tight text-brandtext">Global Token Tracker</h2>
+          <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-cyanx/70 mt-1">Live harness usage / token optimization observability</p>
+          <p className="text-xs text-muted mt-2">Source: headroom proxy (127.0.0.1:8787) + collector (8788). Refresh: every 30s. Provider rates embedded from official docs (Sep 2026).</p>
+        </div>
       </div>
 
       <div className="max-w-5xl mx-auto space-y-6">

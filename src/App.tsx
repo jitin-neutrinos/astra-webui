@@ -243,7 +243,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
           onOpenTracker={() => { closeDrawer(); setView('tracker'); }}
           onOpenConfig={() => { closeDrawer(); setView('config'); }}
         />
-        <div className={cn("flex flex-1 flex-col overflow-hidden", view !== 'chat' && view !== 'tracker' && view !== 'config' && "hidden")}>
+        <div className={cn("flex flex-1 flex-col overflow-hidden", view !== 'chat' && "hidden")}>
           <ChatLanding resetSignal={resetSignal} selectedSessionId={selectedSessionId} onSessionChange={setActiveSessionId}
             onNewChat={() => { setResetSignal(r => r + 1); setView('chat'); setSelectedSessionId(null); }} />
         </div>
@@ -251,9 +251,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
           <FilesPage onBack={() => setView('chat')} />
         )}
         {view === 'tracker' && (
-          <div className="flex-1 overflow-auto bg-void p-6 lg:p-10">
-            <TokenTrackerPage />
-          </div>
+          <TokenTrackerPage onBack={() => setView('chat')} />
         )}
         {view === 'config' && (
           <ConfigPage onBack={() => setView('chat')} />
