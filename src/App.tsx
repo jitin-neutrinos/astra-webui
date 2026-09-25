@@ -22,7 +22,6 @@ import {
   ChevronDown,
   Briefcase,
   Activity,
-  CornerDownRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ChatLanding } from "./components/chat-landing";
@@ -419,10 +418,6 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
                     ? "border-cyanx bg-cyanx/10 text-cyanx"
                     : "border-transparent text-slate-300 hover:bg-white/5 hover:text-white",
                 )}>
-                {open && (
-                  <CornerDownRight aria-hidden="true"
-                    className="absolute left-[5px] h-3 w-3 text-cyanx/45" strokeWidth={1.5} />
-                )}
                 <span className="grid h-full w-12 shrink-0 place-content-center text-muted">{item.icon}</span>
                 {expanded && <span className="truncate text-sm font-medium">{item.name}</span>}
                 {expanded && "badge" in item && item.badge ? (
