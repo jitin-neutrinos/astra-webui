@@ -143,7 +143,7 @@ assert.equal(expandKeyBlocked(true, false, "o", "INPUT"), true, "Ctrl+O inside a
 assert.equal(expandKeyBlocked(false, false, "o", "DIV"), true, "plain O without modifier must not expand");
 assert.equal(expandKeyBlocked(true, false, "x", "DIV"), true, "other Ctrl+<key> combos must not expand");
 
-import { mediaPaths } from "../src/components/chat-timeline.tsx";
+import { mediaPaths } from "../src/lib/media-paths.ts";
 
 // 15. Media paths regex check.
 assert.deepEqual(

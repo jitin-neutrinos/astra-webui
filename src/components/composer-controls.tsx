@@ -57,6 +57,19 @@ function fmtSize(n: number) {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+// Shared with chat-landing's drag-drop handler so dropped files get the exact
+// same attachment shaping as the attach-button path.
+export function filesToAttachments(files: File[]): Attachment[] {
+  return files.map((f) => ({
+    id: `${f.name}-${f.size}-${Date.now()}`,
+    name: f.name,
+    size: f.size,
+    status: "uploading" as const,
+    progress: 0,
+    file: f,
+  }));
+}
+
 export function ComposerControls({ attachments, setAttachments, disabled, sessionInfo, catalog, onPickModel, onPickEffort, onToggleYolo, onRemoveAttachment }: {
   attachments: Attachment[];
   setAttachments: (fn: (a: Attachment[]) => Attachment[]) => void;
@@ -79,14 +92,7 @@ export function ComposerControls({ attachments, setAttachments, disabled, sessio
 
   const onFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
-    setAttachments((a) => [...a, ...files.map((f) => ({
-      id: `${f.name}-${f.size}-${Date.now()}`,
-      name: f.name,
-      size: f.size,
-      status: "uploading" as const,
-      progress: 0,
-      file: f
-    }))]);
+    setAttachments((a) => [...a, ...filesToAttachments(files)]);
     e.target.value = "";
   };
 

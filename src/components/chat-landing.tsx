@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
-import { ArrowUp, Square, AlertTriangle, RotateCcw, Maximize2, X, Copy, Pencil, ChevronDown, Link2 } from "lucide-react";
+import { ArrowUp, Square, TriangleAlert, RotateCcw, Maximize2, X, Copy, Pencil, ChevronDown, Link2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useHermesWS } from "@/lib/hermes-ws";
 import type { EventPayload } from "@/lib/hermes-ws";
-import { normalizeMessages } from "@/lib/normalize-messages";
+import { rowsToTurns, type Turn } from "@/lib/normalize-messages";
+import { extractAttachments } from "@/lib/media-paths";
 import { copyText } from "@/lib/copy-text";
 import { modelSwitchValue } from "@/lib/model-switch";
 import AITextLoading from "@/components/ui/ai-text-loading";
@@ -14,7 +15,8 @@ import {
   usePrefersReducedMotion, MediaCard,
   type Segment, type SegOp,
 } from "./chat-timeline";
-import { ComposerControls, type Attachment } from "./composer-controls";
+import { ComposerControls, filesToAttachments, type Attachment } from "./composer-controls";
+import { Lightbox } from "./lightbox";
 import { getHermesHome, getCatalog } from "@/lib/session-files";
 import type { CatalogPayload } from "./composer-controls";
 
@@ -49,8 +51,10 @@ function thinkingOf(payload: any): string {
 
 export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }: { resetSignal: number, selectedSessionId: string | null, onSessionChange?: (id: string | null) => void }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [lightbox, setLightbox] = useState<{ open: boolean; url: string; alt: string }>({ open: false, url: "", alt: "" });
   const [input, setInput] = useState("");
   const [popout, setPopout] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const popTaRef = useRef<HTMLTextAreaElement>(null);
   const [errorBanner, setErrorBanner] = useState("");
   const [atBottom, setAtBottom] = useState(true);
@@ -353,23 +357,28 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
           return;
         }
         const data = await res.json();
-        // The history REST endpoint returns plain {role, content} rows only — no
-        // persisted step data — so historical turns render as a single plain text
-        // segment rather than fabricating tool/thinking blocks that never happened.
-        const rows = normalizeMessages(data.messages || []);
+        // rowsToTurns reconstructs thinking/tool segments from the persisted
+        // reasoning/tool_calls/tool-result rows — approval/clarify segments
+        // are the only kind never persisted, so restored turns never have them.
+        const rows = rowsToTurns(data.messages || []);
         // Restore any saved input draft for this session
         try { const d = sessionStorage.getItem("draft_input_" + (storedSessionId || "global")); if (d) { setInput(d); sessionStorage.removeItem("draft_input_" + (storedSessionId || "global")); } } catch { }
         
-        const norm = (s: string) => s.replace(/\n\nAttached file: .*/g, "").replace(/\s+$/g, "");
-        const sameMsg = (live: ChatMsg, row: { role: string; content: string }) => {
+        const sameMsg = (live: ChatMsg, row: Turn) => {
           if (live.isSysNote || live.role !== row.role) return false;
-          if (live.role === "user") return norm(live.content) === norm(row.content);
-          const t = live.segments.filter((s) => s.kind === "text").map((s) => s.text ?? "").join("\n\n");
-          return norm(t) === norm(row.content) && t !== "";
+          if (live.role === "user") return (live.content || "").trim() === (row.content || "").trim();
+          const t1 = (live.segments || []).filter((s) => s.kind === "text").map((s) => s.text ?? "").join("\n\n").trim();
+          const t2 = (row.segments || []).filter((s) => s.kind === "text").map((s) => s.text ?? "").join("\n\n").trim();
+          if (t1 === "" && t2 === "") {
+             const kinds1 = (live.segments || []).map(s => s.kind).join();
+             const kinds2 = (row.segments || []).map(s => s.kind).join();
+             const labels1 = (live.segments || []).filter(s => s.kind === "tool").map(s => s.label).join();
+             const labels2 = (row.segments || []).filter(s => s.kind === "tool").map(s => s.label).join();
+             return kinds1 === kinds2 && labels1 === labels2;
+          }
+          return t1 === t2;
         };
-        const toMsg = (r: any): ChatMsg => r.role === "user"
-          ? { id: nextId(), role: "user", content: r.content }
-          : { id: nextId(), role: "assistant", isStreaming: false, segments: [{ id: nextId(), kind: "text", status: "done", text: r.content }] };
+        const toMsg = (r: Turn): ChatMsg => ({ ...r, id: r.id || nextId() } as ChatMsg);
 
         const sid = storedSessionId;
         setMessages((live) => {
@@ -418,7 +427,8 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
     // A silent kickoff (the auto-greet on New chat) submits a prompt to Hermes without
     // showing it as a user bubble — the user should only see Hermes speaking first.
     if (!opts?.silent) {
-      setMessages((m) => [...m, { id: nextId(), role: "user", content: (raw ?? input).trim(), ts: Date.now(), files }]);
+      const extracted = extractAttachments(finalText);
+      setMessages((m) => [...m, { id: nextId(), role: "user", content: extracted.text, ts: Date.now(), files: extracted.files }]);
     }
 
     const id = nextId();
@@ -684,17 +694,24 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
 
   return (
     <main className="relative flex h-full min-w-0 flex-1 flex-col">
-      <div className="pointer-events-none absolute inset-0 retro-grid opacity-40" aria-hidden="true" />
+      {errorBanner && (() => {
+        let cat = "Action";
+        let title = errorBanner;
+        if (errorBanner.includes("Connection") || errorBanner.includes("reconnect")) cat = "Connection";
+        else if (errorBanner.includes("Unauthorized") || errorBanner.includes("log in")) cat = "Auth";
+        else if (errorBanner.includes("503") || errorBanner.includes("Agent backend")) cat = "Model";
 
-      {errorBanner && (
-        <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-center gap-2 bg-red-500/10 py-1.5 px-4 text-xs font-mono text-red-400 border-b border-red-500/20 backdrop-blur-sm">
-          <AlertTriangle className="w-3.5 h-3.5" />
-          {errorBanner}
-          {!isStreaming && lastPromptRef.current && (
-            <button type="button" onClick={retry} className="ml-1 underline decoration-dotted underline-offset-2 hover:text-red-300 font-mono">retry</button>
-          )}
-        </div>
-      )}
+        return (
+          <div role="alert" className="absolute top-0 left-0 right-0 z-20 flex items-center justify-center gap-2 bg-[var(--surface-overlay)] py-1.5 px-4 text-xs font-mono border-b border-red-500/20">
+            <TriangleAlert className="w-3.5 h-3.5 text-red-400" />
+            <span className="font-semibold text-red-400">[{cat}]</span>
+            <span className="text-slate-300">{title}</span>
+            {!isStreaming && lastPromptRef.current && (
+              <button type="button" onClick={retry} className="ml-1 underline decoration-dotted underline-offset-2 hover:text-slate-200 text-slate-400">retry</button>
+            )}
+          </div>
+        );
+      })()}
 
       <header className={cn("relative z-10 flex items-center justify-between border-b border-white/[0.07] px-3 py-3 lg:px-6", errorBanner && "mt-7")}>
         <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-slate-500 flex items-center gap-2">
@@ -756,12 +773,12 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
                           {m.files.map(f => <MediaCard key={f.path} path={f.path} name={f.name} />)}
                         </div>
                       )}
-                      <div className="min-w-0 whitespace-pre-wrap rounded-2xl bg-white/[0.06] px-4 py-3 text-sm leading-relaxed text-slate-200">
+                      <div className="min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere] rounded-2xl bg-white/[0.06] px-4 py-3 text-sm leading-relaxed text-slate-200">
                         {m.content.replace(/\n\nAttached file: .*/g, "")}
                       </div>
                     </div>
                   ) : m.segments.length ? (
-                    <TurnTimeline segments={m.segments} streaming={m.isStreaming} onToggleTool={toggleToolCollapse} onApprovalRespond={respondApproval} onClarifyAnswer={respondClarify} />
+                    <TurnTimeline segments={m.segments} streaming={m.isStreaming} onToggleTool={toggleToolCollapse} onApprovalRespond={respondApproval} onClarifyAnswer={respondClarify} onOpenImage={(url, alt) => setLightbox({ open: true, url, alt })} />
                   ) : m.isStreaming ? (
                     <span className="flex w-fit items-center rounded-2xl border border-cyanx/15 bg-midnight/80 px-3 py-1.5">
                       <AITextLoading texts={["Thinking...", "Working on it...", "Almost there..."]} />
@@ -812,7 +829,21 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
       </div>
 
       <div className="relative z-10 px-3 pb-3 lg:px-6 lg:pb-6">
-        <div className="chat-composer mx-auto max-w-3xl">
+        <div
+          className={cn("chat-composer mx-auto max-w-3xl", dragOver && "drag-over")}
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); }}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            if (isStreaming) return;
+            const files = Array.from(e.dataTransfer?.files ?? []);
+            if (files.length) setAttachments((a) => [...a, ...filesToAttachments(files)]);
+          }}
+        >
+          {dragOver && (
+            <div className="chat-drop-overlay" aria-hidden="true">Drop to attach</div>
+          )}
           {isStreaming && !atBottom && (
             <button type="button" className="chat-jump" onClick={() => {
               listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: reducedMotion ? "auto" : "smooth" });
@@ -932,6 +963,13 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
           </div>
         </div>
       </div>
+      <Lightbox 
+        open={lightbox.open} 
+        images={[{ id: "1", url: lightbox.url, alt: lightbox.alt }]} 
+        index={0} 
+        onClose={() => setLightbox(l => ({ ...l, open: false }))} 
+        onIndex={() => {}} 
+      />
     </main>
   );
 }

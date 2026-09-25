@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState, useMemo } from "react";
-import { Check, ChevronDown, ChevronRight, Loader2, TriangleAlert, PlayCircle, FileText, Copy } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Loader2, TriangleAlert, FileText, Copy } from "lucide-react";
 import { cn } from "../lib/utils";
 import { getFileKind } from "../lib/session-files";
+import { AudioPlayer } from "./audio-player";
 
 import type { Segment, ClarifyQuestion } from "../lib/chat-segments";
 import { turnIsRunning } from "../lib/chat-segments";
+import { MEDIA_RE, mediaPaths, stripMediaLines } from "../lib/media-paths";
 
 export type { SegKind, Segment, SegOp } from "../lib/chat-segments";
 export { applySegmentOps, finalizeSegments, findNewestCollapsedToolSeg, expandKeyBlocked, turnIsRunning } from "../lib/chat-segments";
+export { MEDIA_RE, mediaPaths, stripMediaLines };
 
 import { Marked } from "marked";
 import DOMPurify from "dompurify";
@@ -17,19 +20,47 @@ import { copyText } from "../lib/copy-text";
 const md = new Marked({ gfm: true, breaks: true });
 let purifyHooked = false;
 
-function RichText({ text }: { text: string }) {
+function RichText({ text, onOpenImage, streaming }: { text: string; onOpenImage?: (url: string, alt: string) => void; streaming?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const html = useMemo(() => {
     if (!purifyHooked) {
       DOMPurify.addHook("afterSanitizeAttributes", (n) => {
         if (n.tagName === "A") { n.setAttribute("target", "_blank"); n.setAttribute("rel", "noopener noreferrer"); }
+        if (n.tagName === "IMG") {
+          const src = n.getAttribute("src") || "";
+          if (src && !src.startsWith("http://") && !src.startsWith("https://") && !src.startsWith("/api/hx/")) {
+            n.removeAttribute("src"); // Only allow safe paths
+          }
+          n.setAttribute("loading", "lazy");
+        }
       });
       purifyHooked = true;
     }
-    return DOMPurify.sanitize(md.parse(text, { async: false }) as string, {
-      ADD_ATTR: ["target"], FORBID_TAGS: ["style", "form"], FORBID_ATTR: ["srcset"],
+    
+    let processed = text;
+    let matches: RegExpMatchArray | null = null;
+    if (streaming) {
+      // detect odd fence count -> close it
+      matches = processed.match(/```/g);
+      if (matches && matches.length % 2 !== 0) {
+        processed += "\n```";
+      }
+    }
+    
+    let sanitized = DOMPurify.sanitize(md.parse(processed, { async: false }) as string, {
+      ADD_ATTR: ["target", "loading"], FORBID_TAGS: ["style", "form"], FORBID_ATTR: ["srcset"],
     });
-  }, [text]);
+
+    if (streaming && matches && matches.length % 2 !== 0) {
+      // only the trailing unterminated block is actually streaming — a global
+      // replace would also tag earlier, already-closed code blocks
+      const lastOpen = sanitized.lastIndexOf("<pre><code");
+      if (lastOpen !== -1) {
+        sanitized = sanitized.slice(0, lastOpen) + '<pre data-streaming="true"><code' + sanitized.slice(lastOpen + "<pre><code".length);
+      }
+    }
+    return sanitized;
+  }, [text, streaming]);
 
   useEffect(() => {
     const root = containerRef.current;
@@ -45,7 +76,18 @@ function RichText({ text }: { text: string }) {
       btn.onclick = () => void copyText(pre.textContent || "");
       pre.appendChild(btn);
     });
-  }, [html]);
+
+    const imgs = root.querySelectorAll("img:not([data-lb])");
+    imgs.forEach((el) => {
+      const img = el as HTMLImageElement;
+      img.setAttribute("data-lb", "1");
+      img.classList.add("cursor-zoom-in");
+      img.addEventListener("click", (e) => {
+        e.preventDefault();
+        onOpenImage?.(img.src, img.alt);
+      });
+    });
+  }, [html, onOpenImage]);
 
   return (
     <div className="relative group">
@@ -65,6 +107,12 @@ function RichText({ text }: { text: string }) {
 
 // ---- segment rows ---------------------------------------------------------
 
+function formatDur(ms?: number) {
+  if (ms == null) return null;
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
 function ThinkingRow({ seg }: { seg: Segment }) {
   const [open, setOpen] = useState(true);
   const wasRunning = useRef(seg.status === "run");
@@ -73,13 +121,15 @@ function ThinkingRow({ seg }: { seg: Segment }) {
     wasRunning.current = seg.status === "run";
   }, [seg.status]);
   if (!seg.text) return null;
+  const dur = formatDur(seg.durationMs);
   return (
     <div className="chat-step-wrap">
       <button type="button" className={cn("chat-step k-think", seg.status === "run" && "run")}
         onClick={() => setOpen((o) => !o)} aria-expanded={open}>
         {seg.status === "run" ? <Loader2 className="chat-step-icon spin" /> : <Check className="chat-step-icon" />}
         <span className="chat-step-label">Thinking</span>
-        {open ? <ChevronDown className="chat-step-chevron" /> : <ChevronRight className="chat-step-chevron" />}
+        {dur && <span className={cn("chat-step-dur ml-auto font-mono text-[10px]", seg.status === "run" ? "text-[var(--color-cyanx)]" : "text-[var(--color-brandtext)]")}>{dur}</span>}
+        {open ? <ChevronDown className="chat-step-chevron ml-2" /> : <ChevronRight className="chat-step-chevron ml-2" />}
       </button>
       {open && <div className="chat-step-body chat-think-text">{seg.text}</div>}
     </div>
@@ -91,14 +141,16 @@ function ToolRow({ seg, onToggle }: { seg: Segment; onToggle: () => void }) {
   const preview = (seg.command || seg.argsText || "").replace(/\s+/g, " ").slice(0, 90);
   const long = (seg.resultText?.length || 0) > 3000;
   const showBody = !seg.collapsed || !long;
+  const dur = formatDur(seg.durationMs);
   return (
     <div className="chat-step-wrap">
       <button type="button" className={cn("chat-step k-tool", seg.status === "run" && "run")} onClick={onToggle} aria-expanded={!seg.collapsed}>
         {seg.status === "run" ? <Loader2 className="chat-step-icon spin" /> : seg.exitCode ? <TriangleAlert className="chat-step-icon err" /> : <Check className="chat-step-icon" />}
         <span className="chat-step-label">{seg.label}</span>
-        {!!preview && <span className="chat-step-preview">{preview}</span>}
-        {seg.status === "done" && seg.exitCode != null && seg.exitCode !== 0 && <span className="chat-step-exit">exit {seg.exitCode}</span>}
-        {(seg.command || seg.argsText || seg.resultText) && (seg.collapsed ? <ChevronRight className="chat-step-chevron" /> : <ChevronDown className="chat-step-chevron" />)}
+        {!!preview && <span className="chat-step-preview truncate mr-2">{preview}</span>}
+        {dur && <span className={cn("chat-step-dur ml-auto font-mono text-[10px]", seg.status === "run" ? "text-[var(--color-cyanx)]" : "text-[var(--color-brandtext)]")}>{dur}</span>}
+        {seg.status === "done" && seg.exitCode != null && seg.exitCode !== 0 && <span className="chat-step-exit ml-2">exit {seg.exitCode}</span>}
+        {(seg.command || seg.argsText || seg.resultText) && (seg.collapsed ? <ChevronRight className="chat-step-chevron ml-2" /> : <ChevronDown className="chat-step-chevron ml-2" />)}
       </button>
       {!seg.collapsed && (
         <div className="chat-step-body">
@@ -173,38 +225,72 @@ function useReveal(text: string, done: boolean, instant: boolean) {
   return instant ? text.length : Math.min(n, text.length);
 }
 
-export const MEDIA_RE = /(?<![\w:])(?<!\/)(?:~|\/)[\w./-]*\.(?:png|jpe?g|gif|webp|mp4|webm|mov|mkv|avi|mp3|wav|ogg|flac|m4a|opus)\b/gi;
-export function mediaPaths(text: string) {
-  // MEDIA:<path> markers carry a colon before the path — the URL guard would reject them, so strip the marker first
-  return [...new Set(text.replace(/\bMEDIA:\s*(?=[~/])/g, "").match(MEDIA_RE) ?? [])];
-}
-
-export function MediaCard({ path, name }: { path: string; name: string }) {
-  const kind = getFileKind(name);
+export function PdfCard({ path, name }: { path: string; name: string }) {
+  const [expanded, setExpanded] = useState(false);
   const enc = encodeURIComponent(path);
   return (
-    <div data-media-card className="overflow-hidden rounded-lg border border-white/10 bg-white/5 text-xs text-slate-300">
+    <div className="flex flex-col gap-2 w-full max-w-2xl overflow-hidden rounded-[var(--radius-inner)] border border-white/10 bg-[var(--surface-raised)] text-sm">
+      <div className="flex items-center justify-between p-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="rounded-md bg-white/5 p-2 text-slate-300">
+            <FileText className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="truncate font-medium text-slate-200">{name}</div>
+            <div className="text-xs text-slate-400 font-mono">PDF Document</div>
+          </div>
+        </div>
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => setExpanded(!expanded)}
+          className="shrink-0 rounded-[var(--radius-pill)] bg-[var(--surface-step-2)] px-3 py-1.5 text-xs font-medium text-slate-200 transition-colors hover:bg-white/10"
+        >
+          {expanded ? "Collapse" : "View"}
+        </button>
+      </div>
+      {expanded && (
+        <div className="h-[480px] max-h-[70vh] w-full border-t border-white/10 bg-white">
+          <iframe src={`/api/hx/files/download?path=${enc}`} className="h-full w-full border-none" title={name} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function MediaCard({ path, name, onOpenImage }: { path: string; name: string; onOpenImage?: (url: string, alt: string) => void }) {
+  const kind = getFileKind(name);
+  const enc = encodeURIComponent(path);
+  const url = `/api/hx/files/download?path=${enc}`;
+  
+  if (kind === "pdf") {
+    return <PdfCard path={path} name={name} />;
+  }
+  
+  if (kind === "audio") {
+    return <AudioPlayer src={`/api/hx/files/stream?path=${enc}`} name={name} />;
+  }
+
+  return (
+    <div data-media-card className="overflow-hidden rounded-[var(--radius-inner)] border border-white/10 bg-[var(--surface-raised)] text-xs text-slate-300">
       {kind === "image" ? (
-        <a href={`/api/hx/files/download?path=${enc}`} target="_blank" rel="noreferrer" title="Open full image" className="block">
-          <img src={`/api/hx/files/download?path=${enc}`} alt={name} loading="lazy" className="max-h-44 max-w-[240px] object-cover" />
-        </a>
+        <button type="button" onClick={(e) => { e.preventDefault(); onOpenImage?.(url, name); }} title="Open full image" className="block cursor-zoom-in">
+          <img src={url} alt={name} loading="lazy" className="max-h-44 max-w-[240px] object-cover" />
+        </button>
       ) : kind === "video" ? (
-        <video src={`/api/hx/files/stream?path=${enc}`} controls preload="metadata" className="max-h-44 max-w-[280px]" />
-      ) : kind === "audio" ? (
-        <div className="flex w-56 items-center gap-2 p-2">
-          <PlayCircle className="h-4 w-4 shrink-0 text-cyanx" />
-          <audio src={`/api/hx/files/stream?path=${enc}`} controls preload="metadata" className="h-8 w-full" />
+        <div className="relative max-h-44 max-w-[280px] bg-black">
+          <video src={`/api/hx/files/stream?path=${enc}`} controls preload="metadata" className="max-h-44 max-w-[280px]" poster="" />
         </div>
       ) : (
-        <a href={`/api/hx/files/download?path=${enc}`} target="_blank" rel="noreferrer"
-          className="flex max-w-[220px] items-center gap-2 p-2 pr-3 hover:bg-white/5" title="Download">
+        <a href={url} target="_blank" rel="noreferrer"
+           className="flex items-center gap-3 p-3 transition hover:bg-[var(--surface-step-2)]" title="Download">
           <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-black/20 text-slate-400">
             <FileText className="h-3 w-3" />
           </div>
           <span className="truncate">{name}</span>
         </a>
       )}
-      {(kind === "image" || kind === "video" || kind === "audio") && (
+      {(kind === "image" || kind === "video") && (
         <div className="flex items-center justify-between gap-2 px-2 py-1">
           <span className="truncate text-[10px] text-slate-500">{name}</span>
           <a href={`/api/hx/files/download?path=${enc}`} target="_blank" rel="noreferrer"
@@ -215,11 +301,7 @@ export function MediaCard({ path, name }: { path: string; name: string }) {
   );
 }
 
-export function stripMediaLines(t: string) {
-  return t.replace(/^\s*MEDIA:\s*\S+\s*$/gm, "").trim();
-}
-
-function TextRow({ seg }: { seg: Segment }) {
+function TextRow({ seg, onOpenImage }: { seg: Segment; onOpenImage?: (url: string, alt: string) => void }) {
   const text = seg.text ?? "";
   const instant = usePrefersReducedMotion();
   const n = useReveal(text, seg.status === "done", instant);
@@ -229,11 +311,11 @@ function TextRow({ seg }: { seg: Segment }) {
   if (!text) return null;
   return (
     <div className="chat-text-seg">
-      {display && <RichText text={display} />}
+      {display && <RichText text={display} onOpenImage={onOpenImage} streaming={seg.status === "run"} />}
       {!instant && (seg.status === "run" || n < text.length) && <span className="chat-caret" aria-hidden="true" />}
       {n >= text.length && paths.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-2">
-          {paths.map(p => <MediaCard key={p} path={p} name={p.split("/").pop() || p} />)}
+          {paths.map(p => <MediaCard key={p} path={p} name={p.split("/").pop() || p} onOpenImage={onOpenImage} />)}
         </div>
       )}
     </div>
@@ -393,12 +475,13 @@ function ApprovalRow({ seg, onRespond }: { seg: Segment; onRespond: (reqId: stri
 
 // ---- turn container --------------------------------------------------------
 
-export function TurnTimeline({ segments, streaming, onToggleTool, onApprovalRespond, onClarifyAnswer }: {
+export function TurnTimeline({ segments, streaming, onToggleTool, onApprovalRespond, onClarifyAnswer, onOpenImage }: {
   segments: Segment[];
   streaming: boolean;
   onToggleTool: (segId: string) => void;
   onApprovalRespond: (reqId: string, choice: string) => void;
   onClarifyAnswer: (reqId: string, result: { answer?: string; answers?: Record<string, string> }) => void;
+  onOpenImage?: (url: string, alt: string) => void;
 }) {
   if (!segments.length) return null;
   // Action-based chronological: preserve arrival order, but ensure any
@@ -428,7 +511,7 @@ export function TurnTimeline({ segments, streaming, onToggleTool, onApprovalResp
         if (seg.kind === "tool") return <ToolRow key={seg.id} seg={seg} onToggle={() => onToggleTool(seg.id)} />;
         if (seg.kind === "approval") return <ApprovalRow key={seg.id} seg={seg} onRespond={onApprovalRespond} />;
         if (seg.kind === "clarify") return <ClarifyCard key={seg.id} seg={seg} onAnswer={onClarifyAnswer} />;
-        return <TextRow key={seg.id} seg={seg} />;
+        return <TextRow key={seg.id} seg={seg} onOpenImage={onOpenImage} />;
       })}
     </div>
   );

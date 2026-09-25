@@ -20,10 +20,11 @@ export async function getHermesFiles(path?: string) {
 
 export function getFileKind(name: string) {
   const ext = name.split('.').pop()?.toLowerCase() || "";
-  if (["jpg", "jpeg", "png", "gif", "webp"].includes(ext)) return "image";
+  if (["pdf"].includes(ext)) return "pdf";
+  if (["jpg", "jpeg", "png", "gif", "webp", "svg"].includes(ext)) return "image";
   if (["mp4", "webm", "mov", "mkv", "avi"].includes(ext)) return "video";
   if (["mp3", "wav", "ogg", "flac", "m4a", "opus"].includes(ext)) return "audio";
-  if (["pdf", "docx", "xlsx", "pptx", "txt", "md", "csv"].includes(ext)) return "doc";
+  if (["docx", "xlsx", "pptx", "txt", "md", "csv", "heic", "heif"].includes(ext)) return "doc";
   return "other";
 }
 

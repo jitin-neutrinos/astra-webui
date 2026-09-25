@@ -11,6 +11,7 @@ export interface Segment {
   id: string;
   kind: SegKind;
   status: "run" | "done";
+  durationMs?: number;
   // thinking / text
   text?: string;
   // tool
@@ -48,9 +49,16 @@ export type SegOp =
 let segSeq = 0;
 const nextSegId = () => `seg${++segSeq}-${Date.now()}`;
 
+const segTiming = new Map<string, number>();
+
 function closeRunningThink(out: Segment[]) {
   const last = out[out.length - 1];
-  if (last && last.kind === "thinking" && last.status === "run") last.status = "done";
+  if (last && last.kind === "thinking" && last.status === "run") {
+    last.status = "done";
+    const t0 = segTiming.get(last.id);
+    if (t0) last.durationMs = Math.max(0, Date.now() - t0);
+    segTiming.delete(last.id);
+  }
 }
 
 const TERM_FOLD_CHARS = 3000;
@@ -66,15 +74,18 @@ export function applySegmentOps(segments: Segment[], ops: SegOp[]): Segment[] {
       if (!t) {
         t = { id: nextSegId(), kind: "thinking", status: "run", text: "" };
         out.push(t);
+        segTiming.set(t.id, Date.now());
       }
       t.text = (t.text || "") + op.text;
     } else if (op.op === "tool") {
       closeRunningThink(out);
       barrier = true;
+      const id = op.key || nextSegId();
       out.push({
-        id: op.key || nextSegId(), kind: "tool", status: "run",
+        id, kind: "tool", status: "run",
         label: op.label, argsText: op.argsText || "", command: op.command || "", collapsed: true,
       });
+      segTiming.set(id, Date.now());
     } else if (op.op === "tool-update") {
       const t = (op.key && out.find((s) => s.id === op.key && s.kind === "tool" && s.status === "run"))
         || [...out].reverse().find((s) => s.kind === "tool" && s.status === "run");
@@ -84,7 +95,9 @@ export function applySegmentOps(segments: Segment[], ops: SegOp[]): Segment[] {
       } else {
         closeRunningThink(out);
         barrier = true;
-        out.push({ id: op.key || nextSegId(), kind: "tool", status: "run", label: op.label || "tool", argsText: op.argsText || "", command: op.command || "", collapsed: true });
+        const id = op.key || nextSegId();
+        out.push({ id, kind: "tool", status: "run", label: op.label || "tool", argsText: op.argsText || "", command: op.command || "", collapsed: true });
+        segTiming.set(id, Date.now());
       }
     } else if (op.op === "tool-done") {
       // Addressed by tool_id when we have one; a key with no match must NOT
@@ -98,6 +111,9 @@ export function applySegmentOps(segments: Segment[], ops: SegOp[]): Segment[] {
         if (op.resultText !== undefined) t.resultText = op.resultText;
         if (op.exitCode !== undefined) t.exitCode = op.exitCode;
         t.collapsed = (t.resultText?.length || 0) > TERM_FOLD_CHARS;
+        const t0 = segTiming.get(t.id);
+        if (t0) t.durationMs = Math.max(0, Date.now() - t0);
+        segTiming.delete(t.id);
       } else {
         out.push({ id: nextSegId(), kind: "tool", status: "done", label: op.label || "tool", resultText: op.resultText || "", exitCode: op.exitCode ?? null, collapsed: (op.resultText?.length || 0) > TERM_FOLD_CHARS });
       }
@@ -133,7 +149,14 @@ export function applySegmentOps(segments: Segment[], ops: SegOp[]): Segment[] {
 }
 
 export function finalizeSegments(segments: Segment[]): Segment[] {
-  return segments.map((s) => ({ ...s, status: "done" as const }));
+  return segments.map((s) => {
+    if (s.status === "run") {
+      const t0 = segTiming.get(s.id);
+      segTiming.delete(s.id);
+      return { ...s, status: "done" as const, durationMs: t0 ? Math.max(0, Date.now() - t0) : s.durationMs };
+    }
+    return { ...s, status: "done" as const };
+  });
 }
 
 // A turn with an UNRESOLVED approval is paused, not streaming: the model is
