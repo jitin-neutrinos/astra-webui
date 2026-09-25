@@ -11,6 +11,7 @@
   --motion-fast: 150ms;
   --motion-slow: 220ms;
   --ease-brand: cubic-bezier(0.2, 0, 0, 1);
+  --kb: 0px;
 }
 
 /* astra-webui theme — www.jitinnair.com tokens, retro-techno treatment */
@@ -98,16 +99,16 @@ body { background: var(--color-void); }
 
 /* shell root: dvh so composer + sidebar bottoms stick to the real viewport
    (100vh overhangs on mobile browsers with collapsing URL bars) */
-.app-shell { height: 100vh; }
+.app-shell { height: 100vh; padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--kb, 0px)); box-sizing: border-box; }
 @supports (height: 100dvh) { .app-shell { height: 100dvh; } }
 
 /* ---- chat replica (ported from astra.css / ChatPageV2, retinted) ---- */
 /* shape system: outer containers 16px, floating panels 14px, inner cards 12px, interactive pills 9999px */
-.chat-scroll { overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(248,250,252,.14) transparent; }
+.chat-scroll { overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(248,250,252,.14) transparent; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 
 /* Minimal brand-tinted scrollbar for the nav rail and chats list — thin, transparent
    track, cyanx thumb at low opacity so it reads as a hairline, not chrome. */
-.sidebar-scroll { scrollbar-width: thin; scrollbar-color: rgba(34,211,238,.2) transparent; }
+.sidebar-scroll { scrollbar-width: thin; scrollbar-color: rgba(34,211,238,.2) transparent; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 .sidebar-scroll::-webkit-scrollbar { width: 6px; }
 .sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
 .sidebar-scroll::-webkit-scrollbar-thumb {
@@ -127,6 +128,13 @@ body { background: var(--color-void); }
   .chat-welcome { padding-top: 4vh; }
   .chat-welcome-title { font-size: 27px; }
   .chat-welcome-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 360px) {
+  .chat-welcome { padding: 16px 16px 16px; }
+  .chat-welcome-title { font-size: 24px; }
+  .chat-welcome-glyph { margin-bottom: 16px; }
+  .chat-term-out, .chat-code-block, .chat-md pre { font-size: 11.5px; }
 }
 
 @keyframes chat-pop { from { opacity: 0; transform: scale(0.96) translateY(4px); } to { opacity: 1; transform: none; } }
@@ -350,6 +358,36 @@ body { background: var(--color-void); }
   
   .chat-popout-chip { display: none !important; }
 }
+
+/* iOS zoom guard: any text input under 16px triggers viewport zoom on focus */
+@media (hover: none) {
+  input[type="text"], input[type="password"], input[type="search"], input[type="email"], textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* 44px hit areas at coarse pointer, no visual bloat */
+@media (hover: none) {
+  .chat-head-link { min-width: 44px; min-height: 44px; }
+  .chat-popout-close { width: 44px; height: 44px; }
+  .chat-clarify-row { min-height: 44px; }
+  .chat-clarify-submit { min-height: 44px; }
+  nav button[aria-expanded] { min-width: 44px; min-height: 44px; }
+  [aria-label="Collapse sidebar"] { min-width: 44px; min-height: 44px; }
+}
+
+.drawer-backdrop {
+  position: fixed; inset: 0; z-index: 40; background: rgba(10,10,15,.7);
+  -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+  opacity: 0; pointer-events: none;
+  transition: opacity 180ms cubic-bezier(0.23,1,0.32,1);
+}
+.drawer-backdrop[data-open="true"] { opacity: 1; pointer-events: auto; }
+@media (prefers-reduced-motion: reduce) { .drawer-backdrop { transition: none; } }
+
+.press-feedback { transition: transform 130ms cubic-bezier(0.23,1,0.32,1); }
+.press-feedback:active { transform: scale(0.98); }
+@media (prefers-reduced-motion: reduce) { .press-feedback { transition: none; } .press-feedback:active { transform: none; } }
 
 @media (prefers-reduced-motion: reduce) {
   aside#astra-sidebar { transition: none; }

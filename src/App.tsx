@@ -26,6 +26,8 @@ import { cn } from "@/lib/utils";
 import { ChatLanding } from "./components/chat-landing";
 import { ChatsPanel } from "./components/chats-panel";
 import TokenTrackerPage from "./components/token-tracker";
+import { useMobileViewport } from "./hooks/use-mobile-viewport";
+import { useSwipeToDismiss } from "./hooks/use-swipe-to-dismiss";
 
 type Status = "checking" | "login" | "ready";
 
@@ -172,6 +174,7 @@ import TubesBackground from "./components/ui/tubes-background";
 /* ---------------- shell: sidebar + chat landing ---------------- */
 
 function Shell({ onLogout }: { onLogout: () => void }) {
+  useMobileViewport();
   const [resetSignal, setResetSignal] = useState(0);
   const [view, setView] = useState<'chat' | 'files' | 'tracker' | 'config'>('chat');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("astra-sidebar-collapsed") === "1");
@@ -224,10 +227,8 @@ function Shell({ onLogout }: { onLogout: () => void }) {
         <p className="font-display text-sm tracking-tight text-brandtext">Astra</p>
       </div>
 
-      {drawerOpen && (
-        <div onClick={closeDrawer} aria-hidden="true"
-          className="fixed inset-0 z-40 bg-void/70 backdrop-blur-sm lg:hidden" />
-      )}
+      <div onClick={closeDrawer} aria-hidden="true" data-open={String(drawerOpen)}
+        className="drawer-backdrop lg:hidden" />
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <Sidebar
@@ -263,6 +264,46 @@ function Shell({ onLogout }: { onLogout: () => void }) {
 
 function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDrawer, onToggleCollapse, onLogout, onSelectSession, onOpenFiles, onOpenTracker, onOpenConfig }: { activeView: 'chat' | 'files' | 'tracker' | 'config'; collapsed: boolean; drawerOpen: boolean; activeSessionId: string | null; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onSelectSession: (id: string) => void; onOpenFiles: () => void; onOpenTracker?: () => void; onOpenConfig?: () => void; }) {
   const [mode, setMode] = useState<'nav' | 'chats'>('nav');
+  
+  const asideChatsRef = useRef<HTMLElement>(null);
+  const asideNavRef = useRef<HTMLElement>(null);
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia("(max-width: 1023px)").matches);
+  
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const onMq = () => setIsMobile(mq.matches);
+    mq.addEventListener("change", onMq);
+    return () => mq.removeEventListener("change", onMq);
+  }, []);
+
+  useSwipeToDismiss(asideChatsRef, onCloseDrawer, drawerOpen && isMobile);
+  useSwipeToDismiss(asideNavRef, onCloseDrawer, drawerOpen && isMobile);
+
+  useEffect(() => {
+    if (drawerOpen && isMobile) {
+      if (mode === 'chats') asideChatsRef.current?.focus();
+      else asideNavRef.current?.focus();
+      
+      const onTab = (e: KeyboardEvent) => {
+        if (e.key === "Tab") {
+          const el = mode === 'chats' ? asideChatsRef.current : asideNavRef.current;
+          if (!el) return;
+          const focusable = el.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+          const first = focusable[0] as HTMLElement;
+          const last = focusable[focusable.length - 1] as HTMLElement;
+          if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last?.focus();
+          } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first?.focus();
+          }
+        }
+      };
+      document.addEventListener("keydown", onTab);
+      return () => document.removeEventListener("keydown", onTab);
+    }
+  }, [drawerOpen, isMobile, mode]);
   // Per-group accordion. Owner mandate: Configure + Operations start collapsed;
   // Work starts open. Persisted in localStorage. Collapsed rail shows icons only,
   // so groups are forced open when the rail is collapsed (labels hidden there).
@@ -322,6 +363,11 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
                   if (mode === 'chats') {
     return (
       <aside id="astra-sidebar" data-open={String(drawerOpen)}
+        ref={asideChatsRef}
+        tabIndex={-1}
+        role={drawerOpen && isMobile ? "dialog" : undefined}
+        aria-modal={drawerOpen && isMobile ? "true" : undefined}
+        aria-label={drawerOpen && isMobile ? "Navigation" : undefined}
         className={cn(
           "flex flex-col border-r border-white/[0.07] bg-midnight/60",
           "fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] transition-transform duration-200 ease-out motion-reduce:transition-none",
@@ -348,6 +394,11 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
 
   return (
     <aside id="astra-sidebar" data-open={String(drawerOpen)}
+      ref={asideNavRef}
+      tabIndex={-1}
+      role={drawerOpen && isMobile ? "dialog" : undefined}
+      aria-modal={drawerOpen && isMobile ? "true" : undefined}
+      aria-label={drawerOpen && isMobile ? "Navigation" : undefined}
       className={cn(
         "flex flex-col border-r border-white/[0.07] bg-midnight/60",
         // < lg: overlay drawer
@@ -415,7 +466,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
                 aria-current={active ? "page" : undefined}
                 title={!expanded ? item.name : undefined}
                 className={cn(
-                  "relative flex h-11 w-full items-center rounded-md border-l-2 transition-colors duration-200",
+                  "relative flex h-11 w-full items-center rounded-md border-l-2 transition-colors duration-200 press-feedback",
                   active
                     ? "border-cyanx bg-cyanx/10 text-cyanx"
                     : "border-transparent text-slate-300 hover:bg-white/5 hover:text-white",
@@ -439,7 +490,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
       <div className="shrink-0 px-2 pb-2">
         <button type="button" onClick={onLogout}
           title={!expanded ? "Logout" : undefined}
-          className="relative flex h-11 w-full items-center rounded-md border-l-2 border-transparent text-slate-400 transition-colors duration-200 hover:border-redx/60 hover:bg-redx/10 hover:text-redx">
+          className="relative flex h-11 w-full items-center rounded-md border-l-2 border-transparent text-slate-400 transition-colors duration-200 hover:border-redx/60 hover:bg-redx/10 hover:text-redx press-feedback">
           <span className="grid h-full w-12 shrink-0 place-content-center">
             <LogOut className="h-4 w-4" strokeWidth={1.5} />
           </span>

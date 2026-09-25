@@ -103,11 +103,13 @@ export function useStreamingText({
     }
 
     const interval = 1000 / Math.max(1, tokensPerSecond * CHARS_PER_TOKEN);
-    let frame = 0;
     let last = performance.now();
     let carry = 0;
 
-    const tick = (now: number) => {
+    let timeout: ReturnType<typeof setTimeout>;
+
+    const tick = () => {
+      const now = performance.now();
       carry += Math.min(now - last, MAX_FRAME_DELTA);
       last = now;
 
@@ -123,11 +125,11 @@ export function useStreamingText({
         }
       }
 
-      frame = requestAnimationFrame(tick);
+      timeout = setTimeout(tick, 16);
     };
 
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
+    timeout = setTimeout(tick, 16);
+    return () => clearTimeout(timeout);
   }, [status, total, tokensPerSecond, reduced]);
 
   useEffect(() => {

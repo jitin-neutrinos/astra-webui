@@ -917,7 +917,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
           onPickEffort={onPickEffort}
           onRemoveAttachment={removeAttachment}
         />
-        <span className="flex-1 text-[10px] font-mono text-muted">Enter to send · Shift+Enter for newline</span>
+        <span className="chat-composer-hint">Enter to send · Shift+Enter for newline</span>
         {isStreaming ? (
           <button type="button" onClick={stop}
             aria-label="Stop generation"

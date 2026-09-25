@@ -128,7 +128,7 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
               key={s.id}
               onClick={() => onSelect(rowId)}
               aria-current={isActive ? "true" : undefined}
-              className={"w-full flex items-start gap-3 p-2.5 rounded-lg text-left transition-colors group " + (isActive ? "bg-cyanx/10 border border-cyanx/30" : "border border-transparent hover:bg-white/5")}
+              className={"w-full flex items-start gap-3 p-2.5 rounded-lg text-left transition-colors group press-feedback " + (isActive ? "bg-cyanx/10 border border-cyanx/30" : "border border-transparent hover:bg-white/5")}
             >
               <MessageSquare className={"w-4 h-4 mt-0.5 shrink-0 " + (isActive ? "text-cyanx" : "text-slate-500 group-hover:text-cyanx/70")} />
               <div className="min-w-0 flex-1">
