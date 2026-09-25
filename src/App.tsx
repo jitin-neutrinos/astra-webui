@@ -21,6 +21,7 @@ import {
   BarChart3,
   Webhook,
   ChevronsRight,
+  ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ChatLanding } from "./components/chat-landing";
@@ -261,6 +262,22 @@ function Shell({ onLogout }: { onLogout: () => void }) {
 
 function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDrawer, onToggleCollapse, onLogout, onNewChat, onSelectSession, onOpenAstra, onOpenFiles, onOpenTracker }: { activeView: 'chat' | 'files' | 'tracker'; collapsed: boolean; drawerOpen: boolean; activeSessionId: string | null; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onNewChat: () => void; onSelectSession: (id: string) => void; onOpenAstra: () => void; onOpenFiles: () => void; onOpenTracker?: () => void; }) {
   const [mode, setMode] = useState<'nav' | 'chats'>('nav');
+  // Per-group accordion. Owner mandate: Configure + Operations start collapsed;
+  // Work starts open. Persisted in localStorage. Collapsed rail shows icons only,
+  // so groups are forced open when the rail is collapsed (labels hidden there).
+  const GROUP_OPEN_KEY = "astra-sidebar-groups";
+  const DEFAULT_OPEN: Record<string, boolean> = { Work: true, Configure: false, Operations: false };
+  const readGroupOpen = (): Record<string, boolean> => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(GROUP_OPEN_KEY) || "{}") as Record<string, boolean>;
+      return { ...DEFAULT_OPEN, ...saved };
+    } catch { return { ...DEFAULT_OPEN }; }
+  };
+  const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>(readGroupOpen);
+  useEffect(() => {
+    localStorage.setItem(GROUP_OPEN_KEY, JSON.stringify(groupOpen));
+  }, [groupOpen]);
+
   const groups: {
     label: string;
     items: { name: string; icon: ReactNode; badge?: string; onClick?: () => void }[];
@@ -351,13 +368,26 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
       </div>
 
       <nav className="sidebar-scroll flex-1 overflow-y-auto px-2 py-2">
-        {groups.map((group) => (
+        {groups.map((group) => {
+          // Collapsed rail shows icons only — groups are meaningless there, force open.
+          const open = collapsed || !!groupOpen[group.label];
+          return (
           <div key={group.label} className="mb-3">
             {expanded && (
-              <p className="px-3 pb-1.5 pt-2 font-mono text-[9px] uppercase tracking-[0.25em] text-slate-600">
-                {group.label}
-              </p>
+              <button type="button"
+                onClick={() => setGroupOpen((o) => ({ ...o, [group.label]: !o[group.label] }))}
+                aria-expanded={open}
+                title={`Toggle ${group.label}`}
+                className="flex h-8 w-full items-center justify-between rounded-md px-3 text-left font-mono text-[9px] uppercase tracking-[0.25em] text-slate-600 transition-colors duration-200 hover:text-slate-400">
+                <span>{group.label}</span>
+                <ChevronDown className={cn("h-3 w-3 shrink-0 transition-transform duration-200 motion-reduce:transition-none",
+                  open && "rotate-180")} strokeWidth={1.5} />
+              </button>
             )}
+            <div className={cn("grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none",
+              open ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
+              <div className="overflow-hidden">
+                <div className={expanded ? "pb-1.5" : ""}>
             {group.items.map((item) => {
               const active = item.name === "Astra" ? activeView === "chat"
                 // @ts-ignore — TypeScript strict-mode inference; runtime behavior verified correct (mode state is 'nav' | 'chats')
@@ -383,8 +413,12 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
               </button>
               );
             })}
+                </div>
+              </div>
+            </div>
           </div>
-        ))}
+          );
+        })}
       </nav>
 
       <div className="shrink-0 px-2 pb-2">

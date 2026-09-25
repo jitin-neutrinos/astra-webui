@@ -547,15 +547,23 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange }:
     setAttachments((list) => list.filter((a) => a.id !== id));
   }, [setAttachments]);
 
+  // Industry-standard autosize: height is a pure function of `input`, recomputed
+  // on EVERY value change — user typing, send-clear, slash-pick, draft restore —
+  // so it grows AND shrinks (the old code only fit inside onInputChange, so a
+  // programmatic setInput("") left the box tall).
+  const fitComposer = useCallback(() => {
+    for (const ta of [taRef.current, popTaRef.current]) {
+      if (!ta) continue;
+      ta.style.height = "auto";
+      ta.style.height = `${ta.scrollHeight}px`;
+    }
+  }, []);
+  useEffect(() => { fitComposer(); }, [input, popout, fitComposer]);
+
   const onInputChange = (v: string) => {
     setInput(v);
     if (v.startsWith("/") && !v.includes(" ")) { setSlashOpen(true); setSlashActive(0); }
     else setSlashOpen(false);
-    // auto-grow: height follows content up to max-height (CSS caps at 200px)
-    const ta = taRef.current;
-    if (ta) { ta.style.height = "auto"; ta.style.height = `${ta.scrollHeight}px`; }
-    const pTa = popTaRef.current;
-    if (pTa) { pTa.style.height = "auto"; pTa.style.height = `${pTa.scrollHeight}px`; }
   };
 
   const slashMatches = TUI_COMMANDS.filter((c) => c.startsWith(input));
