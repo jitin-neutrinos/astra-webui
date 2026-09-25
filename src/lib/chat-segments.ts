@@ -168,6 +168,7 @@ export function finalizeSegments(segments: Segment[]): Segment[] {
 // never emit message.complete, so running-state must not hang off streaming
 // alone. Pure so the verify script shares it.
 export function turnIsRunning(segments: Segment[], streaming: boolean): boolean {
+  // finished its turn, so nothing is spinning. Only srq-backed gates block.
   const blocked = (s: Segment) =>
     (s.kind === "approval" || s.kind === "clarify") && s.resolved == null;
   return streaming && !segments.some(blocked);
