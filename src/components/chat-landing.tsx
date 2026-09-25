@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
-import { ArrowUp, Square, TriangleAlert, RotateCcw, Maximize2, X, Copy, Pencil, ChevronDown, Link2, Plus } from "lucide-react";
+import { ArrowUp, Square, TriangleAlert, RotateCcw, Maximize2, X, Copy, Pencil, ChevronDown, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useHermesWS } from "@/lib/hermes-ws";
 import type { EventPayload } from "@/lib/hermes-ws";
@@ -41,6 +41,77 @@ const nextId = () => `m${++idSeq}-${Date.now()}`;
 
 const BATCH_MS = 40; // ~30-60ms batching window for both text deltas and step ops
 
+function ChatTitle({ storedSessionId }: { storedSessionId: string | null }) {
+  const [title, setTitle] = useState<string>("");
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!storedSessionId) { setTitle(""); return; }
+    fetch(`/api/hx/sessions/${encodeURIComponent(storedSessionId)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled && d?.title) setTitle(d.title); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [storedSessionId]);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.select();
+  }, [editing]);
+
+  const save = async () => {
+    const next = draft.trim();
+    setEditing(false);
+    if (!next || next === title || !storedSessionId) return;
+    setTitle(next);
+    try {
+      await fetch(`/api/hx/sessions/${encodeURIComponent(storedSessionId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: next }),
+      });
+    } catch { /* keep local title; server may be unreachable */ }
+  };
+
+  if (!storedSessionId) return null;
+  return (
+    <span className="flex min-w-0 items-center gap-1.5">
+      {editing ? (
+        <input
+          ref={inputRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => void save()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void save();
+            if (e.key === "Escape") setEditing(false);
+          }}
+          autoFocus
+          maxLength={80}
+          aria-label="Chat name"
+          className="w-56 rounded-md border border-cyanx/40 bg-black/50 px-2 py-1 font-mono text-[11px] text-brandtext focus:outline-none"
+        />
+      ) : (
+        <>
+          <span className="max-lg:max-w-[calc(50vw-60px)] truncate font-mono text-[11px] uppercase tracking-[0.2em] text-slate-400" title={title}>
+            {title || "untitled chat"}
+          </span>
+          <button
+            type="button"
+            onClick={() => { setDraft(title); setEditing(true); }}
+            aria-label="Rename chat" title="Rename chat"
+            className="rounded p-1 text-slate-500 transition-colors hover:bg-white/5 hover:text-cyanx"
+          >
+            <Pencil className="h-3.5 w-3.5" strokeWidth={1.5} />
+          </button>
+        </>
+      )}
+    </span>
+  );
+}
+
 
 
 function textOf(payload: any): string {
@@ -50,7 +121,7 @@ function thinkingOf(payload: any): string {
   return payload?.delta?.thinking ?? payload?.text ?? payload?.rendered ?? "";
 }
 
-export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, onNewChat }: { resetSignal: number, selectedSessionId: string | null, onSessionChange?: (id: string | null) => void, onNewChat?: () => void }) {
+export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, onNewChat, onOpenNav }: { resetSignal: number, selectedSessionId: string | null, onSessionChange?: (id: string | null) => void, onNewChat?: () => void, onOpenNav?: () => void }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [lightbox, setLightbox] = useState<{ open: boolean; url: string; alt: string }>({ open: false, url: "", alt: "" });
   const [input, setInput] = useState("");
@@ -792,28 +863,26 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         );
       })()}
 
-      <header className={cn("relative z-10 flex items-center justify-between border-b border-white/[0.07] px-3 py-3 lg:px-6", errorBanner && "mt-7")}>
-        <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-slate-500 flex items-center gap-2">
-          {empty ? "new session" : `session // ${storedSessionId ? storedSessionId.slice(0, 8) + ' · ' : ''}${messages.length} msgs`}
-          {!empty && storedSessionId && (
-            <button
-              type="button"
-              onClick={() => void copyText(location.origin + '/c/' + storedSessionId)}
-              aria-label="Copy chat link"
-              className="chat-head-link rounded p-1 hover:bg-white/5 hover:text-cyanx transition-colors text-slate-500"
-            >
-              <Link2 className="h-3.5 w-3.5" strokeWidth={1.5} />
-            </button>
+      <header className={cn("relative z-10 flex items-center justify-between border-b border-white/[0.07] px-3 py-3 lg:px-6 lg:min-h-[77px] lg:py-0", errorBanner && "mt-7")}>
+        <span className="flex min-w-0 items-center gap-2">
+          <button type="button" onClick={() => onOpenNav?.()}
+            aria-label="Open navigation" aria-expanded={false} aria-controls="astra-sidebar"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg hover:bg-white/5 lg:hidden">
+            <img src="/astra-logo.png" alt="" aria-hidden="true" className="h-7 w-7 object-contain" />
+          </button>
+          {empty ? (
+            <span className="truncate font-mono text-[10px] uppercase tracking-[0.25em] text-slate-500">new session</span>
+          ) : (
+            <ChatTitle storedSessionId={storedSessionId} />
           )}
         </span>
         <span className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.25em] text-slate-500">
           <button type="button" onClick={() => { void sendReset(); }}
             aria-label="New chat" title="New chat"
-            className="flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-[10px] uppercase tracking-[0.25em] text-cyanx transition-colors duration-150 hover:bg-cyanx/10 active:scale-[0.97] motion-reduce:transition-none">
-            <Plus className="h-3.5 w-3.5" strokeWidth={1.5} />
-            New chat
+            className="flex h-10 items-center gap-2 rounded-lg border border-cyanx/30 bg-cyanx/10 px-4 text-sm text-cyanx shadow-[0_0_16px_rgba(34,211,238,0.12)] transition-all duration-150 hover:border-cyanx/50 hover:bg-cyanx/20 hover:shadow-[0_0_22px_rgba(34,211,238,0.25)] active:scale-[0.97] motion-reduce:transition-none max-lg:h-10 max-lg:w-10 max-lg:justify-center max-lg:p-0">
+            <Plus className="h-4 w-4 max-lg:h-5 max-lg:w-5" strokeWidth={2} />
+            <span className="max-lg:hidden">New chat</span>
           </button>
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> online
         </span>
       </header>
 
@@ -841,7 +910,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
                   <>◈ {m.content}</>
                 ) : m.role === "assistant" ? (
                   <img src="/astra-logo.png" alt="" aria-hidden="true"
-                    className="mt-0.5 h-7 w-7 shrink-0 rounded-full object-cover shadow-[0_0_12px_rgba(34,211,238,0.3)]" />
+                    className="mt-0.5 h-7 w-7 shrink-0 object-contain drop-shadow-[0_0_12px_rgba(34,211,238,0.39)]" />
                 ) : (
                   <span aria-hidden="true"
                     className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 font-mono text-xs text-slate-300">J</span>
@@ -858,14 +927,14 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
                           {m.files.map(f => <MediaCard key={f.path} path={f.path} name={f.name} />)}
                         </div>
                       )}
-                      <div className="min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere] rounded-2xl bg-white/[0.06] px-4 py-3 text-sm leading-relaxed text-slate-200">
+                      <div className="chat-bubble-user min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere] rounded-2xl px-4 py-3 text-sm leading-relaxed">
                         {m.content.replace(/\n\nAttached file: .*/g, "")}
                       </div>
                     </div>
                   ) : m.segments.length ? (
                     <TurnTimeline segments={m.segments} streaming={m.isStreaming} sessionId={storedSessionId || ""} onToggleTool={toggleToolCollapse} onApprovalRespond={respondApproval} onGateRespond={respondGate} onClarifyAnswer={respondClarify} onOpenImage={(url, alt) => setLightbox({ open: true, url, alt })} />
                   ) : m.isStreaming ? (
-                    <span className="flex w-fit items-center rounded-2xl border border-cyanx/15 bg-midnight/80 px-3 py-1.5">
+                    <span className="chat-bubble-ai flex w-fit items-center rounded-2xl px-3 py-1.5">
                       <AITextLoading texts={["Thinking...", "Working on it...", "Almost there..."]} />
                     </span>
                   ) : null}

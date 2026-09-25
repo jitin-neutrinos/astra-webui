@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import type { FormEvent, ReactNode } from "react";
 import {
-  Menu,
   MessageSquare,
   LogOut,
   Eye,
@@ -24,6 +23,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ChatLanding } from "./components/chat-landing";
+import { ThemeToggle } from "./components/theme-toggle";
 import { ChatsPanel } from "./components/chats-panel";
 import TokenTrackerPage from "./components/token-tracker";
 import { useMobileViewport } from "./hooks/use-mobile-viewport";
@@ -97,29 +97,31 @@ function LoginScreen({ password, setPassword, clearError, error, busy, submit }:
       <TubesBackground />
 
       <div className="absolute inset-0 z-50 flex items-center justify-center p-6">
-        <div className="w-full max-w-md rounded-2xl border border-white/10 bg-void/60 p-7 shadow-[0_0_60px_rgba(34,211,238,0.08)] backdrop-blur-xl md:p-8">
-          <div className="mb-8 text-center">
-            <img
-              src="/astra-logo.png"
-              alt="Astra"
-              className="mx-auto mb-5 h-16 w-16 rounded-xl object-cover shadow-[0_0_28px_rgba(34,211,238,0.3)]"
-            />
-            <h1 className="font-display text-3xl tracking-tight text-brandtext">
-              Astra
-            </h1>
-            <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.3em] text-cyanx/70">
-              secure uplink // v2
+        <div className="w-full max-w-md rounded-2xl border border-white/10 bg-void/85 p-8 shadow-[0_0_80px_rgba(139,92,246,0.10)] backdrop-blur-2xl md:p-10">
+          <div className="mb-10 text-center">
+            <div className="flex items-center justify-center gap-4">
+              <img
+                src="/astra-logo.png"
+                alt="Astra"
+                className="h-[38px] w-[38px] object-contain drop-shadow-[0_0_14px_rgba(34,211,238,0.35)]"
+              />
+              <h1 className="font-display text-[38px] leading-none tracking-tight text-brandtext">
+                Astra
+              </h1>
+            </div>
+            <p className="mt-6 text-left text-lg font-light leading-relaxed text-brandtext">
+              Hi Jitin,
             </p>
-            <p className="mt-4 text-sm font-light leading-relaxed text-muted">
-              Verify identity to initialize secure connection with the primary framework.
+            <p className="mt-2 text-left text-sm font-light leading-relaxed text-muted">
+              Just your password and you're in.
             </p>
           </div>
 
-          <form onSubmit={submit} className="space-y-5">
+          <form onSubmit={submit} className="space-y-6">
             <div>
               <label htmlFor="password"
-                className="mb-1.5 block font-mono text-[10px] uppercase tracking-[0.2em] text-slate-400">
-                Security Key
+                className="mb-2 block text-sm text-slate-300">
+                Password
               </label>
               <div className="relative rounded-lg bg-black/70">
                 <div className="pointer-events-none absolute inset-0 rounded-lg border border-white/10 transition-colors duration-200 focus-within:border-cyanx/60" />
@@ -129,7 +131,7 @@ function LoginScreen({ password, setPassword, clearError, error, busy, submit }:
                   value={password}
                   onChange={(e) => { setPassword(e.target.value); clearError(); }}
                   placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;"
-                  className="relative z-20 w-full bg-transparent px-3 py-2.5 pr-10 font-mono text-sm text-brandtext placeholder-slate-700 focus:outline-none"
+                  className="relative z-20 w-full bg-transparent px-4 py-3.5 pr-11 text-base text-brandtext placeholder-slate-700 focus:outline-none"
                 />
                 <button
                   type="button"
@@ -144,23 +146,17 @@ function LoginScreen({ password, setPassword, clearError, error, busy, submit }:
               </div>
             </div>
             {error ? (
-              <p role="alert" className="font-mono text-xs tracking-wide text-redx">
-                &gt; {error}
+              <p role="alert" className="text-xs text-redx">
+                {error}
               </p>
             ) : null}
             <button
               type="submit" disabled={busy}
-              className="mt-2 w-full rounded-lg border border-cyanx/25 bg-cyanx/10 py-2.5 font-mono text-xs uppercase tracking-[0.25em] text-cyanx transition-all hover:bg-cyanx/20 hover:shadow-[0_0_24px_rgba(34,211,238,0.2)] disabled:opacity-50"
+              className="mt-2 w-full rounded-lg border border-cyanx/25 bg-cyanx/10 py-3 text-base text-cyanx transition-all hover:bg-cyanx/20 hover:shadow-[0_0_24px_rgba(34,211,238,0.2)] disabled:opacity-50"
             >
-              {busy ? "Linking..." : "Initialize Uplink"}
+              {busy ? "Signing in..." : "Let me in"}
             </button>
           </form>
-
-          <div className="mt-6 flex items-center gap-3">
-            <div className="h-px flex-grow bg-white/5" />
-            <span className="font-mono text-[9px] uppercase tracking-[0.3em] text-slate-600">astra webui</span>
-            <div className="h-px flex-grow bg-white/5" />
-          </div>
         </div>
       </div>
     </div>
@@ -201,8 +197,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
   }, []);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const burgerRef = useRef<HTMLButtonElement>(null);
-  const closeDrawer = () => { setDrawerOpen(false); burgerRef.current?.focus(); };
+  const closeDrawer = () => { setDrawerOpen(false); };
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -216,15 +211,13 @@ function Shell({ onLogout }: { onLogout: () => void }) {
 
   return (
     <div className="app-shell flex w-full flex-col overflow-hidden bg-void font-sans text-brandtext">
-      {/* mobile top bar */}
-      <div className="flex shrink-0 items-center gap-2 border-b border-white/[0.07] bg-midnight/60 px-3 py-2 lg:hidden">
-        <button ref={burgerRef} type="button" onClick={() => setDrawerOpen(true)}
+      {/* mobile top bar (non-chat views): logo opens navigation */}
+      <div className={cn("flex shrink-0 items-center border-b border-white/[0.07] bg-midnight/60 px-3 py-2 lg:hidden", view === "chat" && "hidden")}>
+        <button type="button" onClick={() => setDrawerOpen(true)}
           aria-label="Open navigation" aria-expanded={drawerOpen} aria-controls="astra-sidebar"
-          className="-m-1 flex h-11 w-11 items-center justify-center rounded-lg p-1 text-slate-300 hover:bg-white/5 hover:text-cyanx">
-          <Menu className="h-5 w-5" strokeWidth={1.5} />
+          className="flex h-11 w-11 items-center justify-center rounded-lg p-1 hover:bg-white/5">
+          <img src="/astra-logo.png" alt="" aria-hidden="true" className="h-8 w-8 object-contain" />
         </button>
-        <img src="/astra-logo.png" alt="" aria-hidden="true" className="h-6 w-6 rounded-lg object-cover" />
-        <p className="font-display text-sm tracking-tight text-brandtext">Astra</p>
       </div>
 
       <div onClick={closeDrawer} aria-hidden="true" data-open={String(drawerOpen)}
@@ -246,7 +239,8 @@ function Shell({ onLogout }: { onLogout: () => void }) {
         />
         <div className={cn("flex flex-1 flex-col overflow-hidden", view !== 'chat' && "hidden")}>
           <ChatLanding resetSignal={resetSignal} selectedSessionId={selectedSessionId} onSessionChange={setActiveSessionId}
-            onNewChat={() => { setResetSignal(r => r + 1); setView('chat'); setSelectedSessionId(null); }} />
+            onNewChat={() => { setResetSignal(r => r + 1); setView('chat'); setSelectedSessionId(null); }}
+            onOpenNav={() => setDrawerOpen(true)} />
         </div>
         {view === 'files' && (
           <FilesPage onBack={() => setView('chat')} />
@@ -304,11 +298,11 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
       return () => document.removeEventListener("keydown", onTab);
     }
   }, [drawerOpen, isMobile, mode]);
-  // Per-group accordion. Owner mandate: Configure + Operations start collapsed;
+  // Per-group accordion. Owner mandate: Configure + Operate start collapsed;
   // Work starts open. Persisted in localStorage. Collapsed rail shows icons only,
   // so groups are forced open when the rail is collapsed (labels hidden there).
   const GROUP_OPEN_KEY = "astra-sidebar-groups";
-  const DEFAULT_OPEN: Record<string, boolean> = { Work: true, Configure: false, Operations: false };
+  const DEFAULT_OPEN: Record<string, boolean> = { Work: true, Configure: false, Operate: false };
   const readGroupOpen = (): Record<string, boolean> => {
     try {
       const saved = JSON.parse(localStorage.getItem(GROUP_OPEN_KEY) || "{}") as Record<string, boolean>;
@@ -346,7 +340,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
       ],
     },
     {
-      label: "Operations",
+      label: "Operate",
       icon: <Activity className="h-3.5 w-3.5" strokeWidth={1.5} />,
       items: [
         { name: "Cron Jobs", icon: <Clock className="h-4 w-4" strokeWidth={1.5} /> },
@@ -409,7 +403,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
         collapsed && "lg:w-16",
       )}>
       <div className={cn("flex shrink-0 border-b border-white/[0.07] py-4",
-        expanded ? "items-center gap-3 px-4" : "items-center justify-center px-2")}>
+        expanded ? "items-center gap-3 px-4 h-[77px]" : "items-center justify-center px-2 h-[77px]")}>
         <button type="button" onClick={onToggleCollapse} disabled={drawerOpen}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           title={expanded ? "Collapse" : "Expand"}
@@ -437,7 +431,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
               onClick={() => setGroupOpen((o) => ({ ...o, [group.label]: !o[group.label] }))}
               aria-expanded={open}
               title={expanded ? `Toggle ${group.label}` : group.label}
-              className={cn("flex h-8 w-full items-center rounded-md text-left font-mono text-[9px] uppercase tracking-[0.25em] transition-colors duration-200",
+              className={cn("flex h-8 w-full items-center rounded-md text-left font-sans text-[13px] font-medium tracking-[0.08em] transition-colors duration-200",
                 open ? "text-cyanx/90" : "text-slate-600 hover:text-slate-400",
                 expanded ? "justify-between px-3" : "justify-center")}>
               <span className="flex min-w-0 items-center gap-1.5">
@@ -488,6 +482,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
       </nav>
 
       <div className="shrink-0 px-2 pb-2">
+        <ThemeToggle expanded={expanded} />
         <button type="button" onClick={onLogout}
           title={!expanded ? "Logout" : undefined}
           className="relative flex h-11 w-full items-center rounded-md border-l-2 border-transparent text-slate-400 transition-colors duration-200 hover:border-redx/60 hover:bg-redx/10 hover:text-redx press-feedback">

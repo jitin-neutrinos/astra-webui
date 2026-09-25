@@ -12,6 +12,17 @@
   --motion-slow: 220ms;
   --ease-brand: cubic-bezier(0.2, 0, 0, 1);
   --kb: 0px;
+
+  /* chat bubbles: Astra = PALE tint of brand accent blue (cyanx) with DARK ink
+     text everywhere (response, tool rows, terminal output) — same in both
+     themes; user = light tint of brand accent green (accent-emerald). */
+  --bubble-ai-bg: #d9eef4;
+  --bubble-ai-border: rgba(14, 116, 144, 0.35);
+  --bubble-ai-code-bg: #cfe6ee;
+  --bubble-ai-inline-bg: rgba(14, 116, 144, 0.10);
+  --bubble-user-bg: rgba(52, 211, 153, 0.10);
+  --bubble-user-border: rgba(52, 211, 153, 0.25);
+  --bubble-user-text: #d1fae5;
 }
 
 /* astra-webui theme — www.jitinnair.com tokens, retro-techno treatment */
@@ -120,7 +131,7 @@ body { background: var(--color-void); }
 .sidebar-scroll::-webkit-scrollbar-thumb:hover { background-color: rgba(34,211,238,.4); }
 
 .chat-welcome { max-width: 640px; margin: 0 auto; padding: 8vh 24px 24px; display: flex; flex-direction: column; align-items: flex-start; }
-.chat-welcome-glyph { width: 44px; height: 44px; border-radius: 9999px; object-fit: cover; border: 1px solid rgba(34,211,238,.35); box-shadow: 0 0 18px rgba(34,211,238,.25); margin-bottom: 22px; }
+.chat-welcome-glyph { width: 44px; height: 44px; object-fit: contain; filter: drop-shadow(0 0 14px rgba(34,211,238,.33)); margin-bottom: 22px; }
 .chat-welcome-title { font: 500 34px/1.2 var(--font-display); color: var(--color-brandtext); margin: 0 0 6px; letter-spacing: -0.02em; }
 .chat-welcome-sub { font: 400 15px/1.5 var(--font-sans); color: var(--color-muted); margin: 0 0 28px; letter-spacing: 0.01em; }
 .chat-welcome-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; width: 100%; }
@@ -205,7 +216,16 @@ body { background: var(--color-void); }
 .chat-filechip button:hover { color: #f87171; }
 
 /* ---- turn timeline: thinking / tool / text / approval segments ---- */
-.chat-turn { display: flex; flex-direction: column; gap: 8px; border: 1px solid rgba(248,250,252,.08); border-radius: 14px; padding: 12px 14px; background: rgba(255,255,255,.015); animation: chat-turn-in 200ms cubic-bezier(0.23,1,0.32,1) both; }
+.chat-turn { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--bubble-ai-border); border-radius: 14px; padding: 12px 14px; background: var(--bubble-ai-bg); animation: chat-turn-in 200ms cubic-bezier(0.23,1,0.32,1) both; }
+/* user bubble: brand-green tint (see :root tokens) */
+.chat-bubble-user { border: 1px solid var(--bubble-user-border); background: var(--bubble-user-bg); color: var(--bubble-user-text); }
+/* Astra streaming placeholder pill shares the Astra bubble skin */
+.chat-bubble-ai { border: 1px solid var(--bubble-ai-border); background: var(--bubble-ai-bg); }
+/* markdown inside the Astra bubble follows the bubble ground (bold was
+   hardcoded #fff — invisible on the light theme tint) */
+.chat-turn .chat-md strong { color: var(--color-brandtext); }
+.chat-turn .chat-md pre { background: var(--bubble-ai-code-bg); border-color: var(--bubble-ai-border); }
+.chat-turn .chat-md code { background: var(--bubble-ai-inline-bg); }
 @keyframes chat-turn-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .chat-turn.running { border-color: rgba(34,211,238,.25); }
 .chat-turn-ts { font: 400 10.5px/1 var(--font-mono); color: var(--color-muted); margin: 0 0 6px 2px; letter-spacing: .04em; }
@@ -467,4 +487,92 @@ body { background: var(--color-void); }
 .gate-counter { font: 400 11px/1.4 var(--font-mono); color: var(--color-muted); }
 @media (prefers-reduced-motion: reduce) {
   .gate-card, .gate-change-area, .gate-btn, .gate-edit, .gate-textarea { animation: none; transition-duration: 1ms; }
+}
+
+/* ── Light mode ──────────────────────────────────────────────────────────────
+   Brand-compliant light theme. Accents darkened to hold WCAG AA on light
+   surfaces (see docs/light-mode.md). Tailwind v4 utilities compile to
+   var() references, so overriding the tokens here re-skins every screen. */
+[data-theme="light"] {
+  color-scheme: light;
+
+  /* surfaces — warm paper tones (owner: pure white too harsh), not pure white.
+     Contrast re-measured 09-26: brandtext 16.9:1, muted 5.8:1, cyanx 5.4:1. */
+  --color-void: #f5f2ec;
+  --color-midnight: #fdfcf9;
+  --color-depth: #ece8df;
+  --color-surface: #e1dcd1;
+
+  /* text */
+  --color-brandtext: #0f172a;
+  --color-muted: #5b6472;
+
+  /* brand accents, darkened for ≥4.5:1 on light surfaces */
+  --color-cyanx: #0e7490;
+  --color-violetx: #6d28d9;
+  --color-fuchsiax: #a21caf;
+  --color-redx: #dc2626;
+
+  /* flip the hardcoded neutrals: hairlines that were white-5% become
+     ink-5%, input fills that were black-70% become washed white */
+  --color-white: #0f172a;
+  --color-black: #ffffff;
+
+  /* slate ramp remap for text/hover states */
+  --color-slate-300: #334155;
+  --color-slate-400: #475569;
+  --color-slate-500: #64748b;
+  --color-slate-600: #64748b;
+  --color-slate-700: #94a3b8;
+}
+
+[data-theme="light"] body {
+  background-color: #f5f2ec;
+}
+
+/* bubbles on the warm light ground: Astra pale blue is defined in :root and
+   shared by both themes; only the USER green tint is re-balanced per theme. */
+[data-theme="light"] {
+  --bubble-user-bg: rgba(4, 120, 87, 0.09);
+  --bubble-user-border: rgba(4, 120, 87, 0.28);
+  --bubble-user-text: #064e3b;
+}
+
+/* light mode: hardcoded light-gray text on composer menus/clarify rows was
+   invisible on the warm surfaces — pin to ink/muted (AA) */
+[data-theme="light"] .chat-menu-item { color: #0f172a; }
+[data-theme="light"] .chat-menu-item small, [data-theme="light"] .chat-menu-label, [data-theme="light"] .chat-menu-back { color: #5b6472; }
+[data-theme="light"] .chat-clarify-row { color: #334155; }
+[data-theme="light"] .chat-clarify-row.selected { color: #0f172a; }
+/* Astra bubble runs its own dark-ink palette in BOTH themes — response text,
+   tool-call rows, and terminal output ALL dark on the pale blue, per owner
+   direction. Ink 14.9:1, muted #475569 6.3:1, accent #155e75 6.1:1. */
+.chat-turn {
+  color: #0f172a;
+  --color-brandtext: #0f172a;
+  --color-muted: #475569;
+  --color-cyanx: #155e75;
+}
+.chat-turn .chat-md strong { color: #0f172a; }
+.chat-turn .chat-md del, .chat-turn .chat-md u { text-decoration-color: rgba(15,23,42,.35); }
+.chat-turn .chat-md tr:nth-child(even) { background: rgba(15,23,42,.03); }
+.chat-turn .chat-md th, .chat-turn .chat-md td { border-color: rgba(15,23,42,.14); }
+.chat-turn .chat-md th { background: var(--bubble-ai-code-bg); }
+/* terminal blocks + tool I/O: was light-gray-on-dark — flips to ink on the
+   deeper blue-tint well */
+.chat-turn .chat-term-cmd, .chat-turn .chat-term-args { background: var(--bubble-ai-code-bg); border-color: rgba(15,23,42,.14); }
+.chat-turn .chat-term-out { color: #1e293b; background: var(--bubble-ai-code-bg); border-color: rgba(15,23,42,.12); }
+.chat-turn .chat-approval-cmd { background: var(--bubble-ai-code-bg); border-color: rgba(15,23,42,.14); }
+.chat-turn .chat-step-exit { color: #b91c1c; }
+.chat-turn .chat-step-icon.err { color: #b91c1c; }
+.chat-turn .chat-approval-btn.primary { color: #f8fafc; }
+.chat-turn.running { border-color: rgba(14,116,144,.5); }
+.chat-turn button[class*="bg-midnight"] { background: var(--bubble-ai-code-bg); border-color: rgba(15,23,42,.14); color: #155e75; }
+.chat-turn .chat-code-copy { background: rgba(15,23,42,.06); border-color: rgba(15,23,42,.14); color: #475569; }
+.chat-turn .chat-code-copy:hover { color: #155e75; }
+.chat-turn .chat-caret { background: #155e75; }
+.chat-bubble-ai { color: #0f172a; }
+
+@media (prefers-reduced-motion: no-preference) {
+  body, [data-theme] body { transition: background-color 220ms var(--ease-brand, ease), color 220ms var(--ease-brand, ease); }
 }
