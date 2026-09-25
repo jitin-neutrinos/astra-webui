@@ -141,11 +141,35 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
     const url = `${protocol}//${window.location.host}/api/hx/ws`;
 
     let socket: WebSocket;
+    // Shared open-sequence: capabilities advertisement, stored-session resume, and
+    // the queued-create flush. Bound BOTH as socket.onopen (a fresh WebSocket is
+    // always CONNECTING — without this the open block never ran and everything
+    // hung on the proxy "online" frame racing handler binding, H5) and invoked
+    // directly on the already-open reuse path.
+    function onSocketOpen(s: WebSocket) {
+      // Advertise that this client answers server→client requests (clarify cards,
+      // approvals, …). Without it the gateway fails these fast instead of asking.
+      s.send(JSON.stringify({ jsonrpc: "2.0", id: generateRpcId(), method: "client.capabilities", params: { server_requests: true } }));
+      const sid = sessionStorage.getItem("astra-chat-session");
+      if (sid) {
+        const id = generateRpcId();
+        pendingResumes.current.add(id);
+        s.send(JSON.stringify({ method: "session.resume", params: { session_id: sid }, id }));
+      }
+      // A prompt was queued while the socket was down. With a stored session the
+      // resume above will flush it; only a truly fresh session needs a create.
+      if (createOnOpenRef.current && !sid) {
+        createOnOpenRef.current = false;
+        sendSessionCreate();
+      }
+    }
+
     if (sharedSocket && sharedSocket.readyState === 1) {
       socket = sharedSocket;
       if (socket.readyState === 1) {
         attachHandlers(socket);
         ws.current = socket;
+        onSocketOpen(socket);
         if (sessionStorage.getItem("astra-chat-session") && liveIdRef.current) {}
         return () => { ws.current = null; };
       }
@@ -154,6 +178,7 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
     sharedSocket = socket;
     ws.current = socket;
     attachHandlers(socket);
+    socket.onopen = () => onSocketOpen(socket);
 
     function attachHandlers(s: WebSocket) {
       s.onmessage = onMessage;
@@ -230,6 +255,10 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
       // rejection would otherwise be dropped. One guard covers every present and
       // future raw send on this socket.
       if (data.id && data.error && !pendingRpcs.current.has(data.id)) {
+        // A raw fire-and-forget send (session.create, session.interrupt) failed.
+        // Clear the create latch too or every later New chat silently no-ops (H3).
+        pendingCreateRef.current = false;
+        pendingPromptRef.current = null;
         setIsStreaming(false);
         onEventRef.current({ type: "message.error", payload: { error: data.error?.message || JSON.stringify(data.error) } });
         return;
@@ -284,24 +313,6 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
       }
     }
 
-    if (socket.readyState === 1) {
-      // Advertise that this client answers server→client requests (clarify cards,
-      // approvals, …). Without it the gateway fails these fast instead of asking.
-      socket.send(JSON.stringify({ jsonrpc: "2.0", id: generateRpcId(), method: "client.capabilities", params: { server_requests: true } }));
-      const sid = sessionStorage.getItem("astra-chat-session");
-      if (sid) {
-        const id = generateRpcId();
-        pendingResumes.current.add(id);
-        socket.send(JSON.stringify({ method: "session.resume", params: { session_id: sid }, id }));
-      }
-      // A prompt was queued while the socket was down. With a stored session the
-      // resume above will flush it; only a truly fresh session needs a create.
-      if (createOnOpenRef.current && !sid) {
-        createOnOpenRef.current = false;
-        sendSessionCreate();
-      }
-    }
-
     return () => { ws.current = null; };
   }, [setStoredSessionId, setLiveSessionId, flushPendingPrompt, clearWatchdog, sendSessionCreate]);
 
@@ -316,6 +327,10 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
       return;
     }
     setIsStreaming(true);
+    // Arm in BOTH branches: the fresh-session path used to arm only inside
+    // flushPendingPrompt (after the create reply), leaving a window with no
+    // timeout — a lost create reply disabled the composer forever (H2).
+    armWatchdog();
     if (!liveIdRef.current && !storedSessionId) {
       // Fresh session: create first; flushPendingPrompt sends the prompt when
       // the create reply lands. One create per fresh session — no double mint.
@@ -361,12 +376,26 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
   }, [liveSessionId, storedSessionId, clearWatchdog]);
 
   const resetSession = useCallback(() => {
+    // Stop the old turn for real: without an interrupt the gateway keeps streaming
+    // the abandoned session, and with liveIdRef cleared the session filter lets
+    // those stray deltas bleed into the fresh chat (H4). Inlined (not `interrupt()`)
+    // because resetSession must keep a STABLE identity — its consumer effect re-runs
+    // on identity churn and would wipe messages on unrelated session switches.
     clearWatchdog();
+    const oldSid = liveIdRef.current || sessionStorage.getItem("astra-chat-session");
+    if (ws.current && ws.current.readyState === 1 && oldSid) {
+      ws.current.send(JSON.stringify({
+        method: "session.interrupt",
+        params: { session_id: oldSid },
+        id: generateRpcId()
+      }));
+    }
+    setIsStreaming(false);
     liveIdRef.current = null; setLiveSessionId(null);
     setStoredSessionId(null); setSessionInfo(null);
     pendingPreTurnRpcs.current = []; pendingPromptRef.current = null;
     pendingCreateRef.current = false; createOnOpenRef.current = false;
-  }, [setStoredSessionId, setLiveSessionId, clearWatchdog]);
+  }, [setStoredSessionId, setLiveSessionId, setSessionInfo, clearWatchdog]);
 
   return { isStreaming, submitPrompt, interrupt, storedSessionId, setStoredSessionId, liveSessionId, sendApprovalResponse, sendServerResponse, rpc, sessionInfo, setSessionInfo, resetSession };
 }

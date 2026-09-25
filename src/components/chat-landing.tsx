@@ -371,7 +371,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       finalizeActive();
       return;
     }
-  }, [ensureActive, pushOp, finalizeActive, resolveApproval, resolveClarify]);
+  }, [ensureActive, pushOp, finalizeActive, resolveApproval, resolveClarify, resolveGate]);
 
   const { isStreaming, submitPrompt, interrupt, storedSessionId, setStoredSessionId, sendApprovalResponse, sendServerResponse, sessionInfo, setSessionInfo, rpc, liveSessionId, resetSession } = useHermesWS(handleEvent);
 
@@ -459,7 +459,13 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     // any still-open turn belonged to the PREVIOUS session — stop guarding it here, or
     // the loadHistory effect below mistakes an unrelated stale turn for a live one on
     // the newly selected session and refuses to load its history.
-    if (prevStoredSidRef.current !== null && prevStoredSidRef.current !== storedSessionId) {
+    // BUT: a brand-new chat mints its session MID-TURN (session.create reply lands
+    // while the turn is already streaming). That state flip is not a switch — the new
+    // sid IS the live turn's session (liveSessionId was set to it moments before).
+    // Nulling here orphaned the turn: ops dropped, duplicate bubble, stuck pill
+    // (Opus diagnosis H1, 2026-09-26).
+    if (prevStoredSidRef.current !== null && prevStoredSidRef.current !== storedSessionId
+        && storedSessionId !== liveSessionId) {
       activeIdRef.current = null;
     }
     prevStoredSidRef.current = storedSessionId;
@@ -569,7 +575,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     taRef.current?.focus();
   };
 
-  const retry = () => { if (!isStreaming && lastPromptRef.current) void send(lastPromptRef.current); };
+  const retry = () => { if (!isStreaming && !activeIdRef.current && lastPromptRef.current) void send(lastPromptRef.current); };
 
   const stop = () => {
     interrupt();
