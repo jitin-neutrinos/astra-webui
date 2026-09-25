@@ -237,7 +237,6 @@ function Shell({ onLogout }: { onLogout: () => void }) {
           onToggleCollapse={toggleSidebar}
           onLogout={() => { closeDrawer(); onLogout(); }}
           onSelectSession={(id) => { setSelectedSessionId(id); setView('chat'); }}
-          onOpenAstra={() => { closeDrawer(); setView('chat'); }}
           onOpenFiles={() => { closeDrawer(); setView('files'); }}
           onOpenTracker={() => { closeDrawer(); setView('tracker'); }}
         />
@@ -258,7 +257,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
   );
 }
 
-function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDrawer, onToggleCollapse, onLogout, onSelectSession, onOpenAstra, onOpenFiles, onOpenTracker }: { activeView: 'chat' | 'files' | 'tracker'; collapsed: boolean; drawerOpen: boolean; activeSessionId: string | null; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onSelectSession: (id: string) => void; onOpenAstra: () => void; onOpenFiles: () => void; onOpenTracker?: () => void; }) {
+function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDrawer, onToggleCollapse, onLogout, onSelectSession, onOpenFiles, onOpenTracker }: { activeView: 'chat' | 'files' | 'tracker'; collapsed: boolean; drawerOpen: boolean; activeSessionId: string | null; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onSelectSession: (id: string) => void; onOpenFiles: () => void; onOpenTracker?: () => void; }) {
   const [mode, setMode] = useState<'nav' | 'chats'>('nav');
   // Per-group accordion. Owner mandate: Configure + Operations start collapsed;
   // Work starts open. Persisted in localStorage. Collapsed rail shows icons only,
@@ -283,7 +282,6 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
     {
       label: "Work",
       items: [
-        { name: "Astra", icon: <img src="/astra-logo.png" alt="" className="h-4 w-4 rounded-full object-cover" />, onClick: onOpenAstra },
         { name: "Chats", icon: <MessageSquare className="h-4 w-4" strokeWidth={1.5} />, onClick: () => { setMode('chats'); if (collapsed) onToggleCollapse(); } },
         { name: "Files", icon: <Folder className="h-4 w-4" strokeWidth={1.5} />, onClick: onOpenFiles },
       ],
@@ -380,7 +378,9 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
                 onClick={() => setGroupOpen((o) => ({ ...o, [group.label]: !o[group.label] }))}
                 aria-expanded={open}
                 title={`Toggle ${group.label}`}
-                className="flex h-8 w-full items-center justify-center rounded-md text-left font-mono text-[9px] uppercase tracking-[0.25em] text-slate-600 transition-colors duration-200 hover:text-slate-400">
+                className={cn("flex h-8 w-full items-center rounded-md text-left font-mono text-[9px] uppercase tracking-[0.25em] text-slate-600 transition-colors duration-200 hover:text-slate-400",
+                  expanded ? "justify-between px-3" : "justify-center")}>
+                {expanded && <span>{group.label}</span>}
                 <ChevronDown className={cn("h-3 w-3 shrink-0 transition-transform duration-200 motion-reduce:transition-none",
                   open && "rotate-180")} strokeWidth={1.5} />
               </button>

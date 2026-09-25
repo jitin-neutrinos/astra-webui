@@ -745,8 +745,9 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         <span className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.25em] text-slate-500">
           <button type="button" onClick={() => { void sendReset(); }}
             aria-label="New chat" title="New chat"
-            className="chat-head-link" >
+            className="flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-[10px] uppercase tracking-[0.25em] text-cyanx transition-colors duration-150 hover:bg-cyanx/10 active:scale-[0.97] motion-reduce:transition-none">
             <Plus className="h-3.5 w-3.5" strokeWidth={1.5} />
+            New chat
           </button>
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> online
         </span>
