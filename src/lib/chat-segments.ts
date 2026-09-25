@@ -110,12 +110,15 @@ export function applySegmentOps(segments: Segment[], ops: SegOp[]): Segment[] {
         t.status = "done";
         if (op.resultText !== undefined) t.resultText = op.resultText;
         if (op.exitCode !== undefined) t.exitCode = op.exitCode;
-        t.collapsed = (t.resultText?.length || 0) > TERM_FOLD_CHARS;
+        // Owner mandate: tool blocks NEVER auto-expand — collapsed by default
+        // regardless of output size. Only a user click (persisted in
+        // step-prefs) or explicit Ctrl+O opens them.
+        t.collapsed = true;
         const t0 = segTiming.get(t.id);
         if (t0) t.durationMs = Math.max(0, Date.now() - t0);
         segTiming.delete(t.id);
       } else {
-        out.push({ id: nextSegId(), kind: "tool", status: "done", label: op.label || "tool", resultText: op.resultText || "", exitCode: op.exitCode ?? null, collapsed: (op.resultText?.length || 0) > TERM_FOLD_CHARS });
+        out.push({ id: nextSegId(), kind: "tool", status: "done", label: op.label || "tool", resultText: op.resultText || "", exitCode: op.exitCode ?? null, collapsed: true });
       }
     } else if (op.op === "text") {
       if (!op.text) continue;

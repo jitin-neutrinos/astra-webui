@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from "react";
-import { Check, ChevronDown, ChevronRight, Loader2, TriangleAlert, FileText, Copy } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Loader2, TriangleAlert, Copy } from "lucide-react";
 import { cn } from "../lib/utils";
 import { getFileKind } from "../lib/session-files";
 import { AudioPlayer } from "./audio-player";
@@ -113,11 +113,41 @@ function formatDur(ms?: number) {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
+import { stepOpen, setStepOpen, hashKey } from "../lib/step-prefs";
+import { describeTool } from "../lib/tool-identity";
+import { FileText, Terminal as TerminalIcon, Globe, Database, Users, Search as SearchIcon, Wrench, Blocks } from "lucide-react";
+
+const KIND_ICON: Record<string, typeof Wrench> = {
+  mcp: Blocks, skill: Blocks, terminal: TerminalIcon, file: FileText,
+  web: Globe, browser: Globe, memory: Database, delegate: Users,
+  search: SearchIcon, tool: Wrench,
+};
+
+// Stable per-step preference key. Tool steps: the provider tool_call id is
+// stable across live and restored paths. Thinking steps: content hash (ids
+// differ between live and restored renders for the same reasoning).
+function stepPrefKey(seg: Segment): string {
+  if (seg.kind === "tool" && seg.id && !seg.id.startsWith("orphan-") && !seg.id.startsWith("s")) return seg.id;
+  if (seg.kind === "thinking") return `think:${hashKey((seg.text || "").slice(0, 400))}`;
+  return seg.id;
+}
+
 function ThinkingRow({ seg }: { seg: Segment }) {
-  const [open, setOpen] = useState(true);
+  const prefKey = stepPrefKey(seg);
+  // Collapsed by default (owner mandate); ONLY a persisted user-open or a live
+  // click opens it. While running it shows open once, then collapses on done —
+  // a persisted "closed" from a previous session always wins.
+  const [open, setOpen] = useState<boolean>(() => seg.status === "run" ? stepOpen(prefKey) ?? true : stepOpen(prefKey) ?? false);
   const wasRunning = useRef(seg.status === "run");
+  const userTouched = useRef(false);
   useEffect(() => {
-    if (wasRunning.current && seg.status === "done") setOpen(false);
+    if (wasRunning.current) {
+      // the run just finished (or flipped states) — re-arm and auto-collapse
+      const finished = seg.status === "done";
+      wasRunning.current = seg.status === "run";
+      if (finished && !userTouched.current) setOpen(false); // auto-collapse after the run
+      return;
+    }
     wasRunning.current = seg.status === "run";
   }, [seg.status]);
   if (!seg.text) return null;
@@ -125,7 +155,7 @@ function ThinkingRow({ seg }: { seg: Segment }) {
   return (
     <div className="chat-step-wrap">
       <button type="button" className={cn("chat-step k-think", seg.status === "run" && "run")}
-        onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        onClick={() => { userTouched.current = true; setStepOpen(prefKey, !open); setOpen((o) => !o); }} aria-expanded={open}>
         {seg.status === "run" ? <Loader2 className="chat-step-icon spin" /> : <Check className="chat-step-icon" />}
         <span className="chat-step-label">Thinking</span>
         {dur && <span className={cn("chat-step-dur ml-auto font-mono text-[10px]", seg.status === "run" ? "text-[var(--color-cyanx)]" : "text-[var(--color-brandtext)]")}>{dur}</span>}
@@ -137,42 +167,61 @@ function ThinkingRow({ seg }: { seg: Segment }) {
 }
 
 function ToolRow({ seg, onToggle }: { seg: Segment; onToggle: () => void }) {
-  const isTerm = /terminal|bash|shell|exec/i.test(seg.label || "") || !!seg.command;
-  const preview = (seg.command || seg.argsText || "").replace(/\s+/g, " ").slice(0, 90);
+  const info = describeTool(seg.label, seg.argsText, seg.command);
+  const Icon = KIND_ICON[info.kind] || Wrench;
+  const prefKey = stepPrefKey(seg);
+  // Header meta: identity line — command for terminal, path for files,
+  // server for MCP, skill name for skills, etc.
+  const meta = (info.kind === "terminal" ? (seg.command || info.meta) : info.meta)?.replace(/\s+/g, " ").slice(0, 110);
   const long = (seg.resultText?.length || 0) > 3000;
-  const showBody = !seg.collapsed || !long;
   const dur = formatDur(seg.durationMs);
+
+  const toggle = () => {
+    const next = !seg.collapsed;
+    setStepOpen(prefKey, next);
+    onToggle();
+  };
+
   return (
     <div className="chat-step-wrap">
-      <button type="button" className={cn("chat-step k-tool", seg.status === "run" && "run")} onClick={onToggle} aria-expanded={!seg.collapsed}>
-        {seg.status === "run" ? <Loader2 className="chat-step-icon spin" /> : seg.exitCode ? <TriangleAlert className="chat-step-icon err" /> : <Check className="chat-step-icon" />}
-        <span className="chat-step-label">{seg.label}</span>
-        {!!preview && <span className="chat-step-preview truncate mr-2">{preview}</span>}
+      <button type="button" className={cn("chat-step k-tool", seg.status === "run" && "run")} onClick={toggle} aria-expanded={!seg.collapsed}>
+        {seg.status === "run" ? <Loader2 className="chat-step-icon spin" /> : seg.exitCode ? <TriangleAlert className="chat-step-icon err" /> : <Icon className="chat-step-icon" />}
+        <span className="chat-step-label">{info.name}</span>
+        {info.kind === "mcp" && <span className="chat-step-kind">MCP</span>}
+        {info.kind === "skill" && <span className="chat-step-kind">SKILL</span>}
+        {!!meta && <span className="chat-step-preview truncate mr-2">{meta}</span>}
         {dur && <span className={cn("chat-step-dur ml-auto font-mono text-[10px]", seg.status === "run" ? "text-[var(--color-cyanx)]" : "text-[var(--color-brandtext)]")}>{dur}</span>}
         {seg.status === "done" && seg.exitCode != null && seg.exitCode !== 0 && <span className="chat-step-exit ml-2">exit {seg.exitCode}</span>}
         {(seg.command || seg.argsText || seg.resultText) && (seg.collapsed ? <ChevronRight className="chat-step-chevron ml-2" /> : <ChevronDown className="chat-step-chevron ml-2" />)}
       </button>
       {!seg.collapsed && (
         <div className="chat-step-body">
-          {isTerm ? (
-            <>
+          {info.kind === "terminal" ? (
+            <div className="chat-term-block">
               {!!seg.command && <pre className="chat-term-cmd">$ {seg.command}</pre>}
-              {!seg.command && !!seg.argsText && <pre className="chat-term-args">{seg.argsText}</pre>}
-              {!!seg.resultText && (
-                <div className="chat-term-block">
-                  <pre className="chat-term-out" tabIndex={0}>{showBody ? seg.resultText : seg.resultText.slice(0, 3000) + "\n…"}</pre>
-                  {long && !showBody && (
-                    <button type="button" className="chat-term-expand" onClick={onToggle} title="Expand full output (Ctrl+O)">
-                      Ctrl+O to expand
-                    </button>
-                  )}
-                </div>
-              )}
-            </>
+              {!!seg.resultText && <pre className="chat-term-out" tabIndex={0}>{long ? seg.resultText.slice(0, 3000) + "\n…" : seg.resultText}</pre>}
+            </div>
           ) : (
             <>
-              {!!seg.argsText && <pre className="chat-term-args">{seg.argsText}</pre>}
-              {!!seg.resultText && <pre className="chat-term-args">{prettyPrint(seg.resultText)}</pre>}
+              {(info.input || seg.argsText) && (
+                <div className="chat-io">
+                  <p className="chat-io-label">{info.inputLabel || "INPUT"}</p>
+                  <pre className="chat-term-args" tabIndex={0}>{info.input || seg.argsText}</pre>
+                </div>
+              )}
+              {!!seg.resultText && (
+                <div className="chat-io">
+                  <p className="chat-io-label">OUTPUT{seg.exitCode != null && seg.exitCode !== 0 ? ` · exit ${seg.exitCode}` : ""}</p>
+                  <div className="chat-term-block">
+                    <pre className="chat-term-out" tabIndex={0}>{long ? seg.resultText.slice(0, 3000) + "\n…" : prettyPrint(seg.resultText)}</pre>
+                    {long && (
+                      <button type="button" className="chat-term-expand" onClick={toggle} title="Expand full output (Ctrl+O)">
+                        Ctrl+O to expand
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>

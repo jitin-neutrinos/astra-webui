@@ -259,6 +259,10 @@ body { background: var(--color-void); }
 .chat-text-seg .chat-md > p:last-child { display: inline; }
 
 .chat-caret { display: inline-block; width: 2px; height: 14px; margin-left: 2px; vertical-align: text-bottom; background: var(--color-cyanx); animation: chat-caret-blink 1s step-end infinite; }
+
+.chat-step-kind { flex: none; font: 600 9px/1 var(--font-mono); letter-spacing: .08em; color: var(--color-muted); border: 1px solid rgba(248,250,252,.14); border-radius: 9999px; padding: 2px 6px; }
+.chat-io { margin-bottom: 8px; }
+.chat-io-label { font: 600 9.5px/1 var(--font-mono); letter-spacing: .14em; color: var(--color-muted); margin: 0 0 4px; }
 @keyframes chat-caret-blink { 50% { opacity: 0; } }
 
 .chat-approval { border: 1px solid rgba(248,250,252,.12); background: var(--color-midnight); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }

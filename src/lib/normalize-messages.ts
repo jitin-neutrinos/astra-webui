@@ -129,7 +129,7 @@ export function rowsToTurns(rows: HistoryRow[]): Turn[] {
       if (toolSeg) {
         toolSeg.resultText = resText;
         toolSeg.exitCode = exitCode;
-        toolSeg.collapsed = resText.length > 3000;
+        toolSeg.collapsed = true; // owner mandate: restored steps initialize collapsed
         
         let assistantTs: number | undefined;
         // Search original rows for the tool call
@@ -153,7 +153,7 @@ export function rowsToTurns(rows: HistoryRow[]): Turn[] {
           label: row.tool_name || "tool",
           resultText: resText,
           exitCode,
-          collapsed: resText.length > 3000
+          collapsed: true // owner mandate
         });
       }
     }
