@@ -20,7 +20,10 @@ import {
   BarChart3,
   Webhook,
   ChevronDown,
-  } from "lucide-react";
+  Briefcase,
+  Activity,
+  CornerDownRight,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ChatLanding } from "./components/chat-landing";
 import { ChatsPanel } from "./components/chats-panel";
@@ -277,10 +280,12 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
 
   const groups: {
     label: string;
+    icon: ReactNode;
     items: { name: string; icon: ReactNode; badge?: string; onClick?: () => void }[];
   }[] = [
     {
       label: "Work",
+      icon: <Briefcase className="h-3.5 w-3.5" strokeWidth={1.5} />,
       items: [
         { name: "Chats", icon: <MessageSquare className="h-4 w-4" strokeWidth={1.5} />, onClick: () => { setMode('chats'); if (collapsed) onToggleCollapse(); } },
         { name: "Files", icon: <Folder className="h-4 w-4" strokeWidth={1.5} />, onClick: onOpenFiles },
@@ -288,6 +293,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
     },
     {
       label: "Configure",
+      icon: <Settings2 className="h-3.5 w-3.5" strokeWidth={1.5} />,
       items: [
         { name: "Model", icon: <Cpu className="h-4 w-4" strokeWidth={1.5} />, onClick: () => { alert("Model: openrouter / inkling:free (configured). Click to switch (dropdown coming in Phase 2)."); } },
         { name: "Config", icon: <Settings2 className="h-4 w-4" strokeWidth={1.5} /> },
@@ -300,6 +306,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
     },
     {
       label: "Operations",
+      icon: <Activity className="h-3.5 w-3.5" strokeWidth={1.5} />,
       items: [
         { name: "Cron Jobs", icon: <Clock className="h-4 w-4" strokeWidth={1.5} /> },
         { name: "Logs", icon: <ScrollText className="h-4 w-4" strokeWidth={1.5} /> },
@@ -374,20 +381,27 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
           const open = !!groupOpen[group.label];
           return (
           <div key={group.label} className="mb-3">
-              <button type="button"
-                onClick={() => setGroupOpen((o) => ({ ...o, [group.label]: !o[group.label] }))}
-                aria-expanded={open}
-                title={`Toggle ${group.label}`}
-                className={cn("flex h-8 w-full items-center rounded-md text-left font-mono text-[9px] uppercase tracking-[0.25em] text-slate-600 transition-colors duration-200 hover:text-slate-400",
-                  expanded ? "justify-between px-3" : "justify-center")}>
-                {expanded && <span>{group.label}</span>}
+            {/* group header: icon+label+chevron expanded, icon-only in rail. Open = accent styling. */}
+            <button type="button"
+              onClick={() => setGroupOpen((o) => ({ ...o, [group.label]: !o[group.label] }))}
+              aria-expanded={open}
+              title={expanded ? `Toggle ${group.label}` : group.label}
+              className={cn("flex h-8 w-full items-center rounded-md text-left font-mono text-[9px] uppercase tracking-[0.25em] transition-colors duration-200",
+                open ? "text-cyanx/90" : "text-slate-600 hover:text-slate-400",
+                expanded ? "justify-between px-3" : "justify-center")}>
+              <span className="flex min-w-0 items-center gap-1.5">
+                {group.icon}
+                {expanded && <span className="truncate">{group.label}</span>}
+              </span>
+              {expanded && (
                 <ChevronDown className={cn("h-3 w-3 shrink-0 transition-transform duration-200 motion-reduce:transition-none",
                   open && "rotate-180")} strokeWidth={1.5} />
-              </button>
+              )}
+            </button>
             <div className={cn("grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none",
               open ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
               <div className="overflow-hidden">
-                <div className={expanded ? "pb-1.5" : ""}>
+                <div className={cn(expanded ? "pb-1.5" : "pb-0", open && "rounded-md bg-white/[0.02]")}>
             {group.items.map((item) => {
               const active = item.name === "Astra" ? activeView === "chat"
                 // @ts-ignore — TypeScript strict-mode inference; runtime behavior verified correct (mode state is 'nav' | 'chats')
@@ -405,6 +419,10 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
                     ? "border-cyanx bg-cyanx/10 text-cyanx"
                     : "border-transparent text-slate-300 hover:bg-white/5 hover:text-white",
                 )}>
+                {open && (
+                  <CornerDownRight aria-hidden="true"
+                    className="absolute left-[5px] h-3 w-3 text-cyanx/45" strokeWidth={1.5} />
+                )}
                 <span className="grid h-full w-12 shrink-0 place-content-center text-muted">{item.icon}</span>
                 {expanded && <span className="truncate text-sm font-medium">{item.name}</span>}
                 {expanded && "badge" in item && item.badge ? (
