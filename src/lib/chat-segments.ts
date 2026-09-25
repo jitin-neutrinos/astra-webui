@@ -33,6 +33,8 @@ export interface Segment {
   // gate
   gate?: GateEnvelope;
   superseded?: boolean;
+  // gate riding a batch clarify: qids to answer via {answers:{qid:text}}
+  batchQids?: string[];
 }
 
 export interface ClarifyQuestion {
@@ -170,7 +172,8 @@ export function applySegmentOps(segments: Segment[], ops: SegOp[]): Segment[] {
         }
       }
       out.push({
-        id: nextSegId(), kind: "gate", status: "run", reqId: op.reqId, gate: env, resolved: null
+        id: nextSegId(), kind: "gate", status: "run", reqId: op.reqId, gate: env, resolved: null,
+        batchQids: ((op.params as any).questions as Array<{ qid?: string }> | undefined)?.map(q => q?.qid).filter((q): q is string => !!q),
       });
     }
   }

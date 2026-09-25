@@ -275,7 +275,13 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     // (method "clarify", srq-* id). Rendered as an interactive question card.
     if (type === "clarify") {
       ensureActive();
-      const gateHit = parseGate(payload?.params?.question);
+      // A gate may ride the single-question param or hide inside a batch
+      // questions[] entry (agents routinely use the batch shape) — check both.
+      const gateQs = [
+        payload?.params?.question as string | undefined,
+        ...((payload?.params?.questions as Array<{ question?: string }> | undefined) || []).map(q => q?.question),
+      ].filter((q): q is string => typeof q === "string");
+      const gateHit = gateQs.map(q => parseGate(q)).find(Boolean) || null;
       if (gateHit) {
         pushOp({ op: "gate", reqId: payload?.id, params: { ...payload?.params, env: gateHit.env } }, true);
         return;
@@ -323,12 +329,14 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   const respondGate = useCallback((reqId: string, reply: GateReply) => {
     setMessages((msgs) => {
       let answer = "";
+      let batchQids: string[] | undefined;
       let ok = true;
       const next = msgs.map((msg) => {
         if (msg.role !== "assistant") return msg;
         const segments = msg.segments.map((sg) => {
           if (sg.kind === "gate" && sg.reqId === reqId && sg.resolved == null && sg.gate) {
             answer = serializeReply(sg.gate.gate_id, sg.gate.version || 1, reply);
+            batchQids = sg.batchQids;
             return { ...sg, resolved: reply.action, status: "done" as const };
           }
           return sg;
@@ -336,7 +344,12 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         return { ...msg, segments };
       });
       if (!answer) ok = false;
-      if (ok) sendServerResponse(reqId, { answer });
+      // Batch clarify frames are answered per-qid ({answers}); single frames take {answer}.
+      if (ok && batchQids && batchQids.length) {
+        sendServerResponse(reqId, { answers: Object.fromEntries(batchQids.map(qid => [qid, answer])) });
+      } else if (ok) {
+        sendServerResponse(reqId, { answer });
+      }
       else setErrorBanner("Gate response not delivered — gate no longer open.");
       return next;
     });
