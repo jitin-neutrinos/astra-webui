@@ -22,7 +22,7 @@ import type { CatalogPayload } from "./composer-controls";
 
 import { computePhases } from "../lib/plan-phases";
 import { computeStats } from "../lib/session-stats";
-import { type PlanResponse, type Plan, type ReportBlock, extractPlans, extractResponses, extractReports, serializeDecision } from "../lib/plan-block";
+import { type PlanResponse, type Plan, type ReportBlock, extractPlans, extractResponses, extractReports, serializeDecision, stripAstraFences, PLAN_CONTRACT } from "../lib/plan-block";
 import { PlanGateContext } from "./chat-timeline";
 
 // Source: ~/.hermes/plugins/astra-brand/dashboard/dist/astra-core.js CHAT_TUI_COMMANDS
@@ -404,6 +404,9 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
 
   const send = async (raw?: string, opts?: { silent?: boolean }) => {
     let finalText = (raw ?? input).trim();
+    if (finalText.startsWith("/plan ") || finalText === "/plan") {
+      finalText = finalText.slice(5).trim() + "\n\n" + PLAN_CONTRACT;
+    }
     if (!finalText && attachments.length === 0) return;
     if (isStreaming || attachments.some((a) => a.status === "uploading")) return;
 
@@ -871,11 +874,11 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
                         </div>
                       )}
                       <div className="min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere] rounded-2xl bg-white/[0.06] px-4 py-3 text-sm leading-relaxed text-slate-200">
-                        {m.content.replace(/\n\nAttached file: .*/g, "")}
+                        {stripAstraFences(m.content).replace(/\n\nAttached file: .*/g, "")}
                       </div>
                     </div>
                   ) : m.segments.length ? (
-                    <TurnTimeline segments={m.segments} streaming={m.isStreaming} sessionId={storedSessionId || ""} onToggleTool={toggleToolCollapse} onApprovalRespond={respondApproval} onGateRespond={() => {}} onClarifyAnswer={respondClarify} onOpenImage={(url, alt) => setLightbox({ open: true, url, alt })} />
+                    <TurnTimeline segments={m.segments} streaming={m.isStreaming} onToggleTool={toggleToolCollapse} onApprovalRespond={respondApproval} onClarifyAnswer={respondClarify} onOpenImage={(url, alt) => setLightbox({ open: true, url, alt })} />
                   ) : m.isStreaming ? (
                     <span className="flex w-fit items-center rounded-2xl border border-cyanx/15 bg-midnight/80 px-3 py-1.5">
                       <AITextLoading texts={["Thinking...", "Working on it...", "Almost there..."]} />
@@ -892,7 +895,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
                           {!isStreaming && (
                             <button type="button" aria-label="Edit message" title="Edit"
                               onClick={() => {
-                                setInput(m.content.replace(/\n\nAttached file: .*/g, ""));
+                                setInput(stripAstraFences(m.content).replace(/\n\nAttached file: .*/g, ""));
                                 setMessages(p => p.slice(0, idx));
                                 setTimeout(() => taRef.current?.focus(), 0);
                               }}>

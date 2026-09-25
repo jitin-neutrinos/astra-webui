@@ -3,6 +3,7 @@ import type { Segment } from "./chat-segments";
 import { describeTool } from "./tool-identity";
 
 export type PhaseStatus = "pending" | "active" | "complete" | "skipped";
+export const DEFAULT_PHASES: PhaseId[] = ["implementation", "review", "debugging", "report"];
 export interface PhaseState { id: PhaseId; status: PhaseStatus; evidence?: string }
 
 export function classifySegment(seg: Segment): { phase: PhaseId; evidence: string } | null {

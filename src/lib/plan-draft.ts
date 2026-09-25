@@ -1,4 +1,4 @@
-import { Plan } from "./plan-block";
+import type { Plan } from "./plan-block";
 
 const KEY = "astra-plan-draft";
 const CAP = 40;

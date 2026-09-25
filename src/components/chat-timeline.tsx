@@ -3,7 +3,6 @@ import { Check, ChevronDown, ChevronRight, Loader2, TriangleAlert, Copy } from "
 import { cn } from "../lib/utils";
 import { getFileKind } from "../lib/session-files";
 import { AudioPlayer } from "./audio-player";
-import { GateCard } from "./gates/gate-card";
 
 import type { Segment, ClarifyQuestion } from "../lib/chat-segments";
 import { turnIsRunning } from "../lib/chat-segments";
@@ -543,14 +542,12 @@ function ApprovalRow({ seg, onRespond }: { seg: Segment; onRespond: (reqId: stri
 
 // ---- turn container --------------------------------------------------------
 
-export function TurnTimeline({ segments, streaming, sessionId, onToggleTool, onApprovalRespond, onClarifyAnswer, onGateRespond, onOpenImage }: {
+export function TurnTimeline({ segments, streaming, onToggleTool, onApprovalRespond, onClarifyAnswer, onOpenImage }: {
   segments: Segment[];
   streaming: boolean;
-  sessionId: string | null;
   onToggleTool: (segId: string) => void;
   onApprovalRespond: (reqId: string, choice: string) => void;
   onClarifyAnswer: (reqId: string, result: { answer?: string; answers?: Record<string, string> }) => void;
-  onGateRespond: (reqId: string, reply: any) => void;
   onOpenImage?: (url: string, alt: string) => void;
 }) {
   if (!segments.length) return null;
@@ -581,7 +578,6 @@ export function TurnTimeline({ segments, streaming, sessionId, onToggleTool, onA
         if (seg.kind === "tool") return <ToolRow key={seg.id} seg={seg} onToggle={() => onToggleTool(seg.id)} />;
         if (seg.kind === "approval") return <ApprovalRow key={seg.id} seg={seg} onRespond={onApprovalRespond} />;
         if (seg.kind === "clarify") return <ClarifyCard key={seg.id} seg={seg} onAnswer={onClarifyAnswer} />;
-        if (seg.kind === "gate") return <GateCard key={seg.id} seg={seg} sessionId={sessionId} onRespond={onGateRespond} onOpenImage={onOpenImage} />;
         return <TextRow key={seg.id} seg={seg} onOpenImage={onOpenImage} />;
       })}
     </div>
