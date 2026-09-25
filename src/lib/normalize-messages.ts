@@ -1,5 +1,6 @@
 import type { Segment } from "./chat-segments.ts";
 import { extractAttachments } from "./media-paths.ts";
+import { parseArchivedGate, GATE_RE } from "../components/gates/gate-envelope.ts";
 
 export interface HistoryRow {
   id: string; role: "user"|"assistant"|"tool"|"system";
@@ -30,7 +31,7 @@ export function rowsToTurns(rows: HistoryRow[]): Turn[] {
     if (row.role === "system") continue;
 
     let rowTs = row.timestamp !== undefined ? (row.timestamp < 1e12 ? row.timestamp * 1000 : row.timestamp) : undefined;
-    const content = typeof row.text === "string" ? row.text : typeof row.content === "string" ? row.content : typeof row.display_content === "string" ? row.display_content : "";
+    let content = typeof row.text === "string" ? row.text : typeof row.content === "string" ? row.content : typeof row.display_content === "string" ? row.display_content : "";
 
     if (row.role === "user") {
       const { text, files } = extractAttachments(content || "");
@@ -95,12 +96,25 @@ export function rowsToTurns(rows: HistoryRow[]): Turn[] {
       }
 
       if (content) {
-        currentTurn.segments.push({
-          id: `text-${row.id}`,
-          kind: "text",
-          status: "done",
-          text: content
-        });
+        const archivedGate = parseArchivedGate(content);
+        if (archivedGate) {
+          currentTurn.segments.push({
+            id: `gate-${row.id}`,
+            kind: "gate",
+            status: "done",
+            gate: archivedGate,
+            resolved: archivedGate.resolved || "approved", // fallback
+          });
+          content = content.replace(GATE_RE, "").trim();
+        }
+        if (content) {
+          currentTurn.segments.push({
+            id: `text-${row.id}`,
+            kind: "text",
+            status: "done",
+            text: content
+          });
+        }
       }
     } else if (row.role === "tool") {
       if (!currentTurn || currentTurn.role !== "assistant") {

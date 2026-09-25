@@ -193,4 +193,27 @@ const resolvedCl = cl.map((s, i) => i === 1
 assert.equal(turnIsRunning(resolvedCl, true), true, "answered clarify returns the turn to running");
 assert.equal(resolvedCl[1].answers?.q1, "Per turn");
 
-console.log("verify-chat-timeline: 16/16 checks passed");
+// 17. Generative gates:
+//     - gate op appends its segment
+//     - open gate blocks running-state
+//     - superseded replaces state on same ID
+let g: Segment[] = [];
+g = apply(g, [{
+  op: "gate" as SegOp,
+  params: { env: { gate_id: "g1", version: 1, title: "Test", kind: "plan", actions: [], body: { content: "v1" } } as any },
+  reqId: "srq-1"
+}]);
+assert.equal(g.length, 1);
+assert.equal(g[0].kind, "gate");
+assert.equal(turnIsRunning(g, true), false, "open gate blocks running-state");
+
+g = apply(g, [{
+  op: "gate" as SegOp,
+  params: { env: { gate_id: "g1", version: 2, title: "Test", kind: "plan", actions: [], body: { content: "v2" } } as any },
+  reqId: "srq-2"
+}]);
+assert.equal(g.length, 2);
+assert.equal(g[0].superseded, true, "v2 arriving marks v1 superseded");
+assert.ok(!g[1].superseded, "v2 is active");
+
+console.log("verify-chat-timeline: 17/17 checks passed");

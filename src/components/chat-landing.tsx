@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
 import { ArrowUp, Square, TriangleAlert, RotateCcw, Maximize2, X, Copy, Pencil, ChevronDown, Link2, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -6,6 +6,7 @@ import { useHermesWS } from "@/lib/hermes-ws";
 import type { EventPayload } from "@/lib/hermes-ws";
 import { rowsToTurns, type Turn } from "@/lib/normalize-messages";
 import { extractAttachments } from "@/lib/media-paths";
+import { parseGate, serializeReply, type GateReply } from "./gates/gate-envelope";
 import { copyText } from "@/lib/copy-text";
 import { modelSwitchValue } from "@/lib/model-switch";
 import AITextLoading from "@/components/ui/ai-text-loading";
@@ -19,11 +20,6 @@ import { ComposerControls, filesToAttachments, type Attachment } from "./compose
 import { Lightbox } from "./lightbox";
 import { getHermesHome, getCatalog } from "@/lib/session-files";
 import type { CatalogPayload } from "./composer-controls";
-
-import { computePhases } from "../lib/plan-phases";
-import { computeStats } from "../lib/session-stats";
-import { type PlanResponse, type Plan, type ReportBlock, extractPlans, extractResponses, extractReports, serializeDecision, stripAstraFences, PLAN_CONTRACT } from "../lib/plan-block";
-import { PlanGateContext } from "./chat-timeline";
 
 // Source: ~/.hermes/plugins/astra-brand/dashboard/dist/astra-core.js CHAT_TUI_COMMANDS
 // (the TUI's registered slash commands — submitted as plain prompt text, same as the terminal).
@@ -164,6 +160,22 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     }));
   }, []);
 
+  // Mark a gate card resolved/cancelled (mirrors resolveClarify).
+  const resolveGate = useCallback((reqId: string, reply: GateReply | null) => {
+    setMessages((m) => m.map((msg) => {
+      if (msg.role !== "assistant") return msg;
+      let changed = false;
+      const segments = msg.segments.map((sg) => {
+        if (sg.kind === "gate" && sg.reqId === reqId && sg.resolved == null) {
+          changed = true;
+          return { ...sg, resolved: reply ? reply.action : "cancelled", status: "done" as const };
+        }
+        return sg;
+      });
+      return changed ? { ...msg, segments } : msg;
+    }));
+  }, []);
+
   const handleEvent = useCallback((ev: EventPayload) => {
     const { type, payload } = ev;
 
@@ -263,12 +275,17 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     // (method "clarify", srq-* id). Rendered as an interactive question card.
     if (type === "clarify") {
       ensureActive();
+      const gateHit = parseGate(payload?.params?.question);
+      if (gateHit) {
+        pushOp({ op: "gate", reqId: payload?.id, params: { ...payload?.params, env: gateHit.env } }, true);
+        return;
+      }
       pushOp({ op: "clarify", reqId: payload?.id, params: payload?.params || {} }, true);
       return;
     }
 
     if (type === "request.cancel") {
-      if (payload?.id) { resolveApproval(payload.id, null); resolveClarify(payload.id, null); }
+      if (payload?.id) { resolveApproval(payload.id, null); resolveClarify(payload.id, null); resolveGate(payload.id, null); }
       return;
     }
 
@@ -300,6 +317,30 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     }
     resolveClarify(reqId, result.answers || {});
   }, [sendServerResponse, resolveClarify]);
+
+  // Gate reply: serialize the envelope answer over the same srq wire used by clarify,
+  // then flip the gate segment to its resolved state.
+  const respondGate = useCallback((reqId: string, reply: GateReply) => {
+    setMessages((msgs) => {
+      let answer = "";
+      let ok = true;
+      const next = msgs.map((msg) => {
+        if (msg.role !== "assistant") return msg;
+        const segments = msg.segments.map((sg) => {
+          if (sg.kind === "gate" && sg.reqId === reqId && sg.resolved == null && sg.gate) {
+            answer = serializeReply(sg.gate.gate_id, sg.gate.version || 1, reply);
+            return { ...sg, resolved: reply.action, status: "done" as const };
+          }
+          return sg;
+        });
+        return { ...msg, segments };
+      });
+      if (!answer) ok = false;
+      if (ok) sendServerResponse(reqId, { answer });
+      else setErrorBanner("Gate response not delivered — gate no longer open.");
+      return next;
+    });
+  }, [sendServerResponse]);
 
   const toggleToolCollapse = useCallback((segId: string) => {
     setMessages((m) => m.map((msg) => msg.role === "assistant"
@@ -404,9 +445,6 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
 
   const send = async (raw?: string, opts?: { silent?: boolean }) => {
     let finalText = (raw ?? input).trim();
-    if (finalText.startsWith("/plan ") || finalText === "/plan") {
-      finalText = finalText.slice(5).trim() + "\n\n" + PLAN_CONTRACT;
-    }
     if (!finalText && attachments.length === 0) return;
     if (isStreaming || attachments.some((a) => a.status === "uploading")) return;
 
@@ -704,74 +742,9 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   }, [storedSessionId, isStreaming]);
 
 
-  const planGateValues = useMemo(() => {
-    const decisions = new Map<string, PlanResponse>();
-    const phases = new Map<string, any[]>();
-    const stats = new Map<string, any>();
-    const reports = new Map<string, ReportBlock>();
 
-    for (const m of messages) {
-      if (m.role === "user" && m.content) {
-         const rs = extractResponses(m.content);
-         for (const r of rs) {
-           decisions.set(r.planId, r);
-         }
-      }
-    }
 
-    let currentPlanId: string | null = null;
-    let segsAfterApproval: import("./chat-timeline").Segment[] = [];
-    let turnStreaming = false;
-    let hasReport = false;
-    let firstTs: number | undefined = undefined;
-    let lastTs: number | undefined = undefined;
-    let declared: any[] = [];
 
-    const commitPlan = () => {
-      if (currentPlanId) {
-        phases.set(currentPlanId, computePhases(declared, segsAfterApproval, hasReport, turnStreaming));
-        stats.set(currentPlanId, computeStats(segsAfterApproval, firstTs, lastTs));
-      }
-    };
-
-    for (const m of messages) {
-      if (m.role === "assistant" && "segments" in m) {
-        turnStreaming = m.isStreaming;
-        for (const seg of m.segments) {
-           const pText = seg.text || "";
-           const ps = extractPlans(pText);
-           if (ps.length > 0) {
-             commitPlan();
-             currentPlanId = ps[ps.length - 1].id;
-             declared = ps[ps.length - 1].phases;
-             segsAfterApproval = [];
-             hasReport = false;
-             firstTs = undefined;
-             lastTs = undefined;
-           }
-           const reps = extractReports(pText);
-           if (reps.length > 0) {
-             hasReport = true;
-             if (currentPlanId) reports.set(currentPlanId, reps[reps.length - 1]);
-           }
-        }
-        
-        if (currentPlanId && decisions.has(currentPlanId) && decisions.get(currentPlanId)!.decision === "approved") {
-           segsAfterApproval.push(...m.segments);
-           if (firstTs === undefined) firstTs = m.ts;
-           lastTs = m.ts;
-        }
-      }
-    }
-    commitPlan();
-
-    return { decisions, phases, stats, reports };
-  }, [messages]);
-
-  const respondPlanGate = useCallback((plan: Plan, decision: PlanResponse["decision"], note: string, edited: boolean) => {
-    const text = serializeDecision(plan, decision, note, edited);
-    void send(text, { silent: false });
-  }, [send]);
 
   const hour = new Date().getHours();
   const greeting = hour < 5 ? "Working late" : hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
@@ -848,7 +821,6 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
             </div>
           </div>
         ) : (
-          <PlanGateContext.Provider value={{ sessionId: storedSessionId || "", ...planGateValues, onDecide: respondPlanGate, busy: isStreaming }}>
             <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
               {messages.map((m, idx) => (
                 <div key={m.id} className={m.isSysNote ? "chat-sys-note" : "flex items-start gap-3"}>
@@ -874,11 +846,11 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
                         </div>
                       )}
                       <div className="min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere] rounded-2xl bg-white/[0.06] px-4 py-3 text-sm leading-relaxed text-slate-200">
-                        {stripAstraFences(m.content).replace(/\n\nAttached file: .*/g, "")}
+                        {m.content.replace(/\n\nAttached file: .*/g, "")}
                       </div>
                     </div>
                   ) : m.segments.length ? (
-                    <TurnTimeline segments={m.segments} streaming={m.isStreaming} onToggleTool={toggleToolCollapse} onApprovalRespond={respondApproval} onClarifyAnswer={respondClarify} onOpenImage={(url, alt) => setLightbox({ open: true, url, alt })} />
+                    <TurnTimeline segments={m.segments} streaming={m.isStreaming} sessionId={storedSessionId || ""} onToggleTool={toggleToolCollapse} onApprovalRespond={respondApproval} onGateRespond={respondGate} onClarifyAnswer={respondClarify} onOpenImage={(url, alt) => setLightbox({ open: true, url, alt })} />
                   ) : m.isStreaming ? (
                     <span className="flex w-fit items-center rounded-2xl border border-cyanx/15 bg-midnight/80 px-3 py-1.5">
                       <AITextLoading texts={["Thinking...", "Working on it...", "Almost there..."]} />
@@ -895,7 +867,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
                           {!isStreaming && (
                             <button type="button" aria-label="Edit message" title="Edit"
                               onClick={() => {
-                                setInput(stripAstraFences(m.content).replace(/\n\nAttached file: .*/g, ""));
+                                setInput(m.content.replace(/\n\nAttached file: .*/g, ""));
                                 setMessages(p => p.slice(0, idx));
                                 setTimeout(() => taRef.current?.focus(), 0);
                               }}>
@@ -925,7 +897,6 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
               </div>
             ))}
           </div>
-          </PlanGateContext.Provider>
         )}
       </div>
 

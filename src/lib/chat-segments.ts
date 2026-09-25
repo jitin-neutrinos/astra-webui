@@ -5,7 +5,9 @@
 // exactly as the model emitted them — this is the fix for the old "one
 // block, then all text below" bug.
 
-export type SegKind = "thinking" | "tool" | "text" | "approval" | "clarify";
+import type { GateEnvelope } from "../components/gates/gate-envelope";
+
+export type SegKind = "thinking" | "tool" | "text" | "approval" | "clarify" | "gate";
 
 export interface Segment {
   id: string;
@@ -28,6 +30,9 @@ export interface Segment {
   // clarify (generative UI question card)
   questions?: ClarifyQuestion[];
   answers?: Record<string, string>; // qid -> chosen answer (locked/submitted)
+  // gate
+  gate?: GateEnvelope;
+  superseded?: boolean;
 }
 
 export interface ClarifyQuestion {
@@ -44,7 +49,8 @@ export type SegOp =
   | { op: "tool-done"; key?: string; label?: string; resultText?: string; exitCode?: number | null }
   | { op: "text"; text: string }
   | { op: "approval"; reqId: string; params: Segment["params"] }
-  | { op: "clarify"; reqId: string; params: { questions?: ClarifyQuestion[]; question?: string; choices?: string[]; multi_select?: boolean; answers?: Record<string, string> } };
+  | { op: "clarify"; reqId: string; params: { questions?: ClarifyQuestion[]; question?: string; choices?: string[]; multi_select?: boolean; answers?: Record<string, string> } }
+  | { op: "gate"; reqId: string; params: { env: GateEnvelope } };
 
 let segSeq = 0;
 const nextSegId = () => `seg${++segSeq}-${Date.now()}`;
@@ -146,6 +152,26 @@ export function applySegmentOps(segments: Segment[], ops: SegOp[]): Segment[] {
         id: nextSegId(), kind: "clarify", status: "run", reqId: op.reqId,
         questions, answers: { ...(p.answers || {}) }, resolved: null,
       });
+    } else if (op.op === "gate") {
+      closeRunningThink(out);
+      barrier = true;
+      const env = { ...op.params.env };
+      // find previous to handle supersedes and version
+      const prevIdx = out.map(s => s.gate?.gate_id).lastIndexOf(env.gate_id);
+      if (prevIdx >= 0) {
+        const prev = out[prevIdx];
+        if (prev.gate) {
+           if (env.version === undefined) {
+             env.version = (prev.gate.version || 1) + 1;
+           }
+           if (env.version > (prev.gate.version || 1)) {
+             prev.superseded = true;
+           }
+        }
+      }
+      out.push({
+        id: nextSegId(), kind: "gate", status: "run", reqId: op.reqId, gate: env, resolved: null
+      });
     }
   }
   return out;
@@ -168,9 +194,8 @@ export function finalizeSegments(segments: Segment[]): Segment[] {
 // never emit message.complete, so running-state must not hang off streaming
 // alone. Pure so the verify script shares it.
 export function turnIsRunning(segments: Segment[], streaming: boolean): boolean {
-  // finished its turn, so nothing is spinning. Only srq-backed gates block.
   const blocked = (s: Segment) =>
-    (s.kind === "approval" || s.kind === "clarify") && s.resolved == null;
+    (s.kind === "approval" || s.kind === "clarify" || s.kind === "gate") && s.resolved == null;
   return streaming && !segments.some(blocked);
 }
 

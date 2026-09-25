@@ -112,8 +112,23 @@ function runTests() {
   assert.equal(turns9[0].ts, tsMs);
   assert.equal(turns9[1].ts, tsMs + 2000);
   assert.equal(turns9[0].segments[0].durationMs, 2000);
-
-  console.log("verify-history: All checks passed");
 }
 
 runTests();
+
+  // 10. Archived gate parsing
+  const tsBase = 1758816000000;
+  const rows10: HistoryRow[] = [
+    { id: "msg1", role: "assistant", content: "<!--astra-gate/1\n" + JSON.stringify({
+        v: 1, gate_id: "g1", version: 1, title: "Test", kind: "plan", actions: [], body: { content: "v1" }, resolved: "approve"
+      }) + "\n-->\nAnd some text", timestamp: tsBase }
+  ];
+  const turns10 = rowsToTurns(rows10);
+  assert.equal(turns10.length, 1);
+  assert.equal(turns10[0].segments.length, 2);
+  assert.equal(turns10[0].segments[0].kind, "gate");
+  assert.equal(turns10[0].segments[0].resolved, "approve");
+  assert.equal(turns10[0].segments[1].kind, "text");
+  assert.equal(turns10[0].segments[1].text, "And some text");
+
+  console.log("verify-history: 10/10 checks passed");

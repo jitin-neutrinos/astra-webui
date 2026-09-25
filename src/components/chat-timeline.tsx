@@ -3,6 +3,7 @@ import { Check, ChevronDown, ChevronRight, Loader2, TriangleAlert, Copy } from "
 import { cn } from "../lib/utils";
 import { getFileKind } from "../lib/session-files";
 import { AudioPlayer } from "./audio-player";
+import { GateCard } from "./gates/gate-card";
 
 import type { Segment, ClarifyQuestion } from "../lib/chat-segments";
 import { turnIsRunning } from "../lib/chat-segments";
@@ -11,14 +12,6 @@ import { MEDIA_RE, mediaPaths, stripMediaLines } from "../lib/media-paths";
 export type { SegKind, Segment, SegOp } from "../lib/chat-segments";
 export { applySegmentOps, finalizeSegments, findNewestCollapsedToolSeg, expandKeyBlocked, turnIsRunning } from "../lib/chat-segments";
 export { MEDIA_RE, mediaPaths, stripMediaLines };
-
-import { extractPlans, extractReports, stripAstraFences, hasOpenFence } from "../lib/plan-block";
-import { PlanCard, PlanGateContext } from "./plan-card";
-import { ReportCard } from "./report-card";
-
-export { extractPlans, extractReports, stripAstraFences, hasOpenFence };
-export { PlanCard, PlanGateContext };
-export { ReportCard };
 
 import { Marked } from "marked";
 import DOMPurify from "dompurify";
@@ -365,13 +358,8 @@ function TextRow({ seg, onOpenImage }: { seg: Segment; onOpenImage?: (url: strin
   const shown = useMemo(() => safeTail(text.slice(0, n)), [text, n]);
   const paths = useMemo(() => mediaPaths(text), [text]);
   const displayRaw = seg.status === "done" && n >= text.length ? text : shown;
-  const display = useMemo(() => stripMediaLines(stripAstraFences(displayRaw)), [displayRaw]);
+  const display = useMemo(() => stripMediaLines(displayRaw), [displayRaw]);
   
-  const full = seg.status === "done" || n >= text.length;
-  const plans = useMemo(() => full ? extractPlans(text) : [], [full, text]);
-  const reports = useMemo(() => full ? extractReports(text) : [], [full, text]);
-  const drafting = !full && hasOpenFence(text, "astra-plan");
-
   if (!text) return null;
   return (
     <div className="chat-text-seg">
@@ -382,9 +370,6 @@ function TextRow({ seg, onOpenImage }: { seg: Segment; onOpenImage?: (url: strin
           {paths.map(p => <MediaCard key={p} path={p} name={p.split("/").pop() || p} onOpenImage={onOpenImage} />)}
         </div>
       )}
-      {drafting && <div className="chat-plan-skeleton" role="status" aria-label="Drafting plan" />}
-      {plans.map(p => <PlanCard key={p.id} plan={p} />)}
-      {reports.map((r, i) => <ReportCard key={r.planId ?? i} report={r} />)}
     </div>
   );
 }
@@ -542,12 +527,14 @@ function ApprovalRow({ seg, onRespond }: { seg: Segment; onRespond: (reqId: stri
 
 // ---- turn container --------------------------------------------------------
 
-export function TurnTimeline({ segments, streaming, onToggleTool, onApprovalRespond, onClarifyAnswer, onOpenImage }: {
+export function TurnTimeline({ segments, streaming, sessionId, onToggleTool, onApprovalRespond, onClarifyAnswer, onGateRespond, onOpenImage }: {
   segments: Segment[];
   streaming: boolean;
+  sessionId: string | null;
   onToggleTool: (segId: string) => void;
   onApprovalRespond: (reqId: string, choice: string) => void;
   onClarifyAnswer: (reqId: string, result: { answer?: string; answers?: Record<string, string> }) => void;
+  onGateRespond: (reqId: string, reply: any) => void;
   onOpenImage?: (url: string, alt: string) => void;
 }) {
   if (!segments.length) return null;
@@ -578,6 +565,7 @@ export function TurnTimeline({ segments, streaming, onToggleTool, onApprovalResp
         if (seg.kind === "tool") return <ToolRow key={seg.id} seg={seg} onToggle={() => onToggleTool(seg.id)} />;
         if (seg.kind === "approval") return <ApprovalRow key={seg.id} seg={seg} onRespond={onApprovalRespond} />;
         if (seg.kind === "clarify") return <ClarifyCard key={seg.id} seg={seg} onAnswer={onClarifyAnswer} />;
+        if (seg.kind === "gate") return <GateCard key={seg.id} seg={seg} sessionId={sessionId} onRespond={onGateRespond} onOpenImage={onOpenImage} />;
         return <TextRow key={seg.id} seg={seg} onOpenImage={onOpenImage} />;
       })}
     </div>
