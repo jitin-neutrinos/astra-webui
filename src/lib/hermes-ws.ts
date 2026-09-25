@@ -85,6 +85,22 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
   }, []);
 
   const pendingPromptRef = useRef<string | null>(null);
+  // Set while a session.create is in flight; cleared when its reply lands.
+  // Guards the auto-greet/first-message race that used to mint TWO sessions
+  // (the prompt then landed in a session the UI had already abandoned —
+  // symptom: stuck thinking pill, message gone after reload).
+  const pendingCreateRef = useRef(false);
+  // Set when a fresh-session send found the socket down; the connect handler
+  // sends session.create on open so the queued prompt still flushes.
+  const createOnOpenRef = useRef(false);
+
+  const sendSessionCreate = useCallback(() => {
+    if (pendingCreateRef.current || liveIdRef.current) return;
+    if (!ws.current || ws.current.readyState !== 1) { createOnOpenRef.current = true; return; }
+    pendingCreateRef.current = true;
+    ws.current.send(JSON.stringify({ method: "session.create", params: { source: "webui" }, id: generateRpcId() }));
+  }, []);
+
   const flushPendingPrompt = useCallback(async (sid: string) => {
     const queue = pendingPreTurnRpcs.current;
     pendingPreTurnRpcs.current = [];
@@ -198,6 +214,8 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
         }
       } else if (data.id && data.result && data.result.session_id) {
         liveIdRef.current = data.result.session_id;
+        pendingCreateRef.current = false; // create/resume reply landed — allow future creates after a reset
+        createOnOpenRef.current = false;
         setLiveSessionId(data.result.session_id);
         const stored = data.result.stored_session_id;
         if (stored) {
@@ -276,20 +294,36 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
         pendingResumes.current.add(id);
         socket.send(JSON.stringify({ method: "session.resume", params: { session_id: sid }, id }));
       }
+      // A prompt was queued while the socket was down. With a stored session the
+      // resume above will flush it; only a truly fresh session needs a create.
+      if (createOnOpenRef.current && !sid) {
+        createOnOpenRef.current = false;
+        sendSessionCreate();
+      }
     }
 
     return () => { ws.current = null; };
-  }, [setStoredSessionId, setLiveSessionId, flushPendingPrompt, clearWatchdog]);
+  }, [setStoredSessionId, setLiveSessionId, flushPendingPrompt, clearWatchdog, sendSessionCreate]);
 
   const submitPrompt = useCallback((content: string) => {
-    if (!ws.current || ws.current.readyState !== 1) return;
-    setIsStreaming(true);
-    if (!storedSessionId) {
+    if (!ws.current || ws.current.readyState !== 1) {
+      // Socket still connecting (or briefly down). Queue the prompt and let the
+      // connect handler create/resume + flush it. NEVER silently drop — the
+      // optimistic UI already shows the user's message + thinking pill.
       pendingPromptRef.current = content;
-      ws.current.send(JSON.stringify({ method: "session.create", params: { source: "webui" }, id: generateRpcId() }));
+      createOnOpenRef.current = true;
+      setIsStreaming(true);
+      return;
+    }
+    setIsStreaming(true);
+    if (!liveIdRef.current && !storedSessionId) {
+      // Fresh session: create first; flushPendingPrompt sends the prompt when
+      // the create reply lands. One create per fresh session — no double mint.
+      pendingPromptRef.current = content;
+      sendSessionCreate();
     } else {
       armWatchdog();
-      rpc("prompt.submit", { session_id: liveSessionId || storedSessionId, text: content, surface: "webui" })
+      rpc("prompt.submit", { session_id: liveIdRef.current || storedSessionId, text: content, surface: "webui" })
         .catch((err: any) => {
           setIsStreaming(false);
           onEventRef.current({
@@ -298,7 +332,7 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
           });
         });
     }
-  }, [storedSessionId, liveSessionId, rpc, armWatchdog]);
+  }, [storedSessionId, liveSessionId, rpc, armWatchdog, sendSessionCreate]);
 
   const sendApprovalResponse = useCallback((id: string, choice: string) => {
     if (!ws.current || ws.current.readyState !== 1) return false;
@@ -331,6 +365,7 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
     liveIdRef.current = null; setLiveSessionId(null);
     setStoredSessionId(null); setSessionInfo(null);
     pendingPreTurnRpcs.current = []; pendingPromptRef.current = null;
+    pendingCreateRef.current = false; createOnOpenRef.current = false;
   }, [setStoredSessionId, setLiveSessionId, clearWatchdog]);
 
   return { isStreaming, submitPrompt, interrupt, storedSessionId, setStoredSessionId, liveSessionId, sendApprovalResponse, sendServerResponse, rpc, sessionInfo, setSessionInfo, resetSession };
