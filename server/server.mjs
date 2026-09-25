@@ -1,5 +1,5 @@
 // astra-webui server: static dist + password-only auth API. ponytail: one file, zero deps.
-import { createServer } from "node:http";
+import { createServer, request } from "node:http";
 import { handleHxProxy, handleWsUpgrade } from "./hermes-proxy.mjs";
 
 import { createHmac, timingSafeEqual, randomBytes } from "node:crypto";
@@ -139,6 +139,32 @@ const server = createServer(async (req, res) => {
     const ok = validToken(cookies[COOKIE]);
     res.writeHead(ok ? 200 : 401, { "content-type": "application/json" });
     return res.end(JSON.stringify({ authenticated: ok }));
+  }
+
+  if (path.startsWith("/api/beacon/")) {
+    const cookies = {};
+    (req.headers.cookie || "").split(";").forEach((c) => {
+      const i = c.indexOf("=");
+      if (i > 0) cookies[c.slice(0, i).trim()] = c.slice(i + 1).trim();
+    });
+    if (!validToken(cookies[COOKIE])) {
+      res.writeHead(401, { "content-type": "application/json" });
+      return res.end('{"error":"unauthenticated"}');
+    }
+    const targetUrl = new URL(req.url.replace("/api/beacon/", "/api/"), "http://127.0.0.1:8789");
+    const proxyReq = request(targetUrl, {
+      method: req.method,
+      headers: { ...req.headers, host: targetUrl.host },
+    }, (proxyRes) => {
+      res.writeHead(proxyRes.statusCode, proxyRes.headers);
+      proxyRes.pipe(res);
+    });
+    proxyReq.on("error", () => {
+      res.writeHead(502, { "content-type": "application/json" });
+      res.end('{"error":"tokenbeacon unreachable"}');
+    });
+    req.pipe(proxyReq);
+    return;
   }
 
   if (path.startsWith("/api/hx/")) {

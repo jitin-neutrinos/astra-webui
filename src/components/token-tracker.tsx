@@ -1,33 +1,57 @@
 import { useEffect, useState } from "react";
 import { BarChart3, ShieldCheck, Zap, TrendingUp, Activity, Cpu, ArrowLeft } from "lucide-react";
 
-/* Token usage data fetched from the local tracker collector (port 8788).
-   The collector polls headroom /stats every 30s and serves JSON with CORS headers.
-   Pricing is embedded in the collector using verified provider rates (Sep 2026). */
+/* Global Token Tracker — live data from tokenbeacon capture workers (127.0.0.1:8789)
+   via the /api/beacon/* auth proxy. Harnesses: claude-code, hermes, opencode (agy has
+   no local usage persistence — shown as uncaptured, never estimated).
+   NO synthetic fallback data: if the API is unreachable we show the error, not fake rows. */
 
-interface TrackerData {
-  tracker_version: string;
-  timestamp_utc: number;
-  summary_rows_30d: Array<{
-    harness: string; provider: string; total_input: number; total_output: number;
-    total_saved: number; total_cost: number;
-  }>;
-  latest_20_records: Array<{
-    harness: string; provider: string; model_key: string;
-    input_tokens: number; output_tokens: number; tokens_saved: number; cost_usd: number;
-  }>;
-  optimization_status: {
-    headroom_version: string; proxy_healthy: boolean; mode: string;
-    requests_30d: number; compression_ratio_pct: number; tokens_saved_30d: number;
-    cost_saved_usd: number; agent_breakdown: Array<{ agent: string; label: string; requests: number; models: string[]; providers: string[]; tokens_saved: number; savings_percent: number; }>;
-    leanctx_installed: boolean; leanctx_version: string;
-    rtk_installed: boolean; rtk_version: string;
-    token_shift_installed: boolean; token_shift_version: string;
-    headroom_tools_cache_enabled: boolean;
-  };
+interface SummaryRow {
+  harness: string;
+  model: string;
+  input: number;
+  output: number;
+  cache_read: number;
+  cache_write: number;
+  reasoning: number;
+  cost_est: number;
+  cost_actual: number;
 }
 
+interface RecordRow {
+  ts: number;
+  harness: string;
+  provider: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  reasoning_tokens: number;
+  cost_usd: number | null;
+}
+
+interface BeaconStatus {
+  capture_last_run: string;
+  pricing_last_run: string;
+  derive_last_run: string;
+}
+
+const HARNESS_META: Record<string, { label: string; provider: string; note: string }> = {
+  "claude-code": { label: "Claude Code", provider: "Anthropic", note: "" },
+  hermes: { label: "Hermes", provider: "z.ai / OpenRouter / Nous", note: "" },
+  opencode: { label: "OpenCode", provider: "z.ai coding plan", note: "" },
+  agy: { label: "agy (Antigravity)", provider: "Google Gemini", note: "agy does not persist per-request usage locally. Excluded from totals — never estimated." },
+};
+
+const PERIODS = [
+  { days: 1, label: "Today" },
+  { days: 7, label: "7 days" },
+  { days: 30, label: "30 days" },
+] as const;
+
 function formatTokens(n: number): string {
+  if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(2) + "B";
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
   if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
   return String(n);
@@ -37,53 +61,79 @@ function formatUSD(n: number): string {
   return "$" + n.toFixed(2);
 }
 
-export default function TokenTrackerPage({ onBack }: { onBack?: () => void }) {
-  const [data, setData] = useState<TrackerData | null>(null);
+function timeAgo(raw: string | number): string {
+  const s = Math.max(1, Math.floor(Date.now() / 1000 - Number(raw)));
+  if (s < 90) return `${s}s ago`;
+  if (s < 5400) return `${Math.floor(s / 60)}m ago`;
+  if (s < 172800) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
 
-  const fetchData = async () => {
-    try {
-      const res = await fetch("http://127.0.0.1:8788/api/", { mode: "cors" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      setData(json);
-    } catch (e: any) {
-      // Fallback: construct demo data from known headroom stats
-      setData({
-        tracker_version: "1.0.0",
-        timestamp_utc: Math.floor(Date.now() / 1000),
-        summary_rows_30d: [
-          { harness: "claude-code", provider: "anthropic", total_input: 9981448, total_output: 73630, total_saved: 81956, total_cost: 0.0 },
-          { harness: "hermes", provider: "openai", total_input: 58, total_output: 0, total_saved: 0, total_cost: 0.0 },
-        ],
-        latest_20_records: [],
-        optimization_status: {
-          headroom_version: "0.37.0", proxy_healthy: true, mode: "cache",
-          requests_30d: 108, compression_ratio_pct: 0.9, tokens_saved_30d: 80665,
-          cost_saved_usd: 0.0,
-          agent_breakdown: [
-            { agent: "claude-code", label: "Claude", requests: 101, models: ["claude-sonnet-5"], providers: ["anthropic"], tokens_saved: 80665, savings_percent: 0.81 },
-            { agent: "openai", label: "OpenAI", requests: 7, models: ["glm-5.3-flash", "glm-4.6", "gpt-4o"], providers: ["openai"], tokens_saved: 0, savings_percent: 0.0 },
-          ],
-          leanctx_installed: true, leanctx_version: "0.3.1",
-          rtk_installed: true, rtk_version: "0.49.0",
-          token_shift_installed: false, token_shift_version: "N/A (enterprise SaaS only)",
-          headroom_tools_cache_enabled: false,
-        },
-      });
-    } finally {
-      // loading state removed for simplicity; data always available via fallback
-    }
-  };
+interface HarnessAgg {
+  input: number;
+  output: number;
+  cache_read: number;
+  cache_write: number;
+  reasoning: number;
+  cost: number;
+  models: Map<string, number>;
+}
+
+export default function TokenTrackerPage({ onBack }: { onBack?: () => void }) {
+  const [summary, setSummary] = useState<SummaryRow[] | null>(null);
+  const [records, setRecords] = useState<RecordRow[]>([]);
+  const [status, setStatus] = useState<BeaconStatus | null>(null);
+  const [days, setDays] = useState<number>(30);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let alive = true;
+    const fetchData = async () => {
+      try {
+        const [s, r, st] = await Promise.all([
+          fetch(`/api/beacon/summary?days=${days}`),
+          fetch(`/api/beacon/records`),
+          fetch(`/api/beacon/status`),
+        ]);
+        if (!s.ok) throw new Error(`tracker HTTP ${s.status}`);
+        const summaryData = await s.json();
+        if (alive) {
+          setSummary(summaryData);
+          setError(null);
+        }
+        if (r.ok && alive) setRecords(await r.json());
+        if (st.ok && alive) setStatus(await st.json());
+      } catch (e: any) {
+        if (alive) setError(e?.message || "tracker unreachable");
+      }
+    };
     fetchData();
-    const interval = setInterval(fetchData, 30000);
-    return () => clearInterval(interval);
-  }, []);
+    const t = setInterval(fetchData, 30000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [days]);
 
-  const status = data?.optimization_status;
-  const agents = status?.agent_breakdown || [];
-  const rows = data?.summary_rows_30d || [];
+  // Aggregate per harness — real captured rows only, no synthetic fallback.
+  const byHarness = new Map<string, HarnessAgg>();
+  if (summary) {
+    for (const r of summary) {
+      const agg =
+        byHarness.get(r.harness) ??
+        { input: 0, output: 0, cache_read: 0, cache_write: 0, reasoning: 0, cost: 0, models: new Map<string, number>() };
+      agg.input += r.input;
+      agg.output += r.output;
+      agg.cache_read += r.cache_read;
+      agg.cache_write += r.cache_write;
+      agg.reasoning += r.reasoning;
+      agg.cost += r.cost_est;
+      agg.models.set(r.model, (agg.models.get(r.model) ?? 0) + r.cost_est);
+      byHarness.set(r.harness, agg);
+    }
+  }
+  const totalCost = [...byHarness.values()].reduce((a, h) => a + h.cost, 0);
+  const maxCost = Math.max(...[...byHarness.values()].map((h) => h.cost), 0.01);
 
   return (
     <div className="flex-1 overflow-auto bg-void text-brandtext font-sans p-6 lg:p-10">
@@ -97,169 +147,161 @@ export default function TokenTrackerPage({ onBack }: { onBack?: () => void }) {
         <div>
           <h2 className="font-display text-3xl tracking-tight text-brandtext">Global Token Tracker</h2>
           <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-cyanx/70 mt-1">Live harness usage / token optimization observability</p>
-          <p className="text-xs text-muted mt-2">Source: headroom proxy (127.0.0.1:8787) + collector (8788). Refresh: every 30s. Provider rates embedded from official docs (Sep 2026).</p>
+          <p className="text-xs text-muted mt-2">
+            Source: tokenbeacon per-request capture (claude-code, hermes, opencode) + LiteLLM/OpenRouter rate maps. Refresh: every 30s.
+            {status && ` Capture ${timeAgo(status.capture_last_run)}.`}
+          </p>
         </div>
       </div>
 
+      {error && (
+        <div className="max-w-5xl mx-auto mb-6 rounded-xl border border-redx/20 bg-redx/[0.04] p-4 text-xs font-mono text-redx">
+          Tracker API error: {error} — showing no data rather than estimates. Check the tokenbeacon stack (127.0.0.1:8789).
+        </div>
+      )}
+
       <div className="max-w-5xl mx-auto space-y-6">
-        {/* Optimization Status Cards */}
+        {/* Capture worker health */}
         <section className="rounded-2xl border border-white/[0.08] bg-midnight/50 p-6 backdrop-blur-md">
           <h3 className="font-display text-xl text-brandtext mb-4 flex items-center gap-2">
             <ShieldCheck className="h-5 w-5 text-cyanx" strokeWidth={1.5} />
-            Optimization Status
+            Capture Workers
           </h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {status ? (
-              <>
-                <StatusCard label="Headroom" value={status.proxy_healthy ? "Healthy" : "Down"} sub={`${status.requests_30d} reqs`} color={status.proxy_healthy ? "cyan" : "red"} icon={<Zap className="h-4 w-4" />} />
-                <StatusCard label="Compression" value={`${status.compression_ratio_pct}%`} sub={`${formatTokens(status.tokens_saved_30d)} saved`} color="cyan" icon={<TrendingUp className="h-4 w-4" />} />
-                <StatusCard label="leanctx" value={status.leanctx_installed ? "Installed" : "Not Found"} sub={status.leanctx_version} color={status.leanctx_installed ? "cyan" : "red"} icon={<Activity className="h-4 w-4" />} />
-                <StatusCard label="RTK" value={status.rtk_installed ? "Installed" : "Not Found"} sub={status.rtk_version} color={status.rtk_installed ? "cyan" : "red"} icon={<Cpu className="h-4 w-4" />} />
-              </>
-            ) : (
-              Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="rounded-xl border border-white/[0.06] bg-void/40 p-4 animate-pulse">
-                  <div className="h-4 bg-white/5 rounded w-24 mb-2" />
-                  <div className="h-6 bg-white/5 rounded w-16" />
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: "Capture", ts: status?.capture_last_run, icon: <Zap className="h-4 w-4" /> },
+              { label: "Pricing", ts: status?.pricing_last_run, icon: <TrendingUp className="h-4 w-4" /> },
+              { label: "Costing", ts: status?.derive_last_run, icon: <Activity className="h-4 w-4" /> },
+            ].map((w) => (
+              <div key={w.label} className="rounded-xl border border-white/[0.06] bg-void/40 p-4">
+                <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-wider text-slate-500">
+                  {w.icon}
+                  {w.label}
                 </div>
-              ))
-            )}
+                <div className={`mt-1 text-sm font-medium ${w.ts ? "text-cyanx" : "text-redx"}`}>
+                  {w.ts ? timeAgo(w.ts) : "no data"}
+                </div>
+              </div>
+            ))}
           </div>
           <div className="mt-4 flex flex-wrap gap-2 text-[10px] font-mono uppercase tracking-wider text-slate-500">
-            <span>Headroom v{status?.headroom_version || "0.37.0"}</span>
+            <span>Headroom v0.37.0 (claude-code + hermes paths)</span>
             <span>•</span>
-            <span>Cache mode: {status?.mode || "cache"}</span>
+            <span>Pricing: LiteLLM + OpenRouter catalogs</span>
             <span>•</span>
-            <span>Tool schema saved: 1,979,681 tokens</span>
+            <span>TokenShift: N/A (enterprise SaaS)</span>
             <span>•</span>
-            <span>TokenShift: {status?.token_shift_installed ? "Active" : "Not installed (enterprise SaaS)"}</span>
-            <span>•</span>
-            <span>Native tool cache: {status?.headroom_tools_cache_enabled ? "Active" : "Disabled (needs Anthropic native mode)"}</span>
+            <span>agy: not locally instrumented — excluded, never estimated</span>
           </div>
         </section>
 
-        {/* Per-Agent Usage Table */}
+        {/* Per-harness usage table */}
         <section className="rounded-2xl border border-white/[0.08] bg-midnight/50 p-6 backdrop-blur-md">
-          <h3 className="font-display text-xl text-brandtext mb-4 flex items-center gap-2">
-            <BarChart3 className="h-5 w-5 text-cyanx" strokeWidth={1.5} />
-            Per-Harness Usage (30-day rollup via Headroom /stats)
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-display text-xl text-brandtext flex items-center gap-2">
+              <BarChart3 className="h-5 w-5 text-cyanx" strokeWidth={1.5} />
+              Per-Harness Usage
+            </h3>
+            <div className="flex rounded-lg border border-white/[0.08] overflow-hidden" role="tablist" aria-label="Period">
+              {PERIODS.map((p) => (
+                <button
+                  key={p.days}
+                  role="tab"
+                  aria-selected={days === p.days}
+                  onClick={() => setDays(p.days)}
+                  className={`px-3 py-1.5 text-xs font-medium transition ${days === p.days ? "bg-cyanx/10 text-cyanx" : "text-slate-500 hover:text-slate-300"}`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="border-b border-white/[0.08] text-left text-[10px] font-mono uppercase tracking-wider text-slate-500">
                   <th className="py-2.5 px-3">Harness</th>
-                  <th className="py-2.5 px-3">Provider</th>
-                  <th className="py-2.5 px-3 text-right">Requests</th>
                   <th className="py-2.5 px-3 text-right">Input</th>
+                  <th className="py-2.5 px-3 text-right">Cache Read</th>
+                  <th className="py-2.5 px-3 text-right">Cache Write</th>
                   <th className="py-2.5 px-3 text-right">Output</th>
-                  <th className="py-2.5 px-3 text-right">Saved</th>
                   <th className="py-2.5 px-3 text-right">Cost (USD)</th>
-                  <th className="py-2.5 px-3">Primary Model</th>
+                  <th className="py-2.5 px-3">Share</th>
                 </tr>
               </thead>
               <tbody className="font-mono text-xs">
-                {agents.length === 0 ? (
-                  <tr><td colSpan={8} className="py-6 text-center text-muted">No agent usage recorded. Ensure Claude Code / Hermes / OpenCode route through Headroom proxy (127.0.0.1:8787).</td></tr>
+                {!summary ? (
+                  <tr><td colSpan={7} className="py-6 text-center text-muted">Loading…</td></tr>
+                ) : byHarness.size === 0 ? (
+                  <tr><td colSpan={7} className="py-6 text-center text-muted">No usage captured for this period.</td></tr>
                 ) : (
-                  agents.map((a) => (
-                    <tr key={a.agent} className="border-b border-white/[0.04] hover:bg-white/[0.02]">
-                      <td className="py-2.5 px-3 text-brandtext font-medium">{a.label || a.agent}</td>
-                      <td className="py-2.5 px-3 text-cyanx/80">{(a.providers || [])?.join(", ") || "—"}</td>
-                      <td className="py-2.5 px-3 text-right text-brandtext">{a.requests}</td>
-                      <td className="py-2.5 px-3 text-right text-muted">{formatTokens(a.requests > 0 ? Math.round(10000000 / Math.max(a.requests, 1)) : 0)}</td>
-                      <td className="py-2.5 px-3 text-right text-muted">{formatTokens(a.requests > 0 ? Math.round(73000 / Math.max(a.requests, 1)) : 0)}</td>
-                      <td className="py-2.5 px-3 text-right text-cyanx font-bold">{formatTokens(a.tokens_saved || 0)}</td>
-                      <td className="py-2.5 px-3 text-right text-brandtext">{"—"}</td>
-                      <td className="py-2.5 px-3 text-slate-400">{(a.models || ["—"]).join(", ")}</td>
-                    </tr>
-                  ))
+                  [...byHarness.entries()].sort((a, b) => b[1].cost - a[1].cost).map(([name, h]) => {
+                    const meta = HARNESS_META[name] ?? { label: name, provider: "", note: "" };
+                    return (
+                      <tr key={name} className="border-b border-white/[0.04] hover:bg-white/[0.02]" title={meta.note}>
+                        <td className="py-2.5 px-3">
+                          <div className="text-brandtext font-medium">{meta.label}</div>
+                          <div className="text-[10px] text-slate-500">{meta.provider}</div>
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-muted">{formatTokens(h.input)}</td>
+                        <td className="py-2.5 px-3 text-right text-muted">{formatTokens(h.cache_read)}</td>
+                        <td className="py-2.5 px-3 text-right text-muted">{formatTokens(h.cache_write)}</td>
+                        <td className="py-2.5 px-3 text-right text-muted">{formatTokens(h.output)}</td>
+                        <td className="py-2.5 px-3 text-right text-cyanx font-bold">{formatUSD(h.cost)}</td>
+                        <td className="py-2.5 px-3">
+                          <div className="h-1.5 w-24 rounded-full bg-white/5 overflow-hidden">
+                            <div className="h-full rounded-full bg-cyanx/70" style={{ width: `${Math.round((h.cost / maxCost) * 100)}%` }} />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
-                {/* Aggregate row from DB */}
-                {rows.length > 0 && (
+                {byHarness.size > 0 && (
                   <tr className="font-bold text-brandtext bg-cyanx/[0.04]">
-                    <td className="py-2.5 px-3">All (aggregate)</td>
-                    <td className="py-2.5 px-3 text-cyanx">—</td>
+                    <td className="py-2.5 px-3">Total</td>
                     <td className="py-2.5 px-3 text-right">—</td>
                     <td className="py-2.5 px-3 text-right">—</td>
                     <td className="py-2.5 px-3 text-right">—</td>
                     <td className="py-2.5 px-3 text-right">—</td>
-                    <td className="py-2.5 px-3 text-right">—</td>
+                    <td className="py-2.5 px-3 text-right text-cyanx">{formatUSD(totalCost)}</td>
                     <td className="py-2.5 px-3">—</td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
-          <p className="text-[10px] text-slate-600 mt-3 font-mono">Note: exact per-model token counts are aggregated; individual call-level detail requires Headroom's request_logs endpoint (auth-gated). Cost estimates use embedded provider pricing (Anthropic Jun 2026, OpenAI Sep 2026, Gemini Mar 2026, xAI, DeepSeek, Mistral, MiniMax).</p>
         </section>
 
-        {/* Harness-level cards */}
-        <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <HarnessCard title="Claude Code" provider="Anthropic" model="claude-sonnet-5" requests={101} savedTokens={80665} cost={20.44} status="captured" />
-          <HarnessCard title="Hermes" provider="Z.ai / OpenAI" model="glm-5.3-flash / glm-4.6" requests={7} savedTokens={0} cost={0.0} status="captured" />
-          <HarnessCard title="agy (Antigravity)" provider="Google Gemini" model="gemini-3.1-pro (low)" requests={0} savedTokens={0} cost={0.0} status="direct" note="Does NOT route through Headroom. Traffic hits antigravity-unleash.goog:443 directly. Capture requires HTTPS_PROXY intercept or Gemini Cloud usage export." />
-          <HarnessCard title="OpenCode" provider="OpenAI / Anthropic" model="mixed" requests={0} savedTokens={0} cost={0.0} status="pending" note="OpenCode routes through Headroom proxy via MCP server. Traffic should appear in /stats once active sessions accumulate." />
+        {/* Latest captured requests */}
+        <section className="rounded-2xl border border-white/[0.08] bg-midnight/50 p-6 backdrop-blur-md">
+          <h3 className="font-display text-xl text-brandtext mb-4 flex items-center gap-2">
+            <Cpu className="h-5 w-5 text-cyanx" strokeWidth={1.5} />
+            Latest Captured Requests
+          </h3>
+          <div className="divide-y divide-white/[0.04]">
+            {records.slice(0, 10).map((r, i) => (
+              <div key={i} className="flex items-center justify-between gap-3 py-2 font-mono text-xs">
+                <div className="min-w-0">
+                  <span className="text-brandtext">{r.model}</span>
+                  <span className="ml-2 text-slate-500">{r.harness}</span>
+                </div>
+                <div className="shrink-0 text-right">
+                  <span className="text-muted">
+                    {formatTokens(r.input_tokens + r.cache_read_tokens + r.cache_write_tokens)} → {formatTokens(r.output_tokens)}
+                  </span>
+                  {r.cost_usd != null && <span className="ml-3 text-cyanx">{formatUSD(r.cost_usd)}</span>}
+                </div>
+              </div>
+            ))}
+            {records.length === 0 && <div className="py-4 text-center text-muted text-xs">No records.</div>}
+          </div>
         </section>
 
-        {/* Explanation / observability */}
-        <section className="rounded-2xl border border-white/[0.08] bg-depth p-6">
-          <h3 className="font-display text-lg text-brandtext mb-3">Observability Notes</h3>
-          <ul className="text-sm text-muted space-y-2 list-disc pl-5">
-            <li>Headroom <code className="text-xs bg-white/5 px-1 rounded text-brandtext">/stats</code> returns aggregated agent-level data. Per-request detail is in <code className="text-xs bg-white/5 px-1 rounded text-brandtext">request_logs</code> (gated behind auth / subscription).</li>
-            <li>TokenShift (PointFive) is an enterprise fleet-level MDM-deployed binary — no self-hosted version exists. It requires an admin console for governance policy. Skip for kurama-core single-user setup.</li>
-            <li>leanctx (LLMLingua-2 SDK) is installed (v0.3.1) but the <code className="text-xs bg-white/5 px-1 rounded text-brandtext">leanctx-serve</code> HTTP sidecar binary is not present in the installed package (only Python SDK). Integration is available for Python clients that import <code className="text-xs bg-white/5 px-1 rounded text-brandtext">from leanctx import OpenAI</code>.</li>
-            <li>RTK (v0.49.0) rewrites Bash tool outputs before the agent sees them — wired into Claude Code <code className="text-xs bg-white/5 px-1 rounded text-brandtext">PreToolUse</code> hook. No harness-level changes needed for Claude Code; OpenCode / agy / Hermes don't call Bash through RTK by default.</li>
-            <li>Cost saved USD is $0.0 because Headroom's cost engine needs pricing rates configured (currently uses $0 defaults). The embedded pricing table in the collector computes real estimates; the Headroom proxy's cost display remains $0 until pricing config is added to headroom's config.</li>
-          </ul>
-        </section>
+        <p className="text-[10px] text-slate-600 font-mono max-w-5xl mx-auto">
+          Costs are computed per-request from exact captured token counts using LiteLLM/OpenRouter pricing catalogs — cache-aware (cache reads at the discounted rate, cache writes at the write premium). agy (Antigravity) is excluded because the CLI does not persist per-request usage locally; it is never estimated, so totals are accurate for every harness shown.
+        </p>
       </div>
-    </div>
-  );
-}
-
-function StatusCard({ label, value, sub, color, icon }: { label: string; value: string; sub: string; color: "cyan" | "red"; icon: React.ReactNode }) {
-  return (
-    <div className="rounded-xl border border-white/[0.06] bg-midnight/40 p-4 flex flex-col gap-2">
-      <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-wider text-slate-500">
-        <span className={`w-1.5 h-1.5 rounded-full ${color === "cyan" ? "bg-cyanx" : "bg-redx"}`} />
-        {label}
-      </div>
-      <div className="text-2xl font-display tracking-tight text-brandtext">{value}</div>
-      <div className="text-[10px] font-mono text-slate-500">{sub}</div>
-      <div className="flex items-center gap-1 text-slate-400">{icon}</div>
-    </div>
-  );
-}
-
-function HarnessCard({ title, provider, model, requests, savedTokens, cost, status, note }: { title: string; provider: string; model: string; requests: number; savedTokens: number; cost: number; status: "captured" | "pending" | "direct"; note?: string }) {
-  const statusColor = status === "captured" ? "cyan" : status === "pending" ? "yellow-500" : "red";
-  const statusText = status === "captured" ? "Captured" : status === "pending" ? "Pending" : "Direct";
-  return (
-    <div className="rounded-xl border border-white/[0.08] bg-midnight/40 p-5 flex flex-col gap-3 hover:border-cyanx/20 transition-colors">
-      <div className="flex items-start justify-between">
-        <div>
-          <h4 className="font-display text-lg text-brandtext">{title}</h4>
-          <p className="text-[10px] font-mono uppercase tracking-wider text-slate-500">{provider}</p>
-        </div>
-        <span className={`text-[9px] font-mono uppercase tracking-widest px-2 py-0.5 rounded-full border ${statusColor === "cyan" ? "border-cyanx/30 text-cyanx bg-cyanx/10" : statusColor === "red" ? "border-redx/30 text-redx bg-redx/10" : "border-amber-400/30 text-amber-400 bg-amber-400/10"}`}>{statusText}</span>
-      </div>
-      <div className="text-xs font-mono text-slate-300">Model: <span className="text-cyanx">{model}</span></div>
-      <div className="grid grid-cols-3 gap-2 mt-1">
-        <div className="rounded-lg bg-void/60 p-2 border border-white/[0.05]">
-          <p className="text-[9px] font-mono uppercase tracking-widest text-slate-600">Requests</p>
-          <p className="text-sm font-display text-brandtext">{requests}</p>
-        </div>
-        <div className="rounded-lg bg-void/60 p-2 border border-white/[0.05]">
-          <p className="text-[9px] font-mono uppercase tracking-widest text-slate-600">Saved</p>
-          <p className="text-sm font-display text-cyanx">{formatTokens(savedTokens)}</p>
-        </div>
-        <div className="rounded-lg bg-void/60 p-2 border border-white/[0.05]">
-          <p className="text-[9px] font-mono uppercase tracking-widest text-slate-600">Cost</p>
-          <p className="text-sm font-display text-brandtext">{formatUSD(cost)}</p>
-        </div>
-      </div>
-      {note ? <p className="text-[10px] text-slate-500 font-mono leading-relaxed">{note}</p> : null}
     </div>
   );
 }
