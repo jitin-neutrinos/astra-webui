@@ -166,13 +166,14 @@ function LoginScreen({ password, setPassword, clearError, error, busy, submit }:
 }
 
 import { FilesPage } from "./components/files-page";
+import { ConfigPage } from "./components/config-page";
 import TubesBackground from "./components/ui/tubes-background";
 
 /* ---------------- shell: sidebar + chat landing ---------------- */
 
 function Shell({ onLogout }: { onLogout: () => void }) {
   const [resetSignal, setResetSignal] = useState(0);
-  const [view, setView] = useState<'chat' | 'files' | 'tracker'>('chat');
+  const [view, setView] = useState<'chat' | 'files' | 'tracker' | 'config'>('chat');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("astra-sidebar-collapsed") === "1");
   const toggleSidebar = () => setSidebarCollapsed((c) => {
     localStorage.setItem("astra-sidebar-collapsed", c ? "0" : "1");
@@ -240,8 +241,9 @@ function Shell({ onLogout }: { onLogout: () => void }) {
           onSelectSession={(id) => { setSelectedSessionId(id); setView('chat'); }}
           onOpenFiles={() => { closeDrawer(); setView('files'); }}
           onOpenTracker={() => { closeDrawer(); setView('tracker'); }}
+          onOpenConfig={() => { closeDrawer(); setView('config'); }}
         />
-        <div className={cn("flex flex-1 flex-col overflow-hidden", view !== 'chat' && view !== 'tracker' && "hidden")}>
+        <div className={cn("flex flex-1 flex-col overflow-hidden", view !== 'chat' && view !== 'tracker' && view !== 'config' && "hidden")}>
           <ChatLanding resetSignal={resetSignal} selectedSessionId={selectedSessionId} onSessionChange={setActiveSessionId}
             onNewChat={() => { setResetSignal(r => r + 1); setView('chat'); setSelectedSessionId(null); }} />
         </div>
@@ -253,12 +255,15 @@ function Shell({ onLogout }: { onLogout: () => void }) {
             <TokenTrackerPage />
           </div>
         )}
+        {view === 'config' && (
+          <ConfigPage onBack={() => setView('chat')} />
+        )}
       </div>
     </div>
   );
 }
 
-function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDrawer, onToggleCollapse, onLogout, onSelectSession, onOpenFiles, onOpenTracker }: { activeView: 'chat' | 'files' | 'tracker'; collapsed: boolean; drawerOpen: boolean; activeSessionId: string | null; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onSelectSession: (id: string) => void; onOpenFiles: () => void; onOpenTracker?: () => void; }) {
+function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDrawer, onToggleCollapse, onLogout, onSelectSession, onOpenFiles, onOpenTracker, onOpenConfig }: { activeView: 'chat' | 'files' | 'tracker' | 'config'; collapsed: boolean; drawerOpen: boolean; activeSessionId: string | null; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onSelectSession: (id: string) => void; onOpenFiles: () => void; onOpenTracker?: () => void; onOpenConfig?: () => void; }) {
   const [mode, setMode] = useState<'nav' | 'chats'>('nav');
   // Per-group accordion. Owner mandate: Configure + Operations start collapsed;
   // Work starts open. Persisted in localStorage. Collapsed rail shows icons only,
@@ -293,7 +298,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
       label: "Configure",
       icon: <Settings2 className="h-3.5 w-3.5" strokeWidth={1.5} />,
       items: [
-        { name: "Config", icon: <Settings2 className="h-4 w-4" strokeWidth={1.5} /> },
+        { name: "Config", icon: <Settings2 className="h-4 w-4" strokeWidth={1.5} />, onClick: () => { onOpenConfig?.(); } },
         { name: "Env", icon: <FileCode2 className="h-4 w-4" strokeWidth={1.5} /> },
         { name: "Skills", icon: <Braces className="h-4 w-4" strokeWidth={1.5} /> },
         { name: "Plugins", icon: <Blocks className="h-4 w-4" strokeWidth={1.5} /> },
@@ -405,6 +410,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
                                 : item.name === "Chats" ? mode === 'chats'
                 : item.name === "Files" ? activeView === "files"
                 : item.name === "Global Token Tracker" ? activeView === "tracker"
+                : item.name === "Config" ? activeView === "config"
                 : false;
               return (
               <button key={item.name} type="button" onClick={item.onClick}
