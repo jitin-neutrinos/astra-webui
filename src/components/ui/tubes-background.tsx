@@ -73,6 +73,7 @@ type TubesApp = {
   bloomPass?: { strength: { value: number }; threshold: { value: number }; radius: { value: number } };
   three: {
     camera: { position: { x: number; y: number; z: number } };
+    onAfterRender?: ((...args: unknown[]) => void) | { add(fn: () => void): void };
     renderer?: { setClearColor(color: unknown, alpha?: number): void; setClearAlpha(alpha?: number): void };
   };
   dispose(): void;
@@ -106,6 +107,7 @@ interface TubesBackgroundProps {
 
 export function TubesBackground({ children, className }: TubesBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const haloCanvasRef = useRef<HTMLCanvasElement>(null);
   const appRef = useRef<TubesApp | null>(null);
   // morph targets, ref (not state): stepped by interval, never re-renders
   const tubeTargets = useRef<Color[]>(START_TUBES.map(hexToRgb));
@@ -203,6 +205,61 @@ export function TubesBackground({ children, className }: TubesBackgroundProps) {
             lightTargets.current = randomPalette(4, pal.lights);
           }, 9000),
         );
+
+        // light-mode tube halo. The WebGL canvas is unreadable (vendor renders
+        // without preserveDrawingBuffer — drawImage/getImageData see zeros) and
+        // vendor bloom only ADDS light, which vanishes on paper. So the glow is
+        // SYNTHESIZED from our own motion model: we drive the camera drift, so
+        // the tube bundle's on-screen position is a known function of time —
+        // paint soft azure/emerald blobs at exactly that position on a 2D
+        // canvas above the scene. The glow moves WITH the tubes. Multiply blend
+        // tints the paper; normal blend adds the bright core.
+        let haloCtx: CanvasRenderingContext2D | null = null;
+        let haloW = 0, haloH = 0;
+        const paintHalo = (tMs: number) => {
+          if (themeRef.current !== "light") return;
+          const halo = haloCanvasRef.current;
+          if (!halo) return;
+          if (!haloCtx || halo.width !== haloW || halo.height !== haloH) {
+            haloW = halo.width; haloH = halo.height;
+            haloCtx = halo.getContext("2d");
+            if (!haloCtx) return;
+          }
+          const ctx = haloCtx;
+          const t = tMs / 1000;
+          // mirror the camera-drift formula (same periods/phases as cam.x/y)
+          const cx = 0.5 + Math.sin(t * 0.13) * 0.10;   // fraction of width
+          const cy = 0.5 + Math.sin(t * 0.101 + 1.3) * 0.12;
+          const cx2 = 0.5 - Math.sin(t * 0.13) * 0.13;
+          const cy2 = 0.5 - Math.sin(t * 0.101 + 1.3) * 0.10;
+          ctx.clearRect(0, 0, haloW, haloH);
+          const blob = (x: number, y: number, r: number, rgb: string, a: number, comp: GlobalCompositeOperation) => {
+            const g = ctx.createRadialGradient(x * haloW, y * haloH, 0, x * haloW, y * haloH, r * haloW);
+            g.addColorStop(0, `rgba(${rgb},${a})`);
+            g.addColorStop(1, `rgba(${rgb},0)`);
+            ctx.globalCompositeOperation = comp;
+            ctx.fillStyle = g;
+            ctx.fillRect(0, 0, haloW, haloH);
+          };
+          // dark-tint penumbra (multiply): reads on paper
+          blob(cx, cy, 0.34, "3, 105, 161", 0.34, "source-over");
+          blob(cx2, cy2, 0.30, "4, 120, 87", 0.26, "source-over");
+          // bright core (lighter): the light source inside the tint
+          blob(cx, cy, 0.16, "147, 197, 253", 0.5, "lighter");
+          blob(cx2, cy2, 0.14, "110, 231, 183", 0.38, "lighter");
+        };
+        // size the halo with the main canvas, at quarter resolution
+        const syncHaloSize = () => {
+          const halo = haloCanvasRef.current;
+          if (canvasRef.current && halo) {
+            halo.width = Math.max(1, canvasRef.current.width >> 2);
+            halo.height = Math.max(1, canvasRef.current.height >> 2);
+          }
+        };
+        syncHaloSize();
+        app.three.onAfterRender = () => {
+          paintHalo(performance.now());
+        };
       } catch (err) {
         console.error("Failed to load TubesCursor:", err);
       }
@@ -235,12 +292,24 @@ export function TubesBackground({ children, className }: TubesBackgroundProps) {
         className="absolute inset-0 block h-full w-full"
         style={{ touchAction: "none" }}
       />
-      {/* brand glow wash (light mode): the vendor bloom can't hold a halo on
-          paper, so paint our own azure/emerald aura above the canvas — soft,
-          slow-drifting, purely decorative */}
+      {/* tube glow (light mode), two layers:
+          1. halo canvas — soft azure/emerald blobs driven by the camera-drift
+             formula, so the glow MOVES WITH the tube bundle
+          2. ambient wash — faint static blue-green field so the glow reads
+             even where the tubes aren't (the vendor bloom is invisible on
+             paper; both layers are the light-mode replacement for it) */}
+      <canvas
+        ref={haloCanvasRef}
+        aria-hidden="true"
+        className={cn(
+          "pointer-events-none absolute inset-0 z-[1] h-full w-full tubes-halo",
+          theme !== "light" && "hidden",
+        )}
+      />
       <div
         aria-hidden="true"
-        className={cn("pointer-events-none absolute inset-0 z-[1]", theme === "light" && "tubes-glow-wash")}
+        className={cn("pointer-events-none absolute inset-0 z-[1] tubes-glow-wash", theme !== "light" && "hidden")}
+        style={theme === "light" ? { opacity: 0.45 } : undefined}
       />
       <div className="pointer-events-none relative z-10 h-full w-full">{children}</div>
     </div>
