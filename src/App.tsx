@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ChatLanding } from "./components/chat-landing";
-import { ThemeToggle } from "./components/theme-toggle";
+import { ThemeToggle, ThemeIconButton } from "./components/theme-toggle";
 import { ChatsPanel } from "./components/chats-panel";
 import TokenTrackerPage from "./components/token-tracker";
 import { useMobileViewport } from "./hooks/use-mobile-viewport";
@@ -95,6 +95,7 @@ function LoginScreen({ password, setPassword, clearError, error, busy, submit }:
   return (
     <div className="fixed inset-0 overflow-hidden bg-void font-sans">
       <TubesBackground />
+      <ThemeIconButton />
 
       <div className="absolute inset-0 z-50 flex items-center justify-center p-6">
         <div className="w-full max-w-md rounded-2xl border border-white/10 bg-void/85 p-8 shadow-[0_0_80px_rgba(139,92,246,0.10)] backdrop-blur-2xl md:p-10">

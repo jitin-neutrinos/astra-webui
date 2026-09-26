@@ -217,7 +217,9 @@ body { background: var(--color-void); }
 .chat-filechip button:hover { color: #f87171; }
 
 /* ---- turn timeline: thinking / tool / text / approval segments ---- */
-.chat-turn { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--bubble-ai-border); border-radius: 14px; padding: 12px 14px; background: var(--bubble-ai-bg); animation: chat-turn-in 200ms cubic-bezier(0.23,1,0.32,1) both; }
+.chat-turn { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--bubble-ai-border); border-radius: 14px; padding: 12px 14px; background: var(--bubble-ai-bg); animation: chat-turn-in 200ms cubic-bezier(0.23,1,0.32,1) both; min-width: 0; overflow-wrap: anywhere; }
+/* code-copy float sits over the top-right corner; keep it inside the bubble */
+.chat-turn > div.relative.group { max-width: 100%; }
 /* user bubble: brand-green tint (see :root tokens) */
 .chat-bubble-user { border: 1px solid var(--bubble-user-border); background: var(--bubble-user-bg); color: var(--bubble-user-text); }
 /* Astra streaming placeholder pill shares the Astra bubble skin */
@@ -262,8 +264,11 @@ body { background: var(--color-void); }
 .chat-term-expand { margin-top: 6px; font: 500 10.5px/1 var(--font-mono); color: var(--color-cyanx); background: rgba(34,211,238,.08); border: 1px solid rgba(34,211,238,.2); border-radius: 6px; padding: 5px 9px; cursor: pointer; min-height: 26px; }
 .chat-term-expand:hover { background: rgba(34,211,238,.14); }
 
-.chat-text-seg { font: 400 14px/1.65 var(--font-sans); color: var(--color-brandtext); }
-.chat-inline-code { font: 400 12.5px/1 var(--font-mono); background: rgba(255,255,255,.06); border-radius: 4px; padding: 2px 5px; }
+.chat-text-seg { font: 400 14px/1.65 var(--font-sans); color: var(--color-brandtext); min-width: 0; overflow-wrap: anywhere; }
+.chat-inline-code { font: 400 12.5px/1 var(--font-mono); background: rgba(255,255,255,.06); border-radius: 4px; padding: 2px 5px; overflow-wrap: anywhere; }
+/* no-margin long-token example: OLLAMA_MODELS=/mnt/work/models/ollama bleeds the
+   bubble on phones — inline code may break at `=`/`/` and wraps inside the card */
+.chat-text-seg .chat-inline-code { max-width: 100%; }
 .chat-code-block { font: 400 12.5px/1.55 var(--font-mono); background: var(--color-midnight); border: 1px solid rgba(248,250,252,.08); border-radius: 8px; padding: 10px 12px; margin: 6px 0; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
 
 .chat-md p { margin-bottom: 0.75em; }

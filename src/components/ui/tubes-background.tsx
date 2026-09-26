@@ -1,14 +1,26 @@
 // TubesBackground — WebGL neon-tubes login background (threejs-components tubes1).
-// Brand accents ONLY: emerald #34D399 + cyan #22D3EE on void #0A0A0F.
+// Brand accents ONLY: emerald #34D399 + cyan #22D3EE on void #0A0A0F (dark) /
+// warm paper #F5F2EC (light) with deepened light-safe accent tubes (owner:
+// light mode needs its own contrast-adjusted palette, not neon-on-white).
 // Ambient mode: vendor pointer input is blocked (capture-phase stopPropagation on
 // body) so the engine never enters cursor-follow and keeps playing its own idle
 // Lissajous orbit; we add slow camera drift + a smooth brand-color morph.
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-const EMERALD = "#34D399";
-const CYAN = "#22D3EE";
-const ACCENTS = [EMERALD, CYAN];
+const DARK_TUBES = ["#34D399", "#22D3EE"];
+const DARK_BG = "#0A0A0F";
+// light: azure + deeper emerald tubes read on warm paper; washed-teal + soft
+// spring-green lights stay visible without glare. Background swaps to paper.
+const LIGHT_TUBES = ["#0369A1", "#047857"];
+const LIGHT_LIGHTS = ["#7DD3FC", "#6EE7B7", "#0369A1", "#047857"];
+const LIGHT_BG = "#F5F2EC";
+
+function paletteFor(theme: "dark" | "light") {
+  return theme === "light"
+    ? { tubes: LIGHT_TUBES, lights: LIGHT_LIGHTS, bg: LIGHT_BG }
+    : { tubes: DARK_TUBES, lights: [...DARK_TUBES, ...DARK_TUBES], bg: DARK_BG };
+}
 
 const MODULE_URL =
   "https://cdn.jsdelivr.net/npm/threejs-components@0.0.19/build/cursors/tubes1.min.js";
@@ -26,11 +38,11 @@ type TubesApp = {
 };
 
 const randomOf = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
-const randomPalette = (n: number) =>
-  Array.from({ length: n }, () => hexToRgb(randomOf(ACCENTS)));
+const randomPalette = (n: number, pool: string[]) =>
+  Array.from({ length: n }, () => hexToRgb(randomOf(pool)));
 // stable starting look: emerald tubes, mixed lights
-const START_TUBES = [EMERALD, CYAN, EMERALD];
-const START_LIGHTS = [EMERALD, CYAN, CYAN, EMERALD];
+const START_TUBES = ["#34D399", "#22D3EE", "#34D399"];
+const START_LIGHTS = ["#34D399", "#22D3EE", "#22D3EE", "#34D399"];
 
 const lerpColor = (c: Color, t: Color, k: number) => {
   c.r += (t.r - c.r) * k;
@@ -54,6 +66,25 @@ export function TubesBackground({ children, className }: TubesBackgroundProps) {
   // morph targets, ref (not state): stepped by interval, never re-renders
   const tubeTargets = useRef<Color[]>(START_TUBES.map(hexToRgb));
   const lightTargets = useRef<Color[]>(START_LIGHTS.map(hexToRgb));
+  // theme-reactive: the whole palette (tubes, lights, page ground) re-targets
+  // when the login toggle rotates light/dark (owner: light needs its own look).
+  const [theme, setTheme] = useState<"dark" | "light">(() =>
+    document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark");
+  const themeRef = useRef(theme);
+  useEffect(() => {
+    const onChange = (e: Event) => {
+      const t = (e as CustomEvent<"dark" | "light">).detail;
+      if (t !== "dark" && t !== "light") return;
+      setTheme(t);
+      themeRef.current = t;
+      const pal = paletteFor(t);
+      tubeTargets.current = pal.tubes.map(hexToRgb);
+      lightTargets.current = pal.lights.map(hexToRgb);
+      if (canvasRef.current) canvasRef.current.style.backgroundColor = pal.bg;
+    };
+    window.addEventListener("astra-theme-change", onChange);
+    return () => window.removeEventListener("astra-theme-change", onChange);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -115,11 +146,13 @@ export function TubesBackground({ children, className }: TubesBackgroundProps) {
           }, 100),
         );
 
-        // retarget the palette every 9s (always both accents present)
+        // retarget the palette every 9s (always both accents present, from the
+        // CURRENT theme's pool)
         timers.push(
           setInterval(() => {
-            tubeTargets.current = randomPalette(3);
-            lightTargets.current = randomPalette(4);
+            const pal = paletteFor(themeRef.current);
+            tubeTargets.current = randomPalette(3, pal.tubes);
+            lightTargets.current = randomPalette(4, pal.lights);
           }, 9000),
         );
       } catch (err) {
@@ -138,8 +171,9 @@ export function TubesBackground({ children, className }: TubesBackgroundProps) {
   }, []);
 
   const handleClick = () => {
-    tubeTargets.current = randomPalette(3);
-    lightTargets.current = randomPalette(4);
+    const pal = paletteFor(themeRef.current);
+    tubeTargets.current = randomPalette(3, pal.tubes);
+    lightTargets.current = randomPalette(4, pal.lights);
   };
 
   return (
@@ -151,7 +185,7 @@ export function TubesBackground({ children, className }: TubesBackgroundProps) {
         ref={canvasRef}
         aria-hidden="true"
         className="absolute inset-0 block h-full w-full"
-        style={{ touchAction: "none" }}
+        style={{ touchAction: "none", backgroundColor: theme === "light" ? LIGHT_BG : DARK_BG }}
       />
       <div className="pointer-events-none relative z-10 h-full w-full">{children}</div>
     </div>
