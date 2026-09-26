@@ -42,7 +42,7 @@ const nextId = () => `m${++idSeq}-${Date.now()}`;
 
 const BATCH_MS = 40; // ~30-60ms batching window for both text deltas and step ops
 
-function ChatTitle({ storedSessionId }: { storedSessionId: string | null }) {
+function ChatTitle({ storedSessionId, onTitleChange }: { storedSessionId: string | null; onTitleChange?: (title: string) => void }) {
   const [title, setTitle] = useState<string>("");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
@@ -57,6 +57,10 @@ function ChatTitle({ storedSessionId }: { storedSessionId: string | null }) {
       .catch(() => {});
     return () => { cancelled = true; };
   }, [storedSessionId]);
+
+  // Report the live title up so the browser tab (document.title) can mirror it —
+  // fires on initial fetch and on every rename.
+  useEffect(() => { onTitleChange?.(title); }, [title, onTitleChange]);
 
   useEffect(() => {
     if (editing) inputRef.current?.select();
@@ -122,13 +126,21 @@ function thinkingOf(payload: any): string {
   return payload?.delta?.thinking ?? payload?.text ?? payload?.rendered ?? "";
 }
 
-export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, onNewChat, onOpenNav }: { resetSignal: number, selectedSessionId: string | null, onSessionChange?: (id: string | null) => void, onNewChat?: () => void, onOpenNav?: () => void }) {
+export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, onNewChat, onOpenNav, isActiveView = true }: { resetSignal: number, selectedSessionId: string | null, onSessionChange?: (id: string | null) => void, onNewChat?: () => void, onOpenNav?: () => void, isActiveView?: boolean }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [chatTitle, setChatTitle] = useState(""); // mirrors ChatTitle's fetched/renamed title, for the browser tab
   const [lightbox, setLightbox] = useState<{ open: boolean; url: string; alt: string }>({ open: false, url: "", alt: "" });
   const [input, setInput] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [errorBanner, setErrorBanner] = useState("");
   const [atBottom, setAtBottom] = useState(true);
+  // Mirror of atBottom for observers/listeners that must read the CURRENT value
+  // without being re-subscribed on every change.
+  const atBottomRef = useRef(true);
+  // Last observed scrollTop, used to tell a reader's upward scroll apart from
+  // the scroll position shifting because content grew underneath them.
+  const lastScrollTopRef = useRef(0);
+  useEffect(() => { atBottomRef.current = atBottom; }, [atBottom]);
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashActive, setSlashActive] = useState(0);
 
@@ -253,7 +265,11 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     const { type, payload } = ev;
 
     if (type === "proxy.status") {
-      setErrorBanner(payload.state === "reconnecting" ? "Connection lost. Reconnecting..." : "");
+      // Only real transport states touch the banner. The 25s keepalive "tick"
+      // must NOT fall through to the else-branch and silently wipe a live error
+      // message the user is still reading.
+      if (payload.state === "reconnecting") setErrorBanner("Connection lost. Reconnecting...");
+      else if (payload.state === "online") setErrorBanner("");
       return;
     }
 
@@ -334,7 +350,27 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         const msg = payload?.error?.message || payload?.error || "The agent turn failed.";
         setErrorBanner(typeof msg === "string" ? msg : JSON.stringify(msg));
       }
+      // The gateway's authoritative final text rides on message.complete. Some
+      // providers (Anthropic through this gateway) emit NO message.delta frames
+      // at all, so without this the reply never renders live — only a reload
+      // (history re-pull) showed it. Reconciled against streamed text in
+      // applySegmentOps, so delta-emitting providers do not double-render.
+      if (type === "message.complete") {
+        const finalText = textOf(payload);
+        if (finalText) { ensureActive(); pushOp({ op: "text-final", text: finalText }, true); }
+      }
       finalizeActive();
+      return;
+    }
+
+    // An interim assistant message: the model spoke, then continued the turn
+    // (typically before a tool call). Carries the same authoritative `text` as
+    // message.complete and must render as its own finished assistant block.
+    if (type === "message.interim") {
+      const interim = textOf(payload);
+      if (!interim) return;
+      ensureActive();
+      pushOp({ op: "text-final", text: interim }, true);
       return;
     }
 
@@ -369,8 +405,12 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     }
 
     if (type === "ws.closed") {
-      // Interrupted/dropped turns never emit message.complete — finalize here too.
-      finalizeActive();
+      // A dropped socket does NOT end the turn — generation continues
+      // server-side and the client auto-reconnects + resumes (turn truth is the
+      // gateway's). Finalizing here froze the live bubble on every transport
+      // recycle, so the resumed stream opened a SECOND bubble mid-answer.
+      // Gateway truth finalizes instead: message.complete, or turn.settled from
+      // the resume/probe path.
       return;
     }
 
@@ -462,18 +502,23 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   }, [storedSessionId, onSessionChange]);
 
   useEffect(() => {
+    // Only the chat view owns the URL/title while it's the visible view — when
+    // Config/Tracker/Files are open, App.tsx's own effect owns document.title and
+    // the pathname, so this must not fight it (that fight was the root cause of
+    // "chat slug doesn't update right when navigating between pages").
+    if (!isActiveView) return;
     if (storedSessionId) {
       if (location.pathname !== `/c/${storedSessionId}`) {
         history.pushState({}, "", `/c/${storedSessionId}`);
       }
-      document.title = "Chat — Astra";
+      document.title = chatTitle ? `${chatTitle} — Astra` : "Chat — Astra";
     } else {
       if (location.pathname.startsWith("/c/")) {
         history.replaceState({}, "", "/");
       }
       document.title = "Astra";
     }
-  }, [storedSessionId]);
+  }, [storedSessionId, isActiveView, chatTitle]);
 
   useEffect(() => {
     // A real session switch (sidebar chat click, not a same-session re-affirm) means
@@ -809,10 +854,51 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     if (el && atBottom) el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
   }, [messages, atBottom, reducedMotion]);
 
+  // The effect above fires on React state changes, but the transcript also
+  // grows WITHOUT one: the character-reveal animation mutates text nodes
+  // directly, markdown reflows, code blocks wrap, images and audio players
+  // settle to their real height after decode. Each of those silently pushed
+  // the live edge below the fold. A ResizeObserver re-pins on any height
+  // change, whatever caused it.
+  //
+  // It is attached by CALLBACK REF, not by querying firstElementChild on
+  // mount: the scroll container's first child starts as the welcome screen and
+  // React swaps it for the transcript on the first message, which left an
+  // observer watching a detached node — it never fired again and the pin was
+  // silently dead for the whole session.
+  const contentRO = useRef<ResizeObserver | null>(null);
+  const contentRef = useCallback((node: HTMLDivElement | null) => {
+    contentRO.current?.disconnect();
+    contentRO.current = null;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      const el = listRef.current;
+      // Read through the ref so this observer is never re-subscribed per tick.
+      if (el && atBottomRef.current) {
+        el.scrollTop = el.scrollHeight;
+        lastScrollTopRef.current = el.scrollTop;
+      }
+    });
+    ro.observe(node);
+    contentRO.current = ro;
+  }, []);
+  useEffect(() => () => contentRO.current?.disconnect(), []);
+
   const onScroll = () => {
     const el = listRef.current;
     if (!el) return;
-    setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 80);
+    const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const prevTop = lastScrollTopRef.current;
+    lastScrollTopRef.current = el.scrollTop;
+    // Near the live edge is always "stuck", whatever caused the scroll.
+    if (gap < 80) { if (!atBottomRef.current) setAtBottom(true); return; }
+    // Away from the edge: only UNSTICK on evidence the reader moved up
+    // themselves. Content growth can momentarily report a large gap before the
+    // pin lands (markdown reflow, an image decoding, a code block wrapping);
+    // treating that as intent latched atBottom=false mid-answer and the view
+    // froze while text kept arriving below the fold. Growth only ever raises
+    // scrollHeight — it never lowers scrollTop — so a decrease is the reader.
+    if (el.scrollTop < prevTop - 1) setAtBottom(false);
   };
 
   // Pin a freshly-arrived approval card into view even if the user scrolled up.
@@ -868,8 +954,22 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
 
   const empty = messages.length === 0 && !isStreaming;
 
+  // A11y: role=log + aria-live on the scroll container re-announced the ENTIRE
+  // conversation on every token (the reveal animation mutates text ~60x/sec).
+  // WAI-ARIA practice is one small polite region carrying only settled state,
+  // so a screen reader says "Astra is replying" once, then reads the finished
+  // answer once. Tokens themselves are never announced.
+  const liveAnnouncement = (() => {
+    if (isStreaming) return "Astra is replying";
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== "assistant" || last.isStreaming) return "";
+    const text = last.segments.filter((s) => s.kind === "text").map((s) => s.text ?? "").join(" ").trim();
+    return text ? `Astra replied: ${text.slice(0, 600)}` : "";
+  })();
+
   return (
     <main className="relative flex h-full min-w-0 flex-1 flex-col">
+      <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">{liveAnnouncement}</p>
       {errorBanner && (() => {
         let cat = "Action";
         let title = errorBanner;
@@ -899,7 +999,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
           {empty ? (
             <span className="truncate font-mono text-[10px] uppercase tracking-[0.25em] text-slate-500">new session</span>
           ) : (
-            <ChatTitle storedSessionId={storedSessionId} />
+            <ChatTitle storedSessionId={storedSessionId} onTitleChange={setChatTitle} />
           )}
         </span>
         <span className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.25em] text-slate-500">
@@ -912,7 +1012,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         </span>
       </header>
 
-      <div ref={listRef} onScroll={onScroll} className="chat-scroll relative z-10 min-h-0 flex-1" role="log" aria-live="polite" aria-label="Conversation">
+      <div ref={listRef} onScroll={onScroll} className="chat-scroll relative z-10 min-h-0 flex-1" role="log" aria-label="Conversation">
         {empty ? (
           <div className="chat-welcome">
             <img src="/astra-logo.png" alt="" aria-hidden="true" className="chat-welcome-glyph" />
@@ -929,7 +1029,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
             </div>
           </div>
         ) : (
-            <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
+            <div ref={contentRef} className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
               {messages.map((m, idx) => (
                 <div key={m.id} className={m.isSysNote ? "chat-sys-note" : "flex items-start gap-3"}>
                 {m.isSysNote ? (
@@ -1025,12 +1125,29 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
           {dragOver && (
             <div className="chat-drop-overlay" aria-hidden="true">Drop to attach</div>
           )}
-          {isStreaming && !atBottom && (
-            <button type="button" className="chat-jump" onClick={() => {
-              listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: reducedMotion ? "auto" : "smooth" });
-              setAtBottom(true);
-            }}>
+          {!atBottom && (
+            <button
+              type="button"
+              className="chat-jump"
+              // Available whenever the user is away from the live edge, not just
+              // mid-stream: the transcript is scrollable long after a turn ends
+              // (2.6k px of content in a 444px viewport), and gating this on
+              // isStreaming left the only way back to be a manual drag.
+              aria-label={isStreaming ? "Jump to latest — Astra is still replying" : "Jump to latest message"}
+              onClick={() => {
+                const el = listRef.current;
+                if (el) {
+                  el.scrollTo({ top: el.scrollHeight, behavior: reducedMotion ? "auto" : "smooth" });
+                  // Seed the intent tracker at the destination: a smooth scroll
+                  // fires many events on the way down, and a stale low value
+                  // would read as the reader scrolling up and unstick instantly.
+                  lastScrollTopRef.current = el.scrollHeight;
+                }
+                setAtBottom(true);
+              }}
+            >
               <ChevronDown className="h-4 w-4" strokeWidth={1.5} /> Jump to latest
+              {isStreaming && <span className="chat-jump-live" aria-hidden="true" />}
             </button>
           )}
           {slashOpen && slashMatches.length > 0 && (

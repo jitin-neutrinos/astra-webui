@@ -50,6 +50,7 @@ export type SegOp =
   | { op: "tool-update"; key?: string; label?: string; argsText?: string; command?: string }
   | { op: "tool-done"; key?: string; label?: string; resultText?: string; exitCode?: number | null }
   | { op: "text"; text: string }
+  | { op: "text-final"; text: string }
   | { op: "approval"; reqId: string; params: Segment["params"] }
   | { op: "clarify"; reqId: string; params: { questions?: ClarifyQuestion[]; question?: string; choices?: string[]; multi_select?: boolean; answers?: Record<string, string> } }
   | { op: "gate"; reqId: string; params: { env: GateEnvelope } };
@@ -139,6 +140,34 @@ export function applySegmentOps(segments: Segment[], ops: SegOp[]): Segment[] {
         out.push(t);
       }
       t.text = (t.text || "") + op.text;
+    } else if (op.op === "text-final") {
+      // AUTHORITATIVE final text from the gateway's `message.complete.text`.
+      // Providers that never emit `message.delta` (Anthropic via this gateway
+      // emits none — verified on the wire) would otherwise render an answer-less
+      // turn: steps only, no prose, "fixed" by a reload that re-pulls history.
+      // Reconciliation, not blind append:
+      //   - final CONTINUES the last text segment (delta prefix) -> replace it
+      //     (fills in whatever the delta stream missed, never duplicates);
+      //   - otherwise it is a NEW assistant message (e.g. the post-tool summary
+      //     after an earlier `message.interim`) -> push its own segment.
+      const finalText = op.text;
+      if (!finalText) continue;
+      closeRunningThink(out);
+      barrier = true;
+      // `reasoning.available` re-sends the same prose as reasoning when the
+      // model did no real extended thinking: an exact duplicate would render
+      // the whole answer twice (once folded into Thinking, once as text).
+      for (let i = out.length - 1; i >= 0; i--) {
+        const s = out[i];
+        if (s.kind === "thinking" && (s.text || "").trim() === finalText.trim()) out.splice(i, 1);
+      }
+      const lastText = [...out].reverse().find((s) => s.kind === "text");
+      if (lastText && finalText.startsWith(lastText.text || "")) {
+        lastText.text = finalText;
+        lastText.status = "done";
+      } else {
+        out.push({ id: nextSegId(), kind: "text", status: "done", text: finalText });
+      }
     } else if (op.op === "approval") {
       closeRunningThink(out);
       barrier = true;

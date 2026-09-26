@@ -198,6 +198,30 @@ function broadcastFrame(payload, opcode) {
   }
 }
 
+// R2: 25s app tick — proves transport liveness to every browser (the client
+// treats ANY incoming frame as alive). Cheap enough to never need a reason.
+const TICK_MS = 25_000;
+const PING_MS = 30_000;
+const PING_PAYLOAD = Buffer.from("kp"); // keepalive
+let tickTimer = null;
+function startTick() {
+  if (tickTimer) return;
+  tickTimer = setInterval(() => {
+    broadcastStatus("tick");
+  }, TICK_MS);
+}
+
+// R1: proxy→browser protocol pings (server-role = unmasked). One timer per
+// socket, cleared on close; browser pong replies die in the socket decoder.
+function startBrowserPing(socket) {
+  const t = setInterval(() => {
+    try { socket.write(encodeFrame(PING_PAYLOAD, { opcode: 0x9, masked: false })); }
+    catch { clearInterval(t); }
+  }, PING_MS);
+  socket.on("close", () => clearInterval(t));
+  return t;
+}
+
 async function connectUpstream() {
   if (upstreamWs || reconnecting) return;
   reconnecting = true;
@@ -269,6 +293,9 @@ async function connectUpstream() {
       } else if (frame.opcode === 0x9) {
         // respond to ping with pong
         try { socket.write(encodeFrame(frame.payload, { opcode: 0xA, masked: true })); } catch {}
+      } else if (frame.opcode === 0xA) {
+        // R1: unsolicited pongs from upstream are proxy↔gateway bookkeeping —
+        // never broadcast to browsers.
       } else {
         broadcastFrame(frame.payload, frame.opcode);
       }
@@ -279,7 +306,14 @@ async function connectUpstream() {
       catch (e) { socket.destroy(); }
     });
 
+    // R1: keep the CF tunnel from idle-killing the upstream leg too.
+    const upstreamPing = setInterval(() => {
+      try { socket.write(encodeFrame(PING_PAYLOAD, { opcode: 0x9, masked: true })); }
+      catch { clearInterval(upstreamPing); }
+    }, PING_MS);
+
     socket.on("close", () => {
+      clearInterval(upstreamPing);
       upstreamWs = null;
       scheduleReconnect();
     });
@@ -331,6 +365,8 @@ export function handleWsUpgrade(req, socket, head) {
   
   browserSockets.add(socket);
   connectUpstream();
+  startTick(); // R2: global 25s liveness broadcast
+  startBrowserPing(socket); // R1: keep the CF tunnel from idle-killing this leg
   
   if (reconnecting) {
     // let them know right away

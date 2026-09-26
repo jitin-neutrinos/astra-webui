@@ -12,9 +12,61 @@ export type SessionInfo = {
 // Simple ID generator for RPCs
 const generateRpcId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-// ponytail: fixed ceiling, sized for high reasoning effort (ultra turns legitimately
-// run minutes of silent reasoning). Make it per-model only if a real turn trips it.
-const TURN_WATCHDOG_MS = 120_000;
+// R6: the watchdog is a PROBE, never an executioner. It re-arms on every turn
+// event (rolling): 45s of turn silence → ask the gateway for truth
+// (session.resume) and only finalize on running:false. Long silent tool runs
+// survive (probe is read-only); a stranded "replying" state self-heals ≤45s.
+const TURN_WATCHDOG_MS = 45_000;
+
+// R4: transport liveness — ANY frame within 60s proves the wire alive (the proxy
+// ticks every 25s when healthy). Silence = dead transport (reconnect), NOT a
+// dead turn; this check never touches isStreaming.
+export const TRANSPORT_SILENCE_MS = 60_000;
+export function transportSilent(lastFrameAt: number, now: number): boolean {
+  return now - lastFrameAt > TRANSPORT_SILENCE_MS;
+}
+
+// R3: reconnect backoff 1s → 30s cap, ±15% jitter, forever; reset on open.
+export const RECONNECT_BASE_MS = 1000;
+export const RECONNECT_MAX_MS = 30000;
+export function nextReconnectDelay(attempt: number, jitter: () => number = Math.random): number {
+  const raw = Math.min(RECONNECT_BASE_MS * 2 ** attempt, RECONNECT_MAX_MS);
+  const j = 1 + (jitter() - 0.5) * 0.3;
+  return Math.round(Math.min(Math.max(raw * j, 250), RECONNECT_MAX_MS));
+}
+
+// R5: gateway turn truth → UI state. Turn truth is the gateway's, never the UI's.
+export function applyTurnTruth(running: boolean | undefined, status: string | undefined): "streaming" | "idle" | "unknown" {
+  if (running === true || status === "streaming") return "streaming";
+  if (running === false || status === "idle") return "idle";
+  return "unknown";
+}
+
+// R6: watchdog probe decision table. wait = transport/query hiccup — keep
+// watching, never emit a false "timed out" while the gateway may be working.
+export function watchdogAction(probeFailed: boolean, running: boolean | undefined): "wait" | "stay" | "finalize" {
+  if (probeFailed || running === undefined) return "wait";
+  return running ? "stay" : "finalize";
+}
+
+// R10: stored session in localStorage (survives reload AND browser restart);
+// one-time migration of the old sessionStorage value. resetSession still clears.
+const SESSION_KEY = "astra-chat-session";
+function readStoredSid(): string | null {
+  try {
+    const ls = localStorage.getItem(SESSION_KEY);
+    if (ls) return ls;
+    const ss = sessionStorage.getItem(SESSION_KEY);
+    if (ss) localStorage.setItem(SESSION_KEY, ss);
+    return ss;
+  } catch { return null; }
+}
+function writeStoredSid(sid: string | null) {
+  try {
+    if (sid) localStorage.setItem(SESSION_KEY, sid);
+    else { localStorage.removeItem(SESSION_KEY); sessionStorage.removeItem(SESSION_KEY); }
+  } catch { /* private mode */ }
+}
 
 // Export last session info globally (safe since there's one session at a time)
 export let lastSessionInfo: SessionInfo | null = null;
@@ -28,14 +80,14 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
   useEffect(() => { onEventRef.current = onEvent; }, [onEvent]);
 
   const [isStreaming, setIsStreaming] = useState(false);
-  const [storedSessionId, setStoredSessionIdState] = useState<string | null>(
-    typeof sessionStorage !== "undefined" ? sessionStorage.getItem("astra-chat-session") : null
-  );
+  const [storedSessionId, setStoredSessionIdState] = useState<string | null>(readStoredSid);
 
   const [liveSessionId, setLiveSessionIdState] = useState<string | null>(null);
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
   const liveIdRef = useRef<string | null>(null);
   const sessionInfoRef = useRef<SessionInfo | null>(null);
+  const isStreamingRef = useRef(false);
+  useEffect(() => { isStreamingRef.current = isStreaming; }, [isStreaming]);
 
   const setLiveSessionId = useCallback((sid: string | null) => {
     setLiveSessionIdState(sid);
@@ -43,8 +95,7 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
   }, []);
 
   const setStoredSessionId = useCallback((sid: string | null) => {
-    if (sid) sessionStorage.setItem("astra-chat-session", sid);
-    else sessionStorage.removeItem("astra-chat-session");
+    writeStoredSid(sid);
     setStoredSessionIdState(sid);
   }, []);
 
@@ -52,7 +103,15 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
   const pendingRpcs = useRef<Map<string, { resolve: (val: any) => void, reject: (err: any) => void }>>(new Map());
   const pendingPreTurnRpcs = useRef<{id: string, method: string, params: any, resolve: any, reject: any}[]>([]);
 
+  // R6: watchdog fires → probe the gateway via probeTurn; its reply is matched
+  // by probeIdRef in onMessage. The old hard-kill path is deleted.
   const watchdogRef = useRef<number | null>(null);
+  const probeIdRef = useRef<string | null>(null);
+  const probeTurnRef = useRef<() => void>(() => {});
+  // Silent-death guard: consecutive probe failures (gateway unreachable while a
+  // turn looks active). 3 strikes ≈ 6 min of silence → visible failure, never
+  // an infinite quiet spinner.
+  const probeFailsRef = useRef(0);
   const clearWatchdog = useCallback(() => {
     if (watchdogRef.current) { window.clearTimeout(watchdogRef.current); watchdogRef.current = null; }
   }, []);
@@ -60,10 +119,48 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
     clearWatchdog();
     watchdogRef.current = window.setTimeout(() => {
       watchdogRef.current = null;
-      setIsStreaming(false);
-      onEventRef.current({ type: "message.error", payload: { error: "No response from the agent (timed out after 120s)." } });
+      probeTurnRef.current();
     }, TURN_WATCHDOG_MS);
   }, [clearWatchdog]);
+  const probeTurn = useCallback(() => {
+    const sid = liveIdRef.current || readStoredSid();
+    // Transport down or no session: R3/R4 owns recovery — but bounded. If the
+    // transport is still gone after 3 probe cycles (~6 min), fail visibly
+    // instead of spinning a silent Thinking pill forever.
+    if (!ws.current || ws.current.readyState !== 1 || !sid) {
+      probeFailsRef.current++;
+      if (probeFailsRef.current >= 3) {
+        probeFailsRef.current = 0;
+        setIsStreaming(false);
+        onEventRef.current({ type: "message.error", payload: { error: "Lost contact with Astra while it was working. The connection didn't recover in time — please try again." } });
+        onEventRef.current({ type: "turn.settled", payload: {} });
+        return;
+      }
+      armWatchdog();
+      return;
+    }
+    probeIdRef.current = generateRpcId();
+    ws.current.send(JSON.stringify({ method: "session.resume", params: { session_id: sid, omit_messages: true }, id: probeIdRef.current }));
+  }, [armWatchdog]);
+  useEffect(() => { probeTurnRef.current = probeTurn; }, [probeTurn]);
+
+  // A prompt queued while the socket was down must not spin forever if the
+  // connection never comes back: 5-min hard cap, then a visible failure.
+  const queuedTimerRef = useRef<number | null>(null);
+  const clearQueuedCap = useCallback(() => {
+    if (queuedTimerRef.current) { window.clearTimeout(queuedTimerRef.current); queuedTimerRef.current = null; }
+  }, []);
+  const armQueuedCap = useCallback(() => {
+    if (queuedTimerRef.current) return;
+    queuedTimerRef.current = window.setTimeout(() => {
+      queuedTimerRef.current = null;
+      if (pendingPromptRef.current === null) return; // already flushed — not our problem
+      pendingPromptRef.current = null;
+      createOnOpenRef.current = false;
+      setIsStreaming(false);
+      onEventRef.current({ type: "message.error", payload: { error: "Message couldn't be sent — the connection was unavailable for too long. Please try again." } });
+    }, 300_000);
+  }, []);
 
   const rpc = useCallback((method: string, params: any): Promise<any> => {
     return new Promise((resolve, reject) => {
@@ -124,6 +221,7 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
     const text = pendingPromptRef.current;
     if (text === null) return;
     pendingPromptRef.current = null;
+    clearQueuedCap(); // prompt is on the wire — the queued cap no longer applies
     if (ws.current && ws.current.readyState === 1) {
       rpc("prompt.submit", { session_id: sid, text, surface: "webui" })
         .catch((err: any) => {
@@ -140,17 +238,29 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const url = `${protocol}//${window.location.host}/api/hx/ws`;
 
-    let socket: WebSocket;
+    let disposed = false;
+    let reconnectAttempt = 0;
+    let reconnectTimer: number | null = null;
+
+    // R4: transport liveness — reset on ANY incoming frame (proxy ticks every
+    // 25s when healthy). 60s of total silence recycles the socket; the turn
+    // keeps streaming server-side and R5 restores state after resume.
+    let lastFrameAt = Date.now();
+    const touchLiveness = () => { lastFrameAt = Date.now(); };
+    const livenessTimer = window.setInterval(() => {
+      if (transportSilent(lastFrameAt, Date.now())) {
+        try { ws.current?.close(); } catch { /* already gone */ }
+      }
+    }, 5000);
+
     // Shared open-sequence: capabilities advertisement, stored-session resume, and
-    // the queued-create flush. Bound BOTH as socket.onopen (a fresh WebSocket is
-    // always CONNECTING — without this the open block never ran and everything
-    // hung on the proxy "online" frame racing handler binding, H5) and invoked
-    // directly on the already-open reuse path.
+    // the queued-create flush. Bound as socket.onopen (a fresh WebSocket is
+    // always CONNECTING) and invoked directly on the already-open reuse path.
     function onSocketOpen(s: WebSocket) {
       // Advertise that this client answers server→client requests (clarify cards,
       // approvals, …). Without it the gateway fails these fast instead of asking.
       s.send(JSON.stringify({ jsonrpc: "2.0", id: generateRpcId(), method: "client.capabilities", params: { server_requests: true } }));
-      const sid = sessionStorage.getItem("astra-chat-session");
+      const sid = readStoredSid();
       if (sid) {
         const id = generateRpcId();
         pendingResumes.current.add(id);
@@ -164,28 +274,48 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
       }
     }
 
-    if (sharedSocket && sharedSocket.readyState === 1) {
-      socket = sharedSocket;
-      if (socket.readyState === 1) {
-        attachHandlers(socket);
-        ws.current = socket;
-        onSocketOpen(socket);
-        if (sessionStorage.getItem("astra-chat-session") && liveIdRef.current) {}
-        return () => { ws.current = null; };
-      }
+    // R3: auto-reconnect forever with backoff; immediate on online/visible.
+    function scheduleReconnect() {
+      if (disposed || reconnectTimer !== null) return;
+      const delay = nextReconnectDelay(reconnectAttempt++);
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null;
+        connect();
+      }, delay);
     }
-    socket = new WebSocket(url);
-    sharedSocket = socket;
-    ws.current = socket;
-    attachHandlers(socket);
-    socket.onopen = () => onSocketOpen(socket);
+
+    function connect() {
+      if (disposed) return;
+      const existing = sharedSocket;
+      if (existing && existing.readyState === 1) {
+        attachHandlers(existing);
+        ws.current = existing;
+        reconnectAttempt = 0;
+        onSocketOpen(existing);
+        return;
+      }
+      if (existing && existing.readyState === 0) {
+        // Adopt a socket still connecting (strict-mode remount / reconnect race).
+        attachHandlers(existing);
+        ws.current = existing;
+        existing.onopen = () => { reconnectAttempt = 0; onSocketOpen(existing); };
+        return;
+      }
+      const sock = new WebSocket(url);
+      sharedSocket = sock;
+      ws.current = sock;
+      attachHandlers(sock);
+      sock.onopen = () => { reconnectAttempt = 0; onSocketOpen(sock); };
+    }
 
     function attachHandlers(s: WebSocket) {
       s.onmessage = onMessage;
       s.onclose = () => {
-        clearWatchdog();
-        setIsStreaming(false);
+        // R3: invalidate the dead socket so the reuse path can't bind it, then
+        // reconnect. No setIsStreaming(false) here — turn truth is the gateway's.
+        if (ws.current === s) { ws.current = null; sharedSocket = null; }
         onEventRef.current({ type: "ws.closed", payload: {} });
+        scheduleReconnect();
       };
     }
 
@@ -200,7 +330,21 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
       }
     }
 
+    // R5: honor turn truth on ANY resume/create reply. Locks the composer
+    // mid-turn after reload or on another device, zero user action.
+    function applyReplyTruth(result: any) {
+      const v = applyTurnTruth(result && result.running, result && result.status);
+      if (v === "streaming") { setIsStreaming(true); armWatchdog(); }
+      else if (v === "idle" && isStreamingRef.current) {
+        setIsStreaming(false);
+        // Completion detected via resume (turn finished while disconnected or
+        // on another device) — refresh history so the final reply renders.
+        onEventRef.current({ type: "turn.settled", payload: {} });
+      }
+    }
+
     function onMessage(e: MessageEvent) {
+      touchLiveness();
       let data;
       try { data = JSON.parse(e.data); } catch { return; }
 
@@ -216,6 +360,42 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
         onEventRef.current({ type: data.method, payload: { id: data.id, params: data.params || {} } });
       }
 
+      // R6: watchdog probe reply — gateway truth decides; never a false kill.
+      if (data.id && probeIdRef.current === data.id) {
+        probeIdRef.current = null;
+        const failed = !!data.error;
+        const running = data.result ? data.result.running : undefined;
+        if (failed || running === undefined) {
+          probeFailsRef.current++;
+          // 3 silent strikes ≈ 6 min: say something instead of spinning forever.
+          if (probeFailsRef.current >= 3) {
+            probeFailsRef.current = 0;
+            setIsStreaming(false);
+            onEventRef.current({ type: "message.error", payload: { error: "Lost contact with Astra while it was working. The connection didn't recover in time — please try again." } });
+            onEventRef.current({ type: "turn.settled", payload: {} });
+            return;
+          }
+        } else {
+          probeFailsRef.current = 0;
+        }
+        const act = watchdogAction(failed, running);
+        if (act === "finalize") {
+          if (isStreamingRef.current) {
+            setIsStreaming(false);
+            // Turn ended while we were disconnected/probing — tell the UI to
+            // re-pull history so the completed reply renders without a reload.
+            onEventRef.current({ type: "turn.settled", payload: {} });
+          }
+          // Idle-probe confirmed idle: nothing to finalize, stop probing until
+          // the next turn (send/turn-event re-arms the watchdog).
+        } else {
+          // Probe caught a live turn the UI thought was finished → re-lock.
+          if (!failed && running === true && !isStreamingRef.current) setIsStreaming(true);
+          armWatchdog(); // stay OR wait — keep watching either way
+        }
+        return;
+      }
+
       if (data.id && pendingRpcs.current.has(data.id)) {
         const p = pendingRpcs.current.get(data.id)!;
         pendingRpcs.current.delete(data.id);
@@ -227,13 +407,15 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
       if (data.id && pendingResumes.current.has(data.id)) {
         pendingResumes.current.delete(data.id);
         if (data.error) {
+          writeStoredSid(null);
           setStoredSessionIdState(null);
-          sessionStorage.removeItem("astra-chat-session");
           setLiveSessionId(null);
+          if (isStreamingRef.current) setIsStreaming(false); // session gone → turn can't be live
           return;
         } else if (data.result && data.result.session_id) {
           liveIdRef.current = data.result.session_id;
           setLiveSessionId(data.result.session_id);
+          applyReplyTruth(data.result);
           flushPendingPrompt(data.result.session_id);
           replayOpenRequests(data.result);
         }
@@ -244,9 +426,10 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
         setLiveSessionId(data.result.session_id);
         const stored = data.result.stored_session_id;
         if (stored) {
-          sessionStorage.setItem("astra-chat-session", stored);
+          writeStoredSid(stored);
           setStoredSessionIdState(stored);
         }
+        applyReplyTruth(data.result);
         flushPendingPrompt(data.result.session_id);
         replayOpenRequests(data.result);
       }
@@ -266,11 +449,33 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
 
       if (data.method === "event" && data.params) {
         const { type, payload, session_id } = data.params;
-        
-        if (type === "proxy.status") {
-          if (payload.state === "reconnecting") {
+
+        // Completion/failure finalize BEFORE the session filter below (so a
+        // completion never gets silently dropped and strands the composer on
+        // "Astra is replying…"). Ownership is STRICT: an event with a session_id
+        // only belongs to the live turn if it equals liveIdRef.current exactly.
+        // A null liveIdRef (just reset, new session not created yet) must NEVER
+        // vacuously match a foreign session_id — that hole let an abandoned
+        // chat's stray completion/deltas render into a fresh "New chat" (H4/H9).
+        if (type === "message.complete" || type === "message.error") {
+          const belongsToLive = session_id === liveIdRef.current;
+          if (belongsToLive) {
+            clearWatchdog();
             setIsStreaming(false);
-          } else if (payload.state === "online") {
+          }
+          if (type === "message.error") {
+            if (belongsToLive) {
+              onEventRef.current({ type, payload, session_id });
+            }
+            return;
+          }
+        }
+
+        if (type === "proxy.status") {
+          // R7: "reconnecting" no longer drops isStreaming — a blip must not
+          // unlock the composer mid-turn; R5 restores truth after resume.
+          // ("tick" frames are plain liveness; chat-landing maps states to the banner.)
+          if (payload.state === "online") {
             // This fresh upstream transport may never have seen our
             // capabilities (its connect raced our socket open). Re-advertise
             // BEFORE resuming or the gateway fast-fails every clarify/approval
@@ -278,7 +483,7 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
             if (ws.current?.readyState === 1) {
               ws.current.send(JSON.stringify({ jsonrpc: "2.0", id: generateRpcId(), method: "client.capabilities", params: { server_requests: true } }));
             }
-            const sid = sessionStorage.getItem("astra-chat-session");
+            const sid = readStoredSid();
             if (sid && ws.current?.readyState === 1) {
               const id = generateRpcId();
               pendingResumes.current.add(id);
@@ -289,7 +494,10 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
           return;
         }
 
-        if (liveIdRef.current && session_id && liveIdRef.current !== session_id) return;
+        // STRICT filter: any remaining event with a session_id must match the
+        // live session exactly — no vacuous pass when liveIdRef is null (see
+        // the completion/error block above for why that hole mattered).
+        if (session_id && session_id !== liveIdRef.current) return;
 
         if (type === "session.info") {
           setSessionInfo(payload);
@@ -297,13 +505,13 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
           lastSessionInfo = payload;
         }
 
-        // Clear watchdog on first sign of life
+        // Re-arm the probe watchdog on turn traffic (rolling silence probe)
         if (type === "message.start" || type === "message.delta" || type === "thinking.delta" || type === "reasoning.delta" || type === "tool.start") {
-          clearWatchdog();
+          armWatchdog();
+          probeFailsRef.current = 0; // real turn traffic — any earlier probe failures don't count
         }
 
         if (type === "message.start") setIsStreaming(true);
-        // Clear watchdog again on completion/error
         if (type === "message.complete" || type === "message.error") {
           clearWatchdog();
           setIsStreaming(false);
@@ -313,8 +521,28 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
       }
     }
 
-    return () => { ws.current = null; };
-  }, [setStoredSessionId, setLiveSessionId, flushPendingPrompt, clearWatchdog, sendSessionCreate]);
+    connect();
+
+    // R3: mobile unlock / network return → immediate reconnect attempt.
+    const tryImmediateReconnect = () => {
+      if (disposed) return;
+      if (ws.current && (ws.current.readyState === 0 || ws.current.readyState === 1)) return;
+      if (reconnectTimer !== null) { window.clearTimeout(reconnectTimer); reconnectTimer = null; }
+      connect();
+    };
+    const onVisible = () => { if (document.visibilityState === "visible") tryImmediateReconnect(); };
+    window.addEventListener("online", tryImmediateReconnect);
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(livenessTimer);
+      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
+      window.removeEventListener("online", tryImmediateReconnect);
+      document.removeEventListener("visibilitychange", onVisible);
+      ws.current = null;
+    };
+  }, [setLiveSessionId, flushPendingPrompt, clearWatchdog, armWatchdog, sendSessionCreate]);
 
   const submitPrompt = useCallback((content: string) => {
     if (!ws.current || ws.current.readyState !== 1) {
@@ -323,6 +551,7 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
       // optimistic UI already shows the user's message + thinking pill.
       pendingPromptRef.current = content;
       createOnOpenRef.current = true;
+      armQueuedCap(); // bounded wait: 5 min, then a visible failure
       setIsStreaming(true);
       return;
     }
@@ -376,26 +605,24 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
   }, [liveSessionId, storedSessionId, clearWatchdog]);
 
   const resetSession = useCallback(() => {
-    // Stop the old turn for real: without an interrupt the gateway keeps streaming
-    // the abandoned session, and with liveIdRef cleared the session filter lets
-    // those stray deltas bleed into the fresh chat (H4). Inlined (not `interrupt()`)
-    // because resetSession must keep a STABLE identity — its consumer effect re-runs
-    // on identity churn and would wipe messages on unrelated session switches.
+    // Do NOT interrupt the old session's turn: New Chat must never stop work
+    // still running in a chat the user is leaving (it also poisoned the old
+    // chat's own transcript with "Operation interrupted…" — a real bug, not a
+    // desired behavior). The old turn keeps streaming server-side exactly as
+    // it would if the user just navigated away; they can reopen that chat and
+    // see the finished reply. Clearing liveIdRef to null is now SAFE because
+    // the strict session_id filter (session_id !== liveIdRef.current) drops
+    // every stray frame from the abandoned session — nothing bleeds into the
+    // fresh chat without an interrupt.
     clearWatchdog();
-    const oldSid = liveIdRef.current || sessionStorage.getItem("astra-chat-session");
-    if (ws.current && ws.current.readyState === 1 && oldSid) {
-      ws.current.send(JSON.stringify({
-        method: "session.interrupt",
-        params: { session_id: oldSid },
-        id: generateRpcId()
-      }));
-    }
     setIsStreaming(false);
     liveIdRef.current = null; setLiveSessionId(null);
     setStoredSessionId(null); setSessionInfo(null);
     pendingPreTurnRpcs.current = []; pendingPromptRef.current = null;
     pendingCreateRef.current = false; createOnOpenRef.current = false;
-  }, [setStoredSessionId, setLiveSessionId, setSessionInfo, clearWatchdog]);
+    probeFailsRef.current = 0;
+    clearQueuedCap();
+  }, [setStoredSessionId, setLiveSessionId, setSessionInfo, clearWatchdog, clearQueuedCap]);
 
   return { isStreaming, submitPrompt, interrupt, storedSessionId, setStoredSessionId, liveSessionId, sendApprovalResponse, sendServerResponse, rpc, sessionInfo, setSessionInfo, resetSession };
 }

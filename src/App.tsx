@@ -173,25 +173,43 @@ import TubesBackground from "./components/ui/tubes-background";
 function Shell({ onLogout }: { onLogout: () => void }) {
   useMobileViewport();
   const [resetSignal, setResetSignal] = useState(0);
-  const [view, setView] = useState<'chat' | 'files' | 'tracker' | 'config'>('chat');
+  // Each view now owns a real path (/files, /tracker, /config, /c/<id> or /) so the
+  // address bar, browser back/forward, and reload all land on the right page —
+  // previously non-chat views were just an in-memory flag with no URL of their own,
+  // so navigating away and back (or reloading) always dropped you back into chat.
+  const parsePath = (): { view: 'chat' | 'files' | 'tracker' | 'config'; sessionId: string | null } => {
+    const p = location.pathname;
+    if (p === "/files") return { view: "files", sessionId: null };
+    if (p === "/tracker") return { view: "tracker", sessionId: null };
+    if (p === "/config") return { view: "config", sessionId: null };
+    const match = p.match(/^\/c\/([A-Za-z0-9_-]+)$/);
+    return { view: "chat", sessionId: match ? match[1] : null };
+  };
+  const initial = parsePath();
+  const [view, setView] = useState<'chat' | 'files' | 'tracker' | 'config'>(initial.view);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("astra-sidebar-collapsed") === "1");
   const toggleSidebar = () => setSidebarCollapsed((c) => {
     localStorage.setItem("astra-sidebar-collapsed", c ? "0" : "1");
     return !c;
   });
-  // Parse /c/<id> into the INITIAL state: chat-landing's URL-sync effect runs on
-  // mount before any parent effect and would replaceState("/") a null session away,
-  // destroying the deep link before it could be read.
-  const parseSessionPath = () => {
-    const match = location.pathname.match(/^\/c\/([A-Za-z0-9_-]+)$/);
-    return match ? match[1] : null;
-  };
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(parseSessionPath);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(initial.sessionId);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+
+  // Non-chat views own their own path + title directly (chat's own path/title
+  // effect only runs while it is the active view — see ChatLanding's isActiveView).
+  useEffect(() => {
+    const TITLES: Record<typeof view, string> = { chat: "Astra", files: "Files — Astra", tracker: "Global Token Tracker — Astra", config: "Config — Astra" };
+    if (view === "files" && location.pathname !== "/files") history.pushState({}, "", "/files");
+    else if (view === "tracker" && location.pathname !== "/tracker") history.pushState({}, "", "/tracker");
+    else if (view === "config" && location.pathname !== "/config") history.pushState({}, "", "/config");
+    if (view !== "chat") document.title = TITLES[view];
+  }, [view]);
 
   useEffect(() => {
     const onPop = () => {
-      setSelectedSessionId(parseSessionPath());
+      const next = parsePath();
+      setView(next.view);
+      setSelectedSessionId(next.sessionId);
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -199,6 +217,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const closeDrawer = () => { setDrawerOpen(false); };
+
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -240,6 +259,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
         />
         <div className={cn("flex flex-1 flex-col overflow-hidden", view !== 'chat' && "hidden")}>
           <ChatLanding resetSignal={resetSignal} selectedSessionId={selectedSessionId} onSessionChange={setActiveSessionId}
+            isActiveView={view === 'chat'}
             onNewChat={() => { setResetSignal(r => r + 1); setView('chat'); setSelectedSessionId(null); }}
             onOpenNav={() => setDrawerOpen(true)} />
         </div>
