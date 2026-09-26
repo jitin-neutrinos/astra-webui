@@ -27,6 +27,24 @@ export function rowsToTurns(rows: HistoryRow[]): Turn[] {
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
+    // Failed turns still carry the user's question and the failure reason —
+    // both belong on screen. Skipping the row entirely left the prompt with NO
+    // answer and NO error after a reload, which read as "the chat lost it".
+    if (row.display_kind === "failed_turn") {
+      // Attach to the in-progress assistant turn, or open one for this failure
+      // (the row usually lands right after the user's prompt).
+      if (!currentTurn || currentTurn.role !== "assistant") {
+        currentTurn = { id: `failed-turn-${row.id}`, role: "assistant", ts: undefined, segments: [], isStreaming: false };
+        turns.push(currentTurn);
+      }
+      currentTurn.segments.push({
+        id: `failed-${row.id}`,
+        kind: "text",
+        status: "done",
+        text: (typeof row.content === "string" && row.content.trim()) || "This turn failed before a reply was produced.",
+      });
+      continue;
+    }
     if (row.display_kind != null) continue;
     if (row.role === "system") continue;
 

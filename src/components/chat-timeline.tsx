@@ -254,11 +254,15 @@ export function usePrefersReducedMotion() {
 // drain quickly (<2s) so you never wait on a done answer.
 const CPS_MIN = 40, CPS_MAX = 52;
 function useReveal(text: string, done: boolean, instant: boolean) {
-  const [n, setN] = useState(0);
-  const nRef = useRef(0), tRef = useRef(0);
+  // Only text that is (or was) actively streaming in this session may reveal.
+  // A segment that mounts already finished — history restore, reload, a
+  // mid-turn final snapshot — renders whole: persisted text must never
+  // re-animate. And once `done`, the block snaps shut: no drain pass, and a
+  // text-final replacement can never make the answer visibly "stream twice".
+  const [n, setN] = useState(() => (done ? text.length : 0));
+  const nRef = useRef(n), tRef = useRef(0);
   useEffect(() => {
-    if (instant) { nRef.current = text.length; setN(text.length); return; }
-    if (nRef.current > text.length) nRef.current = 0;      // turn reset / retry
+    if (instant || done) { nRef.current = text.length; setN(text.length); return; }
     if (nRef.current >= text.length) return;
     let id = 0;
     const tick = () => {

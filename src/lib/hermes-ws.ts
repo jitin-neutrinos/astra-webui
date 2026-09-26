@@ -475,10 +475,25 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
       if (data.id && pendingResumes.current.has(data.id)) {
         pendingResumes.current.delete(data.id);
         if (data.error) {
-          writeStoredSid(null);
-          setStoredSessionIdState(null);
-          setLiveSessionId(null);
-          if (isStreamingRef.current) setIsStreaming(false); // session gone → turn can't be live
+          // Only a genuinely dead session may clear the tab's identity. A
+          // gateway restart (or any transport hiccup) rejects resume with
+          // "session not found / not owned by this transport" even when the
+          // session is alive and persisted — wiping here destroyed the open
+          // chat (URL rewritten to /, messages cleared) on every reload that
+          // raced a gateway recycle. Instead: keep the URL + stored id, drop
+          // the in-flight create latch, and re-create the session binding;
+          // history re-pull restores the transcript.
+          const msg = String(data.error?.message || data.error || "");
+          const transient = /not owned|transport|unavailable|busy|5000|4001/i.test(msg);
+          if (!transient) {
+            writeStoredSid(null);
+            setStoredSessionIdState(null);
+            setLiveSessionId(null);
+            if (isStreamingRef.current) setIsStreaming(false); // session gone → turn can't be live
+          }
+          // Transient: touch nothing. URL + stored id keep pointing at the chat,
+          // loadHistory (HTTP) still restores the transcript, and the next
+          // reconnect/proxy.status re-issues session.resume.
           return;
         } else if (data.result && data.result.session_id) {
           liveIdRef.current = data.result.session_id;
@@ -522,7 +537,7 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
       }
 
       if (data.method === "event" && data.params) {
-        const { type, payload, session_id } = data.params;
+        let { type, payload, session_id } = data.params;
 
         // Completion/failure finalize BEFORE the session filter below (so a
         // completion never gets silently dropped and strands the composer on
@@ -532,6 +547,16 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
         // vacuously match a foreign session_id — that hole let an abandoned
         // chat's stray completion/deltas render into a fresh "New chat" (H4/H9).
         if (type === "message.complete" || type === "message.error") {
+          // A FAILED turn rides message.complete with payload.status === "error"
+          // (prompt_turn.py: `payload = {"text": raw, ..., "status": status}`).
+          // Treating it as a success left the composer locked on "Astra is
+          // replying" forever, because the failure text still rendered but no
+          // message.error ever arrived. Normalize it so every consumer sees the
+          // error shape.
+          if (type === "message.complete" && payload && payload.status === "error") {
+            type = "message.error";
+            if (!payload.error) payload.error = { message: payload.text || "The agent turn failed." };
+          }
           const belongsToLive = session_id === liveIdRef.current;
           if (belongsToLive) {
             clearWatchdog();
