@@ -110,8 +110,10 @@ export function RichText({ text, onOpenImage, streaming }: { text: string; onOpe
 
 function formatDur(ms?: number) {
   if (ms == null) return null;
-  if (ms < 1000) return `${ms}ms`;
-  return `${(ms / 1000).toFixed(1)}s`;
+  // Max 2 decimals, locked (owner): raw Date.now() deltas carry float noise like
+  // 177.98398282848ms — toFixed(2) then parseFloat drops trailing zeros (177 -> 177).
+  if (ms < 1000) return `${parseFloat(ms.toFixed(2))}ms`;
+  return `${parseFloat((ms / 1000).toFixed(2))}s`;
 }
 
 import { stepOpen, setStepOpen, hashKey } from "../lib/step-prefs";
