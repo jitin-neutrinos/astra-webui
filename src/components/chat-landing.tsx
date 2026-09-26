@@ -141,6 +141,9 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   const titledRef = useRef(false);
   const activeIdRef = useRef<string | null>(null);
   const prevStoredSidRef = useRef<string | null>(null);
+  // Mirrors the hook's storedSessionId for handlers declared above the hook call
+  // (handleEvent runs before useHermesWS returns).
+  const storedSidRef = useRef<string | null>(null);
   const greetPendingRef = useRef(false);
   const pendingOpsRef = useRef<SegOp[]>([]);
   const opsTimerRef = useRef<number | null>(null);
@@ -370,6 +373,21 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       finalizeActive();
       return;
     }
+
+    if (type === "turn.settled") {
+      // Turn truth says finished (probe/resume path) — the local active bubble is
+      // stale; drop it and re-pull persisted history so the real reply renders.
+      // activeIdRef already cleared by resume truth; a re-pull is idempotent.
+      activeIdRef.current = null;
+      const sid = storedSidRef.current; // hook return not yet declared this early
+      if (sid) {
+        fetch(`/api/hx/sessions/${encodeURIComponent(sid)}/messages?order=oldest&limit=500`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => { if (d) setMessages(rowsToTurns(d.messages || []).map((r) => ({ ...r, id: r.id || nextId() })) as ChatMsg[]); })
+          .catch(() => {});
+      }
+      return;
+    }
   }, [ensureActive, pushOp, finalizeActive, resolveApproval, resolveClarify, resolveGate]);
 
   const { isStreaming, submitPrompt, interrupt, storedSessionId, setStoredSessionId, sendApprovalResponse, sendServerResponse, sessionInfo, setSessionInfo, rpc, liveSessionId, resetSession } = useHermesWS(handleEvent);
@@ -439,6 +457,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   }, [selectedSessionId, setStoredSessionId]);
 
   useEffect(() => {
+    storedSidRef.current = storedSessionId; // keep early-handler mirror in sync
     onSessionChange?.(storedSessionId);
   }, [storedSessionId, onSessionChange]);
 

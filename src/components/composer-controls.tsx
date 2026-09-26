@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Paperclip, X, Check, SlidersHorizontal, ChevronRight, ChevronLeft } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export type Attachment = {
   id: string;
@@ -148,18 +149,17 @@ export function ComposerControls({ attachments, setAttachments, disabled, sessio
               </button>
 
               <p className="chat-menu-label">Yolo mode</p>
-              <div className="chat-radio-row" role="radiogroup" aria-label="Yolo mode">
-                <button type="button" role="radio" aria-checked={!yolo} className="chat-menu-item chat-radio"
-                  aria-label="Yolo off — ask first"
-                  onClick={() => { if (yolo) onToggleYolo(); }}>
-                  <span className="flex flex-col">Ask first<small>Tool calls need your approval</small></span>
-                  {!yolo ? <Check className="h-3.5 w-3.5 text-cyanx" strokeWidth={2} /> : null}
-                </button>
-                <button type="button" role="radio" aria-checked={yolo} className="chat-menu-item chat-radio"
-                  aria-label="Yolo on — auto-approve"
-                  onClick={() => { if (!yolo) onToggleYolo(); }}>
-                  <span className="flex flex-col">Auto-approve<small>No approval prompts in this chat</small></span>
-                  {yolo ? <Check className="h-3.5 w-3.5 text-redx" strokeWidth={2} /> : null}
+              <div className="chat-menu-item chat-dropdown-row" role="group" aria-label="Yolo mode">
+                <span className="flex flex-col">
+                  <span>{yolo ? "On — tool calls run without asking" : "Off — ask first"}</span>
+                  <small>{yolo ? "No approval prompts in this chat" : "Tool calls need your approval"}</small>
+                </span>
+                <button type="button" role="switch" aria-checked={yolo}
+                  aria-label={yolo ? "Yolo mode on" : "Yolo mode off"}
+                  title={yolo ? "Yolo on — auto-approve" : "Yolo off — ask first"}
+                  className={cn("chat-yolo-switch", yolo && "chat-yolo-switch-on")}
+                  onClick={() => onToggleYolo()}>
+                  <span className="chat-yolo-knob" />
                 </button>
               </div>
 
