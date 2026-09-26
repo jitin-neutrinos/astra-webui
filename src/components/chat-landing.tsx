@@ -18,6 +18,7 @@ import {
 } from "./chat-timeline";
 import { ComposerControls, filesToAttachments, type Attachment } from "./composer-controls";
 import { SubagentPanel, useSubagents } from "./subagent-panel";
+import { harnessRowFromToolStart, mergeRoster, type HarnessRow } from "@/lib/harness-agents";
 import { Lightbox } from "./lightbox";
 import { getHermesHome, getCatalog } from "@/lib/session-files";
 import type { CatalogPayload } from "./composer-controls";
@@ -261,6 +262,27 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     }));
   }, []);
 
+  // Harness-CLI sub-agent rows (claude / opencode / agy …): the gateway's
+  // subagent.list only tracks Hermes delegate_task children, so external CLI
+  // agents run via the terminal tool were invisible. Detected client-side from
+  // tool.start/generating/complete events and merged into the panel roster.
+  const harnessRowsRef = useRef<HarnessRow[]>([]);
+  const [, forceRoster] = useState(0);
+  const noteHarness = useCallback((payload: any, toolId: unknown, done: boolean) => {
+    const row = harnessRowFromToolStart(payload, toolId, Date.now() / 1000);
+    if (!row) return;
+    const prev = harnessRowsRef.current.find((r) => r.subagent_id === row.subagent_id);
+    if (done) {
+      if (!prev) return; // finished before we ever saw it start — nothing to clear
+      harnessRowsRef.current = harnessRowsRef.current.filter((r) => r.subagent_id !== row.subagent_id);
+      forceRoster((n) => n + 1);
+      return;
+    }
+    if (prev) { prev.last_tool = row.goal; forceRoster((n) => n + 1); return; }
+    harnessRowsRef.current = [...harnessRowsRef.current, row];
+    forceRoster((n) => n + 1);
+  }, []);
+
   const handleEvent = useCallback((ev: EventPayload) => {
     const { type, payload } = ev;
 
@@ -302,6 +324,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       let argsText = "";
       if (payload?.args !== undefined) { try { argsText = JSON.stringify(payload.args, null, 2).slice(0, 6000); } catch { /* noop */ } }
       const command = payload?.args?.command || payload?.args?.cmd || "";
+      noteHarness(payload, payload?.tool_id, false);
       pushOp({ op: "tool", key: payload?.tool_id, label: name, argsText, command: String(command) });
       return;
     }
@@ -312,6 +335,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       let argsText = "";
       if (payload?.args !== undefined) { try { argsText = JSON.stringify(payload.args, null, 2).slice(0, 6000); } catch { /* noop */ } }
       const command = payload?.args?.command || payload?.args?.cmd || "";
+      noteHarness(payload, payload?.tool_id, false);
       pushOp({ op: "tool-update", key: payload?.tool_id, label: name, argsText, command: String(command || "") });
       return;
     }
@@ -341,6 +365,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         if (!resultText && payload.summary) resultText = String(payload.summary);
         resultText = resultText.slice(0, 30000);
       }
+      noteHarness(payload, payload?.tool_id, true);
       pushOp({ op: "tool-done", key: payload?.tool_id, label: payload?.name, resultText, exitCode });
       return;
     }
@@ -428,12 +453,14 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       }
       return;
     }
-  }, [ensureActive, pushOp, finalizeActive, resolveApproval, resolveClarify, resolveGate]);
+  }, [ensureActive, pushOp, finalizeActive, resolveApproval, resolveClarify, resolveGate, noteHarness]);
 
   const { isStreaming, submitPrompt, interrupt, storedSessionId, setStoredSessionId, sendApprovalResponse, sendServerResponse, sessionInfo, setSessionInfo, rpc, liveSessionId, resetSession } = useHermesWS(handleEvent);
 
-  // Live sub-agent roster for this chat (gateway subagent.list/subagent.tail).
-  const suba = useSubagents(rpc, liveSessionId || storedSessionId || null, isStreaming);
+  // Live sub-agent roster for this chat (gateway subagent.list/subagent.tail),
+  // merged with harness-CLI rows (claude/opencode/agy …) detected from tool events.
+  const suba = useSubagents(rpc, liveSessionId || storedSessionId || null, isStreaming || harnessRowsRef.current.length > 0);
+  const roster = mergeRoster(suba.subs, harnessRowsRef.current);
 
   const respondApproval = useCallback((reqId: string, choice: string) => {
     const sent = sendApprovalResponse(reqId, choice);
@@ -1109,7 +1136,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       </div>
 
       <div className="relative z-10 px-3 pb-3 lg:px-6 lg:pb-6">
-        <SubagentPanel subs={suba.subs} open={suba.open} setOpen={suba.setOpen} now={suba.now} rpc={rpc} sessionId={liveSessionId || storedSessionId || null} />
+        <SubagentPanel subs={roster} open={suba.open} setOpen={suba.setOpen} now={suba.now} rpc={rpc} sessionId={liveSessionId || storedSessionId || null} />
         <div
           className={cn("chat-composer mx-auto max-w-3xl", dragOver && "drag-over")}
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
