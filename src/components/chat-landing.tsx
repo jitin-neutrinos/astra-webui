@@ -399,7 +399,11 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       const interim = textOf(payload);
       if (!interim) return;
       ensureActive();
-      pushOp({ op: "text-final", text: interim }, true);
+      // already_streamed: the gateway delivered these words via message.delta
+      // already — seal the streamed segment instead of pushing the text again
+      // (re-pushing rendered the interim twice: once streamed, once sealed).
+      if (payload?.already_streamed) pushOp({ op: "text-seal", text: interim }, true);
+      else pushOp({ op: "text-final", text: interim }, true);
       return;
     }
 

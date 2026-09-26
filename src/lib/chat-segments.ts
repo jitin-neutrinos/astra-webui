@@ -51,6 +51,7 @@ export type SegOp =
   | { op: "tool-done"; key?: string; label?: string; resultText?: string; exitCode?: number | null }
   | { op: "text"; text: string }
   | { op: "text-final"; text: string }
+  | { op: "text-seal"; text: string }
   | { op: "approval"; reqId: string; params: Segment["params"] }
   | { op: "clarify"; reqId: string; params: { questions?: ClarifyQuestion[]; question?: string; choices?: string[]; multi_select?: boolean; answers?: Record<string, string> } }
   | { op: "gate"; reqId: string; params: { env: GateEnvelope } };
@@ -148,6 +149,10 @@ export function applySegmentOps(segments: Segment[], ops: SegOp[]): Segment[] {
       // Reconciliation, not blind append:
       //   - final CONTINUES the last text segment (delta prefix) -> replace it
       //     (fills in whatever the delta stream missed, never duplicates);
+      //   - final EQUALS the concatenation of all text segments so far
+      //     (streamed + interims, e.g. "AB" sealed + "CD" streamed) -> collapse
+      //     them into ONE segment (the old code compared only the last segment,
+      //     failed the prefix test, and appended the whole answer AGAIN);
       //   - otherwise it is a NEW assistant message (e.g. the post-tool summary
       //     after an earlier `message.interim`) -> push its own segment.
       const finalText = op.text;
@@ -161,12 +166,40 @@ export function applySegmentOps(segments: Segment[], ops: SegOp[]): Segment[] {
         const s = out[i];
         if (s.kind === "thinking" && (s.text || "").trim() === finalText.trim()) out.splice(i, 1);
       }
-      const lastText = [...out].reverse().find((s) => s.kind === "text");
-      if (lastText && finalText.startsWith(lastText.text || "")) {
-        lastText.text = finalText;
-        lastText.status = "done";
+      const textIdxs: number[] = [];
+      for (let i = 0; i < out.length; i++) if (out[i].kind === "text") textIdxs.push(i);
+      const joined = textIdxs.map((i) => out[i].text || "").join("");
+      if (joined.trim() && finalText.trim() === joined.trim()) {
+        const keep = textIdxs[textIdxs.length - 1];
+        out[keep].text = finalText;
+        out[keep].status = "done";
+        for (let k = textIdxs.length - 2; k >= 0; k--) out.splice(textIdxs[k], 1);
       } else {
-        out.push({ id: nextSegId(), kind: "text", status: "done", text: finalText });
+        const lastText = [...out].reverse().find((s) => s.kind === "text");
+        if (lastText && finalText.startsWith(lastText.text || "")) {
+          lastText.text = finalText;
+          lastText.status = "done";
+        } else {
+          out.push({ id: nextSegId(), kind: "text", status: "done", text: finalText });
+        }
+      }
+    } else if (op.op === "text-seal") {
+      // `message.interim { already_streamed: true }`: the gateway already sent
+      // these words as message.delta frames. Sealing (not re-pushing) keeps the
+      // streamed segment as the single render; message.complete reconciles the
+      // authoritative text afterwards via the prefix/collapse rules above.
+      closeRunningThink(out);
+      barrier = true;
+      const run = [...out].reverse().find((s) => s.kind === "text" && s.status === "run");
+      if (run) {
+        run.status = "done";
+      } else {
+        // Flag said streamed but no live segment ever arrived (deltas muted or
+        // lost): fall back to rendering the interim text so it is not dropped.
+        const lastDone = [...out].reverse().find((s) => s.kind === "text" && s.status === "done");
+        if (!lastDone || (lastDone.text || "").trim() !== op.text.trim()) {
+          out.push({ id: nextSegId(), kind: "text", status: "done", text: op.text });
+        }
       }
     } else if (op.op === "approval") {
       closeRunningThink(out);
