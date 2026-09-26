@@ -220,6 +220,40 @@ body { background: var(--color-void); }
 .chat-turn { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--bubble-ai-border); border-radius: 14px; padding: 12px 14px; background: var(--bubble-ai-bg); animation: chat-turn-in 200ms cubic-bezier(0.23,1,0.32,1) both; min-width: 0; overflow-wrap: anywhere; }
 /* code-copy float sits over the top-right corner; keep it inside the bubble */
 .chat-turn > div.relative.group { max-width: 100%; }
+/* ---- login background: brand blue-green glow wash (light mode) ----
+   Sits above the opaque tubes canvas, below the login card. Two soft radial
+   auras (azure + emerald) drift on incommensurate periods so the wash never
+   repeats; multiply blend keeps it a watercolor tint, never a fog. */
+.tubes-glow-wash {
+  background:
+    radial-gradient(46rem 46rem at 16% 28%, rgba(3, 105, 161, 0.20), transparent 62%),
+    radial-gradient(40rem 40rem at 80% 70%, rgba(4, 120, 87, 0.16), transparent 62%),
+    radial-gradient(30rem 30rem at 62% 16%, rgba(2, 132, 199, 0.12), transparent 58%),
+    radial-gradient(26rem 26rem at 30% 84%, rgba(5, 150, 105, 0.10), transparent 58%);
+  mix-blend-mode: multiply;
+  filter: blur(32px);
+  animation: tubes-glow-drift-a 26s ease-in-out infinite alternate;
+}
+.tubes-glow-wash::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(38rem 38rem at 70% 34%, rgba(3, 105, 161, 0.12), transparent 60%),
+    radial-gradient(34rem 34rem at 22% 62%, rgba(4, 120, 87, 0.10), transparent 60%);
+  animation: tubes-glow-drift-b 34s ease-in-out infinite alternate;
+}
+@keyframes tubes-glow-drift-a {
+  from { transform: translate3d(-2.5%, -1.5%, 0) scale(1); opacity: 0.92; }
+  to   { transform: translate3d(2.5%, 2%, 0) scale(1.07); opacity: 1; }
+}
+@keyframes tubes-glow-drift-b {
+  from { transform: translate3d(2%, 2.5%, 0) scale(1.05); }
+  to   { transform: translate3d(-2%, -1%, 0) scale(0.97); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tubes-glow-wash, .tubes-glow-wash::after { animation: none; }
+}
 /* user bubble: brand-green tint (see :root tokens) */
 .chat-bubble-user { border: 1px solid var(--bubble-user-border); background: var(--bubble-user-bg); color: var(--bubble-user-text); }
 /* Astra streaming placeholder pill shares the Astra bubble skin */

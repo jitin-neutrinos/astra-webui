@@ -235,6 +235,13 @@ export function TubesBackground({ children, className }: TubesBackgroundProps) {
         className="absolute inset-0 block h-full w-full"
         style={{ touchAction: "none" }}
       />
+      {/* brand glow wash (light mode): the vendor bloom can't hold a halo on
+          paper, so paint our own azure/emerald aura above the canvas — soft,
+          slow-drifting, purely decorative */}
+      <div
+        aria-hidden="true"
+        className={cn("pointer-events-none absolute inset-0 z-[1]", theme === "light" && "tubes-glow-wash")}
+      />
       <div className="pointer-events-none relative z-10 h-full w-full">{children}</div>
     </div>
   );
