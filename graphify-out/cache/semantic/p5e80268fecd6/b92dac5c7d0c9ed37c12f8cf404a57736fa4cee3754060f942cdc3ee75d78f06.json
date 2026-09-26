@@ -1,0 +1,1 @@
+{"nodes": [{"id": "sidebar_v2_md", "label": "sidebar-v2.md - Sidebar Spec", "file_type": "document", "source_file": "specs/sidebar-v2.md", "captured_at": null, "rationale": "Spec for collapsible sidebar, chats-in-sidebar, selection state. Requirements R1-R4 with constraints and done conditions."}], "edges": [], "hyperedges": []}

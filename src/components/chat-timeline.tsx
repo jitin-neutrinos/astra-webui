@@ -249,7 +249,10 @@ export function usePrefersReducedMotion() {
   return reduced;
 }
 
-const CPS_MIN = 120, CPS_MAX = 160; // 30-40 tokens/s (~4 chars avg): human variance band
+// SLOW REVEAL (2026-09-26): calm reading pace. Base 40-52 cps (2.5x slower than
+// the original 120-160) with smooth ±20% human wobble; finished turns still
+// drain quickly (<2s) so you never wait on a done answer.
+const CPS_MIN = 40, CPS_MAX = 52;
 function useReveal(text: string, done: boolean, instant: boolean) {
   const [n, setN] = useState(0);
   const nRef = useRef(0), tRef = useRef(0);
@@ -265,7 +268,7 @@ function useReveal(text: string, done: boolean, instant: boolean) {
       tRef.current = now;
       const back = text.length - nRef.current;
       const cps = done
-        ? Math.max(CPS_MIN * 3, back / 0.4)                // finished turn drains <1s
+        ? Math.max(CPS_MIN * 2, back / 1.8)                // finished turn drains <2s
         : CPS_MIN + (Math.sin(now / 900) + 1) * (CPS_MAX - CPS_MIN) / 2; // smooth ±20% human wobble
       nRef.current = Math.min(text.length, nRef.current + cps * dt);
       setN(Math.floor(nRef.current));
@@ -366,7 +369,6 @@ function TextRow({ seg, onOpenImage }: { seg: Segment; onOpenImage?: (url: strin
   return (
     <div className="chat-text-seg">
       {display && <RichText text={display} onOpenImage={onOpenImage} streaming={seg.status === "run"} />}
-      {!instant && (seg.status === "run" || n < text.length) && <span className="chat-caret" aria-hidden="true" />}
       {n >= text.length && paths.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-2">
           {paths.map(p => <MediaCard key={p} path={p} name={p.split("/").pop() || p} onOpenImage={onOpenImage} />)}

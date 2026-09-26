@@ -231,10 +231,10 @@ body { background: var(--color-void); }
      emerald auras multiplied into the paper, plus a bright core ring kept OUT
      of the auras' center so it reads as light with a colored penumbra. */
   background:
-    radial-gradient(46rem 46rem at 16% 28%, rgba(3, 105, 161, 0.38), transparent 62%),
-    radial-gradient(40rem 40rem at 80% 70%, rgba(4, 120, 87, 0.32), transparent 62%),
-    radial-gradient(30rem 30rem at 62% 16%, rgba(2, 132, 199, 0.24), transparent 58%),
-    radial-gradient(26rem 26rem at 30% 84%, rgba(5, 150, 105, 0.20), transparent 58%);
+    radial-gradient(46rem 46rem at 16% 28%, rgba(3, 105, 161, 0.55), transparent 62%),
+    radial-gradient(40rem 40rem at 80% 70%, rgba(2, 132, 199, 0.42), transparent 62%),
+    radial-gradient(30rem 30rem at 62% 16%, rgba(3, 105, 161, 0.30), transparent 58%),
+    radial-gradient(26rem 26rem at 30% 84%, rgba(4, 120, 87, 0.20), transparent 58%);
   mix-blend-mode: multiply;
   filter: blur(32px);
   animation: tubes-glow-drift-a 26s ease-in-out infinite alternate;
@@ -244,20 +244,20 @@ body { background: var(--color-void); }
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(38rem 38rem at 70% 34%, rgba(3, 105, 161, 0.22), transparent 60%),
-    radial-gradient(34rem 34rem at 22% 62%, rgba(4, 120, 87, 0.18), transparent 60%);
+    radial-gradient(38rem 38rem at 70% 34%, rgba(3, 105, 161, 0.30), transparent 60%),
+    radial-gradient(34rem 34rem at 22% 62%, rgba(2, 132, 199, 0.24), transparent 60%);
   animation: tubes-glow-drift-b 34s ease-in-out infinite alternate;
 }
-/* third layer: a thin luminous ring that survives on paper — screen-blended
-   cyan/emerald cores drift opposite the auras so the glow feels alive */
+/* third layer: the 'light source' — brighter blue cores the auras read as
+   penumbra for; kept near the auras' hearts so the glow coheres as one */
 .tubes-glow-wash::before {
   content: "";
   position: absolute;
   inset: 0;
   z-index: 1;
   background:
-    radial-gradient(18rem 18rem at 26% 30%, rgba(103, 232, 249, 0.35), transparent 55%),
-    radial-gradient(15rem 15rem at 72% 66%, rgba(110, 231, 183, 0.30), transparent 55%);
+    radial-gradient(20rem 20rem at 26% 30%, rgba(125, 211, 252, 0.42), transparent 55%),
+    radial-gradient(16rem 16rem at 72% 66%, rgba(56, 189, 248, 0.34), transparent 55%);
   mix-blend-mode: normal;
   filter: blur(24px);
   animation: tubes-glow-core 19s ease-in-out infinite alternate;
@@ -357,12 +357,12 @@ body { background: var(--color-void); }
 
 .chat-text-seg .chat-md > p:last-child { display: inline; }
 
-.chat-caret { display: inline-block; width: 2px; height: 14px; margin-left: 2px; vertical-align: text-bottom; background: var(--color-cyanx); animation: chat-caret-blink 1s step-end infinite; }
+/* chat-caret removed 2026-09-26: blinking typing line dropped entirely. */
 
 .chat-step-kind { flex: none; font: 600 9px/1 var(--font-mono); letter-spacing: .08em; color: var(--color-muted); border: 1px solid rgba(248,250,252,.14); border-radius: 9999px; padding: 2px 6px; }
 .chat-io { margin-bottom: 8px; }
 .chat-io-label { font: 600 9.5px/1 var(--font-mono); letter-spacing: .14em; color: var(--color-muted); margin: 0 0 4px; }
-@keyframes chat-caret-blink { 50% { opacity: 0; } }
+/* chat-caret-blink keyframes removed 2026-09-26 along with the caret. */
 
 .chat-approval { border: 1px solid rgba(248,250,252,.12); background: var(--color-midnight); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
 .chat-approval-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -414,7 +414,6 @@ body { background: var(--color-void); }
 .chat-approval-resolved { font: 400 12px/1.4 var(--font-sans); color: #94a3b8; border-top: 1px solid rgba(248,250,252,.08); padding-top: 8px; font-style: italic; }
 
 @media (prefers-reduced-motion: reduce) {
-  .chat-caret { animation: none; opacity: 1; }
   .chat-step-icon.spin { animation-duration: 1.5s; }
 }
 
@@ -684,7 +683,6 @@ body { background: var(--color-void); }
 .chat-turn .chat-code-copy { background: transparent; border-color: rgba(248,250,252,.1); color: var(--color-muted); }
 .chat-turn .chat-code-copy:hover { color: var(--color-cyanx); }
 [data-theme="light"] .chat-turn .chat-code-copy { border-color: rgba(15,23,42,.14); }
-.chat-turn .chat-caret { background: var(--color-cyanx); }
 .chat-bubble-ai { color: var(--color-brandtext); }
 
 @media (prefers-reduced-motion: no-preference) {

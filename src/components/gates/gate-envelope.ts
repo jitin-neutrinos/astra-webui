@@ -4,7 +4,7 @@ export const GATE_RE = /<!--astra-gate\/1\s*([\s\S]*?)\s*-->/;
 export type GateKind = "plan" | "review" | "fix" | "report";
 
 export interface GateAction {
-  id: "approve" | "change" | "reject";
+  id: "approve" | "change" | "reject" | "dismiss";
   label: string;
   tone: "primary" | "quiet" | "danger";
   opens_input?: boolean;
@@ -72,7 +72,7 @@ export interface GateEnvelope {
 }
 
 export interface GateReply {
-  action: "approve" | "change" | "reject";
+  action: "approve" | "change" | "reject" | "dismiss";
   request?: string; // used for 'change' fallback or rejection reason?
   reason?: string; // used for 'reject'
   edited?: boolean;
@@ -103,7 +103,8 @@ export function serializeReply(gateId: string, version: number, r: GateReply): s
     astra_gate: 1,
     gate_id: gateId,
     version,
-    action: r.action,
+    // dismiss is a UI state; the agent-facing wire still says approve
+    action: r.action === "dismiss" ? "approve" : r.action,
   };
   
   if (r.action === "change" && r.request) {

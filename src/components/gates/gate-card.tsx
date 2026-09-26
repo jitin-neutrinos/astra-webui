@@ -43,6 +43,7 @@ export function GateCard({ seg, sessionId, onRespond, onOpenImage: _onOpenImage 
 
   const gateState = useMemo(() => {
     if (seg.resolved === "cancelled") return "expired";
+    if (seg.resolved === "dismiss") return "dismissed";
     if (seg.resolved === "approve" || seg.resolved === "reject") return seg.resolved + "d";
     if (seg.resolved === "change") return "change-sent";
     if (seg.superseded) return "superseded";
@@ -122,11 +123,14 @@ export function GateCard({ seg, sessionId, onRespond, onOpenImage: _onOpenImage 
 
   const isApproved = gateState === "approved";
   const isRejected = gateState === "rejected";
+  const isDismissed = gateState === "dismissed";
+  // report with no agent-defined actions: nothing to decide, so give it a local Dismiss
+  const isDismissable = env.kind === "report" && env.actions.length === 0 && !seg.resolved;
 
   return (
     <div id={`chat-gate-${reqId}`} className={cn("gate-card", `is-${gateState}`)} data-gate-state={gateState}>
       <p className="gate-eyebrow">
-        {isApproved ? `APPROVED · v${env.version}` : isRejected ? `REJECTED · v${env.version}` : `${env.title.toUpperCase()} GATE · V${env.version}`}
+        {isApproved ? `APPROVED · v${env.version}` : isRejected ? `REJECTED · v${env.version}` : isDismissed ? `DISMISSED · v${env.version}` : `${env.title.toUpperCase()} GATE · V${env.version}`}
       </p>
       
       <div className="flex justify-between items-baseline">
@@ -171,9 +175,14 @@ export function GateCard({ seg, sessionId, onRespond, onOpenImage: _onOpenImage 
         </div>
       ) : null}
 
-      {gateState === "presented" || gateState === "changing" || gateState === "edit" ? (
+      {gateState === "presented" || gateState === "changing" || gateState === "edit" || isDismissable ? (
         <div className="gate-actions">
-          {env.actions.map(a => (
+          {isDismissable ? (
+            <button className="gate-btn quiet" onClick={() => handleAction({ id: "dismiss", label: "Dismiss", tone: "quiet" })}>
+              Dismiss
+            </button>
+          ) : (
+          env.actions.map(a => (
             <button
               key={a.id}
               className={cn("gate-btn", a.tone)}
@@ -181,7 +190,7 @@ export function GateCard({ seg, sessionId, onRespond, onOpenImage: _onOpenImage 
             >
               {a.label}
             </button>
-          ))}
+          )))}
           {env.editable && (
             <button className="gate-btn quiet ml-auto" onClick={() => setMode(mode === "edit" ? "view" : "edit")}>
               {mode === "edit" ? "Read" : "Edit"}
