@@ -49,22 +49,50 @@ export function watchdogAction(probeFailed: boolean, running: boolean | undefine
   return running ? "stay" : "finalize";
 }
 
-// R10: stored session in localStorage (survives reload AND browser restart);
-// one-time migration of the old sessionStorage value. resetSession still clears.
+// Session identity is PER TAB, and the URL is the source of truth.
+//
+// This used to be a single localStorage key shared by every tab on the origin.
+// localStorage is per-ORIGIN, not per-tab, so two tabs were one chat wearing two
+// windows: opening a second tab inherited the first tab's chat, and the moment
+// either tab switched chats it overwrote the shared key — the other tab then
+// resumed the wrong session on its next reconnect and silently jumped to a
+// conversation the user never opened there (reproduced: two tabs, two different
+// chats, both ended up on the second tab's session).
+//
+// Resolution order:
+//   1. `/c/<id>` in the URL — deep links, reload, back/forward, and the value a
+//      tab keeps re-asserting for itself.
+//   2. sessionStorage — per-tab BY DESIGN (a new tab gets an empty one, a reload
+//      keeps it), so it survives reload without ever leaking sideways.
+//   3. nothing — a brand-new tab at `/` starts a fresh chat instead of hijacking
+//      whatever another tab happens to be doing.
 const SESSION_KEY = "astra-chat-session";
+const LEGACY_SHARED_KEY = "astra-chat-session";
+
+function sidFromPath(): string | null {
+  const m = location.pathname.match(/^\/c\/([A-Za-z0-9_-]+)$/);
+  return m ? m[1] : null;
+}
+
 function readStoredSid(): string | null {
   try {
-    const ls = localStorage.getItem(SESSION_KEY);
-    if (ls) return ls;
-    const ss = sessionStorage.getItem(SESSION_KEY);
-    if (ss) localStorage.setItem(SESSION_KEY, ss);
-    return ss;
+    // The URL wins: it is what the user actually has open in THIS tab.
+    const fromUrl = sidFromPath();
+    if (fromUrl) {
+      sessionStorage.setItem(SESSION_KEY, fromUrl);
+      return fromUrl;
+    }
+    return sessionStorage.getItem(SESSION_KEY);
   } catch { return null; }
 }
+
 function writeStoredSid(sid: string | null) {
   try {
-    if (sid) localStorage.setItem(SESSION_KEY, sid);
-    else { localStorage.removeItem(SESSION_KEY); sessionStorage.removeItem(SESSION_KEY); }
+    if (sid) sessionStorage.setItem(SESSION_KEY, sid);
+    else sessionStorage.removeItem(SESSION_KEY);
+    // Drop the old origin-wide key on sight so a stale value can never be
+    // picked up again by any tab.
+    localStorage.removeItem(LEGACY_SHARED_KEY);
   } catch { /* private mode */ }
 }
 
@@ -101,6 +129,22 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
 
   const pendingResumes = useRef<Set<string>>(new Set());
   const pendingRpcs = useRef<Map<string, { resolve: (val: any) => void, reject: (err: any) => void }>>(new Map());
+  // Every RPC id THIS tab has ever sent. The proxy fans every upstream frame out
+  // to all connected browsers, so a reply carrying a session_id may belong to a
+  // different tab entirely. Without this, the catch-all `{id, result.session_id}`
+  // branch below adopted a sibling tab's session.create reply as its own and
+  // both tabs converged on one chat.
+  const ownRpcIds = useRef<Set<string>>(new Set());
+  const ownRpcId = () => {
+    const id = generateRpcId();
+    ownRpcIds.current.add(id);
+    // Bound the set; ids are only ever matched against in-flight replies.
+    if (ownRpcIds.current.size > 200) {
+      const first = ownRpcIds.current.values().next().value;
+      if (first !== undefined) ownRpcIds.current.delete(first);
+    }
+    return id;
+  };
   const pendingPreTurnRpcs = useRef<{id: string, method: string, params: any, resolve: any, reject: any}[]>([]);
 
   // R6: watchdog fires → probe the gateway via probeTurn; its reply is matched
@@ -139,7 +183,7 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
       armWatchdog();
       return;
     }
-    probeIdRef.current = generateRpcId();
+    probeIdRef.current = ownRpcId();
     ws.current.send(JSON.stringify({ method: "session.resume", params: { session_id: sid, omit_messages: true }, id: probeIdRef.current }));
   }, [armWatchdog]);
   useEffect(() => { probeTurnRef.current = probeTurn; }, [probeTurn]);
@@ -164,7 +208,7 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
 
   const rpc = useCallback((method: string, params: any): Promise<any> => {
     return new Promise((resolve, reject) => {
-      const id = generateRpcId();
+      const id = ownRpcId();
       if (!liveIdRef.current && (method === "config.set" || method === "image.attach")) {
         pendingPreTurnRpcs.current.push({ id, method, params, resolve, reject });
       } else {
@@ -195,7 +239,7 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
     if (pendingCreateRef.current || liveIdRef.current) return;
     if (!ws.current || ws.current.readyState !== 1) { createOnOpenRef.current = true; return; }
     pendingCreateRef.current = true;
-    ws.current.send(JSON.stringify({ method: "session.create", params: { source: "webui" }, id: generateRpcId() }));
+    ws.current.send(JSON.stringify({ method: "session.create", params: { source: "webui" }, id: ownRpcId() }));
   }, []);
 
   const flushPendingPrompt = useCallback(async (sid: string) => {
@@ -259,10 +303,10 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
     function onSocketOpen(s: WebSocket) {
       // Advertise that this client answers server→client requests (clarify cards,
       // approvals, …). Without it the gateway fails these fast instead of asking.
-      s.send(JSON.stringify({ jsonrpc: "2.0", id: generateRpcId(), method: "client.capabilities", params: { server_requests: true } }));
+      s.send(JSON.stringify({ jsonrpc: "2.0", id: ownRpcId(), method: "client.capabilities", params: { server_requests: true } }));
       const sid = readStoredSid();
       if (sid) {
-        const id = generateRpcId();
+        const id = ownRpcId();
         pendingResumes.current.add(id);
         s.send(JSON.stringify({ method: "session.resume", params: { session_id: sid }, id }));
       }
@@ -419,7 +463,12 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
           flushPendingPrompt(data.result.session_id);
           replayOpenRequests(data.result);
         }
-      } else if (data.id && data.result && data.result.session_id) {
+      } else if (data.id && data.result && data.result.session_id && ownRpcIds.current.has(data.id)) {
+        // Guarded by ownRpcIds: the proxy broadcasts every upstream frame to
+        // every connected tab, so without this check a sibling tab's
+        // session.create reply was adopted here and two tabs collapsed onto one
+        // chat. Only a reply to an id THIS tab sent may retarget this tab.
+        ownRpcIds.current.delete(data.id);
         liveIdRef.current = data.result.session_id;
         pendingCreateRef.current = false; // create/resume reply landed — allow future creates after a reset
         createOnOpenRef.current = false;
@@ -437,7 +486,8 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
       // Any {id, error} reply nobody is tracking — a fire-and-forget send whose
       // rejection would otherwise be dropped. One guard covers every present and
       // future raw send on this socket.
-      if (data.id && data.error && !pendingRpcs.current.has(data.id)) {
+      if (data.id && data.error && !pendingRpcs.current.has(data.id) && ownRpcIds.current.has(data.id)) {
+        ownRpcIds.current.delete(data.id);
         // A raw fire-and-forget send (session.create, session.interrupt) failed.
         // Clear the create latch too or every later New chat silently no-ops (H3).
         pendingCreateRef.current = false;
@@ -481,11 +531,11 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
             // BEFORE resuming or the gateway fast-fails every clarify/approval
             // with "the attached client predates server→client requests".
             if (ws.current?.readyState === 1) {
-              ws.current.send(JSON.stringify({ jsonrpc: "2.0", id: generateRpcId(), method: "client.capabilities", params: { server_requests: true } }));
+              ws.current.send(JSON.stringify({ jsonrpc: "2.0", id: ownRpcId(), method: "client.capabilities", params: { server_requests: true } }));
             }
             const sid = readStoredSid();
             if (sid && ws.current?.readyState === 1) {
-              const id = generateRpcId();
+              const id = ownRpcId();
               pendingResumes.current.add(id);
               ws.current.send(JSON.stringify({ method: "session.resume", params: { session_id: sid }, id }));
             }
@@ -598,7 +648,7 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
       ws.current.send(JSON.stringify({
         method: "session.interrupt",
         params: { session_id: liveSessionId || storedSessionId },
-        id: generateRpcId()
+        id: ownRpcId()
       }));
     }
     setIsStreaming(false);
