@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
-import { ArrowUp, Square, TriangleAlert, RotateCcw, Maximize2, X, Copy, Pencil, ChevronDown, Plus } from "lucide-react";
+import { ArrowUp, Square, TriangleAlert, RotateCcw, Copy, Pencil, ChevronDown, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useHermesWS } from "@/lib/hermes-ws";
 import type { EventPayload } from "@/lib/hermes-ws";
@@ -17,6 +17,7 @@ import {
   type Segment, type SegOp,
 } from "./chat-timeline";
 import { ComposerControls, filesToAttachments, type Attachment } from "./composer-controls";
+import { SubagentPanel, useSubagents } from "./subagent-panel";
 import { Lightbox } from "./lightbox";
 import { getHermesHome, getCatalog } from "@/lib/session-files";
 import type { CatalogPayload } from "./composer-controls";
@@ -125,9 +126,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [lightbox, setLightbox] = useState<{ open: boolean; url: string; alt: string }>({ open: false, url: "", alt: "" });
   const [input, setInput] = useState("");
-  const [popout, setPopout] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const popTaRef = useRef<HTMLTextAreaElement>(null);
   const [errorBanner, setErrorBanner] = useState("");
   const [atBottom, setAtBottom] = useState(true);
   const [slashOpen, setSlashOpen] = useState(false);
@@ -374,6 +373,9 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   }, [ensureActive, pushOp, finalizeActive, resolveApproval, resolveClarify, resolveGate]);
 
   const { isStreaming, submitPrompt, interrupt, storedSessionId, setStoredSessionId, sendApprovalResponse, sendServerResponse, sessionInfo, setSessionInfo, rpc, liveSessionId, resetSession } = useHermesWS(handleEvent);
+
+  // Live sub-agent roster for this chat (gateway subagent.list/subagent.tail).
+  const suba = useSubagents(rpc, liveSessionId || storedSessionId || null, isStreaming);
 
   const respondApproval = useCallback((reqId: string, choice: string) => {
     const sent = sendApprovalResponse(reqId, choice);
@@ -695,13 +697,12 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   // so it grows AND shrinks (the old code only fit inside onInputChange, so a
   // programmatic setInput("") left the box tall).
   const fitComposer = useCallback(() => {
-    for (const ta of [taRef.current, popTaRef.current]) {
-      if (!ta) continue;
-      ta.style.height = "auto";
-      ta.style.height = `${ta.scrollHeight}px`;
-    }
+    const ta = taRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = `${ta.scrollHeight}px`;
   }, []);
-  useEffect(() => { fitComposer(); }, [input, popout, fitComposer]);
+  useEffect(() => { fitComposer(); }, [input, fitComposer]);
 
   const onInputChange = (v: string) => {
     setInput(v);
@@ -989,6 +990,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       </div>
 
       <div className="relative z-10 px-3 pb-3 lg:px-6 lg:pb-6">
+        <SubagentPanel subs={suba.subs} open={suba.open} setOpen={suba.setOpen} now={suba.now} rpc={rpc} sessionId={liveSessionId || storedSessionId || null} />
         <div
           className={cn("chat-composer mx-auto max-w-3xl", dragOver && "drag-over")}
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -1023,57 +1025,6 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
               ))}
             </div>
           )}
-          {popout && (
-    <div className="chat-popout" role="dialog" aria-label="Popped out composer">
-      <div className="chat-popout-head">
-        <span className="chat-menu-label">Composer — expanded</span>
-        <button type="button" className="chat-popout-close" aria-label="Close expanded composer" title="Close"
-          onClick={() => { setPopout(false); setTimeout(() => taRef.current?.focus(), 60); }}>
-          <X className="h-4 w-4" strokeWidth={1.5} />
-        </button>
-      </div>
-      <textarea
-        ref={popTaRef}
-        value={input}
-        onChange={(e) => onInputChange(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!isStreaming && input.trim()) { void send(); setPopout(false); } }
-          if (e.key === "Escape") { setPopout(false); setTimeout(() => taRef.current?.focus(), 60); }
-        }}
-        placeholder={isStreaming ? "Astra is replying…" : "Message Astra…"}
-        aria-label="Message Astra (expanded)"
-        className="chat-popout-input"
-      />
-      <div className="chat-popout-bar flex items-center gap-2 px-2 py-2 border-t border-white/5">
-        <ComposerControls
-          disabled={isStreaming}
-          attachments={attachments}
-          setAttachments={setAttachments}
-          sessionInfo={sessionInfo}
-          catalog={catalog}
-          onToggleYolo={onToggleYolo}
-          onPickModel={onPickModel}
-          onPickEffort={onPickEffort}
-          onRemoveAttachment={removeAttachment}
-        />
-        <span className="chat-composer-hint">Enter to send · Shift+Enter for newline</span>
-        {isStreaming ? (
-          <button type="button" onClick={stop}
-            aria-label="Stop generation"
-            className="chat-send bg-red-500/20 text-red-400 hover:bg-red-500/30">
-            <Square className="h-3.5 w-3.5" fill="currentColor" />
-          </button>
-        ) : (
-          <button type="button" onClick={() => { void send(); setPopout(false); }}
-            disabled={!input.trim() || attachments.some(a => a.status === "uploading")}
-            aria-label="Send message (expanded)"
-            className="chat-send">
-            <ArrowUp className="h-4 w-4" strokeWidth={1.8} />
-          </button>
-        )}
-      </div>
-    </div>
-  )}
   <textarea
             ref={taRef}
             rows={1}
@@ -1085,11 +1036,6 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
             className="chat-composer-input"
           />
           <div className="chat-composer-bar">
-            <button type="button" className={cn("chat-chip", "chat-popout-chip", popout && "chat-chip-active")} disabled={isStreaming}
-              aria-pressed={popout} aria-label="Pop out composer" title="Pop out composer"
-              onClick={() => { setPopout(!popout); setTimeout(() => popTaRef.current?.focus(), 60); }}>
-              <Maximize2 className="h-3.5 w-3.5" strokeWidth={1.5} />
-            </button>
             <ComposerControls
               disabled={isStreaming}
               attachments={attachments}
