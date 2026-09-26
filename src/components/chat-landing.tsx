@@ -18,7 +18,7 @@ import {
 } from "./chat-timeline";
 import { ComposerControls, filesToAttachments, type Attachment } from "./composer-controls";
 import { SubagentPanel, useSubagents } from "./subagent-panel";
-import { harnessRowFromToolStart, mergeRoster, type HarnessRow } from "@/lib/harness-agents";
+import { harnessRowFromToolStart, harnessRowId, mergeRoster, type HarnessRow } from "@/lib/harness-agents";
 import { Lightbox } from "./lightbox";
 import { getHermesHome, getCatalog } from "@/lib/session-files";
 import type { CatalogPayload } from "./composer-controls";
@@ -269,15 +269,19 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   const harnessRowsRef = useRef<HarnessRow[]>([]);
   const [, forceRoster] = useState(0);
   const noteHarness = useCallback((payload: any, toolId: unknown, done: boolean) => {
-    const row = harnessRowFromToolStart(payload, toolId, Date.now() / 1000);
-    if (!row) return;
-    const prev = harnessRowsRef.current.find((r) => r.subagent_id === row.subagent_id);
+    // Completion removes by tool_id — tool.complete payloads don't restate the
+    // command, so detection would fail; keying on the id alone is exact.
     if (done) {
+      const id = harnessRowId(toolId);
+      const prev = harnessRowsRef.current.find((r) => r.subagent_id === id);
       if (!prev) return; // finished before we ever saw it start — nothing to clear
-      harnessRowsRef.current = harnessRowsRef.current.filter((r) => r.subagent_id !== row.subagent_id);
+      harnessRowsRef.current = harnessRowsRef.current.filter((r) => r.subagent_id !== id);
       forceRoster((n) => n + 1);
       return;
     }
+    const row = harnessRowFromToolStart(payload, toolId, Date.now() / 1000);
+    if (!row) return;
+    const prev = harnessRowsRef.current.find((r) => r.subagent_id === row.subagent_id);
     if (prev) { prev.last_tool = row.goal; forceRoster((n) => n + 1); return; }
     harnessRowsRef.current = [...harnessRowsRef.current, row];
     forceRoster((n) => n + 1);

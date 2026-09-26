@@ -76,6 +76,12 @@ export function detectHarness(command: unknown): { name: string; goal: string } 
   return { name, goal };
 }
 
+// Row id for a tool call (stable across start/generating/complete).
+export function harnessRowId(toolId: unknown): string {
+  const id = typeof toolId === "string" && toolId ? toolId : "";
+  return `harness-${id}`;
+}
+
 // Row factory from a tool.start / tool.generating payload.
 export function harnessRowFromToolStart(payload: any, toolId: unknown, nowSec: number): HarnessRow | null {
   const command = payload?.args?.command ?? payload?.args?.cmd ?? payload?.command;
