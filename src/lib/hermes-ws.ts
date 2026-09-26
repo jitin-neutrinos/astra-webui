@@ -35,6 +35,18 @@ export function nextReconnectDelay(attempt: number, jitter: () => number = Math.
   return Math.round(Math.min(Math.max(raw * j, 250), RECONNECT_MAX_MS));
 }
 
+// Server→client requests (approval / clarify / gates) carry params.session_id
+// minted by the gateway (server_requests.py frame()). The proxy broadcasts
+// every upstream frame to EVERY tab, and these requests were dispatched BEFORE
+// the session filter — an approval minted for chat A's turn rendered in chat B.
+// STRICT ownership, same rule as events: exact match only; a null live id (no
+// live session yet) or a missing/foreign tag matches NOTHING (fail-closed —
+// the gateway stamps every request with its session id).
+export function requestBelongsToLive(params: any, liveSid: string | null): boolean {
+  const sid = params && typeof params === "object" ? params.session_id : null;
+  return typeof sid === "string" && sid.length > 0 && sid === liveSid;
+}
+
 // R5: gateway turn truth → UI state. Turn truth is the gateway's, never the UI's.
 export function applyTurnTruth(running: boolean | undefined, status: string | undefined): "streaming" | "idle" | "unknown" {
   if (running === true || status === "streaming") return "streaming";
@@ -368,6 +380,11 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
       if (!Array.isArray(reqs)) return;
       for (const r of reqs) {
         if (!r || !r.id) continue;
+        // Strict session ownership on replay too: `open_requests` from a resume
+        // reply lists the session's own pending cards (gateway already scopes
+        // them to the resumed sid), but keep the exact-match guard so a future
+        // gateway change can never leak a foreign card back in.
+        if (!requestBelongsToLive(r.params, liveIdRef.current)) continue;
         // Preserve the request kind (approval / clarify / …) so restored cards
         // render with their own UI instead of everything becoming approvals.
         onEventRef.current({ type: r.method || "approval", payload: { id: r.id, params: r.params || r } });
@@ -393,6 +410,10 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
       try { data = JSON.parse(e.data); } catch { return; }
 
       if (data.method === "approval" && data.id) {
+        // Strict session ownership: a request minted for ANOTHER chat's turn
+        // must not render here (the proxy broadcasts to every tab). The live
+        // session gets the card; everyone else stays untouched.
+        if (!requestBelongsToLive(data.params, liveIdRef.current)) return;
         clearWatchdog();
         onEventRef.current({ type: "approval", payload: { id: data.id, params: data.params || {} } });
       }
@@ -400,6 +421,9 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
       // Generic server→client request bridge (ids are minted "srq-<hex>" by the
       // gateway): today covers "clarify", tomorrow any new interactive kind.
       if (data.method && data.method !== "approval" && typeof data.id === "string" && data.id.startsWith("srq-")) {
+        // Same strict ownership as approvals — clarify/gate cards belong to
+        // the chat whose turn asked them, not whichever chat is on screen.
+        if (!requestBelongsToLive(data.params, liveIdRef.current)) return;
         clearWatchdog();
         onEventRef.current({ type: data.method, payload: { id: data.id, params: data.params || {} } });
       }
