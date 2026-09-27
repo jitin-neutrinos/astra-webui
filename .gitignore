@@ -8,7 +8,6 @@ dist-ssr
 # Editor directories and files
 graphify-out/
 .idea
-ios/
 lerna-debug.log*
 *.local
 *.log

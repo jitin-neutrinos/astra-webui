@@ -1,0 +1,67 @@
+name: Build iOS IPA (unsigned, for SideStore)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "ios/**"
+      - "capacitor.config.ts"
+      - "package.json"
+      - ".github/workflows/ios-build.yml"
+
+jobs:
+  build-ipa:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build web bundle (webDir placeholder — app loads the live site at runtime)
+        run: npm run build
+
+      - name: Sync Capacitor iOS project
+        run: npx cap sync ios
+
+      - name: Resolve Swift Package deps
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project ios/App/App.xcodeproj \
+            -scheme App
+
+      - name: Build unsigned (fakesigned) app bundle
+        run: |
+          xcodebuild build \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -sdk iphoneos \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            ONLY_ACTIVE_ARCH=NO
+
+      - name: Package .app into .ipa (Payload/ convention)
+        run: |
+          set -euo pipefail
+          APP_PATH="build/Build/Products/Release-iphoneos/App.app"
+          test -d "$APP_PATH"
+          mkdir -p ipa_root/Payload
+          cp -R "$APP_PATH" ipa_root/Payload/Astra.app
+          cd ipa_root
+          zip -r ../Astra.ipa Payload
+          cd ..
+          ls -la Astra.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Astra-ipa
+          path: Astra.ipa
+          retention-days: 14
