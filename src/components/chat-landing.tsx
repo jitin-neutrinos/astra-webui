@@ -19,7 +19,6 @@ import {
 import { ComposerControls, filesToAttachments, type Attachment } from "./composer-controls";
 import { SubagentPanel, useSubagents } from "./subagent-panel";
 import { harnessRowFromToolStart, harnessRowId, mergeRoster, type HarnessRow } from "@/lib/harness-agents";
-import { headerDecision, isScrollUp, SCROLL_UP_SLOP_PX } from "@/lib/header-autohide";
 import { Lightbox } from "./lightbox";
 import { getHermesHome, getCatalog } from "@/lib/session-files";
 import type { CatalogPayload } from "./composer-controls";
@@ -143,59 +142,6 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   // the scroll position shifting because content grew underneath them.
   const lastScrollTopRef = useRef(0);
   useEffect(() => { atBottomRef.current = atBottom; }, [atBottom]);
-
-  // ── Mobile header auto-hide (spec 2026-09-26) ─────────────────────────────
-  // ~10s after mount the mobile header hides; it returns on a genuine upward
-  // scroll gesture and hides again while scrolling on. Desktop (lg+) never
-  // hides. Edge case: with nothing to scroll up from (transcript shorter than
-  // the viewport, or already at the very top) the header persists — the pure
-  // decision function in lib/header-autohide.ts owns the rules; this wiring
-  // just feeds it truth and applies the verdict.
-  const [headerHidden, setHeaderHidden] = useState(false);
-  const headerHiddenRef = useRef(false);
-  const headerRevealRef = useRef(false); // reveal "sticky" until next hide cycle
-  const headerStartRef = useRef<number>(Date.now());
-  const headerTimerRef = useRef<number | null>(null);
-  // Net upward scroll since the last downward movement. A single onScroll
-  // event during a slow finger-drag can move <4px (the isScrollUp slop) even
-  // though the reader is genuinely scrolling up over several frames — comparing
-  // only ADJACENT samples silently swallowed that gesture. Accumulating net
-  // upward distance and resetting on any downward movement catches gentle
-  // scrolls without weakening the jitter filter.
-  const upAccumRef = useRef(0);
-  const headerTick = useCallback(() => {
-    const el = listRef.current;
-    if (!el) return;
-    const scrollable = el.scrollHeight - el.clientHeight > SCROLL_UP_SLOP_PX;
-    const atTop = el.scrollTop <= SCROLL_UP_SLOP_PX;
-    const elapsed = Date.now() - headerStartRef.current;
-    const d = headerDecision(elapsed, scrollable, atTop, headerRevealRef.current);
-    if (d.action === "show") {
-      // Reveal applied: re-arm the cycle — fresh 10s grace, reveal flag consumed,
-      // so the header hides again later unless the user keeps scrolling up.
-      if (headerHiddenRef.current) {
-        headerHiddenRef.current = false;
-        setHeaderHidden(false);
-      }
-      headerRevealRef.current = false;
-      headerStartRef.current = Date.now();
-    } else if (d.action === "hide" && !headerHiddenRef.current) {
-      headerHiddenRef.current = true;
-      headerRevealRef.current = false;
-      setHeaderHidden(true);
-    } else if (d.action === "persist" && headerHiddenRef.current) {
-      // Transcript shrank below the fold possibility (or reached top): bring it
-      // back — there'd be no gesture to ever reveal it otherwise.
-      headerHiddenRef.current = false;
-      setHeaderHidden(false);
-    }
-  }, []);
-  useEffect(() => {
-    headerStartRef.current = Date.now();
-    headerTimerRef.current = window.setInterval(headerTick, 1000);
-    headerTick();
-    return () => { if (headerTimerRef.current) window.clearInterval(headerTimerRef.current); };
-  }, [headerTick]);
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashActive, setSlashActive] = useState(0);
 
@@ -979,20 +925,6 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
     const prevTop = lastScrollTopRef.current;
     lastScrollTopRef.current = el.scrollTop;
-    // Mobile header reveal: a genuine upward gesture while hidden shows it again.
-    // Accumulate net upward distance across events instead of comparing only
-    // the adjacent pair — a slow drag fires many onScroll events a few px
-    // apart, each individually under the jitter slop, so single-pair
-    // comparison never crossed the threshold for gentle scrolls.
-    const delta = prevTop - el.scrollTop; // positive = moved up
-    if (delta > 0) upAccumRef.current += delta;
-    else if (delta < 0) upAccumRef.current = 0;
-    if (headerHiddenRef.current && isScrollUp(0, -upAccumRef.current)) {
-      headerHiddenRef.current = false;
-      setHeaderHidden(false);
-      headerRevealRef.current = true;
-      upAccumRef.current = 0;
-    }
     // Near the live edge is always "stuck", whatever caused the scroll.
     if (gap < 80) { if (!atBottomRef.current) setAtBottom(true); return; }
     // Away from the edge: only UNSTICK on evidence the reader moved up
@@ -1092,16 +1024,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         );
       })()}
 
-      <header className={cn(
-        "relative z-10 flex items-center justify-between border-b border-white/[0.07] px-3 py-3 transition-all duration-300 ease-out max-lg:absolute max-lg:inset-x-0 max-lg:top-0 max-lg:bg-[#0a0f14]/95 max-lg:backdrop-blur",
-        // No opacity toggle here on purpose: fading the whole header made the
-        // glass panel look partially transparent mid-transition instead of a
-        // solid blurred bar sliding in. transform (slide) + visibility (a11y/
-        // hit-testing, discrete-flips at the end of the transition so the
-        // slide still plays) are enough; bg/blur stay constant at full alpha.
-        headerHidden && "max-lg:pointer-events-none max-lg:-translate-y-full max-lg:invisible",
-        errorBanner && "mt-7",
-      )} aria-hidden={headerHidden || undefined}>
+      <header className={cn("relative z-10 flex items-center justify-between border-b border-white/[0.07] px-3 py-3 lg:px-6 lg:min-h-[77px] lg:py-0", errorBanner && "mt-7")}>
         <span className="flex min-w-0 items-center gap-2">
           <button type="button" onClick={() => onOpenNav?.()}
             aria-label="Open navigation" aria-expanded={false} aria-controls="astra-sidebar"
@@ -1124,7 +1047,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         </span>
       </header>
 
-      <div ref={listRef} onScroll={onScroll} className="chat-scroll relative z-10 min-h-0 flex-1 max-lg:pt-[64px] max-lg:transition-[padding] max-lg:duration-300" role="log" aria-label="Conversation">
+      <div ref={listRef} onScroll={onScroll} className="chat-scroll relative z-10 min-h-0 flex-1" role="log" aria-label="Conversation">
         {empty ? (
           <div className="chat-welcome">
             <img src="/astra-logo.png" alt="" aria-hidden="true" className="chat-welcome-glyph" />
