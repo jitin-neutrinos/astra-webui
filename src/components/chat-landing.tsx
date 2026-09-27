@@ -156,6 +156,13 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   const headerRevealRef = useRef(false); // reveal "sticky" until next hide cycle
   const headerStartRef = useRef<number>(Date.now());
   const headerTimerRef = useRef<number | null>(null);
+  // Net upward scroll since the last downward movement. A single onScroll
+  // event during a slow finger-drag can move <4px (the isScrollUp slop) even
+  // though the reader is genuinely scrolling up over several frames — comparing
+  // only ADJACENT samples silently swallowed that gesture. Accumulating net
+  // upward distance and resetting on any downward movement catches gentle
+  // scrolls without weakening the jitter filter.
+  const upAccumRef = useRef(0);
   const headerTick = useCallback(() => {
     const el = listRef.current;
     if (!el) return;
@@ -973,10 +980,18 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     const prevTop = lastScrollTopRef.current;
     lastScrollTopRef.current = el.scrollTop;
     // Mobile header reveal: a genuine upward gesture while hidden shows it again.
-    if (headerHiddenRef.current && isScrollUp(prevTop, el.scrollTop)) {
+    // Accumulate net upward distance across events instead of comparing only
+    // the adjacent pair — a slow drag fires many onScroll events a few px
+    // apart, each individually under the jitter slop, so single-pair
+    // comparison never crossed the threshold for gentle scrolls.
+    const delta = prevTop - el.scrollTop; // positive = moved up
+    if (delta > 0) upAccumRef.current += delta;
+    else if (delta < 0) upAccumRef.current = 0;
+    if (headerHiddenRef.current && isScrollUp(0, -upAccumRef.current)) {
       headerHiddenRef.current = false;
       setHeaderHidden(false);
       headerRevealRef.current = true;
+      upAccumRef.current = 0;
     }
     // Near the live edge is always "stuck", whatever caused the scroll.
     if (gap < 80) { if (!atBottomRef.current) setAtBottom(true); return; }
@@ -1079,7 +1094,12 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
 
       <header className={cn(
         "relative z-10 flex items-center justify-between border-b border-white/[0.07] px-3 py-3 transition-all duration-300 ease-out max-lg:absolute max-lg:inset-x-0 max-lg:top-0 max-lg:bg-[#0a0f14]/95 max-lg:backdrop-blur",
-        headerHidden && "max-lg:pointer-events-none max-lg:-translate-y-full max-lg:opacity-0 max-lg:invisible",
+        // No opacity toggle here on purpose: fading the whole header made the
+        // glass panel look partially transparent mid-transition instead of a
+        // solid blurred bar sliding in. transform (slide) + visibility (a11y/
+        // hit-testing, discrete-flips at the end of the transition so the
+        // slide still plays) are enough; bg/blur stay constant at full alpha.
+        headerHidden && "max-lg:pointer-events-none max-lg:-translate-y-full max-lg:invisible",
         errorBanner && "mt-7",
       )} aria-hidden={headerHidden || undefined}>
         <span className="flex min-w-0 items-center gap-2">
