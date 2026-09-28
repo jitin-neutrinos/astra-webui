@@ -26,7 +26,6 @@ jobs:
           releaseName: "Astra Windows ${{ github.ref_name }}"
           releaseDraft: false
           prerelease: false
-          args: --target nsis
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
 

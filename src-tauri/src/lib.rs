@@ -1,5 +1,5 @@
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Listener, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_notification::NotificationExt;
 use url::Url;
 
@@ -111,9 +111,8 @@ pub fn run() {
                     let occupied = w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false);
                     if occupied { return; } 
                     let mut b = handle.notification().builder().title(&m.title).body(&m.body);
-                    if let Some(icon) = handle.default_window_icon() {
-                        b = b.icon(icon.clone());
-                    }
+                    // Windows toasts take their icon from the installed app identity (AUMID),
+                    // not from the builder — no .icon() call needed.
                     let _ = b.show();
                     if let Some(click) = m.click {
                         let state = handle.state::<PendingNav>();
