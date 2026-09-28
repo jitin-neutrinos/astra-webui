@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "astra-remote",
+  "description": "Remote astra.jitinnair.com page: event emit, notifications, deep-link, window state",
+  "windows": ["main"],
+  "remote": { "urls": ["https://astra.jitinnair.com"] },
+  "platforms": ["windows"],
+  "permissions": [
+    "core:event:default",
+    "core:window:default",
+    "notification:default",
+    "deep-link:default"
+  ]
+}

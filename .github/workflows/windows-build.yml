@@ -1,0 +1,46 @@
+name: windows-build
+on:
+  workflow_dispatch:
+  push:
+    tags: ["win-v*"]
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: x86_64-pc-windows-msvc }
+      - uses: swatinem/rust-cache@v2
+        with: { workspaces: src-tauri }
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Astra Windows ${{ github.ref_name }}"
+          releaseDraft: false
+          prerelease: false
+          args: --target nsis
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
+
+      - name: checksum + repoint latest.json at mirror
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          gh release download $tag --pattern "Astra*-setup.exe" --pattern "latest.json" --dir out
+          $exe  = (Get-ChildItem out/*-setup.exe).Name
+          $hash = (Get-FileHash "out/$exe" -Algorithm SHA256).Hash.ToLower()
+          "$hash  $exe" | Out-File "out/$exe.sha256" -Encoding ascii -NoNewline
+          $lj = Get-Content out/latest.json -Raw | ConvertFrom-Json
+          $lj.platforms.'windows-x86_64'.url = "https://astra-windows.jitinnair.com/$exe"
+          $lj | ConvertTo-Json -Depth 10 -Compress | Set-Content out/latest.json
+          gh release upload $tag "out/$exe.sha256" "out/latest.json" --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
