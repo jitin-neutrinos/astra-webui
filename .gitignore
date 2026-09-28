@@ -26,3 +26,4 @@ pnpm-debug.log*
 !.vscode/extensions.json
 yarn-debug.log*
 yarn-error.log*
+.audit-evidence/
