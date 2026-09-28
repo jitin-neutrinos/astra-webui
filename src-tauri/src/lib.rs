@@ -86,8 +86,8 @@ pub fn run() {
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
                 if let Ok(Some(urls)) = app.deep_link().get_current() {
-                    if let Some(u) = urls.first() { 
-                        navigate(app.handle(), &astra_path(u)); 
+                    if let Some(u) = urls.first() {
+                        navigate(app.handle(), &astra_path(u.as_str()));
                     }
                 }
             }
@@ -149,9 +149,11 @@ pub fn run() {
                     std::thread::sleep(std::time::Duration::from_secs(5));
                     tauri::async_runtime::block_on(async move {
                         use tauri_plugin_updater::UpdaterExt;
-                        if let Ok(Some(update)) = handle.updater_builder().check().await {
-                            if let Ok(body) = update.download(|_, _| {}, || {}).await {
-                                let _ = update.install(body);
+                        if let Ok(updater) = handle.updater() {
+                            if let Ok(Some(update)) = updater.check().await {
+                                if let Ok(body) = update.download(|_, _| {}, || {}).await {
+                                    let _ = update.install(body);
+                                }
                             }
                         }
                     });
