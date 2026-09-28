@@ -4,8 +4,13 @@ use tauri_plugin_notification::NotificationExt;
 use url::Url;
 
 const SITE: &str = "https://astra.jitinnair.com";
-const NTFY_WS: &str = "wss://ntfy.jitinnair.com/NTFY_TOPIC_REMOVED/ws";
-const NTFY_AUTH: &str = "NTFY_AUTH_B64_REMOVED=";
+// Push credentials are injected at BUILD time (option_env!) — never committed.
+// Set ASTRA_NTFY_WS (wss://host/topic/ws?auth=<b64>) when compiling; empty = push disabled.
+const NTFY_WS: &str = match option_env!("ASTRA_NTFY_WS") {
+    Some(v) => v,
+    None => "",
+};
+const NTFY_ENABLED: bool = !NTFY_WS.is_empty();
 
 struct PendingNav(Mutex<Option<(String, std::time::Instant)>>);
 
@@ -92,8 +97,10 @@ pub fn run() {
                 }
             }
 
+            // NTFY_WS already carries ?auth=<b64> (injected at build time); if push is
+            // not configured the init script simply never connects.
             let init = include_str!("scripts/ntfy-init.js")
-                .replace("__NTFY_WS_URL__", &format!("{NTFY_WS}?auth={NTFY_AUTH}"));
+                .replace("__NTFY_WS_URL__", NTFY_WS);
                 
             WebviewWindowBuilder::new(app, "main", WebviewUrl::External(SITE.parse().unwrap()))
                 .title("Astra")
@@ -106,6 +113,7 @@ pub fn run() {
             {
                 let handle = app.handle().clone();
                 app.listen("ntfy-message", move |e| {
+                    if !NTFY_ENABLED { return; }
                     let Ok(m) = serde_json::from_str::<NtfyMsg>(e.payload()) else { return };
                     let Some(w) = handle.get_webview_window("main") else { return };
                     let occupied = w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false);

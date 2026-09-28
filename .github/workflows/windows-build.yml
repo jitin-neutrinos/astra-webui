@@ -21,6 +21,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          ASTRA_NTFY_WS: ${{ secrets.ASTRA_NTFY_WS }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Astra Windows ${{ github.ref_name }}"
