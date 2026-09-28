@@ -1,32 +1,34 @@
-# React + TypeScript + Vite
+# Astra
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A personal AI assistant web app — chat interface for the [Hermes Agent](https://github.com/NousResearch/Hermes-Agent) gateway, wrapped as native apps for iOS, Android, and Windows.
 
-Currently, two official plugins are available:
+**Live app:** https://astra.jitinnair.com · **Windows installer:** https://astra-windows.jitinnair.com
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```
+curl.exe -LO https://astra-windows.jitinnair.com/Astra-setup.exe
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## What's here
+
+| Piece | Where | What it is |
+|---|---|---|
+| Web app | `src/`, `server/` | React + Vite + Tailwind frontend; zero-dependency Node server proxying the Hermes gateway (REST + WebSocket), with media transcoding and ntfy push emission |
+| Windows shell | `src-tauri/` | Tauri 2 remote-URL shell: tray, native toasts, `astra://` deep links, auto-updater |
+| iOS wrap | `ios/` | Capacitor wrap of the live site (unsigned IPA for personal sideloading) |
+| Android wrap | `android/` | Capacitor wrap + embedded ntfy WebSocket foreground service for background push |
+
+## Architecture in one line
+
+The server never talks to model providers — it is a stateless, auth-gated proxy to a Hermes gateway (`/api/*`, WS `/api/ws`). All agent state lives in the gateway; the webui is a surface.
+
+## Build
+
+**Web:** `npm ci && npm run build` → serve `dist/` (or run `server/server.mjs`).
+
+**Windows app:** push a tag `win-v*` — GitHub Actions (`.github/workflows/windows-build.yml`) builds the NSIS installer and updater artifacts, published to GitHub Releases, mirrored to `astra-windows.jitinnair.com`.
+
+Push credentials for the desktop build are injected at compile time via the `ASTRA_NTFY_WS` env var (wss URL incl. `?auth=`) — no secrets in source.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
