@@ -169,9 +169,11 @@ pub fn run() {
             tauri::WindowEvent::Focused(true) if window.label() == "main" => {
                 let app = window.app_handle();
                 let state = app.state::<PendingNav>();
-                if let Some((url, at)) = state.0.lock().unwrap().take() {
-                    if at.elapsed() < std::time::Duration::from_secs(90) { 
-                        navigate(app, &url); 
+                // take() drops the lock at this statement's end; navigate() must not run holding it
+                let pending = state.0.lock().unwrap().take();
+                if let Some((url, at)) = pending {
+                    if at.elapsed() < std::time::Duration::from_secs(90) {
+                        navigate(app, &url);
                     }
                 }
             }
