@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
-import { ArrowUp, Square, TriangleAlert, RotateCcw, Copy, Pencil, ChevronDown, Plus, WifiOff, Loader2, CheckCircle2 } from "lucide-react";
+import { ArrowUp, Square, TriangleAlert, RotateCcw, Pencil, ChevronDown, Plus, WifiOff, Loader2, CheckCircle2 } from "lucide-react";
+import { AnimatedCopyButton } from "@/lib/animated-copy";
 import { cn } from "@/lib/utils";
 import { useHermesWS } from "@/lib/hermes-ws";
 import type { EventPayload } from "@/lib/hermes-ws";
@@ -9,7 +10,6 @@ import { parseCommand } from "@/lib/slash-commands";
 import { rowsToTurns, type Turn } from "@/lib/normalize-messages";
 import { extractAttachments } from "@/lib/media-paths";
 import { parseGate, serializeReply, type GateReply } from "./gates/gate-envelope";
-import { copyText } from "@/lib/copy-text";
 import { hasRenderedReq, lastAssistantHasText } from "@/lib/chat-segments";
 import { cleanTitle } from "@/lib/chat-title";
 import { modelSwitchValue } from "@/lib/model-switch";
@@ -1351,10 +1351,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
                     <div className="chat-actions">
                       {m.role === "user" ? (
                         <>
-                          <button type="button" aria-label="Copy message" title="Copy" disabled={!m.content}
-                            onClick={() => void copyText(m.content)}>
-                            <Copy />
-                          </button>
+                          <AnimatedCopyButton text={m.content} />
                           {!isStreaming && (
                             <button type="button" aria-label="Edit message" title="Edit"
                               onClick={() => {
@@ -1368,11 +1365,8 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
                         </>
                       ) : (
                         <>
-                          <button type="button" aria-label="Copy message" title="Copy"
-                            disabled={!m.segments.some((s) => s.kind === "text" && !!s.text)}
-                            onClick={() => void copyText(m.segments.filter((s) => s.kind === "text").map((s) => s.text ?? "").join("\n\n"))}>
-                            <Copy />
-                          </button>
+                          <AnimatedCopyButton
+                            text={m.segments.filter((s) => s.kind === "text").map((s) => s.text ?? "").join("\n\n")} />
                           {!isStreaming && idx === messages.length - 1 && m.segments.length > 0 && !m.segments.some((s) => s.kind === "approval" && s.resolved == null) && (
                             <button type="button" aria-label="Regenerate message" title="Regenerate"
                               onClick={() => retry()}>
