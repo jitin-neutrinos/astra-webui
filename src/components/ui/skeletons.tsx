@@ -38,16 +38,17 @@ function ChatFeedSkeleton() {
 }
 
 // ---- sidebar chats panel: icon row + title bar + timestamp bar
+// Owner: this list's animation is GREY ONLY — no cyan tint.
 function SessionRowSkeleton() {
   return (
     <div className="flex w-full items-start gap-3 rounded-lg border border-transparent p-2.5" aria-hidden="true">
-      <Skeleton className="mt-0.5 h-4 w-4 shrink-0" />
+      <Skeleton grey className="mt-0.5 h-4 w-4 shrink-0" />
       <div className="min-w-0 flex-1 space-y-1.5">
         <div className="flex items-center gap-1.5">
-          <Skeleton className="h-3.5 w-12 rounded" />
-          <Skeleton className="h-3.5 flex-1" />
+          <Skeleton grey className="h-3.5 w-12 rounded" />
+          <Skeleton grey className="h-3.5 flex-1" />
         </div>
-        <Skeleton className="h-2.5 w-28" />
+        <Skeleton grey className="h-2.5 w-28" />
       </div>
     </div>
   );

@@ -189,6 +189,9 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   // history is in flight for this chat: show skeleton feed instead of the
   // empty-state welcome (which flashed before history landed)
   const [histLoading, setHistLoading] = useState(false);
+  // which chat's history the rendered messages belong to — navigating to a
+  // DIFFERENT chat clears the screen so its skeleton shows while fetching
+  const loadedSidRef = useRef<string | null>(null);
   // Synchronous mirror of the transcript. Handlers that must know what is ALREADY on screen
   // (replayed gate / answer frames) cannot wait for React's next render: the live frame and
   // the resume-reply replay of the same request land back-to-back.
@@ -758,8 +761,11 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
 
   useEffect(() => {
     async function loadHistory() {
-      if (!storedSessionId) { setMessages([]); setHistLoading(false); return; }
+      if (!storedSessionId) { setMessages([]); setHistLoading(false); loadedSidRef.current = null; return; }
       setHistLoading(true);
+      // switching to another chat: drop the previous chat's rows immediately so
+      // the skeleton holds the space (owner: chat switch shows loading state)
+      if (loadedSidRef.current !== storedSessionId) setMessages([]);
       try {
         const res = await fetch(`/api/hx/sessions/${encodeURIComponent(storedSessionId)}/messages?order=oldest&limit=500`);
         if (!res.ok) {
@@ -802,6 +808,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
           return [...rows.slice(0, ri + 1).map(toMsg), ...live.slice(li + 1)];
         });
         setErrorBanner("");
+        loadedSidRef.current = sid;
       } catch {
         setErrorBanner("Failed to load history.");
         if (liveSidRef.current !== storedSessionId) setMessages([]);

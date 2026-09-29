@@ -418,8 +418,13 @@ body { background: var(--color-void); }
 .ast-sk { position: relative; overflow: hidden; background: rgba(148,163,184,.10); border-radius: 6px; }
 .ast-sk::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, rgba(34,211,238,.10), transparent); animation: ast-sk-sweep 1.6s infinite; }
 @keyframes ast-sk-sweep { 100% { transform: translateX(100%); } }
+/* grey-only shimmer for the sidebar chats skeleton (owner: no blue there).
+   MUST sit after the base .ast-sk rules — same specificity, later rule wins. */
+.ast-sk-grey::after { background: linear-gradient(90deg, transparent, rgba(148,163,184,.18), transparent); }
 [data-theme="light"] .ast-sk { background: rgba(15,23,42,.08); }
 [data-theme="light"] .ast-sk::after { background: linear-gradient(90deg, transparent, rgba(3,105,161,.09), transparent); }
+/* light grey AFTER light cyan so the override wins in light mode too */
+[data-theme="light"] .ast-sk-grey::after { background: linear-gradient(90deg, transparent, rgba(15,23,42,.12), transparent); }
 @media (prefers-reduced-motion: reduce) { .ast-sk::after { animation: none; } }
 
 /* ---- AI components (21st.dev elements- port): tool-call + chain-of-thought.
