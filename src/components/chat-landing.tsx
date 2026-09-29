@@ -1241,7 +1241,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
                   return null;
                 }
                 return (
-                <div key={m.id} className={m.isSysNote ? "chat-sys-note" : "flex items-start gap-3"}>
+                <div key={m.id} data-msg-id={m.id} className={m.isSysNote ? "chat-sys-note" : "flex items-start gap-3"}>
                 {m.isSysNote ? (
                   <>◈ {m.content}</>
                 ) : m.role === "assistant" ? (
