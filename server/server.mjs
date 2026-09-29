@@ -2,6 +2,7 @@
 import { createServer, request } from "node:http";
 import { handleHxProxy, handleWsUpgrade, forwardToUpstream, broadcastFrame } from "./hermes-proxy.mjs";
 import { getPendingGate, markGateAnswered } from "./ntfy-notify.mjs";
+import { handleTranscode } from "./transcode.mjs";
 
 import { createHmac, timingSafeEqual, randomBytes } from "node:crypto";
 import { readFile, stat, appendFile, mkdir } from "node:fs/promises";
@@ -254,6 +255,16 @@ const server = createServer(async (req, res) => {
     });
     req.pipe(proxyReq);
     return;
+  }
+
+  if (path === "/api/media/transcode") {
+    if (req.method !== "GET" && req.method !== "HEAD") { res.writeHead(405, { allow: "GET, HEAD" }); return res.end(); }
+    // handleTranscode authenticates FIRST (astra_session cookie) — 401 before any path is read.
+    return handleTranscode(req, res, validToken).catch((err) => {
+      console.error("[transcode]", err?.message || err);
+      if (!res.headersSent) { res.writeHead(500, { "content-type": "application/json" }); res.end('{"error":"transcode failed"}'); }
+      else res.destroy();
+    });
   }
 
   if (path.startsWith("/api/hx/")) {
