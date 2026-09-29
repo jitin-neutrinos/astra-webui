@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { ArrowLeft, Search, MessageSquare, ChevronLeft, ChevronRight, AlertCircle } from "lucide-react";
 import { sourcesParam, sourceLabel } from "@/lib/source-filter";
+import { cleanTitle } from "@/lib/chat-title";
 
 interface SessionMeta {
   id: string;
@@ -66,6 +67,16 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
   useEffect(() => {
     setOffset(0);
   }, [filterModal]);
+
+  // The open chat was (re)named - live auto-name or rename: patch its row in place.
+  useEffect(() => {
+    const on = (e: Event) => {
+      const { id, title } = (e as CustomEvent<{ id?: string; title?: string }>).detail || {};
+      if (id && title) setSessions((rows) => rows.map((r) => (r.id === id ? { ...r, title } : r)));
+    };
+    window.addEventListener("astra:chat-title", on);
+    return () => window.removeEventListener("astra:chat-title", on);
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -133,7 +144,7 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
               <MessageSquare className={"w-4 h-4 mt-0.5 shrink-0 " + (isActive ? "text-cyanx" : "text-slate-500 group-hover:text-cyanx/70")} />
               <div className="min-w-0 flex-1">
                 <span className="inline-block px-1 py-0.5 rounded text-[9px] font-mono uppercase tracking-wider bg-white/5 text-slate-500 mr-1.5">{sourceLabel((s as any).source || "")}</span>
-                <div className="text-sm text-slate-300 truncate">{s.title || s.preview || "Untitled session"}</div>
+                <div className="text-sm text-slate-300 truncate">{cleanTitle(s.title) || s.preview || "Untitled session"}</div>
                 <div className="text-[10px] text-slate-500 font-mono mt-1">
                   {typeof s.last_activity_at === "number" ? new Date(s.last_activity_at * 1000).toLocaleString() : ""}
                 </div>

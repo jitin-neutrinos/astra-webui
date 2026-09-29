@@ -10,6 +10,8 @@ import { rowsToTurns, type Turn } from "@/lib/normalize-messages";
 import { extractAttachments } from "@/lib/media-paths";
 import { parseGate, serializeReply, type GateReply } from "./gates/gate-envelope";
 import { copyText } from "@/lib/copy-text";
+import { hasRenderedReq, lastAssistantHasText } from "@/lib/chat-segments";
+import { cleanTitle } from "@/lib/chat-title";
 import { modelSwitchValue } from "@/lib/model-switch";
 import AITextLoading from "@/components/ui/ai-text-loading";
 import { getFileKind, } from "@/lib/session-files";
@@ -51,25 +53,13 @@ const nextId = () => `m${++idSeq}-${Date.now()}`;
 
 const BATCH_MS = 40; // ~30-60ms batching window for both text deltas and step ops
 
-function ChatTitle({ storedSessionId, onTitleChange }: { storedSessionId: string | null; onTitleChange?: (title: string) => void }) {
-  const [title, setTitle] = useState<string>("");
+// Controlled: ChatLanding owns the name. It is fed by the initial fetch, the gateway's live
+// `session.title` event (auto-naming), a refresh after reconnect, and renames made here - and
+// ChatLanding mirrors it to the browser tab (document.title) and the sidebar.
+function ChatTitle({ storedSessionId, title, onTitleChange }: { storedSessionId: string | null; title: string; onTitleChange: (title: string) => void }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!storedSessionId) { setTitle(""); return; }
-    fetch(`/api/hx/sessions/${encodeURIComponent(storedSessionId)}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (!cancelled && d?.title) setTitle(d.title); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [storedSessionId]);
-
-  // Report the live title up so the browser tab (document.title) can mirror it —
-  // fires on initial fetch and on every rename.
-  useEffect(() => { onTitleChange?.(title); }, [title, onTitleChange]);
 
   useEffect(() => {
     if (editing) inputRef.current?.select();
@@ -79,13 +69,17 @@ function ChatTitle({ storedSessionId, onTitleChange }: { storedSessionId: string
     const next = draft.trim();
     setEditing(false);
     if (!next || next === title || !storedSessionId) return;
-    setTitle(next);
+    const prev = title;
+    onTitleChange(next);
     try {
-      await fetch(`/api/hx/sessions/${encodeURIComponent(storedSessionId)}`, {
+      const res = await fetch(`/api/hx/sessions/${encodeURIComponent(storedSessionId)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: next }),
       });
+      // Server truth wins: it may normalise the name, or refuse it (e.g. already in use).
+      if (!res.ok) onTitleChange(prev);
+      else { const d = await res.json().catch(() => null); if (d?.title) onTitleChange(d.title); }
     } catch { /* keep local title; server may be unreachable */ }
   };
 
@@ -190,12 +184,23 @@ function thinkingOf(payload: any): string {
 }
 
 export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, onNewChat, onOpenNav, isActiveView = true }: { resetSignal: number, selectedSessionId: string | null, onSessionChange?: (id: string | null) => void, onNewChat?: () => void, onOpenNav?: () => void, isActiveView?: boolean }) {
-  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [messages, setMessagesState] = useState<ChatMsg[]>([]);
+  // Synchronous mirror of the transcript. Handlers that must know what is ALREADY on screen
+  // (replayed gate / answer frames) cannot wait for React's next render: the live frame and
+  // the resume-reply replay of the same request land back-to-back.
+  const messagesRef = useRef<ChatMsg[]>([]);
+  const setMessages = useCallback((u: ChatMsg[] | ((m: ChatMsg[]) => ChatMsg[])) => {
+    const next = typeof u === "function" ? u(messagesRef.current) : u;
+    messagesRef.current = next;
+    setMessagesState(next);
+  }, []);
   const [bgItems, setBgItems] = useState<BgItem[]>([]);
   const bgItemsRef = useRef(bgItems);
   useEffect(() => { bgItemsRef.current = bgItems; }, [bgItems]);
   const [openBgRef, setOpenBgRef] = useState<string | null>(null); // msg id to scroll to after "open" click
-  const [chatTitle, setChatTitle] = useState(""); // mirrors ChatTitle's fetched/renamed title, for the browser tab
+  const [chatTitle, setChatTitle] = useState(""); // the open chat's name: header + browser tab (document.title)
+  const chatTitleRef = useRef("");
+  useEffect(() => { chatTitleRef.current = chatTitle; }, [chatTitle]);
   const [lightbox, setLightbox] = useState<{ open: boolean; url: string; alt: string }>({ open: false, url: "", alt: "" });
   const [input, setInput] = useState("");
   const [dragOver, setDragOver] = useState(false);
@@ -217,12 +222,27 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   const reducedMotion = usePrefersReducedMotion();
 
   const liveSidRef = useRef<string | null>(null);
-  const titledRef = useRef(false);
   const activeIdRef = useRef<string | null>(null);
   const prevStoredSidRef = useRef<string | null>(null);
   // Mirrors the hook's storedSessionId for handlers declared above the hook call
   // (handleEvent runs before useHermesWS returns).
   const storedSidRef = useRef<string | null>(null);
+  // Name updates: initial fetch, live `session.title` events, post-reconnect refresh, renames.
+  // Ignored unless they belong to the chat open NOW (a late reply for a chat the user already
+  // left must not rename this one); applied names fan out to the sidebar list.
+  const applyTitle = useCallback((sid: string | null, raw: unknown, allowEmpty = false) => {
+    const t = cleanTitle(raw);
+    if (!sid || sid !== storedSidRef.current || (!t && !allowEmpty)) return;
+    setChatTitle(t);
+    if (t) window.dispatchEvent(new CustomEvent("astra:chat-title", { detail: { id: sid, title: t } }));
+  }, []);
+  const refreshTitle = useCallback((sid: string | null) => {
+    if (!sid) return;
+    fetch(`/api/hx/sessions/${encodeURIComponent(sid)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => applyTitle(sid, d?.title))
+      .catch(() => {});
+  }, [applyTitle]);
   const greetPendingRef = useRef(false);
   const pendingOpsRef = useRef<SegOp[]>([]);
   const opsTimerRef = useRef<number | null>(null);
@@ -449,7 +469,12 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       }
       if (type === "message.complete") {
         const finalText = textOf(payload);
-        if (finalText) { ensureActive(); pushOp({ op: "text-final", text: finalText }, true); }
+        // No live bubble and the newest assistant row already shows this answer: the turn was
+        // settled + re-pulled from history (or the frame replayed) - never paint it twice.
+        if (finalText && !(activeIdRef.current == null && lastAssistantHasText(messagesRef.current, finalText))) {
+          ensureActive(); pushOp({ op: "text-final", text: finalText }, true);
+        }
+        if (!chatTitleRef.current) refreshTitle(storedSidRef.current); // backstop if the title event was missed
       }
       // Link the finishing turn's reply to any bg item that just went done, so the
       // dock row can scroll back to its answer later. The active msg id IS the turn.
@@ -470,6 +495,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     if (type === "message.interim") {
       const interim = textOf(payload);
       if (!interim) return;
+      if (activeIdRef.current == null && lastAssistantHasText(messagesRef.current, interim)) return; // replay
       ensureActive();
       // already_streamed: the gateway delivered these words via message.delta
       // already — seal the streamed segment instead of pushing the text again
@@ -480,6 +506,8 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     }
 
     if (type === "approval") {
+      // Replayed request (resume reply's open_requests): the card is already on screen.
+      if (hasRenderedReq(messagesRef.current, payload?.params?.session_id, payload?.id)) return;
       ensureActive();
       pushOp({ op: "approval", reqId: payload?.id, params: payload?.params || {} }, true);
       return;
@@ -488,6 +516,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     // Generative UI: the agent's clarify tool arrives as a server→client request
     // (method "clarify", srq-* id). Rendered as an interactive question card.
     if (type === "clarify") {
+      if (hasRenderedReq(messagesRef.current, payload?.params?.session_id, payload?.id)) return; // replay
       ensureActive();
       // A gate may ride the single-question param or hide inside a batch
       // questions[] entry (agents routinely use the batch shape) — check both.
@@ -501,6 +530,12 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         return;
       }
       pushOp({ op: "clarify", reqId: payload?.id, params: payload?.params || {} }, true);
+      return;
+    }
+
+    // Auto-naming landed (instant title, then the model's upgrade): header + tab follow live.
+    if (type === "session.title") {
+      if (payload?.session_id && payload.session_id === storedSidRef.current) applyTitle(payload.session_id, payload.title);
       return;
     }
 
@@ -544,7 +579,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       }
       return;
     }
-  }, [ensureActive, pushOp, finalizeActive, resolveApproval, resolveClarify, resolveGate, noteHarness]);
+  }, [ensureActive, pushOp, finalizeActive, resolveApproval, resolveClarify, resolveGate, noteHarness, applyTitle, refreshTitle]);
 
   const { isStreaming, submitPrompt, submitBg, submitSteer, retryConnection, conn, nextRetryIn, interrupt, storedSessionId, setStoredSessionId, sendApprovalResponse, sendServerResponse, sessionInfo, setSessionInfo, rpc, liveSessionId, resetSession } = useHermesWS(handleEvent);
 
@@ -666,6 +701,17 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     onSessionChange?.(storedSessionId);
   }, [storedSessionId, onSessionChange]);
 
+  // Open chat changed: drop the previous chat's name at once, then load this one's.
+  useEffect(() => {
+    setChatTitle("");
+    refreshTitle(storedSessionId);
+  }, [storedSessionId, refreshTitle]);
+
+  // Back online after a drop: an auto-name / rename may have landed while we were away.
+  useEffect(() => {
+    if (conn === "restored") refreshTitle(storedSessionId);
+  }, [conn, storedSessionId, refreshTitle]);
+
   useEffect(() => {
     // Only the chat view owns the URL/title while it's the visible view — when
     // Config/Tracker/Files are open, App.tsx's own effect owns document.title and
@@ -701,14 +747,9 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     }
     prevStoredSidRef.current = storedSessionId;
     if (activeIdRef.current != null) liveSidRef.current = storedSessionId;
-    if (storedSessionId && lastPromptRef.current && !titledRef.current) {
-      fetch(`/api/hx/sessions/${encodeURIComponent(storedSessionId)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: lastPromptRef.current.split("\n")[0].slice(0, 48) }),
-      }).catch(() => {});
-      titledRef.current = true;
-    }
+    // Naming is the gateway's job (instant title -> model upgrade -> live `session.title`).
+    // The old client-side PATCH of the first prompt line wrote a user-provenance title that
+    // outranks the model's, freezing those chats on their first line for good.
   }, [storedSessionId]);
 
   useEffect(() => {
@@ -1028,9 +1069,6 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); }
   };
 
-  const messagesRef = useRef(messages);
-  useEffect(() => { messagesRef.current = messages; }, [messages]);
-
   // Ctrl+O expands the newest collapsed tool block (real key, matches the TUI).
   // Fired only for a bare Ctrl/Cmd+O outside the composer — typing Ctrl+O while
   // focused in the textarea must stay a no-op (reference ChatPageV2 gate).
@@ -1159,7 +1197,6 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       setErrorBanner("");
       activeIdRef.current = null;
       pendingOpsRef.current = [];
-      titledRef.current = false;
       greetPendingRef.current = true;
     }
   }, [resetSignal, resetSession]);
@@ -1238,7 +1275,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
           {empty ? (
             <span className="truncate font-mono text-[10px] uppercase tracking-[0.25em] text-slate-500">new session</span>
           ) : (
-            <ChatTitle storedSessionId={storedSessionId} onTitleChange={setChatTitle} />
+            <ChatTitle storedSessionId={storedSessionId} title={chatTitle} onTitleChange={(t) => applyTitle(storedSessionId, t, true)} />
           )}
         </span>
         <span className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.25em] text-slate-500">

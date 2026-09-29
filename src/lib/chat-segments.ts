@@ -25,6 +25,7 @@ export interface Segment {
   collapsed?: boolean;
   // approval
   reqId?: string;
+  sid?: string; // owning session: (sid, reqId) is a request's identity, the dedupe key
   params?: { session_id?: string; request_id?: string; command?: string; description?: string; choices?: string[] };
   resolved?: string | null;
   // clarify (generative UI question card)
@@ -55,6 +56,48 @@ export type SegOp =
   | { op: "approval"; reqId: string; params: Segment["params"] }
   | { op: "clarify"; reqId: string; params: { questions?: ClarifyQuestion[]; question?: string; choices?: string[]; multi_select?: boolean; answers?: Record<string, string> } }
   | { op: "gate"; reqId: string; params: { env: GateEnvelope } };
+
+// ---- request identity + replay idempotence ---------------------------------
+// A server->client request (approval / clarify / review gate) reaches the client more than
+// once BY DESIGN: the live frame, then the `open_requests` snapshot inside every
+// session.resume reply (reconnect, Android resume, the watchdog probe, a second tab).
+// Cards are never persisted, so a reload showed one - the duplicates were client-side
+// replay. Pushing a card must therefore be idempotent per (session id, request id).
+const isReqSeg = (s: Segment) => s.kind === "approval" || s.kind === "clarify" || s.kind === "gate";
+
+export function reqSidOf(params: unknown): string {
+  const sid = params && typeof params === "object" ? (params as { session_id?: unknown }).session_id : undefined;
+  return typeof sid === "string" ? sid : "";
+}
+
+function reqInSegments(segs: ReadonlyArray<Segment>, reqId: string | undefined, sid: string): boolean {
+  return !!reqId && segs.some((s) => isReqSeg(s) && s.reqId === reqId && (s.sid || "") === sid);
+}
+
+/** True when this request already has a card in the transcript (open OR resolved). */
+export function hasRenderedReq(
+  messages: ReadonlyArray<{ role: string; segments?: Segment[] }>,
+  sid: string | undefined,
+  reqId: string | undefined,
+): boolean {
+  return messages.some((m) => m.role === "assistant" && reqInSegments(m.segments || [], reqId, sid || ""));
+}
+
+/** True when the newest assistant row already renders `text` as one of its text segments. */
+export function lastAssistantHasText(
+  messages: ReadonlyArray<{ role: string; isSysNote?: boolean; segments?: Segment[] }>,
+  text: string,
+): boolean {
+  const want = text.trim();
+  if (!want) return false;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role !== "assistant") return false; // the user spoke since: a new answer is legitimate
+    if (m.isSysNote) continue;
+    return (m.segments || []).some((s) => s.kind === "text" && (s.text || "").trim() === want);
+  }
+  return false;
+}
 
 let segSeq = 0;
 const nextSegId = () => `seg${++segSeq}-${Date.now()}`;
@@ -202,10 +245,12 @@ export function applySegmentOps(segments: Segment[], ops: SegOp[]): Segment[] {
         }
       }
     } else if (op.op === "approval") {
+      if (reqInSegments(out, op.reqId, reqSidOf(op.params))) continue; // replay of a card already on screen
       closeRunningThink(out);
       barrier = true;
-      out.push({ id: nextSegId(), kind: "approval", status: "run", reqId: op.reqId, params: op.params, resolved: null });
+      out.push({ id: nextSegId(), kind: "approval", status: "run", reqId: op.reqId, sid: reqSidOf(op.params) || undefined, params: op.params, resolved: null });
     } else if (op.op === "clarify") {
+      if (reqInSegments(out, op.reqId, reqSidOf(op.params))) continue;
       closeRunningThink(out);
       barrier = true;
       const p = op.params;
@@ -213,10 +258,11 @@ export function applySegmentOps(segments: Segment[], ops: SegOp[]): Segment[] {
         ? p.questions
         : [{ question: p.question || "A question for you", choices: p.choices || [], multi_select: p.multi_select }];
       out.push({
-        id: nextSegId(), kind: "clarify", status: "run", reqId: op.reqId,
+        id: nextSegId(), kind: "clarify", status: "run", reqId: op.reqId, sid: reqSidOf(p) || undefined,
         questions, answers: { ...(p.answers || {}) }, resolved: null,
       });
     } else if (op.op === "gate") {
+      if (reqInSegments(out, op.reqId, reqSidOf(op.params))) continue;
       closeRunningThink(out);
       barrier = true;
       const env = { ...op.params.env };
@@ -234,7 +280,7 @@ export function applySegmentOps(segments: Segment[], ops: SegOp[]): Segment[] {
         }
       }
       out.push({
-        id: nextSegId(), kind: "gate", status: "run", reqId: op.reqId, gate: env, resolved: null,
+        id: nextSegId(), kind: "gate", status: "run", reqId: op.reqId, sid: reqSidOf(op.params) || undefined, gate: env, resolved: null,
         batchQids: ((op.params as any).questions as Array<{ qid?: string }> | undefined)?.map(q => q?.qid).filter((q): q is string => !!q),
       });
     }
