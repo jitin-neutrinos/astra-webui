@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { nextConnState, RESTORED_MS, type ConnEvent, type ConnState } from "./connection-state";
 
 export type EventPayload = { type: string; payload: any; session_id?: string };
 export type SessionInfo = {
@@ -118,8 +119,20 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
   const ws = useRef<WebSocket | null>(null);
   const onEventRef = useRef(onEvent);
   useEffect(() => { onEventRef.current = onEvent; }, [onEvent]);
+  // Wall-clock of the next scheduled reconnect (null = none pending) — powers
+  // the offline banner's countdown. Ref, not state: the banner polls it.
+  const nextRetryAtRef = useRef<number | null>(null);
 
   const [isStreaming, setIsStreaming] = useState(false);
+  const [conn, setConn] = useState<ConnState>("online");
+  const connRef = useRef<ConnState>("online");
+  const bumpConn = useCallback((ev: ConnEvent) => {
+    setConn((prev) => {
+      const next = nextConnState(prev, ev);
+      if (next !== prev) connRef.current = next;
+      return next;
+    });
+  }, []);
   const [storedSessionId, setStoredSessionIdState] = useState<string | null>(readStoredSid);
 
   const [liveSessionId, setLiveSessionIdState] = useState<string | null>(null);
@@ -313,6 +326,8 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
     // the queued-create flush. Bound as socket.onopen (a fresh WebSocket is
     // always CONNECTING) and invoked directly on the already-open reuse path.
     function onSocketOpen(s: WebSocket) {
+      bumpConn({ type: "ws-open" });
+      nextRetryAtRef.current = null;
       // Advertise that this client answers server→client requests (clarify cards,
       // approvals, …). Without it the gateway fails these fast instead of asking.
       s.send(JSON.stringify({ jsonrpc: "2.0", id: ownRpcId(), method: "client.capabilities", params: { server_requests: true } }));
@@ -331,11 +346,14 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
     }
 
     // R3: auto-reconnect forever with backoff; immediate on online/visible.
+    // nextRetryAtRef feeds the banner's countdown (read on the render tick).
     function scheduleReconnect() {
       if (disposed || reconnectTimer !== null) return;
       const delay = nextReconnectDelay(reconnectAttempt++);
+      nextRetryAtRef.current = Date.now() + delay;
       reconnectTimer = window.setTimeout(() => {
         reconnectTimer = null;
+        nextRetryAtRef.current = null; // dial in flight — countdown stops at 0
         connect();
       }, delay);
     }
@@ -370,6 +388,7 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
         // R3: invalidate the dead socket so the reuse path can't bind it, then
         // reconnect. No setIsStreaming(false) here — turn truth is the gateway's.
         if (ws.current === s) { ws.current = null; sharedSocket = null; }
+        bumpConn({ type: "ws-closed" });
         onEventRef.current({ type: "ws.closed", payload: {} });
         scheduleReconnect();
       };
@@ -571,6 +590,8 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
         }
 
         if (type === "proxy.status") {
+          if (payload.state === "reconnecting") bumpConn({ type: "proxy-reconnecting" });
+          else if (payload.state === "online") bumpConn({ type: "proxy-online" });
           // R7: "reconnecting" no longer drops isStreaming — a blip must not
           // unlock the composer mid-turn; R5 restores truth after resume.
           // ("tick" frames are plain liveness; chat-landing maps states to the banner.)
@@ -641,7 +662,7 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
       document.removeEventListener("visibilitychange", onVisible);
       ws.current = null;
     };
-  }, [setLiveSessionId, flushPendingPrompt, clearWatchdog, armWatchdog, sendSessionCreate]);
+  }, [setLiveSessionId, flushPendingPrompt, clearWatchdog, armWatchdog, sendSessionCreate, bumpConn]);
 
   const submitPrompt = useCallback((content: string) => {
     if (!ws.current || ws.current.readyState !== 1) {
@@ -654,6 +675,10 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
       setIsStreaming(true);
       return;
     }
+    // Mid-turn submit while the session is live: queue, never refuse or
+    // interrupt (Claude-Code-style). The gateway's busy path holds the text as
+    // a run-after envelope; plain sends pass queued:true to pin that mode.
+    const midTurn = isStreamingRef.current && liveIdRef.current;
     setIsStreaming(true);
     // Arm in BOTH branches: the fresh-session path used to arm only inside
     // flushPendingPrompt (after the create reply), leaving a window with no
@@ -666,7 +691,7 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
       sendSessionCreate();
     } else {
       armWatchdog();
-      rpc("prompt.submit", { session_id: liveIdRef.current || storedSessionId, text: content, surface: "webui" })
+      rpc("prompt.submit", { session_id: liveIdRef.current || storedSessionId, text: content, surface: "webui", ...(midTurn ? { queued: true } : {}) })
         .catch((err: any) => {
           setIsStreaming(false);
           onEventRef.current({
@@ -703,6 +728,78 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
     setIsStreaming(false);
   }, [liveSessionId, storedSessionId, clearWatchdog]);
 
+  // /bg <text> — explicit run-after: identical to a mid-turn queue but works
+  // even when the turn looks idle from the client (server may still be finishing).
+  // Gateway contract: queued:true forces the queue path, never steer/interrupt.
+  const submitBg = useCallback((content: string) => {
+    const sid = liveIdRef.current || readStoredSid();
+    if (!sid) { onEventRef.current({ type: "message.error", payload: { error: "No session yet — send a message first." } }); return Promise.resolve(false); }
+    return rpc("prompt.submit", { session_id: sid, text: content, surface: "webui", queued: true })
+      .then(() => true)
+      .catch((err: any) => {
+        onEventRef.current({ type: "message.error", payload: { error: err?.message || err?.data?.message || String(err) } });
+        return false;
+      });
+  }, [rpc]);
+
+  // /steer <text> — live course-correction. The gateway's busy path reads the
+  // GLOBAL display.busy_input_mode, so: set steer → submit → restore previous.
+  // config.set busy → _write_config_key(display.busy_input_mode) takes effect
+  // on the very next submit (config is mtime-cached, re-read per call).
+  const steerBusyLock = useRef(false);
+  const submitSteer = useCallback(async (content: string) => {
+    const sid = liveIdRef.current || readStoredSid();
+    if (!sid) { onEventRef.current({ type: "message.error", payload: { error: "No session yet — send a message first." } }); return false; }
+    if (!ws.current || ws.current.readyState !== 1) {
+      onEventRef.current({ type: "message.error", payload: { error: "Can't steer while offline — retry when connected." } });
+      return false;
+    }
+    if (steerBusyLock.current) return false; // a steer bridge is already in flight
+    steerBusyLock.current = true;
+    try {
+      const prev = await rpc("config.get", { key: "busy" }).then((r: any) => (typeof r?.value === "string" ? r.value : "interrupt")).catch(() => "interrupt");
+      if (prev !== "steer") await rpc("config.set", { key: "busy", value: "steer" }).catch(() => {});
+      try {
+        await rpc("prompt.submit", { session_id: sid, text: content, surface: "webui" });
+        return true;
+      } finally {
+        if (prev !== "steer") await rpc("config.set", { key: "busy", value: prev }).catch(() => {});
+      }
+    } catch (err: any) {
+      onEventRef.current({ type: "message.error", payload: { error: err?.message || err?.data?.message || String(err) } });
+      return false;
+    } finally {
+      steerBusyLock.current = false;
+    }
+  }, [rpc]);
+
+  // Banner Retry: tear the socket down and dial fresh. Success (open + any
+  // frame) flips the banner to "Connected" via bumpConn; failure schedules the
+  // normal backoff reconnect loop, so Retry is always safe to press.
+  const retryConnection = useCallback(() => {
+    bumpConn({ type: "retry-begin" });
+    const dead = !ws.current || ws.current.readyState > 1;
+    if (dead) {
+      sharedSocket = null;
+      // The reconnect effect owns dialing; force it by closing whatever remains.
+      try { ws.current?.close(); } catch { /* noop */ }
+      // If nothing was left to close (already null), the effect's liveness
+      // timer or online/visible listener dials next; poke visibility as a belt.
+      if (!ws.current) {
+        window.dispatchEvent(new Event("online"));
+      }
+    } else {
+      // Socket alive: the offline signal came from the upstream proxy leg —
+      // nothing the browser can dial; confirm via a cheap RPC round-trip.
+      rpc("config.get", { key: "mtime" })
+        .then(() => bumpConn({ type: "retry-ok" }))
+        .catch(() => {
+          bumpConn({ type: "retry-fail" });
+          try { ws.current?.close(); } catch { /* noop */ }
+        });
+    }
+  }, [bumpConn, rpc]);
+
   const resetSession = useCallback(() => {
     // Do NOT interrupt the old session's turn: New Chat must never stop work
     // still running in a chat the user is leaving (it also poisoned the old
@@ -723,5 +820,20 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
     clearQueuedCap();
   }, [setStoredSessionId, setLiveSessionId, setSessionInfo, clearWatchdog, clearQueuedCap]);
 
-  return { isStreaming, submitPrompt, interrupt, storedSessionId, setStoredSessionId, liveSessionId, sendApprovalResponse, sendServerResponse, rpc, sessionInfo, setSessionInfo, resetSession };
+  // Milliseconds until the next scheduled reconnect (0 when a dial is live or
+  // none is pending) — the offline banner's countdown source.
+  const nextRetryIn = useCallback(() => {
+    const at = nextRetryAtRef.current;
+    return at === null ? 0 : Math.max(0, at - Date.now());
+  }, []);
+
+  // Restored → online: the banner starts its slide-out at RESTORED_MS; flip the
+  // state right after so the element unmounts as the animation finishes.
+  useEffect(() => {
+    if (conn !== "restored") return;
+    const t = window.setTimeout(() => bumpConn({ type: "restored-timeout" }), RESTORED_MS + 220);
+    return () => window.clearTimeout(t);
+  }, [conn, bumpConn]);
+
+  return { isStreaming, submitPrompt, submitBg, submitSteer, retryConnection, conn, nextRetryIn, interrupt, storedSessionId, setStoredSessionId, liveSessionId, sendApprovalResponse, sendServerResponse, rpc, sessionInfo, setSessionInfo, resetSession };
 }

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
-import { ArrowUp, Square, TriangleAlert, RotateCcw, Copy, Pencil, ChevronDown, Plus } from "lucide-react";
+import { ArrowUp, Square, TriangleAlert, RotateCcw, Copy, Pencil, ChevronDown, Plus, WifiOff, Loader2, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useHermesWS } from "@/lib/hermes-ws";
 import type { EventPayload } from "@/lib/hermes-ws";
+import { RESTORED_MS, fmtSeconds, type ConnState } from "@/lib/connection-state";
+import { parseCommand } from "@/lib/slash-commands";
 import { rowsToTurns, type Turn } from "@/lib/normalize-messages";
 import { extractAttachments } from "@/lib/media-paths";
 import { parseGate, serializeReply, type GateReply } from "./gates/gate-envelope";
@@ -25,7 +27,9 @@ import type { CatalogPayload } from "./composer-controls";
 
 // Source: ~/.hermes/plugins/astra-brand/dashboard/dist/astra-core.js CHAT_TUI_COMMANDS
 // (the TUI's registered slash commands — submitted as plain prompt text, same as the terminal).
+// /bg and /steer are CLIENT-side (parsed in send()): queue-after and live steer.
 const TUI_COMMANDS = [
+  "/bg", "/steer",
   "/model", "/reasoning", "/new", "/sessions", "/compact", "/usage",
   "/skills", "/tools", "/memory", "/approvals", "/help", "/stop", "/status",
 ];
@@ -122,6 +126,60 @@ function ChatTitle({ storedSessionId, onTitleChange }: { storedSessionId: string
 
 function textOf(payload: any): string {
   return payload?.delta?.text ?? payload?.text ?? payload?.rendered ?? "";
+}
+
+// Dynamic connection banner: offline → live retry countdown + manual Retry;
+// restored → green "Connected" that auto-dismisses (RESTORED_MS) and slides
+// away on the next frame drop. Glassmorphic, both themes (see .conn-banner CSS).
+function ConnectionBanner({ state, onRetry, nextRetryIn }: { state: ConnState; onRetry: () => void; nextRetryIn: () => number }) {
+  const [tick, setTick] = useState(0);
+  const [leaving, setLeaving] = useState(false);
+  // Countdown refresh: 250ms while offline is smooth and cheap.
+  useEffect(() => {
+    if (state !== "offline") return;
+    const t = window.setInterval(() => setTick((n) => n + 1), 250);
+    return () => window.clearInterval(t);
+  }, [state]);
+  // Auto-dismiss the restored confirmation.
+  useEffect(() => {
+    if (state !== "restored") { setLeaving(false); return; }
+    const t = window.setTimeout(() => setLeaving(true), RESTORED_MS);
+    return () => window.clearTimeout(t);
+  }, [state]);
+  if (state === "online") return null;
+
+  const offline = state === "offline";
+  return (
+    <div role="status" aria-live="polite"
+      className={cn("conn-banner", leaving && "conn-banner-leave")}
+      data-state={state}>
+      {offline ? (
+        <>
+          <WifiOff className="conn-banner-icon" aria-hidden="true" />
+          <span className="conn-banner-title">Connection lost</span>
+          <span className="conn-banner-sub">
+            Auto-retrying in <span className="conn-banner-mono">{fmtSeconds(nextRetryIn())}</span> — your messages queue in the background.
+          </span>
+          <button type="button" className="conn-banner-retry" onClick={onRetry}>
+            <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" /> Retry now
+          </button>
+        </>
+      ) : state === "checking" ? (
+        <>
+          <Loader2 className="conn-banner-icon spin" aria-hidden="true" />
+          <span className="conn-banner-title">Reconnecting…</span>
+          <span className="conn-banner-sub">Holding your messages until the line is back.</span>
+        </>
+      ) : (
+        <>
+          <CheckCircle2 className="conn-banner-icon ok" aria-hidden="true" />
+          <span className="conn-banner-title">Connected</span>
+          <span className="conn-banner-sub">Back online — queued messages are on their way.</span>
+        </>
+      )}
+      {tick < 0 && <span hidden>{tick}</span>}
+    </div>
+  );
 }
 function thinkingOf(payload: any): string {
   return payload?.delta?.thinking ?? payload?.text ?? payload?.rendered ?? "";
@@ -291,11 +349,10 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     const { type, payload } = ev;
 
     if (type === "proxy.status") {
-      // Only real transport states touch the banner. The 25s keepalive "tick"
-      // must NOT fall through to the else-branch and silently wipe a live error
-      // message the user is still reading.
-      if (payload.state === "reconnecting") setErrorBanner("Connection lost. Reconnecting...");
-      else if (payload.state === "online") setErrorBanner("");
+      // Connection state is owned by the dynamic ConnectionBanner (conn state
+      // machine in hermes-ws); the errorBanner keeps only non-transport errors.
+      // The 25s keepalive "tick" must NOT fall through to the else-branch and
+      // silently wipe a live error message the user is still reading.
       return;
     }
 
@@ -463,7 +520,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     }
   }, [ensureActive, pushOp, finalizeActive, resolveApproval, resolveClarify, resolveGate, noteHarness]);
 
-  const { isStreaming, submitPrompt, interrupt, storedSessionId, setStoredSessionId, sendApprovalResponse, sendServerResponse, sessionInfo, setSessionInfo, rpc, liveSessionId, resetSession } = useHermesWS(handleEvent);
+  const { isStreaming, submitPrompt, submitBg, submitSteer, retryConnection, conn, nextRetryIn, interrupt, storedSessionId, setStoredSessionId, sendApprovalResponse, sendServerResponse, sessionInfo, setSessionInfo, rpc, liveSessionId, resetSession } = useHermesWS(handleEvent);
 
   // Live sub-agent roster for this chat (gateway subagent.list/subagent.tail),
   // merged with harness-CLI rows (claude/opencode/agy …) detected from tool events.
@@ -637,7 +694,27 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   const send = async (raw?: string, opts?: { silent?: boolean }) => {
     let finalText = (raw ?? input).trim();
     if (!finalText && attachments.length === 0) return;
-    if (isStreaming || attachments.some((a) => a.status === "uploading")) return;
+    // Attachments can't ride a steer/bg command — they need their own turn.
+    if (attachments.some((a) => a.status === "uploading")) return;
+
+    // Slash-command routing (always allowed — even mid-stream):
+    //   /bg    → queue as a run-after envelope (never disturbs the live turn)
+    //   /steer → live course-correction injected after the current action
+    const cmd = parseCommand(finalText);
+    if (cmd.kind !== "plain" && attachments.length === 0 && !opts?.silent) {
+      setInput("");
+      setSlashOpen(false);
+      setMessages((m) => [...m, { id: nextId(), role: "user", content: finalText, ts: Date.now() }]);
+      const okSent = cmd.kind === "bg" ? await submitBg(cmd.text) : await submitSteer(cmd.text);
+      if (okSent) {
+        setMessages((m) => [...m, {
+          id: nextId(), role: "assistant", segments: [], isStreaming: false, isSysNote: true,
+          content: cmd.kind === "bg" ? "Queued — will run when the current reply finishes" : "Steered — course correction sent into the live turn",
+        } as any]);
+      }
+      taRef.current?.focus();
+      return;
+    }
 
     const files = attachments.map(a => ({ name: a.file.name, path: a.serverPath! }));
     if (files.length > 0) {
@@ -668,9 +745,13 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       setMessages((m) => [...m, { id: nextId(), role: "user", content: extracted.text, ts: Date.now(), files: extracted.files }]);
     }
 
-    const id = nextId();
-    activeIdRef.current = id;
-    setMessages((m) => [...m, { id, role: "assistant", segments: [], isStreaming: true, ts: Date.now() }]);
+    // Mid-turn plain sends stay visible and queue server-side (queued:true from
+    // the hook). A fresh assistant bubble is only opened when no turn is live.
+    if (!activeIdRef.current && !isStreaming) {
+      const id = nextId();
+      activeIdRef.current = id;
+      setMessages((m) => [...m, { id, role: "assistant", segments: [], isStreaming: true, ts: Date.now() }]);
+    }
     setAtBottom(true);
     setTimeout(() => submitPrompt(finalText), 0);
     taRef.current?.focus();
@@ -1006,11 +1087,13 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     <main className="relative flex h-full min-w-0 flex-1 flex-col">
       <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">{liveAnnouncement}</p>
       {errorBanner && (() => {
+        // Transport states are the ConnectionBanner's job; the red banner keeps
+        // only actionable non-transport errors (auth, model backend, failures).
         let cat = "Action";
         let title = errorBanner;
-        if (errorBanner.includes("Connection") || errorBanner.includes("reconnect")) cat = "Connection";
-        else if (errorBanner.includes("Unauthorized") || errorBanner.includes("log in")) cat = "Auth";
+        if (errorBanner.includes("Unauthorized") || errorBanner.includes("log in")) cat = "Auth";
         else if (errorBanner.includes("503") || errorBanner.includes("Agent backend")) cat = "Model";
+        else if (errorBanner.includes("Connection") || errorBanner.includes("reconnect") || errorBanner.includes("contact")) cat = "Connection";
 
         return (
           <div role="alert" className="absolute top-0 left-0 right-0 z-20 flex items-center justify-center gap-2 bg-[var(--surface-overlay)] py-1.5 px-4 text-xs font-mono border-b border-red-500/20">
@@ -1023,6 +1106,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
           </div>
         );
       })()}
+      <ConnectionBanner state={conn} onRetry={retryConnection} nextRetryIn={nextRetryIn} />
 
       <header className={cn("relative z-10 flex items-center justify-between border-b border-white/[0.07] px-3 py-3 lg:px-6 lg:min-h-[77px] lg:py-0", errorBanner && "mt-7")}>
         <span className="flex min-w-0 items-center gap-2">
@@ -1152,7 +1236,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
           onDrop={(e) => {
             e.preventDefault();
             setDragOver(false);
-            if (isStreaming) return;
+            // Attachments queue for the NEXT turn — allowed mid-stream too.
             const files = Array.from(e.dataTransfer?.files ?? []);
             if (files.length) setAttachments((a) => [...a, ...filesToAttachments(files)]);
           }}
@@ -1196,19 +1280,18 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
               ))}
             </div>
           )}
-  <textarea
+          <textarea
             ref={taRef}
             rows={1}
             value={input}
             onChange={(e) => onInputChange(e.target.value)}
             onKeyDown={onKey}
-            placeholder={isStreaming ? "Astra is replying…" : empty ? "Message Astra… (/ for commands)" : "Reply…"}
+            placeholder={isStreaming ? "Reply, /bg to queue, /steer to correct…" : empty ? "Message Astra… (/ for commands)" : "Reply…"}
             aria-label="Message Astra"
             className="chat-composer-input"
           />
           <div className="chat-composer-bar">
             <ComposerControls
-              disabled={isStreaming}
               attachments={attachments}
               setAttachments={setAttachments}
               sessionInfo={sessionInfo}
@@ -1218,25 +1301,25 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
               onPickEffort={onPickEffort}
               onRemoveAttachment={removeAttachment}
             />
-            <span className="chat-composer-hint">Enter to send · Shift+Enter for newline</span>
-            {isStreaming ? (
+            <span className="chat-composer-hint">{isStreaming ? "Sends queue after the reply · Shift+Enter newline" : "Enter to send · Shift+Enter for newline"}</span>
+            {isStreaming && (
               <button
                 type="button" onClick={stop}
                 aria-label="Stop generation"
-                className="chat-send bg-red-500/20 text-red-400 hover:bg-red-500/30"
+                title="Stop generation"
+                className="chat-send chat-send-stop"
               >
                 <Square className="h-3.5 w-3.5" fill="currentColor" />
               </button>
-            ) : (
-              <button
-                type="button" onClick={() => void send()}
-                disabled={!input.trim() || attachments.some(a => a.status === "uploading")}
-                aria-label="Send message"
-                className="chat-send"
-              >
-                <ArrowUp className="h-4 w-4" strokeWidth={1.8} />
-              </button>
             )}
+            <button
+              type="button" onClick={() => void send()}
+              disabled={!input.trim() || attachments.some(a => a.status === "uploading")}
+              aria-label={isStreaming ? "Queue message" : "Send message"}
+              className="chat-send"
+            >
+              <ArrowUp className="h-4 w-4" strokeWidth={1.8} />
+            </button>
           </div>
         </div>
       </div>

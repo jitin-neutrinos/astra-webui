@@ -2,7 +2,7 @@ import { sourcesParam, sourceLabel } from "./source-filter.ts";
 
 function eq(a: any, b: any, msg: string) { if (a !== b) throw new Error(msg + ': ' + a + ' !== ' + b); }
 
-eq(sourcesParam('all'), '', 'all');
+eq(sourcesParam('all'), 'webui,telegram,cli,tui', 'all');
 eq(sourcesParam('web'), 'webui', 'web');
 eq(sourcesParam('telegram'), 'telegram', 'telegram');
 eq(sourcesParam('terminal'), 'cli,tui', 'terminal');

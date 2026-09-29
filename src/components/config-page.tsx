@@ -158,7 +158,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
 
       // Handle Undo
       if (undoState?.timer) clearTimeout(undoState.timer);
-      const timer = setTimeout(() => setUndoState(null), 5000);
+      const timer = window.setTimeout(() => setUndoState(null), 5000);
       setUndoState({ path, oldVal, newVal: val, timer });
 
     } catch (e) {

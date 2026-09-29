@@ -181,9 +181,47 @@ body { background: var(--color-void); }
 .chat-chip:active, .chat-suggest:active, .chat-approval-btn:active, .chat-step:active, .chat-head-link:active, .chat-popout-chip:active { transform: scale(0.96); }
 .chat-send[disabled] { opacity: .35; cursor: default; }
 .chat-send[disabled]:hover { background: var(--color-cyanx); }
+/* stop button beside an always-live send: red-tinted, same geometry */
+.chat-send-stop { background: rgba(239,68,68,.16); color: #f87171; margin-left: -4px; }
+.chat-send-stop:hover { background: rgba(239,68,68,.28); color: #fca5a5; }
+[data-theme="light"] .chat-send-stop { background: rgba(220,38,38,.10); color: var(--color-redx); }
+[data-theme="light"] .chat-send-stop:hover { background: rgba(220,38,38,.2); }
+
+/* ---- dynamic connection banner (offline / checking / restored) ---- */
+.conn-banner { position: absolute; top: 0; left: 0; right: 0; z-index: 30; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 8px 16px; font: 400 12.5px/1.3 var(--font-sans); border-bottom: 1px solid; animation: conn-in 220ms cubic-bezier(0.23,1,0.32,1) both; }
+.conn-banner[data-state="offline"] { background: rgba(6,19,31,.92); border-color: rgba(239,68,68,.25); color: #fca5a5; backdrop-filter: blur(12px); }
+.conn-banner[data-state="checking"] { background: rgba(6,19,31,.92); border-color: rgba(251,191,36,.25); color: #fde68a; backdrop-filter: blur(12px); }
+.conn-banner[data-state="restored"] { background: rgba(6,19,31,.92); border-color: rgba(52,211,153,.3); color: #6ee7b7; backdrop-filter: blur(12px); }
+.conn-banner-title { font-weight: 600; white-space: nowrap; }
+.conn-banner-sub { color: var(--color-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.conn-banner-mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.conn-banner-icon { width: 15px; height: 15px; flex: none; }
+.conn-banner-icon.ok { color: #34d399; }
+.conn-banner-icon.spin { animation: conn-spin 1s linear infinite; }
+.conn-banner-retry { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 9999px; border: 1px solid rgba(248,113,113,.4); background: rgba(239,68,68,.14); color: #fca5a5; font: 500 12px/1 var(--font-sans); cursor: pointer; white-space: nowrap; transition: background-color 150ms ease, border-color 150ms ease, transform 120ms cubic-bezier(0.23,1,0.32,1); }
+.conn-banner-retry:hover { background: rgba(239,68,68,.24); border-color: rgba(248,113,113,.6); }
+.conn-banner-retry:active { transform: scale(0.96); }
+.conn-banner-leave { animation: conn-out 200ms cubic-bezier(0.77,0,0.175,1) both; }
+@keyframes conn-in { from { opacity: 0; transform: translateY(-100%); } to { opacity: 1; transform: translateY(0); } }
+@keyframes conn-out { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-100%); } }
+@keyframes conn-spin { to { transform: rotate(360deg); } }
+/* light theme: paper surfaces, warm-scaled status colors */
+[data-theme="light"] .conn-banner[data-state="offline"] { background: rgba(250,247,240,.94); border-color: rgba(220,38,38,.28); color: #b91c1c; }
+[data-theme="light"] .conn-banner[data-state="checking"] { background: rgba(250,247,240,.94); border-color: rgba(180,83,9,.3); color: #92400e; }
+[data-theme="light"] .conn-banner[data-state="restored"] { background: rgba(250,247,240,.94); border-color: rgba(5,150,105,.32); color: #047857; }
+[data-theme="light"] .conn-banner-sub { color: #5b6472; }
+[data-theme="light"] .conn-banner-icon.ok { color: #059669; }
+[data-theme="light"] .conn-banner-retry { border-color: rgba(220,38,38,.35); background: rgba(220,38,38,.08); color: #b91c1c; }
+[data-theme="light"] .conn-banner-retry:hover { background: rgba(220,38,38,.16); border-color: rgba(220,38,38,.5); }
+/* narrow screens: stack title+sub, keep retry on the row */
+@media (max-width: 640px) {
+  .conn-banner { flex-wrap: wrap; gap: 6px 10px; justify-content: flex-start; padding: 8px 12px; }
+  .conn-banner-sub { white-space: normal; }
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .chat-suggest, .chat-menu, .chat-popout, .chat-step-body, .chat-think-text, .chat-turn { animation: none; }
+  .chat-suggest, .chat-menu, .chat-popout, .chat-step-body, .chat-think-text, .chat-turn, .conn-banner { animation: none; }
+  .conn-banner-icon.spin { animation-duration: 2s; }
   .chat-send, .chat-composer, .chat-suggest { transition-duration: 0.01ms; }
 }
 
