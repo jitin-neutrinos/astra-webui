@@ -144,7 +144,17 @@ export async function handleHxProxy(req, res) {
 }
 
 // WS Relay
-const browserSockets = new Set();
+// CONTRACT (multi-client, plan R6b): the proxy never evicts, dedupes or caps
+// concurrent sockets per session — every connection is an independent
+// broadcast client. The page renders ONLY from frames on its own socket; the
+// Android background service consumes frames natively and never injects them
+// into the WebView, so two legs of one session can never double-render.
+// Sid-tagged sockets (?sid=<session_id> on the upgrade URL — background chat
+// leg) get ONLY message.complete / message.error events for that session
+// (+ keepalive pings/status), so a backgrounded phone is not woken by every
+// broadcast delta. Envelope shape upstream: {method:"event",params:{type,
+// session_id,...}} — the filter keys off params.type, NOT msg.method.
+const browserSockets = new Map(); // socket -> { sid: string|null, lastPong: number }
 let upstreamWs = null;
 let reconnecting = false;
 let backoffStep = 0;
@@ -188,15 +198,35 @@ function broadcastStatus(state) {
     params: { type: "proxy.status", payload: { state } }
   });
   const frame = encodeFrame(msg, { opcode: 0x1, masked: false });
-  for (const s of browserSockets) {
+  for (const s of browserSockets.keys()) {
     try { s.write(frame); } catch { /* ignore */ }
   }
 }
 
 export function broadcastFrame(payload, opcode) {
   const frame = encodeFrame(payload, { opcode, masked: false });
-  for (const s of browserSockets) {
-    try { s.write(frame); } catch { /* ignore */ }
+  // Filter leg: only when at least one sid-tagged socket is connected do we
+  // pay for a JSON.parse. Untagged sockets are relayed opaquely (unchanged).
+  let passForTagged = false;
+  let parsedSid = null;
+  let anyTagged = false;
+  for (const info of browserSockets.values()) if (info.sid) { anyTagged = true; break; }
+  if (anyTagged && opcode === 0x1) {
+    try {
+      const msg = JSON.parse(payload.toString());
+      // Envelope: {method:"event", params:{type, session_id, payload}}
+      const p = msg && msg.params;
+      if (p && (p.type === "message.complete" || p.type === "message.error")) {
+        passForTagged = true;
+        parsedSid = p.session_id;
+      }
+    } catch { /* unparseable: tagged sockets just don't get this frame */ }
+  }
+  for (const [s, info] of browserSockets) {
+    if (info.sid && opcode === 0x1) {
+      if (!passForTagged || parsedSid !== info.sid) continue;
+    }
+    try { s.write(frame); } catch { /* error handler destroys the socket */ }
   }
 }
 
@@ -213,15 +243,26 @@ function startTick() {
   }, TICK_MS);
 }
 
-// R1: proxy→browser protocol pings (server-role = unmasked). One timer per
-// socket, cleared on close; browser pong replies die in the socket decoder.
-function startBrowserPing(socket) {
-  const t = setInterval(() => {
-    try { socket.write(encodeFrame(PING_PAYLOAD, { opcode: 0x9, masked: false })); }
-    catch { clearInterval(t); }
+// R8: ONE shared 25s interval pings every browser socket and reaps zombies.
+// A browser always pongs invisibly; a socket that hasn't ponged since the
+// previous round is dead (Doze-killed WebView, gone NAT) — terminate() it so
+// the close fires and the slot is reclaimed. The 30s no-pong threshold means
+// a socket survives exactly one missed round before eviction.
+let pingTimer = null;
+function startSharedPingLoop() {
+  if (pingTimer) return;
+  pingTimer = setInterval(() => {
+    const now = Date.now();
+    for (const [s, info] of browserSockets) {
+      if (now - info.lastPong > 30_000) {
+        console.log(`ws-reap peers=${browserSockets.size - 1}${info.sid ? ` sid=${info.sid}` : ""} at=${new Date().toISOString()}`);
+        try { s.destroy(); } catch { /* gone */ }
+        continue;
+      }
+      try { s.write(encodeFrame(PING_PAYLOAD, { opcode: 0x9, masked: false })); }
+      catch { try { s.destroy(); } catch { /* gone */ } }
+    }
   }, PING_MS);
-  socket.on("close", () => clearInterval(t));
-  return t;
 }
 
 async function connectUpstream() {
@@ -360,6 +401,10 @@ function scheduleReconnect() {
 
 // Called by server.js on upgrade
 export function handleWsUpgrade(req, socket, head) {
+  const url = new URL(req.url, "http://x");
+  const sid = url.searchParams.get("sid") || null; // ?sid= → filtered background leg
+  const info = { sid, lastPong: Date.now() };
+  
   const key = req.headers["sec-websocket-key"];
   const accept = generateAcceptKey(key);
   socket.write(
@@ -369,10 +414,11 @@ export function handleWsUpgrade(req, socket, head) {
     `Sec-WebSocket-Accept: ${accept}\r\n\r\n`
   );
   
-  browserSockets.add(socket);
+  browserSockets.set(socket, info);
+  console.log(`ws-open peers=${browserSockets.size}${sid ? ` sid=${sid}` : ""} at=${new Date().toISOString()}`);
   connectUpstream();
   startTick(); // R2: global 25s liveness broadcast
-  startBrowserPing(socket); // R1: keep the CF tunnel from idle-killing this leg
+  startSharedPingLoop(); // R1: shared pings + zombie reap, keeps CF tunnel alive on every leg
   
   if (reconnecting) {
     // let them know right away
@@ -390,6 +436,8 @@ export function handleWsUpgrade(req, socket, head) {
     }
     if (frame.opcode === 0x8) {
       socket.destroy();
+    } else if (frame.opcode === 0xA) {
+      info.lastPong = Date.now();
     } else if (frame.opcode === 0x9) {
       try { socket.write(encodeFrame(frame.payload, { opcode: 0xA, masked: false })); } catch {}
     } else if (frame.opcode === 0x1) {
@@ -406,6 +454,7 @@ export function handleWsUpgrade(req, socket, head) {
 
   socket.on("close", () => {
     browserSockets.delete(socket);
+    console.log(`ws-close peers=${browserSockets.size}${sid ? ` sid=${sid}` : ""} at=${new Date().toISOString()}`);
   });
   
   socket.on("error", () => {

@@ -11,6 +11,7 @@ import { join, resolve, sep } from "node:path";
 const CACHE_DIR = process.env.ASTRA_TRANSCODE_DIR || join(tmpdir(), "astra-transcode-cache");
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
 const MAX_INPUT_BYTES = 2 * 1024 * 1024 * 1024; // 2 GiB — ffmpeg input cap
+const MAX_CACHE_BYTES = parseInt(process.env.ASTRA_TRANSCODE_MAX_BYTES || String(512 * 1024 * 1024), 10);
 const FFMPEG_TIMEOUT_MS = 1000 * 60 * 10; // kill runaway jobs
 
 // Extensions this endpoint serves, and what each becomes.
@@ -34,6 +35,34 @@ function evictStale() {
       if (now - statSync(f).mtimeMs > CACHE_TTL_MS) { try { unlinkSync(f); } catch { /* gone */ } }
     }
   } catch { /* cache dir unreadable — ignore */ }
+}
+
+// LRU size cap: when total cache size exceeds MAX_CACHE_BYTES, delete
+// oldest-atime files until back under. `protect` (the file just written) is
+// never evicted here — a single oversized output is removed by the caller's
+// failure path instead, so a >cap file can never 410 its own request.
+function evictSize(protect) {
+  try {
+    let total = 0;
+    const files = [];
+    for (const f of readdirCache()) {
+      try {
+        const st = statSync(f);
+        total += st.size;
+        files.push({ path: f, atimeMs: st.atimeMs, size: st.size });
+      } catch { /* gone */ }
+    }
+    if (total <= MAX_CACHE_BYTES) return;
+    files.sort((a, b) => a.atimeMs - b.atimeMs); // oldest first
+    for (const f of files) {
+      if (total <= MAX_CACHE_BYTES) break;
+      if (protect && f.path === protect) continue;
+      try {
+        unlinkSync(f.path);
+        total -= f.size;
+      } catch { /* gone */ }
+    }
+  } catch { /* ignore */ }
 }
 
 function readdirCache() {
@@ -132,6 +161,7 @@ export async function handleTranscode(req, res, validToken) {
         inflight.set(output, job);
         evictStale();
         await job;
+        evictSize(output);
       }
     }
   } catch (err) {
