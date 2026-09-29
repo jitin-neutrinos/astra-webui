@@ -33,3 +33,8 @@ pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .audit-evidence/
+
+# local debris (untracked tooling artifacts)
+jevnav-session.trace*.jsonl
+arxiv_cache/
+*.apk
