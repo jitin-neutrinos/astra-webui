@@ -208,6 +208,17 @@ function ThoughtRow({ seg }: { seg: Segment }) {
     setStepOpen(keyRef.current, next);
   };
 
+  // Cap-height scroll region: while streaming, follow the tail so the newest
+  // thought text stays visible — but ONLY while the reader is already at the
+  // bottom (scrolling up to read stops the auto-follow).
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!running || !el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+    if (nearBottom) el.scrollTop = el.scrollHeight;
+  }, [seg.text, running]);
+
   return (
     <AiToolCall
       name="Thinking"
@@ -225,7 +236,7 @@ function ThoughtRow({ seg }: { seg: Segment }) {
         )}
       </AiToolCallHeader>
       <AiToolCallContent>
-        <div className="chat-think-text whitespace-pre-wrap">{seg.text}</div>
+        <div ref={bodyRef} className="chat-think-text whitespace-pre-wrap">{seg.text}</div>
       </AiToolCallContent>
     </AiToolCall>
   );
