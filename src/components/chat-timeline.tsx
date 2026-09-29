@@ -17,6 +17,7 @@ import {
   AiToolCallInput,
   AiToolCallOutput,
   AiToolCallError,
+  AiToolCallFields,
 } from "./ui/ai-tool-call";
 import type { ToolCallState } from "./ui/ai-tool-call";
 
@@ -157,6 +158,7 @@ function formatDur(ms?: number) {
 
 import { stepOpen, setStepOpen, hashKey } from "../lib/step-prefs";
 import { describeTool } from "../lib/tool-identity";
+import { describeInput, describeOutput, excerpt } from "../lib/tool-io";
 import {
   FileText,
   Lightbulb,
@@ -238,8 +240,9 @@ function ThoughtRow({ seg }: { seg: Segment }) {
       className="bg-transparent border-0 ai-thought"
     >
       <AiToolCallHeader>
+        <span className="chat-step-preview truncate">{excerpt(seg.text, 70)}</span>
         {seg.durationMs != null && (
-          <span className="chat-step-dur ml-1 shrink-0 font-mono text-[10px] text-[var(--color-brandtext)]">
+          <span className="chat-step-dur shrink-0 font-mono text-[10px] text-[var(--color-brandtext)]">
             {formatDur(seg.durationMs)}
           </span>
         )}
@@ -280,11 +283,9 @@ function BundleToolRow({ seg, onToggleTool }: { seg: Segment; onToggleTool: (seg
   else if (seg.exitCode != null && seg.exitCode !== 0) state = "error";
   else state = "completed";
 
-  let parsedInput: Record<string, unknown> | undefined;
-  try {
-    const v = JSON.parse(seg.argsText || "");
-    if (v && typeof v === "object" && !Array.isArray(v)) parsedInput = v;
-  } catch { /* non-JSON args → render raw */ }
+  // Human-readable fields (owner 2026-09-29): labeled rows, not raw JSON.
+  const inFields = describeInput(seg.label, seg.argsText, info.kind === "terminal" ? seg.command : undefined);
+  const outFields = describeOutput(seg.label, seg.resultText);
 
   return (
     <AiToolCall
@@ -297,8 +298,9 @@ function BundleToolRow({ seg, onToggleTool }: { seg: Segment; onToggleTool: (seg
       <AiToolCallHeader>
         {info.kind === "mcp" && <span className="chat-step-kind">MCP</span>}
         {info.kind === "skill" && <span className="chat-step-kind">SKILL</span>}
+        {info.kind === "browser" && <span className="chat-step-kind">WEB</span>}
         {!!meta && <span className="chat-step-preview truncate">{meta}</span>}
-        {dur && <span className={cn("chat-step-dur ml-1 shrink-0 font-mono text-[10px]", seg.status === "run" ? "text-cyanx" : "text-[var(--color-brandtext)]")}>{dur}</span>}
+        {dur && <span className={cn("chat-step-dur shrink-0 font-mono text-[10px]", seg.status === "run" ? "text-cyanx" : "text-[var(--color-brandtext)]")}>{dur}</span>}
         {seg.status === "done" && seg.exitCode != null && seg.exitCode !== 0 && <span className="chat-step-exit">exit {seg.exitCode}</span>}
       </AiToolCallHeader>
       <AiToolCallContent>
@@ -309,12 +311,13 @@ function BundleToolRow({ seg, onToggleTool }: { seg: Segment; onToggleTool: (seg
           </div>
         ) : (
           <>
-            {(info.input || seg.argsText) && (
-              <AiToolCallInput input={parsedInput ?? { raw: info.input || seg.argsText }} />
-            )}
+            <AiToolCallInput input={{ __fields: inFields }} />
             {!!seg.resultText && (
               <AiToolCallOutput>
-                <pre className="chat-term-out" tabIndex={0}>{long ? seg.resultText.slice(0, 3000) + "\n…" : prettyPrint(seg.resultText)}</pre>
+                <AiToolCallFields label="Output" fields={outFields} />
+                {outFields.length === 0 && long && (
+                  <pre className="chat-term-out" tabIndex={0}>{seg.resultText!.slice(0, 3000) + "\n…"}</pre>
+                )}
                 {long && (
                   <button type="button" className="chat-term-expand" onClick={() => { if (!open) toggle(); }} title="Expand full output (Ctrl+O)">
                     Ctrl+O to expand
@@ -330,10 +333,6 @@ function BundleToolRow({ seg, onToggleTool }: { seg: Segment; onToggleTool: (seg
       )}
     </AiToolCall>
   );
-}
-
-function prettyPrint(text: string): string {
-  try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; }
 }
 
 export function usePrefersReducedMotion() {

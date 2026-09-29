@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "../../lib/utils";
+import { describeInput, type IOField } from "../../lib/tool-io";
 
 export type ToolCallState =
   | "pending"
@@ -163,14 +164,19 @@ function AiToolCallHeader({ children, className }: AiToolCallHeaderProps) {
       )}
     >
       <div className="ai-plate shrink-0">{icon ?? <Wrench className="size-3.5" />}</div>
-      <div className="flex min-w-0 flex-1 items-center gap-2">
+      <div className="flex min-w-0 flex-1 items-center gap-2 ai-head-left">
         <span className="chat-step-label">{name}</span>
         <span className={cn("shrink-0", stateConfig.className)}>
           {stateConfig.icon}
           {stateConfig.label}
         </span>
       </div>
-      {children}
+      {/* Right meta cluster (owner 2026-09-29): description + duration + exit
+          ALWAYS hug the right edge on every card type — the old layout let
+          short previews float mid-card. */}
+      <div className="flex min-w-0 items-center gap-2 ai-head-right shrink-[2]">
+        {children}
+      </div>
       <ChevronDown
         className={cn(
           "size-3.5 shrink-0 text-[var(--color-muted)] transition-transform duration-200",
@@ -197,28 +203,54 @@ function AiToolCallContent({ children, className }: AiToolCallContentProps) {
   );
 }
 
+// Human-readable input/output rows (owner 2026-09-29): expanding a card shows
+// labeled key-value fields ("Query", "Command", "Find → Replace with") instead
+// of raw machine JSON. Long values get their own capped scroll region.
+function AiToolCallFields({ label, fields, err }: { label: string; fields: IOField[]; err?: boolean }) {
+  if (!fields.length) return null;
+  return (
+    <div data-slot="ai-tool-call-fields" className="space-y-1.5">
+      <span className={cn("ai-io-label", err && "err")}>{label}</span>
+      <dl className="ai-io-fields">
+        {fields.map((f, i) => (
+          <div key={i} className="ai-io-row">
+            <dt className="ai-io-key" title={f.key}>{f.key}</dt>
+            <dd className={cn("ai-io-val", f.mono && "mono", f.long && "tall")}
+              title={f.mono ? f.value : undefined}>
+              {f.long ? f.value : (f.value.length > 240 ? f.value.slice(0, 240) + "…" : f.value)}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
 interface AiToolCallInputProps {
   input: Record<string, unknown>;
   className?: string;
 }
 
 function AiToolCallInput({ input, className }: AiToolCallInputProps) {
-  const formattedJson = React.useMemo(
-    () => JSON.stringify(input, null, 2),
-    [input],
-  );
+  // Accept either the new fields shape or a legacy object (rendered as fields).
+  const fields = React.useMemo(() => {
+    const maybe = input as unknown as { __fields?: IOField[] };
+    if (maybe && typeof maybe === "object" && Array.isArray(maybe.__fields)) return maybe.__fields;
+    return describeInput(undefined, safeJson(input), undefined);
+  }, [input]);
 
   return (
     <div
       data-slot="ai-tool-call-input"
       className={cn("space-y-1.5", className)}
     >
-      <span className="ai-io-label">Input</span>
-      <pre className="chat-term-args" tabIndex={0}>
-        {formattedJson}
-      </pre>
+      <AiToolCallFields label="Input" fields={fields} />
     </div>
   );
+}
+
+function safeJson(v: unknown): string {
+  try { return JSON.stringify(v) ?? ""; } catch { return ""; }
 }
 
 interface AiToolCallOutputProps {
@@ -264,4 +296,5 @@ export {
   AiToolCallInput,
   AiToolCallOutput,
   AiToolCallError,
+  AiToolCallFields,
 };
