@@ -11,16 +11,19 @@ const config: CapacitorConfig = {
   server: {
     url: 'https://astra.jitinnair.com',
     cleartext: false
-  },
-  plugins: {
-    // Root cause of the padded bands: Capacitor's core SystemBars pads the whole
-    // window by the bar heights AND zeroes the insets, so EdgeToEdge's themed
-    // overlays got height 0 and the bare window background showed instead.
-    // Disable that padding; EdgeToEdge insets the WebView by exactly the bar
-    // heights and paints the theme colour behind the bars.
-    SystemBars: { insetsHandling: 'disable' },
-    EdgeToEdge: { backgroundColor: '#0a0a0f' }
-  },
+  }
+  // NO plugins block — and @capawesome/capacitor-android-edge-to-edge-support is
+  // UNINSTALLED. Its load() margin-applier shrank the WebView by the bar heights
+  // (704px of an 848px screen) and painted two flat color strips behind the
+  // bars — that was the "top and bottom padding" the owner kept reporting.
+  // Capacitor core SystemBars in its DEFAULT `css` insetsHandling mode does the
+  // right thing: the WebView fills the screen edge-to-edge, insets pass through
+  // to the page (WebView >= 140 + viewport-fit=cover => env(safe-area-inset-*)
+  // are real), and it injects --safe-area-inset-* vars. The web layout pads
+  // only the interactive chrome (.app-shell) so the theme background extends
+  // under both bars. Bar icon contrast is set from the web via SystemBars
+  // setStyle (src/native/shell-theme.ts).
+  ,
   ios: {
     // WKWebView contentInset handling for notch/home-indicator safe areas
     contentInset: 'automatic'

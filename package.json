@@ -17,8 +17,6 @@
     "@capacitor/ios": "^8.5.2",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/status-bar": "^8.0.3",
-    "@capawesome/capacitor-android-edge-to-edge-support": "^8.0.8",
-    "@capawesome/capacitor-navigation-bar": "^8.0.2",
     "@capgo/capacitor-native-biometric": "^8.6.11",
     "@types/dompurify": "^3.0.5",
     "@vidstack/react": "^1.15.6",

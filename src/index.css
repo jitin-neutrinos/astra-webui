@@ -109,10 +109,30 @@
 html { color-scheme: dark; }
 body { background: var(--color-void); }
 
+/* Native (Capacitor) full-bleed: the WebView fills the screen and the system
+   bars float OVER the page. These vars (0 in browsers) pad only the
+   INTERACTIVE chrome so nothing tappable hides under a bar, while the theme
+   background extends under both bars — no flat color strips, no app box. */
+:root {
+  --native-inset-top: 0px;
+  --native-inset-bottom: 0px;
+}
+
 /* shell root: dvh so composer + sidebar bottoms stick to the real viewport
    (100vh overhangs on mobile browsers with collapsing URL bars) */
-.app-shell { height: 100vh; padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--kb, 0px)); box-sizing: border-box; }
+.app-shell { height: 100vh; padding-top: var(--native-inset-top); padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--kb, 0px)); box-sizing: border-box; }
 @supports (height: 100dvh) { .app-shell { height: 100dvh; } }
+
+/* Non-chat page headers live inside .app-shell — covered by the shell's top pad. */
+
+/* Overlay layers that ESCAPE the shell's padding must inset themselves:
+   the sidebar drawer (top..bottom, both modes) and the chat header/composer
+   rails (their shells already inset via .app-shell, but the drawer is
+   position:fixed). Keep backgrounds full-bleed where the layer is a surface,
+   and only pad where tappable content sits. */
+@media (max-width: 1023px) {
+  aside#astra-sidebar { padding-top: var(--native-inset-top); padding-bottom: var(--native-inset-bottom); box-sizing: border-box; }
+}
 
 /* ---- chat replica (ported from astra.css / ChatPageV2, retinted) ---- */
 /* shape system: outer containers 16px, floating panels 14px, inner cards 12px, interactive pills 9999px */

@@ -1,18 +1,15 @@
 import { Capacitor } from '@capacitor/core';
 
 // Registry access (Capacitor.Plugins.*) instead of static JS wrappers:
-// @capacitor/status-bar was never installed (it sat in the missing-deps list
-// while this module was tree-shaken — see index.css notes). The native modules
-// ARE compiled into the APK (capacitor.build.gradle), and the bridge exposes
-// them by plugin name. Same pattern android-resume.ts uses for NativeNtfy.
-// Static imports here would fail the web build (vite resolves every reachable
-// import) — this file must keep building for the BROWSER bundle too.
+// static imports here would fail the web build (vite resolves every reachable
+// import) — this file must keep building for the BROWSER bundle too. The
+// native modules ARE compiled into the APK and the bridge exposes them by
+// plugin name. Same pattern android-resume.ts uses for NativeNtfy.
 const Plugins: any = (Capacitor as any).Plugins;
 
 function plugin(name: string): any {
   return Plugins?.[name] ?? {};
 }
-
 
 // One-shot layout telemetry so bar/padding bugs are diagnosed from real device
 // numbers instead of guesses. Native shell only; POSTs to /api/diag.
@@ -29,34 +26,24 @@ async function reportLayout(tag: string) {
       const r = el.getBoundingClientRect();
       return [Math.round(r.top), Math.round(r.bottom), Math.round(r.height)];
     };
-    const chain = (x: number, y: number) => {
-      let el: Element | null = document.elementFromPoint(x, y);
-      const out: string[] = [];
-      while (el && out.length < 6) {
-        out.push(`${(String((el as HTMLElement).className || '') || el.tagName).slice(0, 36)}:${getComputedStyle(el).backgroundColor}`);
-        el = el.parentElement;
-      }
-      return out;
-    };
     const root = document.documentElement;
-    const vv = window.visualViewport;
-    let e2e: any = null;
-    try { e2e = await plugin('EdgeToEdge').getInsets?.(); } catch { /* optional */ }
+    const rootStyle = getComputedStyle(root);
     const w = window.innerWidth, h = window.innerHeight;
     await fetch('/api/diag', {
       method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        tag, ver: '1.2.x',
-        win: [w, h], vv: vv ? [Math.round(vv.width), Math.round(vv.height), Math.round(vv.offsetTop)] : null,
+        tag, ver: '1.4.0',
+        win: [w, h], vv: window.visualViewport ? [Math.round(window.visualViewport.width), Math.round(window.visualViewport.height), Math.round(window.visualViewport.offsetTop)] : null,
         screen: [screen.width, screen.height], dpr: window.devicePixelRatio,
-        env, e2e,
-        kb: getComputedStyle(root).getPropertyValue('--kb').trim(),
-        theme: root.getAttribute('data-theme') || 'dark',
-        htmlBg: getComputedStyle(root).backgroundColor, bodyBg: getComputedStyle(document.body).backgroundColor,
-        bodyPad: [getComputedStyle(document.body).paddingTop, getComputedStyle(document.body).paddingBottom],
+        env,
+        nativeTop: rootStyle.getPropertyValue('--native-inset-top').trim(),
+        nativeBottom: rootStyle.getPropertyValue('--native-inset-bottom').trim(),
+        sysTop: rootStyle.getPropertyValue('--safe-area-inset-top').trim(),
+        sysBottom: rootStyle.getPropertyValue('--safe-area-inset-bottom').trim(),
         shell: rect(document.querySelector('.app-shell')),
-        shellPadB: getComputedStyle(document.querySelector('.app-shell') || document.body).paddingBottom,
-        top: chain(w / 2, 2), topBelow: chain(w / 2, 60), bottom: chain(w / 2, h - 2), bottomAbove: chain(w / 2, h - 60),
+        shellPad: [getComputedStyle(document.querySelector('.app-shell') || document.body).paddingTop, getComputedStyle(document.querySelector('.app-shell') || document.body).paddingBottom],
+        header: rect(document.querySelector('.app-shell header')),
+        theme: root.getAttribute('data-theme') || 'dark',
         ua: navigator.userAgent.slice(-60),
       }),
     });
@@ -66,15 +53,36 @@ async function reportLayout(tag: string) {
 export async function initShellTheme() {
   if (!Capacitor.isNativePlatform()) return;
 
-  // Native EdgeToEdge insets the WebView by exactly the bar heights (app stays
-  // inside the usable area, no CSS padding) and paints these colours behind
-  // the status + navigation bars.
-  await plugin('EdgeToEdge').enable?.().catch?.(() => {});
+  // ---- native insets ----------------------------------------------------
+  // Full-bleed contract: the WebView fills the screen (no native margins — the
+  // capawesome EdgeToEdge margin-applier that boxed the app is gone), the
+  // system bars float OVER the page, and only the interactive chrome insets
+  // itself via --native-inset-*. Values come from Capacitor core SystemBars'
+  // injected --safe-area-inset-* vars (css insetsHandling mode); env() is the
+  // fallback for older WebViews where the vars never appear.
+  const root = document.documentElement;
+  let lastTop = '', lastBottom = '';
+  const applyInsets = () => {
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:fixed;visibility:hidden';
+    document.body.appendChild(probe);
+    const readVar = (name: string, envName: string) => {
+      const injected = getComputedStyle(root).getPropertyValue(name).trim();
+      if (injected) return injected;
+      probe.style.setProperty('padding-top', `env(${envName}, 0px)`);
+      return getComputedStyle(probe).paddingTop;
+    };
+    const top = readVar('--safe-area-inset-top', 'safe-area-inset-top');
+    const bottom = readVar('--safe-area-inset-bottom', 'safe-area-inset-bottom');
+    probe.remove();
+    if (top !== lastTop) { lastTop = top; root.style.setProperty('--native-inset-top', top); }
+    if (bottom !== lastBottom) { lastBottom = bottom; root.style.setProperty('--native-inset-bottom', bottom); }
+  };
 
-  // ---- edge sampling ---------------------------------------------------
-  // The bars must read as a continuation of whatever the app paints at its very
-  // top / bottom edge (login glow, header, composer...), not a guessed theme
-  // token. Sample the real composited background there and hand it to the bars.
+  // ---- bar icon contrast + GateActivity theme ----------------------------
+  // Bar BACKGROUND is now the page itself (body background extends under both
+  // bars). Only the ICON contrast is set natively, from SystemBars setStyle:
+  // DARK style names a dark background (light icons), LIGHT the reverse.
   const parse = (c: string): [number, number, number, number] | null => {
     const m = c.match(/rgba?\(([^)]+)\)/);
     if (!m) return null;
@@ -82,6 +90,12 @@ export async function initShellTheme() {
     if (p.length < 3 || p.some((n) => Number.isNaN(n))) return null;
     return [p[0], p[1], p[2], p.length > 3 ? p[3] : 1];
   };
+  // Sample what the PAGE paints behind each bar: the top edge of the html
+  // canvas (body background + any fixed full-bleed layers like Tubes) and,
+  // for the bottom, the END OF THE DOCUMENT (scrollHeight) — what you see
+  // after scrolling fully down — not the viewport edge, which mid-scroll
+  // shows transient content (a bubble sliding past).
+  const lum = (c: [number, number, number]) => (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
   const sampleAt = (x: number, y: number, fallback: [number, number, number]): [number, number, number] => {
     const layers: [number, number, number, number][] = [];
     let el: Element | null = document.elementFromPoint(x, y);
@@ -97,21 +111,17 @@ export async function initShellTheme() {
     }
     return [Math.round(r), Math.round(g), Math.round(b)];
   };
-  const hex = (c: [number, number, number]) => '#' + c.map((n) => n.toString(16).padStart(2, '0')).join('');
-  const lum = (c: [number, number, number]) => (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
 
-  let lastTop = '', lastBottom = '', lastStyle = '', lastTheme = '';
+  let lastStyle = '', lastTheme = '';
   const updateColors = () => {
-    const root = document.documentElement;
     const isLight = root.getAttribute('data-theme') === 'light';
     const base: [number, number, number] = isLight ? [245, 242, 236] : [10, 10, 15];
     const w = window.innerWidth, h = window.innerHeight;
     const top = sampleAt(w / 2, 1, base);
-    const bottom = sampleAt(w / 2, h - 2, base);
-    const topHex = hex(top), bottomHex = hex(bottom);
-    if (topHex !== lastTop) { lastTop = topHex; try { plugin('EdgeToEdge').setStatusBarColor?.({ color: topHex }); } catch { /* optional */ } }
-    if (bottomHex !== lastBottom) { lastBottom = bottomHex; try { plugin('EdgeToEdge').setNavigationBarColor?.({ color: bottomHex }); } catch { /* optional */ } }
-    // SystemBars style names the BACKGROUND: DARK = light icons, LIGHT = dark icons.
+    // Bottom = document end (what the bar overlays at full scroll), blended
+    // with html/body background (the canvas that shows when the page is short).
+    const docEnd = Math.min(document.documentElement.scrollHeight - 2, h - 2);
+    const bottom = sampleAt(w / 2, docEnd, base);
     const style = (lum(top) + lum(bottom)) / 2 > 0.5 ? 'LIGHT' : 'DARK';
     if (style !== lastStyle) { lastStyle = style; try { plugin('SystemBars').setStyle?.({ style }); } catch { /* optional */ } }
     // Native pop-up (GateActivity) follows the app theme.
@@ -119,7 +129,13 @@ export async function initShellTheme() {
     if (t !== lastTheme) { lastTheme = t; try { plugin('Preferences').set?.({ key: 'astra_theme', value: t }); } catch { /* optional */ } }
   };
 
-  // Wait a tick for CSS to apply, then update
+  applyInsets();
+  // Wait for SystemBars' injected vars + first paint, then keep watching —
+  // the vars can land after onPageCommitVisible + requestApplyInsets.
+  setTimeout(applyInsets, 100);
+  setTimeout(applyInsets, 500);
+  setTimeout(applyInsets, 1500);
+  window.addEventListener('resize', applyInsets);
   requestAnimationFrame(updateColors);
   setTimeout(updateColors, 100);
   setTimeout(updateColors, 500);
@@ -138,7 +154,7 @@ export async function initShellTheme() {
     }
   });
 
-  observer.observe(document.documentElement, {
+  observer.observe(root, {
     attributes: true,
     attributeFilter: ['data-theme']
   });
