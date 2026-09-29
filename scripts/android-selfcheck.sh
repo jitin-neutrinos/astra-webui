@@ -37,11 +37,15 @@ if ! grep -q 'ntfyUrl' "$CONFIG_FILE" && ! grep -qi 'ntfy' src/native/android-re
 fi
 echo "PASS: ntfy wiring present (native shell bootstrap + server /api/ntfy-config)."
 
-if ! grep -q 'navigation-bar' package.json && ! grep -q 'navigation-bar' android/app/build.gradle; then
-    echo "FAIL: navigation-bar plugin not found in package.json or build.gradle"
+# v1.4.0 (5739d44) REMOVED the capawesome navigation-bar/edge-to-edge margin
+# appliers — true full-bleed needs NO native inset handling (any margin-applier
+# re-creates the app box; see commit + skill). The correct assertion is that the
+# plugin stays GONE; reintroducing it regresses full-bleed.
+if grep -q 'capacitor-navigation-bar' package.json android/app/capacitor.build.gradle 2>/dev/null; then
+    echo "FAIL: navigation-bar plugin present — v1.4.0 removed it on purpose (full-bleed)."
     exit 1
 fi
-echo "PASS: navigation-bar plugin registered."
+echo "PASS: navigation-bar plugin correctly absent (v1.4.0 full-bleed architecture)."
 
 SHELL_THEME="src/native/shell-theme.ts"
 if [ ! -f "$SHELL_THEME" ]; then
@@ -85,13 +89,19 @@ fi
 echo "PASS: Biometric checks out."
 echo "All checks PASS."
 
-if ! grep -q 'viewport-fit=cover' "$SHELL_THEME"; then
-    echo "FAIL: $SHELL_THEME does not inject viewport-fit=cover."
+# v1.4.0 (5739d44): viewport-fit=cover lives in index.html (WebView fills the
+# screen; CSS insets only interactive chrome via --native-inset-*). The old
+# shell-theme-injection assertion predates the true-full-bleed rework.
+if ! grep -q 'viewport-fit=cover' index.html; then
+    echo "FAIL: index.html missing viewport-fit=cover (v1.4.0 full-bleed contract)."
     exit 1
 fi
-if ! grep -q 'padding-bottom: env(safe-area-inset-bottom)' "$SHELL_THEME" || ! grep -q 'padding-top: 0' "$SHELL_THEME"; then
-    echo "FAIL: $SHELL_THEME safe-area shape wrong (want bottom-only inset, zero top)."
-
+# v1.4.0: shell-theme no longer pads via env() directly — it MIRRORS the real
+# native insets into --native-inset-top/bottom (read from SystemBars' injected
+# --safe-area-* vars, env() fallback). App shell consumes those. Assert the
+# actual contract: the mirror writes exist.
+if ! grep -q "setProperty('--native-inset-top'" "$SHELL_THEME" || ! grep -q "setProperty('--native-inset-bottom'" "$SHELL_THEME"; then
+    echo "FAIL: $SHELL_THEME missing --native-inset-* mirror (v1.4.0 inset contract)."
     exit 1
 fi
 if grep -q 'viewport-fit=cover' index.html && ! grep -q 'interactive-widget=resizes-content' index.html; then
@@ -100,13 +110,12 @@ if grep -q 'viewport-fit=cover' index.html && ! grep -q 'interactive-widget=resi
 fi
 echo "PASS: Edge-to-edge padding logic checks out."
 
-if ! grep -q 'capawesome-capacitor-android-edge-to-edge-support' android/capacitor.settings.gradle; then
-    echo "FAIL: @capawesome/capacitor-android-edge-to-edge-support not found in capacitor.settings.gradle"
+# v1.4.0 (5739d44) removed BOTH capawesome plugins (EdgeToEdge margin-applier
+# shrank the WebView — the "padding" bug's actual root cause). Assert absence:
+# a reintroduction regresses full-bleed. See the navigation-bar block above.
+if grep -q 'capawesome-capacitor-android-edge-to-edge-support' android/capacitor.settings.gradle package.json 2>/dev/null; then
+    echo "FAIL: capawesome edge-to-edge plugin present — removed on purpose in v1.4.0 (full-bleed)."
     exit 1
 fi
-if [ ! -d "node_modules/@capawesome/capacitor-android-edge-to-edge-support" ]; then
-    echo "FAIL: @capawesome/capacitor-android-edge-to-edge-support cap symlinks do not exist in node_modules"
-    exit 1
-fi
-echo "PASS: edge-to-edge plugin checks out."
+echo "PASS: capawesome plugins correctly absent (full-bleed architecture)."
 exit 0

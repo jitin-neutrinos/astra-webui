@@ -49,17 +49,40 @@ class NtfyPushService : Service() {
     private val NOTIFICATION_ID = 1001
     private var reconnectRunnable: Runnable? = null
 
+    // ---- chat leg (R1): second socket, same service, shared client ----------
+    // Native-owned background chat WS: while the app is backgrounded/dead the
+    // WebView socket is gone (Doze kills it silently), so THIS leg is what
+    // knows a turn finished. Filtered server-side via ?sid= — it receives only
+    // message.complete/message.error for the session the page last pushed.
+    private var chatSocket: WebSocket? = null
+    private var chatAttempt = 0
+    private var chatRunnable: Runnable? = null
+    private var chatPrefRunnable: Runnable? = null
+    private var chatCurrentSid: String? = null
+    private var chatCookie: String? = null
+    private var appForeground = false
+
     override fun onCreate() {
         super.onCreate()
         createNotificationChannels()
         startAsForeground("Connecting…")
         isRunning = true
         connectWebSocket()
+        connectChatLeg()
+        startChatPrefWatch()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // Restart STICKY: after a low-memory kill the service (and pushes) come
         // back on their own instead of dying until the app is reopened.
+        when (intent?.action) {
+            ACTION_APP_FOREGROUND -> appForeground = true
+            ACTION_APP_BACKGROUND -> appForeground = false
+            ACTION_SESSION_CHANGED -> {
+                chatAttempt = 0
+                reconnectChatLeg("session-changed")
+            }
+        }
         return START_STICKY
     }
 
@@ -82,6 +105,16 @@ class NtfyPushService : Service() {
                 }
             )
             manager.deleteNotificationChannel("astra-push")
+            manager.createNotificationChannel(
+                NotificationChannel(
+                    CHANNEL_CHAT, "Astra replies",
+                    NotificationManager.IMPORTANCE_DEFAULT
+                ).apply {
+                    description = "Heads-up when Astra finishes a reply in the background"
+                    lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                    setShowBadge(true)
+                }
+            )
             manager.createNotificationChannel(
                 NotificationChannel(
                     CHANNEL_FG, "Astra connection",
@@ -148,11 +181,7 @@ class NtfyPushService : Service() {
             .header("Authorization", "Basic $auth")
             .build()
 
-        client = OkHttpClient.Builder()
-            .readTimeout(0, TimeUnit.MILLISECONDS)
-            .pingInterval(30, TimeUnit.SECONDS)   // OkHttp-level keepalive: half-dead Wi-Fi/NAT wires get recycled and reconnected instead of hanging
-            .retryOnConnectionFailure(true)
-            .build()
+        client = sharedClient()
 
         webSocket = client?.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
@@ -197,6 +226,169 @@ class NtfyPushService : Service() {
         val r = Runnable { if (isRunning) connectWebSocket() }
         reconnectRunnable = r
         handler.postDelayed(r, delaySec * 1000)
+    }
+
+    // ---------------------------------------------------------------------
+    // Chat leg (R1/R3): native-owned background chat socket
+    // ---------------------------------------------------------------------
+
+    // Live identity the page pushed (sid + stored chat key). Prefs are the
+    // one-way bridge — the page cannot call into a service that may be dead.
+    private fun chatIdentity(): Pair<String, String?> {
+        val prefs = getSharedPreferences("CapacitorStorage", Context.MODE_PRIVATE)
+        val sid = prefs.getString("astra_live_sid", null)
+        val stored = prefs.getString("astra_stored_key", null)
+        return (sid ?: stored ?: "") to stored
+    }
+
+    private fun readSessionCookie(): String? {
+        return try {
+            // HttpOnly cookies ARE visible here (web-plan verified fact).
+            android.webkit.CookieManager.getInstance()
+                .getCookie("https://astra.jitinnair.com")
+                ?.split(";")
+                ?.map { it.trim() }
+                ?.firstOrNull { it.startsWith("astra_session=") }
+        } catch (e: Exception) {
+            Log.e(TAG, "cookie read failed", e)
+            null
+        }
+    }
+
+    // One OkHttp client for both legs (connection pool + threads shared).
+    private fun sharedClient(): OkHttpClient {
+        if (client == null) {
+            client = OkHttpClient.Builder()
+                .readTimeout(0, TimeUnit.MILLISECONDS)
+                .pingInterval(30, TimeUnit.SECONDS)
+                .retryOnConnectionFailure(true)
+                .build()
+        }
+        return client!!
+    }
+
+    private fun connectChatLeg() {
+        if (!isRunning) return
+        val (sid, _) = chatIdentity()
+        val cookie = readSessionCookie()
+        chatCurrentSid = sid
+        chatCookie = cookie
+        if (sid.isEmpty() || cookie.isNullOrEmpty()) {
+            // No identity yet (never logged in / cookie replay pending): stay
+            // quiet, the 60s prefs watcher re-fires once the page pushes one.
+            scheduleChatReconnect("no-identity")
+            return
+        }
+        val request = Request.Builder()
+            .url("wss://astra.jitinnair.com/api/hx/ws?sid=${Uri.encode(sid)}")
+            .header("Cookie", cookie)
+            .build()
+        chatSocket = sharedClient().newWebSocket(request, object : WebSocketListener() {
+            override fun onOpen(ws: WebSocket, response: Response) {
+                Log.d(TAG, "chat WS opened sid=$sid")
+                chatAttempt = 0
+            }
+
+            override fun onMessage(ws: WebSocket, text: String) {
+                handleChatFrame(sid, text)
+            }
+
+            override fun onClosed(ws: WebSocket, code: Int, reason: String) {
+                Log.d(TAG, "chat WS closed: $reason")
+                scheduleChatReconnect("closed")
+            }
+
+            override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
+                val code = response?.code
+                Log.e(TAG, "chat WS failure code=$code", t)
+                // 401/403 = session cookie dead — long backoff; the prefs
+                // watcher re-arms fast once the next in-app login writes one.
+                if (code == 401 || code == 403) chatAttempt = chatAttempt.coerceAtLeast(6)
+                scheduleChatReconnect(if (code == 401 || code == 403) "auth" else "failure")
+            }
+        })
+    }
+
+    private fun scheduleChatReconnect(why: String) {
+        if (!isRunning) return
+        chatRunnable?.let { handler.removeCallbacks(it) }
+        val delaySec = min(300.0, 1.0 * (2.0).pow(chatAttempt)).toLong().coerceAtLeast(1)
+        chatAttempt++
+        Log.d(TAG, "chat reconnect in ${delaySec}s ($why)")
+        val r = Runnable { if (isRunning) connectChatLeg() }
+        chatRunnable = r
+        handler.postDelayed(r, delaySec * 1000)
+    }
+
+    private fun reconnectChatLeg(why: String) {
+        try { chatSocket?.close(1000, "redial: $why") } catch (_: Exception) { /* gone */ }
+        chatSocket = null
+        connectChatLeg()
+    }
+
+    // 60s identity watcher: the page can change chat / re-login while the
+    // service holds a socket with the OLD filter — redial when sid or cookie
+    // changed. Residual staleness window is <= 60s (accepted in the plan).
+    private fun startChatPrefWatch() {
+        val r = object : Runnable {
+            override fun run() {
+                if (!isRunning) return
+                val (sid, _) = chatIdentity()
+                val cookie = readSessionCookie()
+                if (sid != chatCurrentSid || cookie != chatCookie) {
+                    chatAttempt = 0
+                    reconnectChatLeg("identity-changed")
+                }
+                handler.postDelayed(this, 60_000)
+            }
+        }
+        handler.postDelayed(r, 60_000)
+    }
+
+    // R3: message.complete while backgrounded → quiet notification.
+    private fun handleChatFrame(sid: String, text: String) {
+        // Deltas are 95% of frames — substring prescan, no parse.
+        if (!text.contains("message.complete")) return
+        try {
+            val msg = JSONObject(text)
+            val params = msg.optJSONObject("params") ?: return
+            if (params.optString("type") != "message.complete") return
+            if (params.optString("session_id") != sid) return
+            val payload = params.optJSONObject("payload")
+            // Belt-and-braces: gates are ntfy's job, never double-notify one.
+            if (payload != null && (payload.has("gate") || payload.has("approval"))) return
+            if (payload != null && payload.optString("status") == "error") return
+            if (appForeground) return // the open page renders live
+            showChatNotification(sid, payload)
+        } catch (e: Exception) {
+            Log.e(TAG, "chat frame parse", e)
+        }
+    }
+
+    private fun showChatNotification(sid: String, payload: JSONObject?) {
+        val stored = chatIdentity().second ?: sid
+        val snippet = (payload?.optString("text") ?: "")
+            .replace('\n', ' ').trim().take(140)
+        val notifId = ("chat:$sid").hashCode().coerceAtLeast(2)
+        val intent = Intent(this, MainActivity::class.java).apply {
+            action = Intent.ACTION_VIEW
+            data = Uri.parse("astra://open?path=/c/$stored")
+            `package` = packageName
+            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+        val pi = PendingIntent.getActivity(
+            this, notifId, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val builder = NotificationCompat.Builder(this, CHANNEL_CHAT)
+            .setContentTitle("Astra replied")
+            .setContentText(if (snippet.isEmpty()) "Your reply is ready." else snippet)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(if (snippet.isEmpty()) "Your reply is ready." else snippet))
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentIntent(pi)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(notifId, builder.build())
     }
 
     // ---------------------------------------------------------------------
@@ -280,7 +472,10 @@ class NtfyPushService : Service() {
     override fun onDestroy() {
         isRunning = false
         reconnectRunnable?.let { handler.removeCallbacks(it) }
+        chatRunnable?.let { handler.removeCallbacks(it) }
+        chatPrefRunnable?.let { handler.removeCallbacks(it) }
         webSocket?.close(1000, "Service destroyed")
+        chatSocket?.close(1000, "Service destroyed")
         client?.dispatcher?.executorService?.shutdown()
         super.onDestroy()
     }
@@ -290,5 +485,9 @@ class NtfyPushService : Service() {
     companion object {
         const val CHANNEL_PUSH = "astra-push-v2"
         const val CHANNEL_FG = "astra-connection"
+        const val CHANNEL_CHAT = "astra-chat-v2"
+        const val ACTION_APP_FOREGROUND = "com.jitinnair.astra.APP_FOREGROUND"
+        const val ACTION_APP_BACKGROUND = "com.jitinnair.astra.APP_BACKGROUND"
+        const val ACTION_SESSION_CHANGED = "com.jitinnair.astra.SESSION_CHANGED"
     }
 }

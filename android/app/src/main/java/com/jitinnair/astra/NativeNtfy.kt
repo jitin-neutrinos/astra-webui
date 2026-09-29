@@ -3,6 +3,7 @@ package com.jitinnair.astra
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -42,6 +43,23 @@ class NativeNtfy : Plugin() {
         val context: Context = context
         context.stopService(Intent(context, NtfyPushService::class.java))
         call.resolve(JSObject().put("status", "stopped"))
+    }
+
+    /** Page → native session identity bridge (R1): the background chat leg
+     *  subscribes with ?sid=<liveSid> and deep-links to /c/<storedKey>. */
+    @PluginMethod
+    fun setLiveSession(call: PluginCall) {
+        val liveSid = call.getString("liveSid")
+        val storedKey = call.getString("storedKey")
+        val prefs: SharedPreferences = context.getSharedPreferences("CapacitorStorage", Context.MODE_PRIVATE)
+        if (liveSid != null) prefs.edit().putString("astra_live_sid", liveSid).apply()
+        if (storedKey != null) prefs.edit().putString("astra_stored_key", storedKey).apply()
+        // Kick the service's chat leg: new filter → immediate redial (no 60s
+        // watcher wait). Attempt reset happens in the service.
+        val intent = Intent(context, NtfyPushService::class.java)
+        intent.action = NtfyPushService.ACTION_SESSION_CHANGED
+        try { context.startService(intent) } catch (_: Exception) { /* service down */ }
+        call.resolve()
     }
 
     /** Android 13+ runtime notification permission status. */
