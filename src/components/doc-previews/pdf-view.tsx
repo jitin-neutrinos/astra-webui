@@ -1,6 +1,6 @@
-// PDF preview via pdfjs-dist, rendered page-by-page into canvases.
-// Chosen over the old <iframe> because the Capacitor WebViews (iPad/Android
-// wraps) have no built-in PDF viewer — pdfjs works everywhere.
+// PDF preview via pdfjs-dist — virtualized: placeholder divs for every page
+// (page-1 aspect ratio), IntersectionObserver renders only near-viewport pages,
+// canvases released when >4 pages away from the most-visible one.
 //
 // Worker strategy (v2): pdf.js loads its worker with `import(workerSrc)`, which fails
 // when the browser holds a cache entry for the asset URL from before the server sent
@@ -16,14 +16,72 @@ pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
 
 interface Props {
   url: string;
-  onLoad: () => Promise<ArrayBuffer>;
+  name?: string;
+  onLoad?: () => Promise<ArrayBuffer>;
   onError: (message: string) => void;
+}
+
+// module-level concurrency cap shared by page renders AND pdfThumb (R9)
+const running = new Set<Promise<unknown>>();
+const waiting: Array<() => void> = [];
+function limit<T>(job: () => Promise<T>): Promise<T> {
+  const run = new Promise<T>((resolve, reject) => {
+    const exec = () => {
+      job().then(resolve, reject).finally(() => {
+        running.delete(run as unknown as Promise<unknown>);
+        waiting.shift()?.();
+      });
+      running.add(run as unknown as Promise<unknown>);
+    };
+    if (running.size < 2) exec();
+    else waiting.push(exec);
+  });
+  return run;
+}
+
+// LRU cache of page-1 thumbnails (object URLs, revoked on evict)
+const thumbCache = new Map<string, string>();
+async function cachedThumb(doc: pdfjsLib.PDFDocumentProxy, key: string, width: number): Promise<string> {
+  const hit = thumbCache.get(key);
+  if (hit) {
+    thumbCache.delete(key);
+    thumbCache.set(key, hit); // LRU bump
+    return hit;
+  }
+  const url = await limit(async () => {
+    const page = await doc.getPage(1);
+    const base = page.getViewport({ scale: 1 });
+    const scale = width / base.width;
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("canvas unavailable");
+    await page.render({ canvas, canvasContext: ctx, viewport } as Parameters<typeof page.render>[0]).promise;
+    return canvas.toDataURL("image/jpeg", 0.8);
+  });
+  thumbCache.set(key, url);
+  if (thumbCache.size > 40) {
+    const oldest = thumbCache.keys().next().value;
+    if (oldest !== undefined && oldest !== key) thumbCache.delete(oldest);
+  }
+  return url;
+}
+
+/** Page-1 JPEG thumbnail (data URL) for grid tiles. Loads the doc via range requests. */
+export async function pdfThumb(url: string, width: number): Promise<string> {
+  const doc = await pdfjsLib.getDocument({ url, withCredentials: true, disableAutoFetch: true, rangeChunkSize: 262144 }).promise;
+  try {
+    return await cachedThumb(doc, `${url}#${width}`, width);
+  } finally {
+    void doc.loadingTask.destroy();
+  }
 }
 
 export default function PdfView({ url, onLoad, onError }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const [numPages, setNumPages] = useState<number | null>(null);
-  const [ready, setReady] = useState(false);
+  const [state, setState] = useState<{ pages: number; cur: number; zoom: number }>({ pages: 0, cur: 1, zoom: 1 });
 
   useEffect(() => {
     let alive = true;
@@ -31,49 +89,113 @@ export default function PdfView({ url, onLoad, onError }: Props) {
     if (!host) return;
     host.innerHTML = "";
 
-    (async () => {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const wraps = new Map<number, HTMLDivElement>();
+    const canvases = new Map<number, HTMLCanvasElement>();
+    const rendered = new Set<number>();
+    let doc: pdfjsLib.PDFDocumentProxy | null = null;
+    let mostVisible = 1;
+    let fitW = host.clientWidth || 800;
+    let baseAspect = 8.5 / 11;
+
+    const releaseFar = (pageNo: number) => {
+      for (const [n, wrap] of wraps) {
+        if (Math.abs(n - pageNo) > 4 && canvases.has(n)) {
+          const c = canvases.get(n)!;
+          c.width = 0; c.height = 0;
+          canvases.delete(n);
+          rendered.delete(n);
+          const ph = wrap.querySelector(".mv-pdf-ph");
+          if (ph) (ph as HTMLElement).style.display = "";
+        }
+      }
+    };
+
+    const renderPage = async (pageNo: number) => {
+      if (!doc || rendered.has(pageNo) || !alive) return;
+      rendered.add(pageNo);
       try {
-        console.log("[pdf-view] effect start");
-        const data = await onLoad();
-        if (!alive) return console.log("[pdf-view] stale after load");
-        console.log("[pdf-view] bytes", data.byteLength);
-        const doc = await pdfjsLib.getDocument({ data }).promise;
-        if (!alive) return;
-        console.log("[pdf-view] parsed, pages:", doc.numPages);
-        setNumPages(doc.numPages);
-
-        const targetWidth = Math.min(host.clientWidth || 800, 900);
-        for (let i = 1; i <= doc.numPages; i++) {
-          if (!alive) return;
-          const page = await doc.getPage(i);
+        const wrap = wraps.get(pageNo);
+        if (!wrap) return;
+        await limit(async () => {
+          if (!alive || !doc) return;
+          const page = await doc.getPage(pageNo);
           const base = page.getViewport({ scale: 1 });
-          const scale = targetWidth / base.width;
+          const targetW = fitW * state0.zoom;
+          const scale = targetW / base.width;
           const viewport = page.getViewport({ scale });
-
-          const canvas = document.createElement("canvas");
-          canvas.width = viewport.width * 2; // 2x supersample, CSS scales down
-          canvas.height = viewport.height * 2;
-          canvas.style.width = "100%";
-          canvas.style.display = "block";
-          canvas.className = "rounded shadow";
-
+          let canvas = canvases.get(pageNo);
+          if (!canvas) {
+            canvas = document.createElement("canvas");
+            canvas.style.width = "100%";
+            canvas.style.display = "block";
+            canvases.set(pageNo, canvas);
+            const ph = wrap.querySelector(".mv-pdf-ph");
+            if (ph) (ph as HTMLElement).style.display = "none";
+            wrap.appendChild(canvas);
+          }
+          canvas.width = Math.ceil(viewport.width * dpr);
+          canvas.height = Math.ceil(viewport.height * dpr);
           const ctx = canvas.getContext("2d");
           if (!ctx) throw new Error("canvas unavailable");
-          await page.render({ canvas, canvasContext: ctx, viewport, transform: [2, 0, 0, 2, 0, 0] } as Parameters<typeof page.render>[0]).promise;
+          await page.render({ canvas, canvasContext: ctx, viewport, transform: [dpr, 0, 0, dpr, 0, 0] } as Parameters<typeof page.render>[0]).promise;
+        });
+      } catch (e) {
+        if (alive) onError(String((e as Error)?.message ?? e));
+      }
+    };
 
-          const wrap = document.createElement("div");
-          wrap.className = "mx-auto mb-3";
-          wrap.style.maxWidth = `${targetWidth}px`;
-          wrap.appendChild(canvas);
+    // zoom captured at effect start (zoom changes re-run the effect via dep)
+    const state0 = { zoom: state.zoom };
 
-          const label = document.createElement("div");
-          label.className = "pb-1 text-center font-mono text-[10px] text-slate-400";
-          label.textContent = `${i} / ${doc.numPages}`;
-          wrap.appendChild(label);
-
-          host.appendChild(wrap);
+    const io = new IntersectionObserver((entries) => {
+      if (!alive) return;
+      let best = mostVisible;
+      let bestRatio = 0;
+      for (const en of entries) {
+        const n = Number((en.target as HTMLElement).dataset.page);
+        if (en.intersectionRatio > bestRatio) {
+          bestRatio = en.intersectionRatio;
+          best = n;
         }
-        if (alive) setReady(true);
+        if (en.isIntersecting) void renderPage(n);
+      }
+      if (bestRatio > 0) {
+        mostVisible = best;
+        releaseFar(best);
+        setState((s) => (s.cur === best ? s : { ...s, cur: best }));
+      }
+    }, { root: host, rootMargin: "150% 0px" });
+
+    (async () => {
+      try {
+        doc = onLoad
+          ? await pdfjsLib.getDocument({ data: await onLoad() }).promise
+          : await pdfjsLib.getDocument({ url, withCredentials: true, disableAutoFetch: true, rangeChunkSize: 262144 }).promise;
+        if (!alive) return;
+        const p1 = await doc.getPage(1);
+        const v1 = p1.getViewport({ scale: 1 });
+        baseAspect = v1.width / v1.height;
+        fitW = Math.min(host.clientWidth || 800, 940) - 24;
+        if (alive) setState((s) => ({ ...s, pages: doc!.numPages }));
+
+        for (let i = 1; i <= doc.numPages; i++) {
+          if (!alive) return;
+          const wrap = document.createElement("div");
+          wrap.className = "mv-pdf-page";
+          wrap.dataset.page = String(i);
+          wrap.style.aspectRatio = String(baseAspect);
+          wrap.style.width = `${fitW * state0.zoom}px`;
+          const ph = document.createElement("div");
+          ph.className = "mv-pdf-ph";
+          ph.style.width = "100%";
+          ph.style.height = "100%";
+          wrap.appendChild(ph);
+          host.appendChild(wrap);
+          wraps.set(i, wrap);
+          io.observe(wrap);
+        }
+        void renderPage(1);
       } catch (e) {
         if (alive) onError(String((e as Error)?.message ?? e));
       }
@@ -81,16 +203,24 @@ export default function PdfView({ url, onLoad, onError }: Props) {
 
     return () => {
       alive = false;
+      io.disconnect();
+      for (const c of canvases.values()) { c.width = 0; c.height = 0; }
+      void doc?.loadingTask.destroy();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url]);
+  }, [url, state.zoom]);
+
+  const setZoom = (z: number) => setState((s) => ({ ...s, zoom: Math.min(3, Math.max(0.5, Math.round(z * 100) / 100)) }));
 
   return (
-    <div className="relative h-full w-full overflow-auto bg-slate-100 p-3">
-      <div ref={hostRef} />
-      {!ready && numPages === null && (
-        <div className="flex h-full items-center justify-center text-xs text-slate-400">Rendering PDF…</div>
-      )}
+    <div className="relative h-full w-full">
+      <div className="mv-pdf-bar">
+        <button type="button" aria-label="Zoom out" onClick={() => setZoom(state.zoom - 0.25)}>-</button>
+        <span aria-live="off">{state.pages ? `${state.cur} / ${state.pages}` : "…"}</span>
+        <button type="button" onClick={() => setZoom(1)}>Fit</button>
+        <button type="button" aria-label="Zoom in" onClick={() => setZoom(state.zoom + 0.25)}>+</button>
+      </div>
+      <div ref={hostRef} className="h-full w-full overflow-auto mv-doc-gutter p-3" />
     </div>
   );
 }

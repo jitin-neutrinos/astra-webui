@@ -7,11 +7,11 @@ import type { GateReply, GateAction } from "./gate-envelope";
 import { RichText } from "../chat-timeline";
 import { FinalReportCard } from "./final-report";
 
-export function GateCard({ seg, sessionId, onRespond, onOpenImage: _onOpenImage }: {
+export function GateCard({ seg, sessionId, onRespond, onOpenMedia: _onOpenMedia }: {
   seg: Segment;
   sessionId: string | null;
   onRespond: (reqId: string, reply: GateReply) => void;
-  onOpenImage?: (url: string, alt: string) => void;
+  onOpenMedia?: (items: import("@/lib/media-paths").MediaItem[], index: number) => void;
 }) {
   const env = seg.gate!;
   const reqId = seg.reqId!;

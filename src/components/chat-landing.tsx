@@ -9,6 +9,8 @@ import { RESTORED_MS, fmtSeconds, type ConnState } from "@/lib/connection-state"
 import { parseCommand } from "@/lib/slash-commands";
 import { rowsToTurns, type Turn } from "@/lib/normalize-messages";
 import { extractAttachments, mediaKind } from "@/lib/media-paths";
+
+const MediaViewer = lazy(() => import("./media-viewer"));
 import { parseGate, serializeReply, type GateReply } from "./gates/gate-envelope";
 import { hasRenderedReq, lastAssistantHasText } from "@/lib/chat-segments";
 import { cleanTitle } from "@/lib/chat-title";
@@ -18,13 +20,16 @@ import { ChatFeedSkeleton } from "@/components/ui/skeletons";
 import { getHermesHome, getCatalog } from "@/lib/session-files";
 import {
   applySegmentOps, finalizeSegments, findNewestCollapsedToolSeg, expandKeyBlocked, TurnTimeline,
-  usePrefersReducedMotion, MediaCard,
+  usePrefersReducedMotion,
   type Segment, type SegOp,
 } from "./chat-timeline";
 import { ComposerControls, filesToAttachments, type Attachment } from "./composer-controls";
 import { SubagentPanel, useSubagents } from "./subagent-panel";
 import { harnessRowFromToolStart, harnessRowId, mergeRoster, type HarnessRow } from "@/lib/harness-agents";
-import { Lightbox } from "./lightbox";
+import { lazy, Suspense } from "react";
+import { MediaGrid } from "./media-grid";
+import { ToastHost } from "./toast-host";
+import { toItem, type MediaItem } from "@/lib/media-paths";
 import { createItem, onTurnComplete, reconcileWithServer, dismissItem } from "@/lib/bg-items";
 import { loadItems, saveItems } from "@/lib/bg-items";
 import type { BgItem } from "@/lib/bg-items";
@@ -207,7 +212,8 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   const [chatTitle, setChatTitle] = useState(""); // the open chat's name: header + browser tab (document.title)
   const chatTitleRef = useRef("");
   useEffect(() => { chatTitleRef.current = chatTitle; }, [chatTitle]);
-  const [lightbox, setLightbox] = useState<{ open: boolean; url: string; alt: string }>({ open: false, url: "", alt: "" });
+  const [viewer, setViewer] = useState<{ items: MediaItem[]; index: number } | null>(null);
+  const openMedia = useCallback((items: MediaItem[], index: number) => setViewer({ items, index }), []);
   const [input, setInput] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [errorBanner, setErrorBanner] = useState("");
@@ -1345,15 +1351,13 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
                           )}
                         </div>
                         {m.files && m.files.length > 0 && (
-                          <div className="mb-2 flex flex-wrap gap-2">
-                            {m.files.map(f => <MediaCard key={f.path} path={f.path} name={f.name} />)}
-                          </div>
+                          <MediaGrid className="mb-2" items={m.files.map((f) => toItem(f.path, f.name))} onOpen={openMedia} />
                         )}
                         {m.content.replace(/\n\nAttached file: .*/g, "")}
                       </div>
                     </div>
                   ) : m.segments.length ? (
-                    <TurnTimeline segments={m.segments} streaming={m.isStreaming} sessionId={storedSessionId || ""} ts={m.ts} onToggleTool={toggleToolCollapse} onApprovalRespond={respondApproval} onGateRespond={respondGate} onClarifyAnswer={respondClarify} onOpenImage={(url, alt) => setLightbox({ open: true, url, alt })} />
+                    <TurnTimeline segments={m.segments} streaming={m.isStreaming} sessionId={storedSessionId || ""} ts={m.ts} onToggleTool={toggleToolCollapse} onApprovalRespond={respondApproval} onGateRespond={respondGate} onClarifyAnswer={respondClarify} onOpenMedia={openMedia} />
                   ) : m.isStreaming ? (
                     <span className="chat-bubble-ai flex w-full items-center rounded-2xl px-3 py-2.5">
                       <AITextLoading texts={["Thinking...", "Working on it...", "Almost there..."]} />
@@ -1497,13 +1501,12 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
           </div>
         </div>
       </div>
-      <Lightbox 
-        open={lightbox.open} 
-        images={[{ id: "1", url: lightbox.url, alt: lightbox.alt }]} 
-        index={0} 
-        onClose={() => setLightbox(l => ({ ...l, open: false }))} 
-        onIndex={() => {}} 
-      />
+      {viewer && (
+        <Suspense fallback={null}>
+          <MediaViewer items={viewer.items} index={viewer.index} onClose={() => setViewer(null)} />
+        </Suspense>
+      )}
+      <ToastHost muted={!!viewer} />
     </main>
   );
 }

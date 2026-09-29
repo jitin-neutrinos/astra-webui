@@ -7,8 +7,8 @@
 import { useEffect, useRef, useState, useMemo } from "react";
 import { Check, Loader2, ShieldAlert, X, Clock } from "lucide-react";
 import { cn } from "../lib/utils";
-import { AudioPlayer } from "./audio-player";
 import { GateCard } from "./gates/gate-card";
+import { MediaGrid } from "./media-grid";
 import {
   AiToolCall,
   AiToolCallHeader,
@@ -24,7 +24,7 @@ import type { Segment, ClarifyQuestion } from "../lib/chat-segments";
 import {
   turnIsRunning,
 } from "../lib/chat-segments";
-import { MEDIA_RE, mediaPaths, stripMediaLines, mediaKind } from "../lib/media-paths";
+import { MEDIA_RE, mediaPaths, stripMediaLines, toItem, pathFromApiUrl, type MediaItem } from "../lib/media-paths";
 import { AnimatedCopyButton } from "../lib/animated-copy";
 import { revealCps } from "../lib/reveal-pace";
 
@@ -46,7 +46,7 @@ import { copyText } from "../lib/copy-text";
 const md = new Marked({ gfm: true, breaks: true });
 let purifyHooked = false;
 
-export function RichText({ text, onOpenImage, streaming }: { text: string; onOpenImage?: (url: string, alt: string) => void; streaming?: boolean }) {
+export function RichText({ text, onOpenMedia, streaming }: { text: string; onOpenMedia?: (items: MediaItem[], index: number) => void; streaming?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const html = useMemo(() => {
     if (!purifyHooked) {
@@ -132,10 +132,10 @@ export function RichText({ text, onOpenImage, streaming }: { text: string; onOpe
       img.classList.add("cursor-zoom-in");
       img.addEventListener("click", (e) => {
         e.preventDefault();
-        onOpenImage?.(img.src, img.alt);
+        onOpenMedia?.([{ path: pathFromApiUrl(img.src), url: img.src, name: img.alt || "image" }], 0);
       });
     });
-  }, [html, onOpenImage]);
+  }, [html, onOpenMedia]);
 
   return (
     <div className="relative group">
@@ -159,7 +159,6 @@ import { stepOpen, setStepOpen, hashKey } from "../lib/step-prefs";
 import { describeTool } from "../lib/tool-identity";
 import { describeInput, describeOutput, excerpt } from "../lib/tool-io";
 import {
-  FileText,
   Lightbulb,
 } from "lucide-react";
 
@@ -380,83 +379,7 @@ function useReveal(text: string, done: boolean, instant: boolean) {
   return instant ? text.length : Math.min(n, text.length);
 }
 
-export function PdfCard({ path, name }: { path: string; name: string }) {
-  const [expanded, setExpanded] = useState(false);
-  const enc = encodeURIComponent(path);
-  return (
-    <div className="flex flex-col gap-2 w-full max-w-2xl overflow-hidden rounded-[var(--radius-inner)] border border-white/10 bg-[var(--surface-raised)] text-sm">
-      <div className="flex items-center justify-between p-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="rounded-md bg-white/5 p-2 text-slate-300">
-            <FileText className="h-5 w-5" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="truncate font-medium text-slate-200">{name}</div>
-            <div className="text-xs text-slate-400 font-mono">PDF Document</div>
-          </div>
-        </div>
-        <button
-          type="button"
-          aria-expanded={expanded}
-          onClick={() => setExpanded(!expanded)}
-          className="shrink-0 rounded-[var(--radius-pill)] bg-[var(--surface-step-2)] px-3 py-1.5 text-xs font-medium text-slate-200 transition-colors hover:bg-white/10"
-        >
-          {expanded ? "Collapse" : "View"}
-        </button>
-      </div>
-      {expanded && (
-        <div className="h-[480px] max-h-[70vh] w-full border-t border-white/10 bg-white">
-          <iframe src={`/api/hx/files/download?path=${enc}`} className="h-full w-full border-none" title={name} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-export function MediaCard({ path, name, onOpenImage }: { path: string; name: string; onOpenImage?: (url: string, alt: string) => void }) {
-  const kind = mediaKind(name);
-  const enc = encodeURIComponent(path);
-  const url = `/api/hx/files/download?path=${enc}`;
-
-  if (kind === "pdf") {
-    return <PdfCard path={path} name={name} />;
-  }
-
-  if (kind === "audio") {
-    return <AudioPlayer src={`/api/hx/files/stream?path=${enc}`} name={name} />;
-  }
-
-  return (
-    <div data-media-card className="overflow-hidden rounded-[var(--radius-inner)] border border-white/10 bg-[var(--surface-raised)] text-xs text-slate-300">
-      {kind === "image" ? (
-        <button type="button" onClick={(e) => { e.preventDefault(); onOpenImage?.(url, name); }} title="Open full image" className="block cursor-zoom-in">
-          <img src={url} alt={name} loading="lazy" className="max-h-44 max-w-[240px] object-cover" />
-        </button>
-      ) : kind === "video" ? (
-        <div className="relative max-h-44 max-w-[280px] bg-black">
-          <video src={`/api/hx/files/stream?path=${enc}`} controls preload="metadata" className="max-h-44 max-w-[280px]" poster="" />
-        </div>
-      ) : (
-        <a href={url} target="_blank" rel="noreferrer"
-           className="flex items-center gap-3 p-3 transition hover:bg-[var(--surface-step-2)]" title="Download">
-          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-black/20 text-slate-400">
-            <FileText className="h-3 w-3" />
-          </div>
-          <span className="truncate">{name}</span>
-        </a>
-      )}
-      {(kind === "image" || kind === "video") && (
-        <div className="flex items-center justify-between gap-2 px-2 py-1">
-          <span className="truncate text-[10px] text-slate-500">{name}</span>
-          <a href={`/api/hx/files/download?path=${enc}`} target="_blank" rel="noreferrer"
-            className="shrink-0 font-mono text-[10px] text-cyanx hover:underline">download</a>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function TextRow({ seg, reveal, onOpenImage }: { seg: Segment; reveal?: boolean; onOpenImage?: (url: string, alt: string) => void }) {
+function TextRow({ seg, reveal, onOpenMedia }: { seg: Segment; reveal?: boolean; onOpenMedia?: (items: MediaItem[], index: number) => void }) {
   const text = seg.text ?? "";
   const instant = usePrefersReducedMotion();
   // Only the timeline's LAST text segment (the latest response) sweeps on
@@ -472,11 +395,9 @@ function TextRow({ seg, reveal, onOpenImage }: { seg: Segment; reveal?: boolean;
   if (!text) return null;
   return (
     <div className="chat-text-seg">
-      {display && <RichText text={display} onOpenImage={onOpenImage} streaming={seg.status === "run"} />}
+      {display && <RichText text={display} onOpenMedia={onOpenMedia} streaming={seg.status === "run"} />}
       {n >= text.length && paths.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-2">
-          {paths.map(p => <MediaCard key={p} path={p} name={p.split("/").pop() || p} onOpenImage={onOpenImage} />)}
-        </div>
+        <MediaGrid className="mt-2" items={paths.map((p) => toItem(p))} onOpen={onOpenMedia} />
       )}
     </div>
   );
@@ -685,7 +606,7 @@ function ApprovalRow({ seg, onRespond }: { seg: Segment; onRespond: (reqId: stri
 // emitted them. Interactions (approval / clarify / gate) land in their slot too,
 // never displaced. Each thought is its own collapsible (streams open, collapses
 // when done); tool rows keep the persisted per-tool collapse.
-export function TurnTimeline({ segments, streaming, sessionId, ts, onToggleTool, onApprovalRespond, onClarifyAnswer, onGateRespond, onOpenImage }: {
+export function TurnTimeline({ segments, streaming, sessionId, ts, onToggleTool, onApprovalRespond, onClarifyAnswer, onGateRespond, onOpenMedia }: {
   segments: Segment[];
   streaming: boolean;
   sessionId: string | null;
@@ -694,7 +615,7 @@ export function TurnTimeline({ segments, streaming, sessionId, ts, onToggleTool,
   onApprovalRespond: (reqId: string, choice: string) => void;
   onClarifyAnswer: (reqId: string, result: { answer?: string; answers?: Record<string, string> }) => void;
   onGateRespond: (reqId: string, reply: any) => void;
-  onOpenImage?: (url: string, alt: string) => void;
+  onOpenMedia?: (items: MediaItem[], index: number) => void;
 }) {
   if (!segments.length) return null;
 
@@ -717,8 +638,8 @@ export function TurnTimeline({ segments, streaming, sessionId, ts, onToggleTool,
         if (seg.kind === "tool") return <BundleToolRow key={seg.id} seg={seg} onToggleTool={onToggleTool} />;
         if (seg.kind === "approval") return <ApprovalRow key={seg.id} seg={seg} onRespond={onApprovalRespond} />;
         if (seg.kind === "clarify") return <ClarifyCard key={seg.id} seg={seg} onAnswer={onClarifyAnswer} />;
-        if (seg.kind === "gate") return <GateCard key={seg.id} seg={seg} sessionId={sessionId} onRespond={onGateRespond} onOpenImage={onOpenImage} />;
-        return <TextRow key={seg.id} seg={seg} reveal={reveal} onOpenImage={onOpenImage} />;
+        if (seg.kind === "gate") return <GateCard key={seg.id} seg={seg} sessionId={sessionId} onRespond={onGateRespond} onOpenMedia={onOpenMedia} />;
+        return <TextRow key={seg.id} seg={seg} reveal={reveal} onOpenMedia={onOpenMedia} />;
       })}
     </div>
   );
