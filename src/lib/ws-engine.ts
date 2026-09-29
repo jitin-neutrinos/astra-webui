@@ -298,8 +298,11 @@ export function submitPrompt(content: string) {
   const stored = readStoredSid();
   if (!live && !stored) {
     wsQueuePush({ id: generateRpcId(), text: content, queuedAt: Date.now(), mode: "fresh" });
-    eng.createOnOpen = true;
     armQueuedCap();
+    // Socket is UP — create NOW. (createOnOpen only fires on the next socket
+    // open; setting it here instead of creating left the fresh prompt parked
+    // in the queue with the Thinking pill on and no session ever minted.)
+    sendSessionCreate();
   } else {
     // Mid-turn submit while the session is live: queue, never refuse or
     // interrupt (Claude-Code-style). queued:true pins the gateway's
@@ -522,8 +525,12 @@ function onSocketOpen(s: WebSocket) {
     eng.createOnOpen = false;
     sendSessionCreate();
   }
-  // Queued prompts with a stale resume target but no live session yet:
-  // handled on the resume reply (flushQueueForSession).
+  // Durable fresh-mode prompts from a previous page load (or app kill): no
+  // session was ever minted, so create one now — the create reply's
+  // flushQueueForSession sends the queued text.
+  if (!sid && !eng.pendingCreate && wsQueueAll().some((p) => p.mode === "fresh")) {
+    sendSessionCreate();
+  }
 }
 
 function replayOpenRequests(result: any) {
