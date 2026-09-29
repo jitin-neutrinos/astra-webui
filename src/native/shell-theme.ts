@@ -16,8 +16,9 @@ function plugin(name: string): any {
 export async function initShellTheme() {
   if (!Capacitor.isNativePlatform()) return;
 
-  // Android 15+ edge-to-edge: bars are transparent; what's UNDER them paints
-  // through. The CSS safe-area bands (below) are the actual themed surface.
+  // Native EdgeToEdge insets the WebView by exactly the bar heights (app stays
+  // inside the usable area, no CSS padding) and paints these colours behind
+  // the status + navigation bars.
   await plugin('EdgeToEdge').enable?.().catch?.(() => {});
 
   const updateColors = () => {
@@ -34,52 +35,13 @@ export async function initShellTheme() {
     }
 
     try { plugin('EdgeToEdge').setBackgroundColor?.({ color }); } catch { /* optional */ }
-    try { plugin('StatusBar').setStyle?.({ style: isLight ? 'Light' : 'Dark' }); } catch { /* optional */ }
-    try { plugin('NavigationBar').setStyle?.({ style: isLight ? 'Light' : 'Dark' }); } catch { /* optional */ }
+    // SystemBars style names the BACKGROUND: DARK = light icons, LIGHT = dark icons.
+    try { plugin('SystemBars').setStyle?.({ style: isLight ? 'LIGHT' : 'DARK' }); } catch { /* optional */ }
   };
 
   // Wait a tick for CSS to apply, then update
   requestAnimationFrame(updateColors);
   setTimeout(updateColors, 100);
-
-  // Edge-to-edge support for Android 15+:
-  // Only injected natively so web behaves normally.
-  const meta = document.querySelector('meta[name="viewport"]');
-  if (meta) {
-    const content = meta.getAttribute('content') || '';
-    if (!content.includes('viewport-fit=cover')) {
-      meta.setAttribute('content', `${content}, viewport-fit=cover`);
-    }
-  }
-
-  const style = document.createElement('style');
-  style.id = 'astra-safe-areas';
-  style.textContent = `
-    html, body {
-      /* Top band = exactly the notification bar. Because body bg is the themed
-         void color, the bar reads as an extension of the app surface (Android
-         15 paints bars with what's under them — a colored band is the only
-         reliable way to keep it themed). Header starts below the bar. */
-      padding-top: env(safe-area-inset-top);
-      padding-bottom: env(safe-area-inset-bottom);
-    }
-    .app-shell {
-      padding-top: 0 !important;
-    }
-    .app-shell {
-      /* Prevent 100dvh from pushing content offscreen due to body padding */
-      height: calc(100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
-      height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
-      /* Override index.css which has calc(env(safe-area-inset-bottom) + var(--kb)) */
-      padding-bottom: var(--kb, 0px) !important;
-    }
-    .fixed.inset-0 {
-      /* Ensure fixed full-screen overlays don't underlap system bars */
-      top: env(safe-area-inset-top, 0px) !important;
-      bottom: env(safe-area-inset-bottom, 0px) !important;
-    }
-  `;
-  document.head.appendChild(style);
 
   const observer = new MutationObserver((mutations) => {
     for (const mutation of mutations) {

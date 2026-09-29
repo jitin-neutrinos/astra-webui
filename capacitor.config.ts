@@ -12,6 +12,15 @@ const config: CapacitorConfig = {
     url: 'https://astra.jitinnair.com',
     cleartext: false
   },
+  plugins: {
+    // Root cause of the padded bands: Capacitor's core SystemBars pads the whole
+    // window by the bar heights AND zeroes the insets, so EdgeToEdge's themed
+    // overlays got height 0 and the bare window background showed instead.
+    // Disable that padding; EdgeToEdge insets the WebView by exactly the bar
+    // heights and paints the theme colour behind the bars.
+    SystemBars: { insetsHandling: 'disable' },
+    EdgeToEdge: { backgroundColor: '#0a0a0f' }
+  },
   ios: {
     // WKWebView contentInset handling for notch/home-indicator safe areas
     contentInset: 'automatic'
