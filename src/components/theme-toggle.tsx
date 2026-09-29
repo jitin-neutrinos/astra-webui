@@ -4,12 +4,14 @@ import { Moon, Sun } from "lucide-react";
 const KEY = "astra-theme";
 
 function apply(theme: "dark" | "light") {
+  // Target the plain meta only — the media-variant is the no-JS fallback.
+  const meta = document.querySelector('meta[name="theme-color"]:not([media])');
   if (theme === "light") {
     document.documentElement.setAttribute("data-theme", "light");
-    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", "#f5f2ec");
+    meta?.setAttribute("content", "#f5f2ec");
   } else {
     document.documentElement.removeAttribute("data-theme");
-    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", "#0a0a0f");
+    meta?.setAttribute("content", "#0a0a0f");
   }
   // broadcast so every listener (login toggle, background canvas, …) re-renders
   window.dispatchEvent(new CustomEvent("astra-theme-change", { detail: theme }));

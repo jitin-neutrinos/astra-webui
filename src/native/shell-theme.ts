@@ -1,12 +1,24 @@
 import { Capacitor } from '@capacitor/core';
-import { StatusBar, Style as StatusBarStyle } from '@capacitor/status-bar';
-import { NavigationBar, Style as NavStyle } from '@capawesome/capacitor-navigation-bar';
-import { EdgeToEdge } from '@capawesome/capacitor-android-edge-to-edge-support';
+
+// Registry access (Capacitor.Plugins.*) instead of static JS wrappers:
+// @capacitor/status-bar was never installed (it sat in the missing-deps list
+// while this module was tree-shaken — see index.css notes). The native modules
+// ARE compiled into the APK (capacitor.build.gradle), and the bridge exposes
+// them by plugin name. Same pattern android-resume.ts uses for NativeNtfy.
+// Static imports here would fail the web build (vite resolves every reachable
+// import) — this file must keep building for the BROWSER bundle too.
+const Plugins: any = (Capacitor as any).Plugins;
+
+function plugin(name: string): any {
+  return Plugins?.[name] ?? {};
+}
 
 export async function initShellTheme() {
   if (!Capacitor.isNativePlatform()) return;
 
-  await EdgeToEdge.enable().catch(() => {});
+  // Android 15+ edge-to-edge: bars are transparent; what's UNDER them paints
+  // through. The CSS safe-area bands (below) are the actual themed surface.
+  await plugin('EdgeToEdge').enable?.().catch?.(() => {});
 
   const updateColors = () => {
     const root = document.documentElement;
@@ -15,15 +27,15 @@ export async function initShellTheme() {
     if (!color) {
         color = getComputedStyle(document.body).getPropertyValue('--color-void').trim();
     }
-    
+
     const isLight = root.getAttribute('data-theme') === 'light';
     if (!color) {
-      color = isLight ? '#f5f2ec' : '#0a0a0f';
+        color = isLight ? '#f5f2ec' : '#0a0a0f';
     }
-    
-    EdgeToEdge.setBackgroundColor({ color }).catch(() => {});
-    StatusBar.setStyle({ style: isLight ? StatusBarStyle.Light : StatusBarStyle.Dark }).catch(() => {});
-    NavigationBar.setStyle({ style: isLight ? NavStyle.Light : NavStyle.Dark }).catch(() => {});
+
+    try { plugin('EdgeToEdge').setBackgroundColor?.({ color }); } catch { /* optional */ }
+    try { plugin('StatusBar').setStyle?.({ style: isLight ? 'Light' : 'Dark' }); } catch { /* optional */ }
+    try { plugin('NavigationBar').setStyle?.({ style: isLight ? 'Light' : 'Dark' }); } catch { /* optional */ }
   };
 
   // Wait a tick for CSS to apply, then update
