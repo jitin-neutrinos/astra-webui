@@ -438,10 +438,14 @@ export function MediaCard({ path, name, onOpenImage }: { path: string; name: str
   );
 }
 
-function TextRow({ seg, onOpenImage }: { seg: Segment; onOpenImage?: (url: string, alt: string) => void }) {
+function TextRow({ seg, reveal, onOpenImage }: { seg: Segment; reveal?: boolean; onOpenImage?: (url: string, alt: string) => void }) {
   const text = seg.text ?? "";
   const instant = usePrefersReducedMotion();
-  const n = useReveal(text, seg.status === "done", instant);
+  // Only the timeline's LAST text segment (the latest response) sweeps on
+  // mount; every older row renders whole inside its turn's fade-in. A live
+  // turn's own rows mount at ~0 chars and grow, so this only bites
+  // history/reload restores — exactly the "latest streams, rest fade" ask.
+  const n = useReveal(text, seg.status === "done", instant || reveal === false);
   const shown = useMemo(() => safeTail(text.slice(0, n)), [text, n]);
   const paths = useMemo(() => mediaPaths(text), [text]);
   const displayRaw = seg.status === "done" && n >= text.length ? text : shown;
@@ -676,16 +680,20 @@ export function TurnTimeline({ segments, streaming, sessionId, onToggleTool, onA
   if (!segments.length) return null;
 
   const isRunning = turnIsRunning(segments, streaming);
+  // Reveal policy: only the last segment sweeps (latest response). Everything
+  // earlier renders whole; each turn's own 200ms fade supplies the motion.
+  const lastIdx = segments.length - 1;
 
   return (
     <div className={cn("chat-turn", isRunning && "running")} aria-busy={isRunning}>
-      {segments.map((seg) => {
+      {segments.map((seg, i) => {
+        const reveal = i === lastIdx;
         if (seg.kind === "thinking") return <ThoughtRow key={seg.id} seg={seg} />;
         if (seg.kind === "tool") return <BundleToolRow key={seg.id} seg={seg} onToggleTool={onToggleTool} />;
         if (seg.kind === "approval") return <ApprovalRow key={seg.id} seg={seg} onRespond={onApprovalRespond} />;
         if (seg.kind === "clarify") return <ClarifyCard key={seg.id} seg={seg} onAnswer={onClarifyAnswer} />;
         if (seg.kind === "gate") return <GateCard key={seg.id} seg={seg} sessionId={sessionId} onRespond={onGateRespond} onOpenImage={onOpenImage} />;
-        return <TextRow key={seg.id} seg={seg} onOpenImage={onOpenImage} />;
+        return <TextRow key={seg.id} seg={seg} reveal={reveal} onOpenImage={onOpenImage} />;
       })}
     </div>
   );
