@@ -97,5 +97,6 @@ Per-segment rows (ai-tool-call based; thoughts use the `.ai-thought` variant):
 
 | Element | Dark | Light | Notes |
 |---|---|---|---|
-| `.ai-thought .ai-plate` | `rgba(250,204,21,.10)` bg / `#fbbf24` icon | `rgba(180,83,9,.10)` / `#b45309` | amber lightbulb plate on Thinking rows |
+| `.ai-plate` (tool icon) | bare glyph, `#22d3ee` + glow + fill | bare glyph, `#0369a1` + soft glow | NO plate background (owner spec 2026-09-29) |
+| `.ai-thought .ai-plate` / `.ai-plate.think` | bare glyph, `#34d399` + glow + fill | bare glyph, `#047857` + soft glow | Thinking lightbulb, same no-plate rule |
 | `.ai-card` border | `rgba(248,250,252,.08)` | `rgba(15,23,42,.10)` | tool rows keep card chrome; thought rows are chrome-less |
