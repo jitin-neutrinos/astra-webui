@@ -473,10 +473,15 @@ body { background: var(--color-void); }
   /* drawer off-canvas is untabbable when closed */
   aside#astra-sidebar[data-open="false"] { visibility: hidden; }
 
-  /* hint is the overflow culprit; drop it and right-align send */
-  .chat-composer-hint { display: none; }
+  /* hint is the overflow culprit; drop it and right-align send.
+     When streaming there are TWO .chat-send buttons (Stop + Send) — two
+     margin:auto siblings split the free space equally, parking Stop mid-gap.
+     Stop takes the pusher role; Send glues to it at the right edge. */
   .chat-send { margin-left: auto; }
+  .chat-send-stop { margin-left: auto; }
+  .chat-send-stop + .chat-send { margin-left: -4px; }
 
+  .chat-composer-hint { display: none; }
   .chat-chip { min-height: 44px; min-width: 44px; padding: 8px 12px; justify-content: center; }
   .chat-send { width: 44px; height: 44px; }
   .chat-filechip { min-height: 44px; }
