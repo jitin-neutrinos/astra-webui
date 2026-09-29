@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { FilesSkeleton } from "./ui/skeletons";
 import { ArrowLeft, File, FileImage, FileText, RefreshCw, AlertTriangle } from "lucide-react";
-import { getHermesHome, getHermesFiles, getFileKind } from "@/lib/session-files";
+import { getHermesHome, getHermesFiles } from "@/lib/session-files";
+import { mediaKind, kindInfo } from "@/lib/media-kinds";
 
 function fmtSize(n: number) {
   if (n < 1024) return `${n} B`;
@@ -20,7 +21,7 @@ type FileEntry = {
 
 function FileRow({ entry }: { entry: FileEntry }) {
   const [error, setError] = useState(false);
-  const kind = getFileKind(entry.name);
+  const kind = mediaKind(entry.name);
   
   if (error) {
     return (
@@ -77,7 +78,7 @@ function FileRow({ entry }: { entry: FileEntry }) {
           <span>{new Date(entry.mtime * 1000).toLocaleString()}</span>
         </p>
       </div>
-      {(kind === "doc" || kind === "other") && (
+      {(!["image", "video", "audio"].includes(kind)) && (
         <a href={`/api/hx/files/download?path=${encodeURIComponent(entry.path)}`} target="_blank" rel="noreferrer" className="p-2 hover:bg-white/10 rounded text-slate-400 hover:text-cyanx transition" title="Download">
           <ArrowLeft className="w-4 h-4 rotate-[225deg]" />
         </a>
@@ -123,7 +124,7 @@ export function FilesPage({ onBack }: { onBack: () => void }) {
         try {
           const res = await getHermesFiles(sessionInfo.cwd);
           res.entries.forEach((e: any) => {
-            if (!e.is_directory && getFileKind(e.name) !== "other") {
+            if (!e.is_directory && kindInfo(e.name).card) {
               filesMap.set(e.path, e);
             }
           });
@@ -138,7 +139,7 @@ export function FilesPage({ onBack }: { onBack: () => void }) {
       // But getHermesFiles only lists a directory. We can't stat individual files easily.
       // For now, stub them.
       for (const path of registry) {
-        if (!filesMap.has(path) && getFileKind(path) !== "other") {
+        if (!filesMap.has(path) && kindInfo(path).card) {
           filesMap.set(path, {
             name: path.split("/").pop() || path,
             path,

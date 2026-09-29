@@ -2,9 +2,9 @@
 // download the docx/xlsx/pptx code.
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { FileText, Loader2 } from "lucide-react";
-import { ext, downloadUrl } from "@/lib/media-paths";
-import { previewKind } from "@/lib/doc-preview-kind";
-import { getLocalMediaBytes } from "@/lib/media-local-cache";
+import { downloadUrl } from "@/lib/media-paths";
+import { extOf, mediaKind } from "@/lib/media-kinds";
+import { downloadFile } from "@/lib/download";
 
 const PdfViewer = lazy(() => import("./doc-previews/pdf-view"));
 const DocxViewer = lazy(() => import("./doc-previews/docx-view"));
@@ -17,17 +17,27 @@ function Loading({ label }: { label: string }) {
       <Loader2 className="h-4 w-4 animate-spin" />
       {label}
     </div>
-    );
+  );
 }
 
-function ErrorBox({ message, name }: { message: string; name: string }) {
+function ErrorBox({ message, name, path }: { message: string; name: string; path?: string }) {
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-6 text-center text-xs text-slate-400">
       <FileText className="h-6 w-6 text-slate-500" />
       <div>{message}</div>
-      <a href={downloadUrl(name)} className="font-mono text-[11px] text-cyanx hover:underline">
-        download instead
-      </a>
+      {path ? (
+        <button
+          type="button"
+          onClick={() => downloadFile(path, name)}
+          className="font-mono text-[11px] text-cyanx hover:underline"
+        >
+          download instead
+        </button>
+      ) : (
+        <a href={downloadUrl(name)} className="font-mono text-[11px] text-cyanx hover:underline">
+          download instead
+        </a>
+      )}
     </div>
   );
 }
@@ -35,24 +45,32 @@ function ErrorBox({ message, name }: { message: string; name: string }) {
 interface DocPreviewProps {
   url: string;
   name: string;
-  /** Server-side absolute path — enables the device-local cache (download once, render locally after) */
+  /** Server-side absolute path — needed for the download button (fixes name-vs-path bug) */
   path?: string;
   /** Height class for the inline panel; full-screen viewer passes its own */
   className?: string;
+  /** Full-bleed mode for the media viewer */
+  fill?: boolean;
 }
 
-export function DocPreview({ url, name, path, className }: DocPreviewProps) {
-  const kind = useMemo(() => previewKind(name), [name]);
+export function DocPreview({ url, name, path, className, fill }: DocPreviewProps) {
+  const kind = useMemo(() => {
+    const k = mediaKind(name);
+    // engine mapping: pdf/docx/xlsx/pptx have their own viewers, everything textual → text
+    if (k === "pdf" || k === "docx" || k === "xlsx" || k === "pptx") return k;
+    return "text" as const;
+  }, [name]);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => () => abortRef.current?.abort(), [url]);
 
-  if (kind === "unsupported") {
+  if (mediaKind(name) === "other" || mediaKind(name) === "archive" || mediaKind(name) === "image" || mediaKind(name) === "video" || mediaKind(name) === "audio") {
     return (
       <ErrorBox
         name={name}
-        message={`No inline preview for ${ext(name).toUpperCase() || "this file type"} — download to open it.`}
+        path={path}
+        message={`No preview for ${extOf(name).toUpperCase() || "this file type"} — download to open it.`}
       />
     );
   }
@@ -61,13 +79,6 @@ export function DocPreview({ url, name, path, className }: DocPreviewProps) {
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
-    // Device-local first: download once into Cache Storage, later opens render
-    // from the on-device copy (same bucket/contract as images & video). Falls
-    // back to a direct proxy fetch when the cache is unavailable.
-    if (path) {
-      const local = await getLocalMediaBytes(path, name);
-      if (local) return local;
-    }
     const res = await fetch(url, { signal: ac.signal, credentials: "same-origin" });
     if (!res.ok) throw new Error(`fetch failed (${res.status})`);
     return res.arrayBuffer();
@@ -76,10 +87,10 @@ export function DocPreview({ url, name, path, className }: DocPreviewProps) {
   const shared = { onLoad, onError: setError };
 
   return (
-    <div className={className ?? "h-[480px] max-h-[70vh] w-full bg-white"}>
+    <div className={fill ? "mv-doc" : className ?? "h-[480px] max-h-[70vh] w-full mv-doc"}>
       <Suspense fallback={<Loading label="Loading viewer…" />}>
         {error ? (
-          <ErrorBox name={name} message={error} />
+          <ErrorBox name={name} path={path} message={error} />
         ) : kind === "pdf" ? (
           <PdfViewer url={url} {...shared} />
         ) : kind === "docx" ? (
@@ -117,7 +128,7 @@ function TextView({ url, onLoad, onError }: { url: string; onLoad: () => Promise
 
   if (content === null) return <Loading label="Reading file…" />;
   return (
-    <pre className="h-full w-full overflow-auto bg-[#0d1b2a] p-4 font-mono text-[11px] leading-relaxed text-slate-200 whitespace-pre-wrap">
+    <pre className="mv-text">
       {content}
     </pre>
   );

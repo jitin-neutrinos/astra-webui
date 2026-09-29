@@ -2,8 +2,9 @@
 // Run: node server/transcode.check.mjs   (exits non-zero on failure)
 import { strict as assert } from "node:assert";
 import { createHash } from "node:crypto";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { VIDEO_TRANSCODE, IMAGE_TRANSCODE } from "./transcode.mjs";
 
 const CACHE_DIR = join(tmpdir(), "astra-transcode-cache");
 
@@ -20,9 +21,7 @@ assert.notEqual(a, cachePath("video", "/home/x/a.avi", 222), "mtime bump → new
 assert.ok(a.endsWith(".mp4"), "video transcodes land as mp4");
 assert.ok(cachePath("image", "/home/x/pic.heic", 1).endsWith(".jpg"), "image transcodes land as jpg");
 
-// 2. extension sets reject non-media
-const VIDEO_TRANSCODE = new Set(["avi", "wmv", "flv", "mpg", "mpeg", "3gp", "mts", "m2ts", "vob", "ogv", "mkv", "mov", "m4v", "ts"]);
-const IMAGE_TRANSCODE = new Set(["heic", "heif", "tiff", "tif", "avif", "bmp", "psd", "webp"]);
+// 2. extension sets reject non-media (imported from the served module — drift impossible)
 const kindOf = e => VIDEO_TRANSCODE.has(e) ? "video" : IMAGE_TRANSCODE.has(e) ? "image" : null;
 assert.equal(kindOf("exe"), null, ".exe refused");
 assert.equal(kindOf("pdf"), null, ".pdf refused");

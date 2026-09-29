@@ -7,7 +7,21 @@ import Zoom from "yet-another-react-lightbox/plugins/zoom";
 import Download from "yet-another-react-lightbox/plugins/download";
 import Fullscreen from "yet-another-react-lightbox/plugins/fullscreen";
 import "yet-another-react-lightbox/styles.css";
-import { downloadUrl, ext, mediaMime, needsTranscode, streamUrl, transcodeUrl } from "@/lib/media-paths";
+import { downloadUrl, streamUrl, transcodeUrl, needsTranscode } from "@/lib/media-paths";
+import { extOf } from "@/lib/media-kinds";
+
+function ext(name: string): string {
+  return extOf(name);
+}
+
+function mediaMime(name: string): string {
+  const map: Record<string, string> = {
+    mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime", mkv: "video/x-matroska",
+    mp3: "audio/mpeg", wav: "audio/wav", ogg: "audio/ogg", flac: "audio/flac", m4a: "audio/mp4", opus: "audio/ogg",
+    png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp",
+  };
+  return map[extOf(name)] || "application/octet-stream";
+}
 
 const IMAGE_VIEWER_EXTRA = new Set(["heic", "heif", "tiff", "tif"]); // served via transcode as jpg
 const VIDEO_EXTS = new Set(["mp4", "m4v", "webm", "mov", "mkv", "avi", "wmv", "flv", "mpg", "mpeg", "3gp", "ts", "mts", "m2ts"]);

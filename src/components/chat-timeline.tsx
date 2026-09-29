@@ -7,7 +7,6 @@
 import { useEffect, useRef, useState, useMemo } from "react";
 import { Check, Loader2, ShieldAlert, X, Clock } from "lucide-react";
 import { cn } from "../lib/utils";
-import { getFileKind } from "../lib/session-files";
 import { AudioPlayer } from "./audio-player";
 import { GateCard } from "./gates/gate-card";
 import {
@@ -25,7 +24,7 @@ import type { Segment, ClarifyQuestion } from "../lib/chat-segments";
 import {
   turnIsRunning,
 } from "../lib/chat-segments";
-import { MEDIA_RE, mediaPaths, stripMediaLines } from "../lib/media-paths";
+import { MEDIA_RE, mediaPaths, stripMediaLines, mediaKind } from "../lib/media-paths";
 import { AnimatedCopyButton } from "../lib/animated-copy";
 import { revealCps } from "../lib/reveal-pace";
 
@@ -415,7 +414,7 @@ export function PdfCard({ path, name }: { path: string; name: string }) {
 }
 
 export function MediaCard({ path, name, onOpenImage }: { path: string; name: string; onOpenImage?: (url: string, alt: string) => void }) {
-  const kind = getFileKind(name);
+  const kind = mediaKind(name);
   const enc = encodeURIComponent(path);
   const url = `/api/hx/files/download?path=${enc}`;
 

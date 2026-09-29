@@ -8,14 +8,14 @@ import type { EventPayload } from "@/lib/hermes-ws";
 import { RESTORED_MS, fmtSeconds, type ConnState } from "@/lib/connection-state";
 import { parseCommand } from "@/lib/slash-commands";
 import { rowsToTurns, type Turn } from "@/lib/normalize-messages";
-import { extractAttachments } from "@/lib/media-paths";
+import { extractAttachments, mediaKind } from "@/lib/media-paths";
 import { parseGate, serializeReply, type GateReply } from "./gates/gate-envelope";
 import { hasRenderedReq, lastAssistantHasText } from "@/lib/chat-segments";
 import { cleanTitle } from "@/lib/chat-title";
 import { modelSwitchValue } from "@/lib/model-switch";
 import AITextLoading from "@/components/ui/ai-text-loading";
 import { ChatFeedSkeleton } from "@/components/ui/skeletons";
-import { getFileKind, } from "@/lib/session-files";
+import { getHermesHome, getCatalog } from "@/lib/session-files";
 import {
   applySegmentOps, finalizeSegments, findNewestCollapsedToolSeg, expandKeyBlocked, TurnTimeline,
   usePrefersReducedMotion, MediaCard,
@@ -25,7 +25,6 @@ import { ComposerControls, filesToAttachments, type Attachment } from "./compose
 import { SubagentPanel, useSubagents } from "./subagent-panel";
 import { harnessRowFromToolStart, harnessRowId, mergeRoster, type HarnessRow } from "@/lib/harness-agents";
 import { Lightbox } from "./lightbox";
-import { getHermesHome, getCatalog } from "@/lib/session-files";
 import { createItem, onTurnComplete, reconcileWithServer, dismissItem } from "@/lib/bg-items";
 import { loadItems, saveItems } from "@/lib/bg-items";
 import type { BgItem } from "@/lib/bg-items";
@@ -859,7 +858,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     }
     // images reach the model as vision input too (best-effort; path-only on failure)
     for (const f of files) {
-      if (getFileKind(f.name) === "image") {
+      if (mediaKind(f.name) === "image") {
         rpc("image.attach", { session_id: liveSessionId || undefined, path: f.path }).catch(() => { /* path in text is the fallback */ });
       }
     }

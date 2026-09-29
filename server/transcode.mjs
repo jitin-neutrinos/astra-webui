@@ -15,8 +15,8 @@ const MAX_CACHE_BYTES = parseInt(process.env.ASTRA_TRANSCODE_MAX_BYTES || String
 const FFMPEG_TIMEOUT_MS = 1000 * 60 * 10; // kill runaway jobs
 
 // Extensions this endpoint serves, and what each becomes.
-const VIDEO_TRANSCODE = new Set(["avi", "wmv", "flv", "mpg", "mpeg", "3gp", "mts", "m2ts", "vob", "ogv", "mkv", "mov", "m4v", "ts"]);
-const IMAGE_TRANSCODE = new Set(["heic", "heif", "tiff", "tif", "avif", "bmp", "psd", "webp"]);
+export const VIDEO_TRANSCODE = new Set(["avi", "wmv", "flv", "mpg", "mpeg", "3gp", "mts", "m2ts", "vob", "ogv", "mkv", "mov", "m4v", "ts"]);
+export const IMAGE_TRANSCODE = new Set(["heic", "heif", "tiff", "tif", "avif", "bmp", "psd", "webp"]);
 
 const MIME_OUT = { video: "video/mp4", image: "image/jpeg" };
 
