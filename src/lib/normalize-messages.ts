@@ -25,8 +25,21 @@ export function rowsToTurns(rows: HistoryRow[]): Turn[] {
   const turns: Turn[] = [];
   let currentTurn: Turn | null = null;
 
+  // The auto-greet kickoff is a UI convention, not a conversation turn: the
+  // client hides the instruction at send time, and history restore must hide
+  // it too, or every reload of a fresh chat renders the hidden prompt as the
+  // first user bubble (owner 2026-09-29: "this should never be displayed").
+  const GREET_RE = /^New chat just started\. Greet me briefly and naturally, then ask what I'd like to work on\.\s*$/;
+  const rowMainText = (r: HistoryRow): string =>
+    (typeof r.text === "string" ? r.text
+      : typeof r.content === "string" ? r.content
+      : typeof r.display_content === "string" ? r.display_content
+      : "") || "";
+  const greetRow = rows.find((r) => r.role === "user" && GREET_RE.test(rowMainText(r).trim()));
+
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
+    if (greetRow && row.id === greetRow.id) continue;
     // Failed turns still carry the user's question and the failure reason —
     // both belong on screen. Skipping the row entirely left the prompt with NO
     // answer and NO error after a reload, which read as "the chat lost it".

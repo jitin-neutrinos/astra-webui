@@ -94,10 +94,25 @@ export function lastAssistantHasText(
     const m = messages[i];
     if (m.role !== "assistant") return false; // the user spoke since: a new answer is legitimate
     if (m.isSysNote) continue;
-    return (m.segments || []).some((s) => s.kind === "text" && (s.text || "").trim() === want);
+    // A turn's answer can be split across several text segments (interims,
+    // text between tool batches). The FINAL text is the concatenation of them
+    // all — comparing only single segments missed multi-segment turns and let
+    // a re-delivered message.complete render the whole answer a second time.
+    const segs = (m.segments || []).filter((s) => s.kind === "text");
+    if (segs.some((s) => sameProse(s.text || "", want))) return true;
+    const joined = segs.map((s) => s.text || "").join("").trim();
+    if (joined && sameProse(joined, want)) return true;
+    return false;
   }
   return false;
 }
+
+
+// Whitespace-insensitive equality for text reconciliation: a provider's final
+// text may join interim blocks with different separators ("a\n\nb" vs "ab") —
+// strict trimming missed that and rendered the whole answer twice.
+const sameProse = (a: string, b: string): boolean =>
+  a.replace(/\s+/g, "") === b.replace(/\s+/g, "");
 
 let segSeq = 0;
 const nextSegId = () => `seg${++segSeq}-${Date.now()}`;
@@ -212,14 +227,14 @@ export function applySegmentOps(segments: Segment[], ops: SegOp[]): Segment[] {
       const textIdxs: number[] = [];
       for (let i = 0; i < out.length; i++) if (out[i].kind === "text") textIdxs.push(i);
       const joined = textIdxs.map((i) => out[i].text || "").join("");
-      if (joined.trim() && finalText.trim() === joined.trim()) {
+      if (joined.trim() && sameProse(finalText, joined)) {
         // Same prose re-delivered whole (barriers split the streamed stream, so
         // the old last-segment prefix test missed) -> collapse into ONE segment.
         const keep = textIdxs[textIdxs.length - 1];
         out[keep].text = finalText;
         out[keep].status = "done";
         for (let k = textIdxs.length - 2; k >= 0; k--) out.splice(textIdxs[k], 1);
-      } else if (joined.trim() && finalText.trim().startsWith(joined.trim())) {
+      } else if (joined.trim() && (finalText.trim().startsWith(joined.trim()) || sameProse(finalText, joined))) {
         // The authoritative final text EXTENDS what already rendered (streamed
         // deltas + this complete's tail): merge into one segment instead of
         // pushing a second copy that made the answer visibly stream twice.
