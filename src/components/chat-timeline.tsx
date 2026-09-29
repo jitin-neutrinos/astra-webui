@@ -25,6 +25,7 @@ import {
   turnIsRunning,
 } from "../lib/chat-segments";
 import { MEDIA_RE, mediaPaths, stripMediaLines } from "../lib/media-paths";
+import { revealCps } from "../lib/reveal-pace";
 
 export type { SegKind, Segment, SegOp } from "../lib/chat-segments";
 export {
@@ -313,8 +314,9 @@ export function usePrefersReducedMotion() {
 
 // SLOW REVEAL (2026-09-26): calm reading pace. Base 40-52 cps (2.5x slower than
 // the original 120-160) with smooth ±20% human wobble; finished turns still
-// drain quickly (<2s) so you never wait on a done answer.
-const CPS_MIN = 40, CPS_MAX = 52;
+// drain quickly (<2s) so you never wait on a done answer. A burst that parks a
+// big backlog catches up at backlog/0.6s so delivered text never trails the
+// wire by seconds — the wobble floor is preserved for small trickle backlogs.
 function useReveal(text: string, done: boolean, instant: boolean) {
   // Only text that is (or was) actively streaming in this session may reveal.
   // A segment that mounts already finished — history restore, reload, a
@@ -333,9 +335,7 @@ function useReveal(text: string, done: boolean, instant: boolean) {
       const dt = Math.min(now - tRef.current, 250) / 1000; // cap tab-sleep jumps
       tRef.current = now;
       const back = text.length - nRef.current;
-      const cps = done
-        ? Math.max(CPS_MIN * 2, back / 1.8)                // finished turn drains <2s
-        : CPS_MIN + (Math.sin(now / 900) + 1) * (CPS_MAX - CPS_MIN) / 2; // smooth ±20% human wobble
+      const cps = revealCps(back, done, now);
       nRef.current = Math.min(text.length, nRef.current + cps * dt);
       setN(Math.floor(nRef.current));
       if (nRef.current < text.length) id = window.setTimeout(tick, 16);
