@@ -534,15 +534,20 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
 
   const { isStreaming, submitPrompt, submitBg, submitSteer, retryConnection, conn, nextRetryIn, interrupt, storedSessionId, setStoredSessionId, sendApprovalResponse, sendServerResponse, sessionInfo, setSessionInfo, rpc, liveSessionId, resetSession } = useHermesWS(handleEvent);
 
-  // Persist per-chat + restore on revisit/reload. Runs after useHermesWS (storedSessionId exists).
-  useEffect(() => { if (storedSessionId) saveItems(storedSessionId, bgItemsRef.current); }, [storedSessionId]);
+  // Per-chat persistence. Restore FIRST (mount), then persist every change AFTER restore
+  // (bgRestoreGuardRef) — saving on mount would write the empty initial [] over the stored
+  // items before they're ever read (the wipe-on-reload bug this replaces).
+  const bgRestoredRef = useRef(false);
   useEffect(() => {
-    if (storedSessionId) {
-      const restored = loadItems(storedSessionId);
-      if (restored.length > 0) setBgItems((live) => (live.length > 0 ? live : restored));
-    }
+    bgRestoredRef.current = false;
+    if (!storedSessionId) return;
+    const restored = loadItems(storedSessionId);
+    if (restored.length > 0) setBgItems((live) => (live.length > 0 ? live : restored));
+    bgRestoredRef.current = true;
   }, [storedSessionId]);
-  useEffect(() => { if (storedSessionId) saveItems(storedSessionId, bgItems); }, [bgItems, storedSessionId]);
+  useEffect(() => {
+    if (storedSessionId && bgRestoredRef.current) saveItems(storedSessionId, bgItems);
+  }, [bgItems, storedSessionId]);
 
   // Scroll to a bg item's reply once it exists in the DOM (after "jump to response" click).
   useEffect(() => {
@@ -762,7 +767,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       const okSent = cmd.kind === "bg" ? await submitBg(cmd.text) : await submitSteer(cmd.text);
       if (okSent) {
         const isLive = activeIdRef.current != null || isStreaming;
-        const item = createItem(cmd.kind, cmd.text, isLive, bgItemsRef.current);
+        const item = createItem(cmd.kind, cmd.text, isLive);
         setBgItems((items) => [...items, item]);
         setMessages((m) => [...m, {
           id: nextId(), role: "assistant", segments: [], isStreaming: false, isSysNote: true, bgId: item.id
@@ -832,7 +837,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     const isLive = activeIdRef.current != null || isStreaming;
     submitBg(text).then((ok) => {
       if (ok) {
-        const item = createItem("bg", text, isLive, bgItemsRef.current);
+        const item = createItem("bg", text, isLive);
         setBgItems((items) => [...items, item]);
         setMessages((m) => [...m, {
           id: nextId(), role: "assistant", segments: [], isStreaming: false, isSysNote: true, bgId: item.id

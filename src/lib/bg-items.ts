@@ -21,6 +21,7 @@ type Store = {
   setItem: (k: string, v: string) => void;
   removeItem: (k: string) => void;
 };
+export type { Store };
 
 const defaultStore = (): Store | null => {
   try { return globalThis.localStorage; } catch { return null; }
@@ -45,16 +46,19 @@ export function saveItems(sid: string, items: BgItem[], store: Store | null = de
   } catch { /* quota/private mode: dock just won't persist */ }
 }
 
-// ms id: unique across reloads (a module counter resets, stored ids survive)
-export function createItem(kind: BgItemKind, text: string, isLive: boolean, existing?: BgItem[]): BgItem {
+// Monotonic id: Date.now() alone collides when two items are created in the same ms
+// (two quick /bg submits), which made dismissItem kill both. lastId floors each new
+// id above every id this process has minted.
+let lastId = 0;
+export function createItem(kind: BgItemKind, text: string, isLive: boolean, _existing?: BgItem[]): BgItem {
   let status: BgItemStatus;
   if (kind === "steer") {
     status = "running";
   } else {
     status = isLive ? "queued" : "running";
   }
-  let id = Date.now();
-  if (existing?.some((it) => it.id === id)) id += 1;
+  const id = Math.max(Date.now(), lastId + 1);
+  lastId = id;
   return { id, kind, text, status };
 }
 
