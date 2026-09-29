@@ -162,7 +162,7 @@ const server = createServer(async (req, res) => {
       return res.end('{"enabled":false}');
     }
     res.writeHead(200, { "content-type": "application/json" });
-    return res.end(JSON.stringify({ enabled: true, url: nurl, topic: ntopic, auth: nauth }));
+    return res.end(JSON.stringify({ enabled: true, url: nurl, topic: ntopic, auth: nauth.replace(/^Basic\s+/i, "") }));
   }
 
   if (path.startsWith("/api/beacon/")) {
