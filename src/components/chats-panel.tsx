@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { SessionsSkeleton } from "./ui/skeletons";
 import { ArrowLeft, Search, MessageSquare, ChevronLeft, ChevronRight, AlertCircle } from "lucide-react";
 import { sourcesParam, sourceLabel } from "@/lib/source-filter";
 import { cleanTitle } from "@/lib/chat-title";
@@ -121,7 +122,7 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
 
       <div className="sidebar-scroll flex-1 overflow-y-auto p-2 space-y-1">
         {loading && sessions.length === 0 ? (
-          <div className="p-4 text-center font-mono text-xs text-slate-500">Loading...</div>
+          <SessionsSkeleton />
         ) : error ? (
           <div className="p-4 flex flex-col items-center gap-2 text-center text-redx/80">
             <AlertCircle className="w-5 h-5" />

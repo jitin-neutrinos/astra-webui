@@ -14,6 +14,7 @@ import { hasRenderedReq, lastAssistantHasText } from "@/lib/chat-segments";
 import { cleanTitle } from "@/lib/chat-title";
 import { modelSwitchValue } from "@/lib/model-switch";
 import AITextLoading from "@/components/ui/ai-text-loading";
+import { ChatFeedSkeleton } from "@/components/ui/skeletons";
 import { getFileKind, } from "@/lib/session-files";
 import {
   applySegmentOps, finalizeSegments, findNewestCollapsedToolSeg, expandKeyBlocked, TurnTimeline,
@@ -185,6 +186,9 @@ function thinkingOf(payload: any): string {
 
 export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, onNewChat, onOpenNav, isActiveView = true }: { resetSignal: number, selectedSessionId: string | null, onSessionChange?: (id: string | null) => void, onNewChat?: () => void, onOpenNav?: () => void, isActiveView?: boolean }) {
   const [messages, setMessagesState] = useState<ChatMsg[]>([]);
+  // history is in flight for this chat: show skeleton feed instead of the
+  // empty-state welcome (which flashed before history landed)
+  const [histLoading, setHistLoading] = useState(false);
   // Synchronous mirror of the transcript. Handlers that must know what is ALREADY on screen
   // (replayed gate / answer frames) cannot wait for React's next render: the live frame and
   // the resume-reply replay of the same request land back-to-back.
@@ -754,7 +758,8 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
 
   useEffect(() => {
     async function loadHistory() {
-      if (!storedSessionId) { setMessages([]); return; }
+      if (!storedSessionId) { setMessages([]); setHistLoading(false); return; }
+      setHistLoading(true);
       try {
         const res = await fetch(`/api/hx/sessions/${encodeURIComponent(storedSessionId)}/messages?order=oldest&limit=500`);
         if (!res.ok) {
@@ -800,6 +805,8 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       } catch {
         setErrorBanner("Failed to load history.");
         if (liveSidRef.current !== storedSessionId) setMessages([]);
+      } finally {
+        setHistLoading(false);
       }
     }
     loadHistory();
@@ -1289,7 +1296,9 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       </header>
 
       <div ref={listRef} onScroll={onScroll} className="chat-scroll relative z-10 min-h-0 flex-1" role="log" aria-label="Conversation">
-        {empty ? (
+        {histLoading && messages.length === 0 && !isStreaming ? (
+          <ChatFeedSkeleton />
+        ) : empty ? (
           <div className="chat-welcome">
             <img src="/astra-logo.png" alt="" aria-hidden="true" className="chat-welcome-glyph" />
             <h2 className="chat-welcome-title">{greeting}, Jitin</h2>

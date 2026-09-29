@@ -415,6 +415,13 @@ body { background: var(--color-void); }
   .chat-think-text { max-height: 200px; }
 }
 
+.ast-sk { position: relative; overflow: hidden; background: rgba(148,163,184,.10); border-radius: 6px; }
+.ast-sk::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, rgba(34,211,238,.10), transparent); animation: ast-sk-sweep 1.6s infinite; }
+@keyframes ast-sk-sweep { 100% { transform: translateX(100%); } }
+[data-theme="light"] .ast-sk { background: rgba(15,23,42,.08); }
+[data-theme="light"] .ast-sk::after { background: linear-gradient(90deg, transparent, rgba(3,105,161,.09), transparent); }
+@media (prefers-reduced-motion: reduce) { .ast-sk::after { animation: none; } }
+
 /* ---- AI components (21st.dev elements- port): tool-call + chain-of-thought.
    Design tokens mapped onto Astra's themed vars; every hardcoded dark literal
    carries a [data-theme="light"] override below. ---- */
@@ -534,6 +541,37 @@ body { background: var(--color-void); }
 /* chat-caret removed 2026-09-26: blinking typing line dropped entirely. */
 
 .chat-step-kind { flex: none; font: 600 9px/1 var(--font-mono); letter-spacing: .08em; color: var(--color-muted); border: 1px solid rgba(248,250,252,.14); border-radius: 9999px; padding: 2px 6px; }
+
+/* ---- Right-anchored header meta (owner 2026-09-29): descriptions/durations
+   hug the right edge on EVERY card type. The left block (icon+name+badge)
+   shrinks first; the right cluster keeps its content width and truncates its
+   preview gracefully. ---- */
+.ai-head-right { margin-left: auto; justify-content: flex-end; }
+.ai-head-right .chat-step-preview { flex: 0 1 auto; max-width: 46%; }
+.ai-head-right:has(.chat-step-preview) .chat-step-kind { order: -1; }
+.ai-thought .ai-head-left { min-width: 0; }
+.ai-thought .chat-step-label { max-width: 40%; }
+
+/* ---- Human I/O field rows (owner 2026-09-29): labeled key-value pairs in
+   place of raw JSON dumps. Long values scroll in their own capped region. ---- */
+.ai-io-fields { display: flex; flex-direction: column; gap: 4px; margin: 0; }
+.ai-io-row { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.ai-io-key { flex: none; width: 92px; font: 600 10px/1.5 var(--font-sans); letter-spacing: .02em; text-transform: uppercase; color: var(--color-muted); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ai-io-val { flex: 1; min-width: 0; font: 400 12px/1.55 var(--font-sans); color: var(--color-brandtext); white-space: pre-wrap; word-break: break-word; overflow: hidden; }
+.ai-io-val.mono { font: 400 11.5px/1.5 var(--font-mono); color: #a5f3fc; background: var(--color-midnight); border: 1px solid rgba(248,250,252,.08); border-radius: 6px; padding: 4px 8px; white-space: pre-wrap; }
+.ai-io-val.tall { max-height: 180px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(34,211,238,.45) transparent; }
+.ai-io-val.tall.mono { padding: 6px 8px; }
+
+[data-theme="light"] .ai-io-val.mono { color: #075985; background: rgba(15,23,42,.045); border-color: rgba(15,23,42,.10); }
+[data-theme="light"] .ai-io-val.tall { scrollbar-color: rgba(3,105,161,.45) transparent; }
+[data-theme="light"] .ai-io-key { color: #64748b; }
+[data-theme="light"] .ai-io-val { color: #1e293b; }
+
+@media (max-width: 640px) {
+  .ai-io-row { flex-direction: column; gap: 2px; }
+  .ai-io-key { width: auto; text-align: left; }
+  .ai-io-val.mono { padding: 4px 6px; }
+}
 .chat-io { margin-bottom: 8px; }
 .chat-io-label { font: 600 9.5px/1 var(--font-mono); letter-spacing: .14em; color: var(--color-muted); margin: 0 0 4px; }
 /* chat-caret-blink keyframes removed 2026-09-26 along with the caret. */

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { FilesSkeleton } from "./ui/skeletons";
 import { ArrowLeft, File, FileImage, FileText, RefreshCw, AlertTriangle } from "lucide-react";
 import { getHermesHome, getHermesFiles, getFileKind } from "@/lib/session-files";
 
@@ -179,7 +180,7 @@ export function FilesPage({ onBack }: { onBack: () => void }) {
             <button onClick={fetchUploads} className="p-1 hover:text-cyanx transition"><RefreshCw className="w-3.5 h-3.5" /></button>
           </h3>
           {uploadsLoading ? (
-            <p className="text-sm text-slate-500">Loading...</p>
+            <FilesSkeleton />
           ) : uploadsError ? (
             <div className="bg-white/5 border border-white/10 rounded-lg p-4 flex flex-col items-center justify-center gap-2">
               <AlertTriangle className="w-5 h-5 text-redx" />
@@ -203,7 +204,7 @@ export function FilesPage({ onBack }: { onBack: () => void }) {
             <button onClick={fetchGenerated} className="p-1 hover:text-cyanx transition"><RefreshCw className="w-3.5 h-3.5" /></button>
           </h3>
           {genLoading ? (
-            <p className="text-sm text-slate-500">Loading...</p>
+            <FilesSkeleton />
           ) : genError ? (
             <div className="bg-white/5 border border-white/10 rounded-lg p-4 flex flex-col items-center justify-center gap-2">
               <AlertTriangle className="w-5 h-5 text-redx" />
