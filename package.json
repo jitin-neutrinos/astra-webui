@@ -10,10 +10,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.2",
     "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^8.5.2",
     "@capacitor/core": "^8.5.2",
     "@capacitor/ios": "^8.5.2",
+    "@capacitor/preferences": "^8.0.1",
+    "@capawesome/capacitor-android-edge-to-edge-support": "^8.0.8",
+    "@capawesome/capacitor-navigation-bar": "^8.0.2",
+    "@capgo/capacitor-native-biometric": "^8.6.11",
     "@types/dompurify": "^3.0.5",
     "clsx": "^2.1.1",
     "dompurify": "^3.4.15",

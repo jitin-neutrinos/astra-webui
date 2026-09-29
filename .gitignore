@@ -1,5 +1,11 @@
 
-android/
+# android/ WAS ignored (pre-2026-09-29) — that let the native shell drift out of
+# version control while web commits kept overwriting the JS-side wiring (ntfy
+# bootstrap, shell theme) with no trace. The native platform IS source now.
+android/app/build/
+android/.gradle/
+android/local.properties
+android/app/src/main/assets/public/
 .audit-evidence/
 dist
 dist/

@@ -23,7 +23,8 @@ import { SubagentPanel, useSubagents } from "./subagent-panel";
 import { harnessRowFromToolStart, harnessRowId, mergeRoster, type HarnessRow } from "@/lib/harness-agents";
 import { Lightbox } from "./lightbox";
 import { getHermesHome, getCatalog } from "@/lib/session-files";
-import { createItem, onTurnComplete, reconcileWithServer } from "@/lib/bg-items";
+import { createItem, onTurnComplete, reconcileWithServer, dismissItem } from "@/lib/bg-items";
+import { loadItems, saveItems } from "@/lib/bg-items";
 import type { BgItem } from "@/lib/bg-items";
 import { BgDock, SysNoteRow } from "./bg-dock";
 import type { CatalogPayload } from "./composer-controls";
@@ -193,6 +194,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   const [bgItems, setBgItems] = useState<BgItem[]>([]);
   const bgItemsRef = useRef(bgItems);
   useEffect(() => { bgItemsRef.current = bgItems; }, [bgItems]);
+  const [openBgRef, setOpenBgRef] = useState<string | null>(null); // msg id to scroll to after "open" click
   const [chatTitle, setChatTitle] = useState(""); // mirrors ChatTitle's fetched/renamed title, for the browser tab
   const [lightbox, setLightbox] = useState<{ open: boolean; url: string; alt: string }>({ open: false, url: "", alt: "" });
   const [input, setInput] = useState("");
@@ -446,6 +448,14 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         const finalText = textOf(payload);
         if (finalText) { ensureActive(); pushOp({ op: "text-final", text: finalText }, true); }
       }
+      // Link the finishing turn's reply to any bg item that just went done, so the
+      // dock row can scroll back to its answer later. The active msg id IS the turn.
+      const activeMsgId = activeIdRef.current;
+      if (activeMsgId) {
+        setBgItems((items) => items.map((it) => (
+          it.status === "running" && !it.replyMsgId ? { ...it, replyMsgId: activeMsgId } : it
+        )));
+      }
       setBgItems(onTurnComplete);
       finalizeActive();
       return;
@@ -523,6 +533,27 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   }, [ensureActive, pushOp, finalizeActive, resolveApproval, resolveClarify, resolveGate, noteHarness]);
 
   const { isStreaming, submitPrompt, submitBg, submitSteer, retryConnection, conn, nextRetryIn, interrupt, storedSessionId, setStoredSessionId, sendApprovalResponse, sendServerResponse, sessionInfo, setSessionInfo, rpc, liveSessionId, resetSession } = useHermesWS(handleEvent);
+
+  // Persist per-chat + restore on revisit/reload. Runs after useHermesWS (storedSessionId exists).
+  useEffect(() => { if (storedSessionId) saveItems(storedSessionId, bgItemsRef.current); }, [storedSessionId]);
+  useEffect(() => {
+    if (storedSessionId) {
+      const restored = loadItems(storedSessionId);
+      if (restored.length > 0) setBgItems((live) => (live.length > 0 ? live : restored));
+    }
+  }, [storedSessionId]);
+  useEffect(() => { if (storedSessionId) saveItems(storedSessionId, bgItems); }, [bgItems, storedSessionId]);
+
+  // Scroll to a bg item's reply once it exists in the DOM (after "jump to response" click).
+  useEffect(() => {
+    if (!openBgRef) return;
+    const t = window.setTimeout(() => {
+      const el = document.querySelector(`[data-msg-id="${openBgRef}"]`);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      setOpenBgRef(null);
+    }, 80);
+    return () => window.clearTimeout(t);
+  }, [openBgRef, messages.length]);
 
   useEffect(() => {
     const live = bgItems.some(it => it.status !== "done");
@@ -731,7 +762,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       const okSent = cmd.kind === "bg" ? await submitBg(cmd.text) : await submitSteer(cmd.text);
       if (okSent) {
         const isLive = activeIdRef.current != null || isStreaming;
-        const item = createItem(cmd.kind, cmd.text, isLive);
+        const item = createItem(cmd.kind, cmd.text, isLive, bgItemsRef.current);
         setBgItems((items) => [...items, item]);
         setMessages((m) => [...m, {
           id: nextId(), role: "assistant", segments: [], isStreaming: false, isSysNote: true, bgId: item.id
@@ -789,16 +820,19 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     taRef.current?.focus();
   };
 
-  const removeBgItem = useCallback((id: number) => {
-    setBgItems((items) => items.filter((it) => it.id !== id));
-    setMessages((m) => m.filter((msg) => !(msg.isSysNote && msg.bgId === id)));
+  const dismissBgItem = useCallback((id: number) => {
+    setBgItems((items) => dismissItem(items, id));
+  }, []);
+
+  const openBgItem = useCallback((item: BgItem) => {
+    if (item.replyMsgId) setOpenBgRef(item.replyMsgId);
   }, []);
 
   const handleFollowUpBg = useCallback((text: string) => {
     const isLive = activeIdRef.current != null || isStreaming;
     submitBg(text).then((ok) => {
       if (ok) {
-        const item = createItem("bg", text, isLive);
+        const item = createItem("bg", text, isLive, bgItemsRef.current);
         setBgItems((items) => [...items, item]);
         setMessages((m) => [...m, {
           id: nextId(), role: "assistant", segments: [], isStreaming: false, isSysNote: true, bgId: item.id
@@ -1202,7 +1236,8 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
               {messages.map((m, idx) => {
                 if (m.isSysNote && m.bgId) {
                   const it = bgItems.find((x) => x.id === m.bgId);
-                  if (it) return <SysNoteRow key={m.id} item={it} onRemove={removeBgItem} />;
+                  if (it && !it.dismissed) return <SysNoteRow key={m.id} item={it} onDismiss={dismissBgItem} />;
+                  if (it?.dismissed) return null;
                   return null;
                 }
                 return (
@@ -1286,7 +1321,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
 
       <div className="relative z-10 px-3 pb-3 lg:px-6 lg:pb-6">
         <SubagentPanel subs={roster} open={suba.open} setOpen={suba.setOpen} now={suba.now} rpc={rpc} sessionId={liveSessionId || storedSessionId || null} />
-        <BgDock items={bgItems} onSubmitFollowUp={handleFollowUpBg} onRemove={removeBgItem} />
+        <BgDock items={bgItems} onSubmitFollowUp={handleFollowUpBg} onDismiss={dismissBgItem} onOpenItem={openBgItem} />
         <div
           className={cn("chat-composer mx-auto max-w-3xl", dragOver && "drag-over")}
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}

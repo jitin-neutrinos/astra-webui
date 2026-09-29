@@ -6,18 +6,56 @@ export interface BgItem {
   kind: BgItemKind;
   text: string;
   status: BgItemStatus;
+  dismissed?: boolean;
+  // id of the assistant turn (ChatMsg.id) whose reply answers this item
+  replyMsgId?: string;
 }
 
-let nextBgId = 1;
+// Per-chat persistence (localStorage). Covers reload + same-browser revisit.
+// ponytail: browser-local only — cross-device sync of these decorations needs a
+// server store; add when the owner actually wants bg history on another device.
+const key = (sid: string) => `bg_items_${sid}`;
 
-export function createItem(kind: BgItemKind, text: string, isLive: boolean): BgItem {
+type Store = {
+  getItem: (k: string) => string | null;
+  setItem: (k: string, v: string) => void;
+  removeItem: (k: string) => void;
+};
+
+const defaultStore = (): Store | null => {
+  try { return globalThis.localStorage; } catch { return null; }
+};
+
+export function loadItems(sid: string, store: Store | null = defaultStore()): BgItem[] {
+  if (!sid || !store) return [];
+  try {
+    const raw = store.getItem(key(sid));
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((it: BgItem) => it && typeof it.id === "number" && typeof it.text === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveItems(sid: string, items: BgItem[], store: Store | null = defaultStore()): void {
+  if (!sid || !store) return;
+  try {
+    if (items.length === 0) store.removeItem(key(sid));
+    else store.setItem(key(sid), JSON.stringify(items));
+  } catch { /* quota/private mode: dock just won't persist */ }
+}
+
+// ms id: unique across reloads (a module counter resets, stored ids survive)
+export function createItem(kind: BgItemKind, text: string, isLive: boolean, existing?: BgItem[]): BgItem {
   let status: BgItemStatus;
   if (kind === "steer") {
     status = "running";
   } else {
     status = isLive ? "queued" : "running";
   }
-  return { id: nextBgId++, kind, text, status };
+  let id = Date.now();
+  if (existing?.some((it) => it.id === id)) id += 1;
+  return { id, kind, text, status };
 }
 
 export function onTurnComplete(items: BgItem[]): BgItem[] {
@@ -62,6 +100,12 @@ export function reconcileWithServer(items: BgItem[], snapshot: { queued: { user:
   return items;
 }
 
+// Dock shows everything not explicitly dismissed — done items stay until the user
+// clears them (owner mandate: persist until dismissed).
 export function dockVisible(items: BgItem[]): boolean {
-  return items.length > 0;
+  return items.some(it => !it.dismissed);
+}
+
+export function dismissItem(items: BgItem[], id: number): BgItem[] {
+  return items.map(it => it.id === id ? { ...it, dismissed: true } : it);
 }

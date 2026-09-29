@@ -141,6 +141,30 @@ const server = createServer(async (req, res) => {
     return res.end(JSON.stringify({ authenticated: ok }));
   }
 
+  // Push config for the native shells (Android app). Authenticated like every
+  // other API; hands the ntfy topic + auth so the phone can subscribe without
+  // the secret being bundled into the APK.
+  if (path === "/api/ntfy-config") {
+    const cookies = {};
+    (req.headers.cookie || "").split(";").forEach((c) => {
+      const i = c.indexOf("=");
+      if (i > 0) cookies[c.slice(0, i).trim()] = c.slice(i + 1).trim();
+    });
+    if (!validToken(cookies[COOKIE])) {
+      res.writeHead(401, { "content-type": "application/json" });
+      return res.end('{"error":"unauthenticated"}');
+    }
+    const nurl = process.env.NTFY_URL || "";
+    const ntopic = process.env.NTFY_TOPIC || "";
+    const nauth = process.env.NTFY_AUTH || "";
+    if (!nurl || !ntopic) {
+      res.writeHead(200, { "content-type": "application/json" });
+      return res.end('{"enabled":false}');
+    }
+    res.writeHead(200, { "content-type": "application/json" });
+    return res.end(JSON.stringify({ enabled: true, url: nurl, topic: ntopic, auth: nauth }));
+  }
+
   if (path.startsWith("/api/beacon/")) {
     const cookies = {};
     (req.headers.cookie || "").split(";").forEach((c) => {
