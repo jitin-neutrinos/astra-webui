@@ -24,6 +24,10 @@ import {
   type Segment, type SegOp,
 } from "./chat-timeline";
 import { ComposerControls, filesToAttachments, type Attachment } from "./composer-controls";
+import { AttachmentTray } from "./attachment-tray";
+import { newId, uniqueUploadName } from "@/lib/upload-names";
+import { loadDraft, saveDraft, clearDraft, moveDraft } from "@/lib/drafts";
+import { toast } from "@/lib/toast";
 import { SubagentPanel, useSubagents } from "./subagent-panel";
 import { harnessRowFromToolStart, harnessRowId, mergeRoster, type HarnessRow } from "@/lib/harness-agents";
 import { lazy, Suspense } from "react";
@@ -231,6 +235,12 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   const listRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const uploading = attachments.some((a) => a.status === "uploading");
+  const failedUp = attachments.some((a) => a.status === "error");
+  const doneCount = attachments.filter((a) => a.status === "done").length;
+  const canSend = !uploading && !failedUp && (input.trim().length > 0 || doneCount > 0);
+  const sendHint = uploading ? "Waiting for uploads…" : failedUp ? "Retry or remove failed uploads" : "";
+
   const reducedMotion = usePrefersReducedMotion();
 
   const liveSidRef = useRef<string | null>(null);
@@ -594,6 +604,28 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   }, [ensureActive, pushOp, finalizeActive, resolveApproval, resolveClarify, resolveGate, noteHarness, applyTitle, refreshTitle]);
 
   const { isStreaming, submitPrompt, submitBg, submitSteer, retryConnection, conn, nextRetryIn, interrupt, storedSessionId, setStoredSessionId, sendApprovalResponse, sendServerResponse, sessionInfo, setSessionInfo, rpc, liveSessionId, resetSession } = useHermesWS(handleEvent);
+  // Per-session drafts (R8f): keyed astra:draft:<sid>, debounced 400ms. The old
+  // scheme wrote the SENT text at send time — it reappeared on history reload.
+  const draftSidRef = useRef<string | null>(null);
+  useEffect(() => {
+    const t = setTimeout(() => saveDraft(localStorage, draftSidRef.current, input), 400);
+    return () => clearTimeout(t);
+  }, [input]);
+  useEffect(() => {
+    const prev = draftSidRef.current;
+    if (prev === storedSessionId) return;
+    // New chat minted mid-turn: carry what's typed to the real session id.
+    if (prev === null && storedSessionId && storedSessionId === liveSessionId) {
+      moveDraft(localStorage, null, storedSessionId);
+      draftSidRef.current = storedSessionId;
+      return;
+    }
+    saveDraft(localStorage, prev, input);
+    draftSidRef.current = storedSessionId;
+    setInput(loadDraft(localStorage, storedSessionId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storedSessionId]);
+
 
   // Per-chat persistence. Restore FIRST (mount), then persist every change AFTER restore
   // (bgRestoreGuardRef) — saving on mount would write the empty initial [] over the stored
@@ -785,8 +817,6 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         // reasoning/tool_calls/tool-result rows — approval/clarify segments
         // are the only kind never persisted, so restored turns never have them.
         const rows = rowsToTurns(data.messages || []);
-        // Restore any saved input draft for this session
-        try { const d = sessionStorage.getItem("draft_input_" + (storedSessionId || "global")); if (d) { setInput(d); sessionStorage.removeItem("draft_input_" + (storedSessionId || "global")); } } catch { }
         
         const sameMsg = (live: ChatMsg, row: Turn) => {
           if (live.isSysNote || live.role !== row.role) return false;
@@ -826,9 +856,9 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
 
   const send = async (raw?: string, opts?: { silent?: boolean }) => {
     let finalText = (raw ?? input).trim();
-    if (!finalText && attachments.length === 0) return;
-    // Attachments can't ride a steer/bg command — they need their own turn.
-    if (attachments.some((a) => a.status === "uploading")) return;
+    if (!finalText && doneCount === 0) return;
+    // Send rule (R8d): disabled with a visible reason, never auto-sent.
+    if (uploading || failedUp) { toast(sendHint); return; }
 
     // Slash-command routing (always allowed — even mid-stream):
     //   /bg    → queue as a run-after envelope (never disturbs the live turn)
@@ -858,7 +888,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
 
     // Normal message handling...
 
-    const files = attachments.map(a => ({ name: a.file.name, path: a.serverPath! }));
+    const files = attachments.filter((a) => a.status === "done").map((a) => ({ name: a.name, path: a.serverPath! }));
     if (files.length > 0) {
       finalText += (finalText ? "\n\n" : "") + files.map(f => `Attached file: ${f.path}`).join("\n");
     }
@@ -874,7 +904,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     // actual first message, and Regenerate on the greeting would leak it as a visible bubble.
     if (!opts?.silent) lastPromptRef.current = finalText;
     if (!opts?.silent) {
-      try { sessionStorage.setItem("draft_input_" + (storedSessionId || "global"), input); } catch { }
+      clearDraft(localStorage, draftSidRef.current);
       setInput("");
     }
     setSlashOpen(false);
@@ -997,11 +1027,13 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   // Upload one file via XHR (progress events); path targets <home>/uploads so
   // the agent sees host paths. 503 {error:"reauth"} → one silent retry.
   const startUpload = useCallback((a: Attachment) => {
+    if (!a.file) return; // edit-restored items are already done
     const fd = new FormData();
     fd.append("file", a.file);
     xhrPathRef.current?.then((home) => {
-      fd.append("path", `${home}/uploads/${a.file.name}`);
-      fd.append("overwrite", "true");
+      const serverName = uniqueUploadName(a.name);
+      fd.append("path", `${home}/uploads/${serverName}`);
+      fd.append("overwrite", "false"); // a collision errors (Retry mints a new name) instead of clobbering history
       const xhr = new XMLHttpRequest();
       xhrRef.current.set(a.id, xhr);
       xhr.open("POST", "/api/hx/files/upload-stream");
@@ -1052,6 +1084,13 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     setAttachments((list) => list.filter((a) => a.id !== id));
   }, [setAttachments]);
 
+  // Retry a failed upload: restart it (startedRef cleared on error → effect re-fires).
+  const retryAttachment = useCallback((id: string) => {
+    setAttachments((l) => l.map((x) => x.id === id
+      ? { ...x, status: "uploading" as const, progress: 0, retried: false, name: x.file ? x.name : x.name }
+      : x));
+  }, [setAttachments]);
+
   // Industry-standard autosize: height is a pure function of `input`, recomputed
   // on EVERY value change — user typing, send-clear, slash-pick, draft restore —
   // so it grows AND shrinks (the old code only fit inside onInputChange, so a
@@ -1063,6 +1102,14 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     ta.style.height = `${ta.scrollHeight}px`;
   }, []);
   useEffect(() => { fitComposer(); }, [input, fitComposer]);
+
+  // Stray drops anywhere else must never navigate the page away (R8b).
+  useEffect(() => {
+    const guard = (e: DragEvent) => { if (e.dataTransfer?.types.includes("Files")) e.preventDefault(); };
+    window.addEventListener("dragover", guard);
+    window.addEventListener("drop", guard);
+    return () => { window.removeEventListener("dragover", guard); window.removeEventListener("drop", guard); };
+  }, []);
 
   const onInputChange = (v: string) => {
     setInput(v);
@@ -1079,13 +1126,32 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   };
 
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // IME composing: Enter commits the composition — never send (R8).
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+    const coarse = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+    const mod = e.ctrlKey || e.metaKey;
     if (slashOpen && slashMatches.length) {
       if (e.key === "ArrowDown") { e.preventDefault(); setSlashActive((i) => (i + 1) % slashMatches.length); return; }
       if (e.key === "ArrowUp") { e.preventDefault(); setSlashActive((i) => (i - 1 + slashMatches.length) % slashMatches.length); return; }
       if (e.key === "Escape") { setSlashOpen(false); return; }
-      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); pickSlash(slashMatches[slashActive] || slashMatches[0]); return; }
+      if (e.key === "Enter" && !e.shiftKey && !coarse) { e.preventDefault(); pickSlash(slashMatches[slashActive] || slashMatches[0]); return; }
+      return;
     }
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); }
+    if (mod && e.key === "Enter") { e.preventDefault(); void send(); return; }
+    // Touch keyboards: Enter = newline; sending is the button's job.
+    if (e.key === "Enter" && !e.shiftKey && !coarse) { e.preventDefault(); void send(); }
+  };
+
+  // Paste (R8b): screenshots/file-only clipboards attach; text+files keeps both.
+  const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = Array.from(e.clipboardData?.files ?? []);
+    if (!files.length) return;
+    if (e.clipboardData.getData("text/plain")) {
+      setAttachments((a) => [...a, ...filesToAttachments(files)]);
+      return;
+    }
+    e.preventDefault();
+    setAttachments((a) => [...a, ...filesToAttachments(files)]);
   };
 
   // Ctrl+O expands the newest collapsed tool block (real key, matches the TUI).
@@ -1212,6 +1278,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       resetSession();
       setMessages([]);
       setInput("");
+      draftSidRef.current = null;
       setAttachments([]);
       setErrorBanner("");
       activeIdRef.current = null;
@@ -1252,6 +1319,12 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   // so a screen reader says "Astra is replying" once, then reads the finished
   // answer once. Tokens themselves are never announced.
   const liveAnnouncement = (() => {
+    if (failedUp) return `Upload failed: ${attachments.find((a) => a.status === "error")?.name ?? "file"}`;
+    if (uploading) {
+      const n = attachments.filter((a) => a.status === "uploading").length;
+      return `Uploading ${n} file${n === 1 ? "" : "s"}`;
+    }
+    if (attachments.length > 0 && doneCount === attachments.length) return "Files ready";
     if (isStreaming) return "Astra is replying";
     const last = messages[messages.length - 1];
     if (!last || last.role !== "assistant" || last.isStreaming) return "";
@@ -1260,7 +1333,17 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   })();
 
   return (
-    <main className="relative flex h-full min-w-0 flex-1 flex-col">
+    <main
+      onDragOver={(e) => { if (e.dataTransfer?.types.includes("Files")) { e.preventDefault(); setDragOver(true); } }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); }}
+      onDrop={(e) => {
+        if (!e.dataTransfer?.types.includes("Files")) return;
+        e.preventDefault();
+        setDragOver(false);
+        // Attachments queue for the NEXT turn — allowed mid-stream too.
+        const files = Array.from(e.dataTransfer?.files ?? []);
+        if (files.length) setAttachments((a) => [...a, ...filesToAttachments(files)]);
+      }}className="relative flex h-full min-w-0 flex-1 flex-col">
       <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">{liveAnnouncement}</p>
       {errorBanner && (() => {
         // Transport states are the ConnectionBanner's job; the red banner keeps
@@ -1372,6 +1455,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
                             <button type="button" aria-label="Edit message" title="Edit"
                               onClick={() => {
                                 setInput(m.content.replace(/\n\nAttached file: .*/g, ""));
+                                setAttachments((m.files ?? []).map((f) => ({ id: newId(), name: f.name, size: 0, status: "done" as const, progress: 100, serverPath: f.path })));
                                 setMessages(p => p.slice(0, idx));
                                 setTimeout(() => taRef.current?.focus(), 0);
                               }}>
@@ -1405,18 +1489,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       <div className="relative z-10 px-3 pb-3 lg:px-6 lg:pb-6">
         <SubagentPanel subs={roster} open={suba.open} setOpen={suba.setOpen} now={suba.now} rpc={rpc} sessionId={liveSessionId || storedSessionId || null} />
         <BgDock items={bgItems} onSubmitFollowUp={handleFollowUpBg} onDismiss={dismissBgItem} onOpenItem={openBgItem} />
-        <div
-          className={cn("chat-composer mx-auto w-full max-w-[52rem]", dragOver && "drag-over")}
-          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-          onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); }}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragOver(false);
-            // Attachments queue for the NEXT turn — allowed mid-stream too.
-            const files = Array.from(e.dataTransfer?.files ?? []);
-            if (files.length) setAttachments((a) => [...a, ...filesToAttachments(files)]);
-          }}
-        >
+        <div className={cn("chat-composer mx-auto w-full max-w-[52rem]", dragOver && "drag-over")}>
           {dragOver && (
             <div className="chat-drop-overlay" aria-hidden="true">Drop to attach</div>
           )}
@@ -1456,19 +1529,20 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
               ))}
             </div>
           )}
+          <AttachmentTray items={attachments} onRemove={removeAttachment} onRetry={retryAttachment} countLabel={sendHint || (attachments.length > 0 ? `${attachments.length} file${attachments.length === 1 ? "" : "s"}` : undefined)} />
           <textarea
             ref={taRef}
             rows={1}
             value={input}
             onChange={(e) => onInputChange(e.target.value)}
             onKeyDown={onKey}
+            onPaste={onPaste}
             placeholder={isStreaming ? "Reply, /bg to queue, /steer to correct…" : empty ? "Message Astra… (/ for commands)" : "Reply…"}
             aria-label="Message Astra"
             className="chat-composer-input"
           />
           <div className="chat-composer-bar">
             <ComposerControls
-              attachments={attachments}
               setAttachments={setAttachments}
               sessionInfo={sessionInfo}
               catalog={catalog}
@@ -1477,7 +1551,6 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
               onToggleYolo={onToggleYolo}
               onPickModel={onPickModel}
               onPickEffort={onPickEffort}
-              onRemoveAttachment={removeAttachment}
             />
             <span className="chat-composer-hint">{isStreaming ? "Sends queue after the reply · Shift+Enter newline" : "Enter to send · Shift+Enter for newline"}</span>
             {isStreaming && (
@@ -1492,8 +1565,9 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
             )}
             <button
               type="button" onClick={() => void send()}
-              disabled={!input.trim() || attachments.some(a => a.status === "uploading")}
-              aria-label={isStreaming ? "Queue message" : "Send message"}
+              disabled={!canSend}
+              aria-label={sendHint || (isStreaming ? "Queue message" : "Send message")}
+              title={sendHint || undefined}
               className="chat-send"
             >
               <ArrowUp className="h-4 w-4" strokeWidth={1.8} />

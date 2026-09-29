@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Paperclip, X, Check, SlidersHorizontal, ChevronRight, ChevronLeft } from "lucide-react";
+import { Paperclip, Check, SlidersHorizontal, ChevronRight, ChevronLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { newId } from "@/lib/upload-names";
 
 export type Attachment = {
   id: string;
@@ -9,7 +10,7 @@ export type Attachment = {
   path?: string;
   status: "uploading" | "done" | "error";
   progress?: number;
-  file: File;
+  file?: File;
   serverPath?: string;
   retried?: boolean;
 };
@@ -52,17 +53,11 @@ function useDismiss(open: boolean, close: () => void) {
   return ref;
 }
 
-function fmtSize(n: number) {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 // Shared with chat-landing's drag-drop handler so dropped files get the exact
 // same attachment shaping as the attach-button path.
 export function filesToAttachments(files: File[]): Attachment[] {
   return files.map((f) => ({
-    id: `${f.name}-${f.size}-${Date.now()}`,
+    id: newId(),
     name: f.name,
     size: f.size,
     status: "uploading" as const,
@@ -71,8 +66,7 @@ export function filesToAttachments(files: File[]): Attachment[] {
   }));
 }
 
-export function ComposerControls({ attachments, setAttachments, disabled, sessionInfo, catalog, onPickModel, onPickEffort, onToggleYolo, onRemoveAttachment, onOpen, sessionPending }: {
-  attachments: Attachment[];
+export function ComposerControls({ setAttachments, disabled, sessionInfo, catalog, onPickModel, onPickEffort, onToggleYolo, onOpen, sessionPending }: {
   setAttachments: (fn: (a: Attachment[]) => Attachment[]) => void;
   disabled?: boolean;
   sessionInfo: any;
@@ -80,7 +74,6 @@ export function ComposerControls({ attachments, setAttachments, disabled, sessio
   onPickModel: (params: { provider: string; model: string }) => void;
   onPickEffort: (effort: string) => void;
   onToggleYolo: () => void;
-  onRemoveAttachment: (id: string) => void;
   /** fired each time the popup opens - parent re-fetches the provider/model catalog */
   onOpen?: () => void;
   /** a stored chat is being resumed and its real settings have not arrived yet */
@@ -125,20 +118,6 @@ export function ComposerControls({ attachments, setAttachments, disabled, sessio
     <div className="relative flex min-w-0 flex-wrap items-center gap-1.5" ref={menuRef}>
       <input ref={fileRef} type="file" multiple className="hidden" onChange={onFiles}
         aria-hidden="true" tabIndex={-1} />
-
-      {attachments.map((a) => (
-        <span key={a.id} className="chat-filechip">
-          <Paperclip className="h-3 w-3 shrink-0 text-cyanx" strokeWidth={1.5} />
-          <span>{a.name}</span>
-          <small className="shrink-0 font-mono text-[9px] text-muted">
-            {a.status === "uploading" ? `${a.progress}%` : a.status === "error" ? "Error" : fmtSize(a.size)}
-          </small>
-          <button type="button" aria-label={`Remove ${a.name}`}
-            onClick={() => onRemoveAttachment(a.id)}>
-            <X className="h-3 w-3" strokeWidth={1.5} />
-          </button>
-        </span>
-      ))}
 
       <button type="button" className="chat-chip" disabled={disabled}
         aria-haspopup="dialog" aria-expanded={open} aria-controls="composer-options"
