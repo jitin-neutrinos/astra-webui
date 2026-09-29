@@ -1,16 +1,48 @@
+// Chat turn renderer — reasoning bundle (elements-/chain-of-thought) + response.
+// Per turn: ONE bundled card holds all thinking + tool rows (Radix Collapsible,
+// 21st.dev elements- port); the response text follows outside the card.
+// Owner mandates honored: everything initializes collapsed; a user-open persists
+// via step-prefs; opened-state updates LIVE through controlled `open` state.
+
 import { useEffect, useRef, useState, useMemo } from "react";
-import { Check, ChevronDown, ChevronRight, Loader2, TriangleAlert, Copy, ShieldAlert, X, Clock } from "lucide-react";
+import { Check, Loader2, ShieldAlert, X, Clock, Copy } from "lucide-react";
 import { cn } from "../lib/utils";
 import { getFileKind } from "../lib/session-files";
 import { AudioPlayer } from "./audio-player";
 import { GateCard } from "./gates/gate-card";
+import {
+  AiToolCall,
+  AiToolCallHeader,
+  AiToolCallContent,
+  AiToolCallInput,
+  AiToolCallOutput,
+  AiToolCallError,
+} from "./ui/ai-tool-call";
+import type { ToolCallState } from "./ui/ai-tool-call";
+import {
+  AiChainOfThought,
+  AiChainOfThoughtHeader,
+  AiChainOfThoughtContent,
+  AiChainOfThoughtStep,
+} from "./ui/ai-chain-of-thought";
+import type { StepStatus } from "./ui/ai-chain-of-thought";
 
 import type { Segment, ClarifyQuestion } from "../lib/chat-segments";
-import { turnIsRunning } from "../lib/chat-segments";
+import {
+  bundleTurnSegments,
+  turnIsRunning,
+} from "../lib/chat-segments";
 import { MEDIA_RE, mediaPaths, stripMediaLines } from "../lib/media-paths";
 
 export type { SegKind, Segment, SegOp } from "../lib/chat-segments";
-export { applySegmentOps, finalizeSegments, findNewestCollapsedToolSeg, expandKeyBlocked, turnIsRunning } from "../lib/chat-segments";
+export {
+  applySegmentOps,
+  finalizeSegments,
+  findNewestCollapsedToolSeg,
+  expandKeyBlocked,
+  bundleTurnSegments,
+  turnIsRunning,
+} from "../lib/chat-segments";
 export { MEDIA_RE, mediaPaths, stripMediaLines };
 
 import { Marked } from "marked";
@@ -37,7 +69,7 @@ export function RichText({ text, onOpenImage, streaming }: { text: string; onOpe
       });
       purifyHooked = true;
     }
-    
+
     let processed = text;
     let matches: RegExpMatchArray | null = null;
     if (streaming) {
@@ -47,7 +79,7 @@ export function RichText({ text, onOpenImage, streaming }: { text: string; onOpe
         processed += "\n```";
       }
     }
-    
+
     let sanitized = DOMPurify.sanitize(md.parse(processed, { async: false }) as string, {
       ADD_ATTR: ["target", "loading"], FORBID_TAGS: ["style", "form"], FORBID_ATTR: ["srcset"],
     });
@@ -75,7 +107,6 @@ export function RichText({ text, onOpenImage, streaming }: { text: string; onOpe
       btn.setAttribute("aria-label", "Copy code");
       btn.title = "Copy";
       btn.onclick = () => void copyText(pre.textContent || "");
-      pre.appendChild(btn);
     });
 
     const imgs = root.querySelectorAll("img:not([data-lb])");
@@ -106,7 +137,7 @@ export function RichText({ text, onOpenImage, streaming }: { text: string; onOpe
   );
 }
 
-// ---- segment rows ---------------------------------------------------------
+// ---- shared bits -----------------------------------------------------------
 
 function formatDur(ms?: number) {
   if (ms == null) return null;
@@ -118,13 +149,10 @@ function formatDur(ms?: number) {
 
 import { stepOpen, setStepOpen, hashKey } from "../lib/step-prefs";
 import { describeTool } from "../lib/tool-identity";
-import { FileText, Terminal as TerminalIcon, Globe, Database, Users, Search as SearchIcon, Wrench, Blocks } from "lucide-react";
-
-const KIND_ICON: Record<string, typeof Wrench> = {
-  mcp: Blocks, skill: Blocks, terminal: TerminalIcon, file: FileText,
-  web: Globe, browser: Globe, memory: Database, delegate: Users,
-  search: SearchIcon, tool: Wrench,
-};
+import {
+  FileText,
+  Brain,
+} from "lucide-react";
 
 // Stable per-step preference key. Tool steps: the provider tool_call id is
 // stable across live and restored paths. Thinking steps: content hash (ids
@@ -135,101 +163,184 @@ function stepPrefKey(seg: Segment): string {
   return seg.id;
 }
 
-function ThinkingRow({ seg }: { seg: Segment }) {
-  const prefKey = stepPrefKey(seg);
-  // Collapsed by default (owner mandate); ONLY a persisted user-open or a live
-  // click opens it. While running it shows open once, then collapses on done —
-  // a persisted "closed" from a previous session always wins.
-  const [open, setOpen] = useState<boolean>(() => seg.status === "run" ? stepOpen(prefKey) ?? true : stepOpen(prefKey) ?? false);
-  const wasRunning = useRef(seg.status === "run");
-  const userTouched = useRef(false);
+// ---- ReasoningBundle: the elements-/chain-of-thought card -------------------
+// Wraps ALL thinking + tool segments of one turn. Open state: collapsed by
+// default (owner mandate), persisted user choice via step-prefs under the
+// turn's bundle key, updated LIVE (controlled open).
+
+function ReasoningBundle({
+  thinking,
+  tools,
+  onToggleTool,
+}: {
+  thinking: Segment[];
+  tools: Segment[];
+  onToggleTool: (segId: string) => void;
+}) {
+  // Turn-scoped key: first thinking's content hash, else first tool's id.
+  const bundleKey = useMemo(
+    () =>
+      thinking[0]
+        ? `bundle:think:${hashKey((thinking[0].text || "").slice(0, 400))}`
+        : tools[0]
+          ? `bundle:tool:${tools[0].id}`
+          : "bundle:empty",
+    [thinking, tools],
+  );
+
+  const thinkingDone = thinking.every((t) => t.status === "done");
+  const lastToolDone = !tools.length || tools[tools.length - 1].status === "done";
+  const anyRun = !thinkingDone || !lastToolDone;
+  const completedCount = tools.filter((t) => t.status === "done").length;
+  const stepCount = thinking.length + tools.length;
+
+  // LIVE open state: starts from the persisted pref (default collapsed), then
+  // the component owns it and persists on every toggle.
+  const [open, setOpen] = useState<boolean>(() => stepOpen(bundleKey) ?? false);
+  const keyRef = useRef(bundleKey);
   useEffect(() => {
-    if (wasRunning.current) {
-      // the run just finished (or flipped states) — re-arm and auto-collapse
-      const finished = seg.status === "done";
-      wasRunning.current = seg.status === "run";
-      if (finished && !userTouched.current) setOpen(false); // auto-collapse after the run
-      return;
-    }
-    wasRunning.current = seg.status === "run";
-  }, [seg.status]);
-  if (!seg.text) return null;
-  const dur = formatDur(seg.durationMs);
+    keyRef.current = bundleKey;
+  }, [bundleKey]);
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    setStepOpen(keyRef.current, next);
+  };
+
+  const label = thinking.length
+    ? "Thought process"
+    : tools.length === 1
+      ? "Tool call"
+      : "Tool calls";
+
+  // Header duration chip (visible while collapsed): the last step's duration.
+  const headerDur = useMemo(() => {
+    if (open) return null;
+    const last = tools[tools.length - 1] || thinking[thinking.length - 1];
+    return formatDur(last?.durationMs);
+  }, [open, thinking, tools]);
+
   return (
-    <div className="chat-step-wrap">
-      <button type="button" className={cn("chat-step k-think", seg.status === "run" && "run")}
-        onClick={() => { userTouched.current = true; setStepOpen(prefKey, !open); setOpen((o) => !o); }} aria-expanded={open}>
-        {seg.status === "run" ? <Loader2 className="chat-step-icon spin" /> : <Check className="chat-step-icon" />}
-        <span className="chat-step-label">Thinking</span>
-        {dur && <span className={cn("chat-step-dur ml-auto font-mono text-[10px]", seg.status === "run" ? "text-[var(--color-cyanx)]" : "text-[var(--color-brandtext)]")}>{dur}</span>}
-        {open ? <ChevronDown className="chat-step-chevron ml-2" /> : <ChevronRight className="chat-step-chevron ml-2" />}
-      </button>
-      {open && <div className="chat-step-body chat-think-text">{seg.text}</div>}
+    <div className="chat-step-wrap min-w-0" data-reasoning-bundle data-streaming={anyRun ? "true" : "false"}>
+      <AiChainOfThought open={open} onOpenChange={(o) => { if (o !== open) toggle(); }}>
+        <AiChainOfThoughtHeader
+          title={label}
+          stepCount={stepCount > 0 ? stepCount : undefined}
+          completedCount={stepCount > 0 && !anyRun ? completedCount : undefined}
+        >
+          {headerDur && (
+            <span className={cn("chat-step-dur mr-1 shrink-0 font-mono text-[10px]", anyRun ? "text-cyanx" : "text-[var(--color-brandtext)]")}>
+              {headerDur}
+            </span>
+          )}
+        </AiChainOfThoughtHeader>
+        <AiChainOfThoughtContent>
+          {thinking.map((seg) => {
+            const dur = formatDur(seg.durationMs);
+            const st: StepStatus = seg.status === "run" ? "active" : "complete";
+            return (
+              <AiChainOfThoughtStep
+                key={seg.id}
+                status={st}
+                title={
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <Brain className="size-3.5 shrink-0" />
+                    <span className="chat-step-label">Thinking{dur ? ` · ${dur}` : ""}</span>
+                  </span>
+                }
+              >
+                <div className="chat-think-text whitespace-pre-wrap">{seg.text}</div>
+              </AiChainOfThoughtStep>
+            );
+          })}
+          {tools.map((seg) => (
+            <BundleToolRow key={seg.id} seg={seg} onToggleTool={onToggleTool} />
+          ))}
+        </AiChainOfThoughtContent>
+      </AiChainOfThought>
     </div>
   );
 }
 
-function ToolRow({ seg, onToggle }: { seg: Segment; onToggle: () => void }) {
+// ---- bundled tool row: elements-/tool-call card -----------------------------
+
+function BundleToolRow({ seg, onToggleTool }: { seg: Segment; onToggleTool: (segId: string) => void }) {
   const info = describeTool(seg.label, seg.argsText, seg.command);
-  const Icon = KIND_ICON[info.kind] || Wrench;
   const prefKey = stepPrefKey(seg);
-  // Header meta: identity line — command for terminal, path for files,
-  // server for MCP, skill name for skills, etc.
   const meta = (info.kind === "terminal" ? (seg.command || info.meta) : info.meta)?.replace(/\s+/g, " ").slice(0, 110);
   const long = (seg.resultText?.length || 0) > 3000;
-  const dur = formatDur(seg.durationMs);
+
+  // Controlled open, initialized from the persisted per-tool pref (collapsed
+  // default). LIVE updates + persist on toggle, same contract as the bundle.
+  const [open, setOpen] = useState<boolean>(() => stepOpen(prefKey) ?? false);
+  const keyRef = useRef(prefKey);
+  useEffect(() => {
+    keyRef.current = prefKey;
+  }, [prefKey]);
 
   const toggle = () => {
-    const next = !seg.collapsed;
-    setStepOpen(prefKey, next);
-    onToggle();
+    const next = !open;
+    setOpen(next);
+    setStepOpen(keyRef.current, next);
+    onToggleTool(seg.id); // keep chat-landing's message-state toggle in sync
   };
 
+  const dur = formatDur(seg.durationMs);
+  let state: ToolCallState;
+  if (seg.status === "run") state = "running";
+  else if (seg.exitCode != null && seg.exitCode !== 0) state = "error";
+  else state = "completed";
+
+  let parsedInput: Record<string, unknown> | undefined;
+  try {
+    const v = JSON.parse(seg.argsText || "");
+    if (v && typeof v === "object" && !Array.isArray(v)) parsedInput = v;
+  } catch { /* non-JSON args → render raw */ }
+
   return (
-    <div className="chat-step-wrap">
-      <button type="button" className={cn("chat-step k-tool", seg.status === "run" && "run")} onClick={toggle} aria-expanded={!seg.collapsed}>
-        {seg.status === "run" ? <Loader2 className="chat-step-icon spin" /> : seg.exitCode ? <TriangleAlert className="chat-step-icon err" /> : <Icon className="chat-step-icon" />}
-        <span className="chat-step-label">{info.name}</span>
+    <AiToolCall
+      name={info.name}
+      state={state}
+      open={open}
+      onOpenChange={(o) => { if (o !== open) toggle(); }}
+      className="bg-transparent border-0"
+    >
+      <AiToolCallHeader>
         {info.kind === "mcp" && <span className="chat-step-kind">MCP</span>}
         {info.kind === "skill" && <span className="chat-step-kind">SKILL</span>}
-        {!!meta && <span className="chat-step-preview truncate mr-2">{meta}</span>}
-        {dur && <span className={cn("chat-step-dur ml-auto font-mono text-[10px]", seg.status === "run" ? "text-[var(--color-cyanx)]" : "text-[var(--color-brandtext)]")}>{dur}</span>}
-        {seg.status === "done" && seg.exitCode != null && seg.exitCode !== 0 && <span className="chat-step-exit ml-2">exit {seg.exitCode}</span>}
-        {(seg.command || seg.argsText || seg.resultText) && (seg.collapsed ? <ChevronRight className="chat-step-chevron ml-2" /> : <ChevronDown className="chat-step-chevron ml-2" />)}
-      </button>
-      {!seg.collapsed && (
-        <div className="chat-step-body">
-          {info.kind === "terminal" ? (
-            <div className="chat-term-block">
-              {!!seg.command && <pre className="chat-term-cmd">$ {seg.command}</pre>}
-              {!!seg.resultText && <pre className="chat-term-out" tabIndex={0}>{long ? seg.resultText.slice(0, 3000) + "\n…" : seg.resultText}</pre>}
-            </div>
-          ) : (
-            <>
-              {(info.input || seg.argsText) && (
-                <div className="chat-io">
-                  <p className="chat-io-label">{info.inputLabel || "INPUT"}</p>
-                  <pre className="chat-term-args" tabIndex={0}>{info.input || seg.argsText}</pre>
-                </div>
-              )}
-              {!!seg.resultText && (
-                <div className="chat-io">
-                  <p className="chat-io-label">OUTPUT{seg.exitCode != null && seg.exitCode !== 0 ? ` · exit ${seg.exitCode}` : ""}</p>
-                  <div className="chat-term-block">
-                    <pre className="chat-term-out" tabIndex={0}>{long ? seg.resultText.slice(0, 3000) + "\n…" : prettyPrint(seg.resultText)}</pre>
-                    {long && (
-                      <button type="button" className="chat-term-expand" onClick={toggle} title="Expand full output (Ctrl+O)">
-                        Ctrl+O to expand
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
+        {!!meta && <span className="chat-step-preview truncate">{meta}</span>}
+        {dur && <span className={cn("chat-step-dur ml-1 shrink-0 font-mono text-[10px]", seg.status === "run" ? "text-cyanx" : "text-[var(--color-brandtext)]")}>{dur}</span>}
+        {seg.status === "done" && seg.exitCode != null && seg.exitCode !== 0 && <span className="chat-step-exit">exit {seg.exitCode}</span>}
+      </AiToolCallHeader>
+      <AiToolCallContent>
+        {info.kind === "terminal" ? (
+          <div className="chat-term-block">
+            {!!seg.command && <pre className="chat-term-cmd">$ {seg.command}</pre>}
+            {!!seg.resultText && <pre className="chat-term-out" tabIndex={0}>{long ? seg.resultText.slice(0, 3000) + "\n…" : seg.resultText}</pre>}
+          </div>
+        ) : (
+          <>
+            {(info.input || seg.argsText) && (
+              <AiToolCallInput input={parsedInput ?? { raw: info.input || seg.argsText }} />
+            )}
+            {!!seg.resultText && (
+              <AiToolCallOutput>
+                <pre className="chat-term-out" tabIndex={0}>{long ? seg.resultText.slice(0, 3000) + "\n…" : prettyPrint(seg.resultText)}</pre>
+                {long && (
+                  <button type="button" className="chat-term-expand" onClick={() => { if (!open) toggle(); }} title="Expand full output (Ctrl+O)">
+                    Ctrl+O to expand
+                  </button>
+                )}
+              </AiToolCallOutput>
+            )}
+          </>
+        )}
+      </AiToolCallContent>
+      {seg.exitCode != null && seg.exitCode !== 0 && seg.status !== "run" && (
+        <AiToolCallError error={`exit ${seg.exitCode}`} />
       )}
-    </div>
+    </AiToolCall>
   );
 }
 
@@ -321,11 +432,11 @@ export function MediaCard({ path, name, onOpenImage }: { path: string; name: str
   const kind = getFileKind(name);
   const enc = encodeURIComponent(path);
   const url = `/api/hx/files/download?path=${enc}`;
-  
+
   if (kind === "pdf") {
     return <PdfCard path={path} name={name} />;
   }
-  
+
   if (kind === "audio") {
     return <AudioPlayer src={`/api/hx/files/stream?path=${enc}`} name={name} />;
   }
@@ -368,7 +479,7 @@ function TextRow({ seg, onOpenImage }: { seg: Segment; onOpenImage?: (url: strin
   const paths = useMemo(() => mediaPaths(text), [text]);
   const displayRaw = seg.status === "done" && n >= text.length ? text : shown;
   const display = useMemo(() => stripMediaLines(displayRaw), [displayRaw]);
-  
+
   if (!text) return null;
   return (
     <div className="chat-text-seg">
@@ -580,6 +691,10 @@ function ApprovalRow({ seg, onRespond }: { seg: Segment; onRespond: (reqId: stri
 }
 
 // ---- turn container --------------------------------------------------------
+// Bundling: ONE reasoning card per turn (all thinking + tool rows, chain-of-
+// thought design), response text after it. Interactions (approval / clarify /
+// gate) and text stay OUTSIDE the card — they are never buried. Streaming text
+// follows the card exactly when the model emitted it.
 
 export function TurnTimeline({ segments, streaming, sessionId, onToggleTool, onApprovalRespond, onClarifyAnswer, onGateRespond, onOpenImage }: {
   segments: Segment[];
@@ -592,31 +707,20 @@ export function TurnTimeline({ segments, streaming, sessionId, onToggleTool, onA
   onOpenImage?: (url: string, alt: string) => void;
 }) {
   if (!segments.length) return null;
-  // Action-based chronological: preserve arrival order, but ensure any
-  // thinking that follows the first text is shown before that text
-  // (so reasoning never trails behind the final response).
-  const firstTextIdx = segments.findIndex(s => s.kind === "text");
-  let orderedSegments = segments;
-  if (firstTextIdx > 0) {
-    const beforeText = segments.slice(0, firstTextIdx);
-    const afterText = segments.slice(firstTextIdx);
-    const trailingThink = afterText.filter(s => s.kind === "thinking");
-    const afterTextNoThink = afterText.filter(s => s.kind !== "thinking");
-    if (trailingThink.length > 0) {
-      orderedSegments = [
-        ...beforeText.filter(s => s.kind === "thinking"),
-        ...beforeText.filter(s => s.kind !== "thinking"),
-        ...trailingThink,
-        ...afterTextNoThink,
-      ];
-    }
-  }
+
+  const { reasoning, response } = bundleTurnSegments(segments);
   const isRunning = turnIsRunning(segments, streaming);
+
   return (
     <div className={cn("chat-turn", isRunning && "running")} aria-busy={isRunning}>
-      {orderedSegments.map((seg) => {
-        if (seg.kind === "thinking") return <ThinkingRow key={seg.id} seg={seg} />;
-        if (seg.kind === "tool") return <ToolRow key={seg.id} seg={seg} onToggle={() => onToggleTool(seg.id)} />;
+      {reasoning && (
+        <ReasoningBundle
+          thinking={reasoning.thinking}
+          tools={reasoning.tools}
+          onToggleTool={onToggleTool}
+        />
+      )}
+      {response.map((seg) => {
         if (seg.kind === "approval") return <ApprovalRow key={seg.id} seg={seg} onRespond={onApprovalRespond} />;
         if (seg.kind === "clarify") return <ClarifyCard key={seg.id} seg={seg} onAnswer={onClarifyAnswer} />;
         if (seg.kind === "gate") return <GateCard key={seg.id} seg={seg} sessionId={sessionId} onRespond={onGateRespond} onOpenImage={onOpenImage} />;
