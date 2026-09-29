@@ -118,4 +118,13 @@ if grep -q 'capawesome-capacitor-android-edge-to-edge-support' android/capacitor
     exit 1
 fi
 echo "PASS: capawesome plugins correctly absent (full-bleed architecture)."
+
+# v1.6.0 media overhaul (plan §7): downloads + back handler must be wired.
+MAIN_KT="android/app/src/main/java/com/jitinnair/astra/MainActivity.kt"
+grep -q 'setDownloadListener' "$MAIN_KT" || { echo "FAIL: MainActivity missing setDownloadListener (downloads dead in APK)."; exit 1; }
+grep -q 'DownloadManager.Request' "$MAIN_KT" || { echo "FAIL: download listener not using DownloadManager."; exit 1; }
+grep -q 'addRequestHeader("Cookie"' "$MAIN_KT" || { echo "FAIL: download request missing session Cookie header."; exit 1; }
+grep -q 'OnBackPressedCallback' "$MAIN_KT" || { echo "FAIL: MainActivity missing back handler (viewer can't close on Back)."; exit 1; }
+grep -q 'versionCode 10' android/app/build.gradle || { echo "FAIL: versionCode not bumped to 10."; exit 1; }
+echo "PASS: download listener + back handler + v1.6.0."
 exit 0

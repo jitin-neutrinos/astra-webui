@@ -1,8 +1,15 @@
 package com.jitinnair.astra
 
+import android.app.DownloadManager
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.webkit.CookieManager
+import android.webkit.URLUtil
+import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import com.getcapacitor.BridgeActivity
 
 public class MainActivity : BridgeActivity() {
@@ -10,7 +17,52 @@ public class MainActivity : BridgeActivity() {
         registerPlugin(NativeNtfy::class.java)
         registerPlugin(CookieEncryptPlugin::class.java)
         super.onCreate(savedInstanceState)
+        installDownloadListener()
+        installBackHandler()
     }
+
+    // Downloads: the WebView turns anchor navigations with content-disposition
+    // into onDownloadStart → DownloadManager. HttpOnly astra_session cookie is
+    // forwarded because DownloadManager has its own HTTP stack.
+    private fun installDownloadListener() {
+        val wv = bridge?.webView ?: return
+        wv.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
+            if (url.startsWith("blob:") || url.startsWith("data:")) {
+                toast("Can't download this item"); return@setDownloadListener
+            }
+            try {
+                val name = URLUtil.guessFileName(url, contentDisposition, mimeType)
+                val req = DownloadManager.Request(Uri.parse(url))
+                    .addRequestHeader("Cookie", CookieManager.getInstance().getCookie(url) ?: "")
+                    .addRequestHeader("User-Agent", userAgent)
+                    .setMimeType(mimeType)
+                    .setTitle(name)
+                    .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                if (Build.VERSION.SDK_INT >= 29) req.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, name)
+                else req.setDestinationInExternalFilesDir(this, Environment.DIRECTORY_DOWNLOADS, name)
+                (getSystemService(DOWNLOAD_SERVICE) as DownloadManager).enqueue(req)
+                toast("Downloading $name")
+            } catch (e: Exception) {
+                toast("Download failed")
+            }
+        }
+    }
+
+    // Back asks the page first (media viewer/overlays register window.__astraBack);
+    // absent or false → default Activity behaviour (unchanged exit/background).
+    private fun installBackHandler() {
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                val wv = bridge?.webView ?: return fallthrough()
+                wv.evaluateJavascript("(typeof window.__astraBack==='function'&&window.__astraBack())===true") { r ->
+                    if (r != "true") fallthrough()
+                }
+            }
+            private fun fallthrough() { isEnabled = false; onBackPressedDispatcher.onBackPressed(); isEnabled = true }
+        })
+    }
+
+    private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
