@@ -1322,18 +1322,18 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
                 <div className="min-w-0 w-full">
                   {m.role === "user" ? (
                     <div>
-                      <div className="chat-turn-head chat-turn-head-user">
-                        <span className="chat-user-chip" aria-hidden="true">J</span>
-                        {m.ts != null && (
-                          <div className="chat-turn-ts">{new Date(m.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
-                        )}
-                      </div>
-                      {m.files && m.files.length > 0 && (
-                        <div className="mb-2 flex flex-wrap gap-2">
-                          {m.files.map(f => <MediaCard key={f.path} path={f.path} name={f.name} />)}
-                        </div>
-                      )}
                       <div className="chat-bubble-user min-w-0 w-full whitespace-pre-wrap [overflow-wrap:anywhere] rounded-2xl px-4 py-3 text-sm leading-relaxed">
+                        <div className="chat-turn-head chat-turn-head-user">
+                          <span className="chat-user-chip" aria-hidden="true">J</span>
+                          {m.ts != null && (
+                            <div className="chat-turn-ts">{new Date(m.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
+                          )}
+                        </div>
+                        {m.files && m.files.length > 0 && (
+                          <div className="mb-2 flex flex-wrap gap-2">
+                            {m.files.map(f => <MediaCard key={f.path} path={f.path} name={f.name} />)}
+                          </div>
+                        )}
                         {m.content.replace(/\n\nAttached file: .*/g, "")}
                       </div>
                     </div>

@@ -89,5 +89,34 @@ console.log("final-text reconciliation");
   check("empty final creates no segment", out.length === 0, out);
 }
 
+// 8. Barrier (tool/interim) split the streamed deltas into two segments; the
+//    final re-delivers the SAME prose whole -> collapse BOTH into one segment.
+//    Regression pin: the old last-segment-only comparison pushed a second copy
+//    and the answer visibly streamed twice.
+{
+  const out = apply([
+    { op: "text", text: "First part. " },
+    { op: "think", text: "pause to think" },
+    { op: "text", text: "Second part." },
+    { op: "text-final", text: "First part. Second part." },
+  ]);
+  check("whole-prose final collapses barrier-split segments", texts(out).join("") === "First part. Second part.", texts(out));
+  check("collapse leaves ONE text segment", texts(out).length === 1, texts(out));
+  check("thinking is untouched by the collapse", out.filter((s) => s.kind === "thinking").length === 1, out.map((s) => s.kind));
+}
+
+// 9. The final is the streamed prose PLUS a tail (deltas paused early):
+//    merge, don't append a second bubble.
+{
+  const out = apply([
+    { op: "text", text: "Answer start. " },
+    { op: "think", text: "mid-turn reasoning" },
+    { op: "text", text: "more streamed words" },
+    { op: "text-final", text: "Answer start. more streamed words plus the real ending." },
+  ]);
+  check("extending final merges into one segment", texts(out).join("") === "Answer start. more streamed words plus the real ending.", texts(out));
+  check("merge leaves ONE text segment", texts(out).length === 1, texts(out));
+}
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);
 if (failures !== 0) throw new Error(`${failures} check failure(s)`);

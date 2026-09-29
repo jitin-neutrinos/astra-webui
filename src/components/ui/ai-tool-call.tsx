@@ -96,6 +96,7 @@ function AiToolCall({
     <AiToolCallContext.Provider value={contextValue}>
       <CollapsiblePrimitive.Root
         data-slot="ai-tool-call"
+        data-run={state === "running" ? "1" : undefined}
         open={isOpen}
         onOpenChange={handleOpenChange}
         className={cn("ai-card overflow-hidden", className)}

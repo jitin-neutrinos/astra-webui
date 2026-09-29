@@ -400,7 +400,17 @@ body { background: var(--color-void); }
 /* thinking gets its OWN scroll region (owner ask 2026-09-29): a tall fixed cap
    so a long thought never stretches the chat page — it scrolls inside itself.
    max-height (not height) keeps short thoughts hugging their content. */
-.chat-think-text { max-height: 240px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(148,163,184,.35) transparent; }
+.chat-think-text { max-height: 240px; overflow-y: auto; overscroll-behavior: contain; }
+/* visible, aesthetic scrollbar (owner: must be SEEABLE, not hidden) */
+.chat-think-text { scrollbar-width: auto; scrollbar-color: rgba(34,211,238,.45) transparent; }
+.chat-think-text::-webkit-scrollbar { width: 8px; }
+.chat-think-text::-webkit-scrollbar-track { background: rgba(148,163,184,.08); border-radius: 8px; }
+.chat-think-text::-webkit-scrollbar-thumb { background: rgba(34,211,238,.40); border-radius: 8px; }
+.chat-think-text::-webkit-scrollbar-thumb:hover { background: rgba(34,211,238,.65); }
+[data-theme="light"] .chat-think-text { scrollbar-color: rgba(3,105,161,.45) transparent; }
+[data-theme="light"] .chat-think-text::-webkit-scrollbar-track { background: rgba(15,23,42,.06); }
+[data-theme="light"] .chat-think-text::-webkit-scrollbar-thumb { background: rgba(3,105,161,.40); }
+[data-theme="light"] .chat-think-text::-webkit-scrollbar-thumb:hover { background: rgba(3,105,161,.65); }
 @media (max-width: 640px) {
   .chat-think-text { max-height: 200px; }
 }
@@ -452,16 +462,17 @@ body { background: var(--color-void); }
 [data-theme="light"] .ai-io-label.err { color: #b91c1c; }
 
 /* Row header icons (owner spec 2026-09-29): NO plate background — bare glyphs.
-   Thinking = brand accent green, tool calls = brand accent blue (cyanx), both
-   glow + filled. Light theme: darkened accents per docs/light-mode.md. */
-.ai-plate { background: transparent; color: var(--color-cyanx); }
-.ai-plate svg { fill: currentColor; filter: drop-shadow(0 0 6px rgba(34,211,238,.55)); }
-.ai-thought .ai-plate { color: #34d399; }
-.ai-thought .ai-plate svg { filter: drop-shadow(0 0 6px rgba(52,211,153,.55)); }
-[data-theme="light"] .ai-plate { color: #0369a1; }
-[data-theme="light"] .ai-plate svg { filter: drop-shadow(0 0 4px rgba(3,105,161,.35)); }
-[data-theme="light"] .ai-thought .ai-plate { color: #047857; }
-[data-theme="light"] .ai-thought .ai-plate svg { filter: drop-shadow(0 0 4px rgba(4,120,87,.35)); }
+   Owner update (2026-09-29 evening): color follows STATE, not row kind —
+   running = blue (cyanx), completed/done = green. Light theme: darkened accents
+   per docs/light-mode.md. */
+.ai-plate { background: transparent; color: #34d399; }
+.ai-plate svg { fill: currentColor; filter: drop-shadow(0 0 6px rgba(52,211,153,.55)); }
+.ai-card[data-run] .ai-plate { color: var(--color-cyanx); }
+.ai-card[data-run] .ai-plate svg { filter: drop-shadow(0 0 6px rgba(34,211,238,.55)); }
+[data-theme="light"] .ai-plate { color: #047857; }
+[data-theme="light"] .ai-plate svg { filter: drop-shadow(0 0 4px rgba(4,120,87,.35)); }
+[data-theme="light"] .ai-card[data-run] .ai-plate { color: #0369a1; }
+[data-theme="light"] .ai-card[data-run] .ai-plate svg { filter: drop-shadow(0 0 4px rgba(3,105,161,.35)); }
 
 .chat-term-cmd, .chat-term-args { font: 400 12px/1.5 var(--font-mono); color: var(--color-brandtext); background: var(--color-midnight); border: 1px solid rgba(248,250,252,.08); border-radius: 8px; padding: 8px 10px; margin: 0 0 6px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
 .chat-term-block { position: relative; }

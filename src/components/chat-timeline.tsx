@@ -208,16 +208,25 @@ function ThoughtRow({ seg }: { seg: Segment }) {
     setStepOpen(keyRef.current, next);
   };
 
-  // Cap-height scroll region: while streaming, follow the tail so the newest
-  // thought text stays visible — but ONLY while the reader is already at the
-  // bottom (scrolling up to read stops the auto-follow).
+  // Capped scroll region: ALWAYS show the newest stream — jump to the bottom on
+  // every text tick and when the row opens, and keep following while streaming
+  // UNLESS the reader deliberately scrolled up (then leave their position alone).
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  const stickRef = useRef(true);
   useEffect(() => {
     const el = bodyRef.current;
-    if (!running || !el) return;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
-    if (nearBottom) el.scrollTop = el.scrollHeight;
-  }, [seg.text, running]);
+    if (!el) return;
+    const onScroll = () => {
+      stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 64;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!running || !el || !stickRef.current) return;
+    el.scrollTop = el.scrollHeight;
+  }, [seg.text, running, open]);
 
   return (
     <AiToolCall

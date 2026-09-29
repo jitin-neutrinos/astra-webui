@@ -213,6 +213,16 @@ export function applySegmentOps(segments: Segment[], ops: SegOp[]): Segment[] {
       for (let i = 0; i < out.length; i++) if (out[i].kind === "text") textIdxs.push(i);
       const joined = textIdxs.map((i) => out[i].text || "").join("");
       if (joined.trim() && finalText.trim() === joined.trim()) {
+        // Same prose re-delivered whole (barriers split the streamed stream, so
+        // the old last-segment prefix test missed) -> collapse into ONE segment.
+        const keep = textIdxs[textIdxs.length - 1];
+        out[keep].text = finalText;
+        out[keep].status = "done";
+        for (let k = textIdxs.length - 2; k >= 0; k--) out.splice(textIdxs[k], 1);
+      } else if (joined.trim() && finalText.trim().startsWith(joined.trim())) {
+        // The authoritative final text EXTENDS what already rendered (streamed
+        // deltas + this complete's tail): merge into one segment instead of
+        // pushing a second copy that made the answer visibly stream twice.
         const keep = textIdxs[textIdxs.length - 1];
         out[keep].text = finalText;
         out[keep].status = "done";
