@@ -2,6 +2,8 @@ import { request as httpRequest } from "node:http";
 import { randomBytes } from "node:crypto";
 import { generateAcceptKey, encodeFrame, FrameDecoder } from "./ws-codec.mjs";
 
+import { notifyGateRequest } from "./ntfy-notify.mjs";
+
 const HERMES_URL = "http://127.0.0.1:9119";
 const PASSWORD = process.env.ASTRA_HERMES_PASSWORD;
 
@@ -297,6 +299,10 @@ async function connectUpstream() {
         // R1: unsolicited pongs from upstream are proxy↔gateway bookkeeping —
         // never broadcast to browsers.
       } else {
+        // Gate notifications ride the same relay frames (proxy broadcasts every
+        // upstream text frame to every browser). Fire-and-forget — never delays
+        // the relay or throws.
+        try { notifyGateRequest(frame.payload); } catch { /* never throws */ }
         broadcastFrame(frame.payload, frame.opcode);
       }
     });
