@@ -5,7 +5,7 @@
 // via step-prefs; opened-state updates LIVE through controlled `open` state.
 
 import { useEffect, useRef, useState, useMemo } from "react";
-import { Check, Loader2, ShieldAlert, X, Clock, Copy } from "lucide-react";
+import { Check, Loader2, ShieldAlert, X, Clock } from "lucide-react";
 import { cn } from "../lib/utils";
 import { getFileKind } from "../lib/session-files";
 import { AudioPlayer } from "./audio-player";
@@ -25,6 +25,7 @@ import {
   turnIsRunning,
 } from "../lib/chat-segments";
 import { MEDIA_RE, mediaPaths, stripMediaLines } from "../lib/media-paths";
+import { AnimatedCopyButton } from "../lib/animated-copy";
 import { revealCps } from "../lib/reveal-pace";
 
 export type { SegKind, Segment, SegOp } from "../lib/chat-segments";
@@ -90,15 +91,38 @@ export function RichText({ text, onOpenImage, streaming }: { text: string; onOpe
   useEffect(() => {
     const root = containerRef.current;
     if (!root) return;
+    // One-time style injection for the DOM-built code copy buttons (they are
+    // created imperatively below, outside React — same swap animation as the
+    // React-side .chat-copy-swap buttons).
+    if (!document.getElementById("chat-code-copy-style")) {
+      const st = document.createElement("style");
+      st.id = "chat-code-copy-style";
+      st.textContent = `
+.chat-code-copy { position:relative; overflow:hidden; }
+.chat-code-copy .cc-swap { position:absolute; inset:0; }
+.chat-code-copy .cc-swap svg { position:absolute; inset:0; width:100%; height:100%; transition:opacity 160ms ease, transform 160ms ease; }
+.chat-code-copy .cc-swap svg.cc-check { opacity:0; transform:scale(.5) rotate(-45deg); }
+.chat-code-copy.is-check .cc-swap svg.cc-copy { opacity:0; transform:scale(.5) rotate(45deg); }
+.chat-code-copy.is-check .cc-swap svg.cc-check { opacity:1; transform:scale(1) rotate(0deg); color:#34d399; }
+[data-theme="light"] .chat-code-copy.is-check .cc-swap svg.cc-check { color:#047857; }`;
+      document.head.appendChild(st);
+    }
     const pres = root.querySelectorAll("pre:not([data-cb])");
     pres.forEach((pre) => {
       pre.setAttribute("data-cb", "1");
       const btn = document.createElement("button");
       btn.className = "chat-code-copy";
-      btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-copy"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
+      btn.innerHTML = `<span class="cc-swap" aria-hidden="true"><svg class="cc-copy" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg><svg class="cc-check" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>`;
       btn.setAttribute("aria-label", "Copy code");
       btn.title = "Copy";
-      btn.onclick = () => void copyText(pre.textContent || "");
+      btn.onclick = () => {
+        void copyText(pre.textContent || "").then((ok) => {
+          if (!ok) return;
+          btn.classList.add("is-check");
+          btn.title = "Copied";
+          setTimeout(() => { btn.classList.remove("is-check"); btn.title = "Copy"; }, 2000);
+        });
+      };
     });
 
     const imgs = root.querySelectorAll("img:not([data-lb])");
@@ -115,15 +139,7 @@ export function RichText({ text, onOpenImage, streaming }: { text: string; onOpe
 
   return (
     <div className="relative group">
-      <button
-        type="button"
-        className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity bg-midnight/80 text-cyanx border border-white/10 rounded-md px-2 py-0.5 text-[10px] font-mono hover:bg-cyanx/20 focus:outline-none focus:ring-1 focus:ring-cyanx/40"
-        onClick={() => void copyText(text)}
-        aria-label="Copy message content"
-        title="Copy"
-      >
-        <Copy className="h-3 w-3" strokeWidth={1.5} />
-      </button>
+      <AnimatedCopyButton sm className="!absolute top-2 right-2 z-10 !h-6 !w-6 opacity-0 group-hover:opacity-100 transition-opacity" text={text} />
       <div ref={containerRef} className="chat-md" dangerouslySetInnerHTML={{ __html: html }} />
     </div>
   );
@@ -313,20 +329,20 @@ export function usePrefersReducedMotion() {
 }
 
 // SLOW REVEAL (2026-09-26): calm reading pace. Base 40-52 cps (2.5x slower than
-// the original 120-160) with smooth ±20% human wobble; finished turns still
-// drain quickly (<2s) so you never wait on a done answer. A burst that parks a
-// big backlog catches up at backlog/0.6s so delivered text never trails the
-// wire by seconds — the wobble floor is preserved for small trickle backlogs.
+// the original 120-160) with smooth ±20% human wobble. A burst that parks a
+// big backlog catches up at backlog/0.6s capped at 240 cps so catch-up stays
+// visibly animated. OWNER DIRECTIVE (2026-09-29, supersedes the old
+// "never animate settled text" rule): text ALWAYS flows, never lands as a
+// single block — when a turn completes with buffer remaining, the reveal
+// continues at the drain pace (revealCps done branch, <2s) instead of
+// snapping, and a segment that mounts already finished (history restore,
+// reload) sweeps in the same fast way. Reduced-motion users still get
+// instant text (accessibility, not a snap path).
 function useReveal(text: string, done: boolean, instant: boolean) {
-  // Only text that is (or was) actively streaming in this session may reveal.
-  // A segment that mounts already finished — history restore, reload, a
-  // mid-turn final snapshot — renders whole: persisted text must never
-  // re-animate. And once `done`, the block snaps shut: no drain pass, and a
-  // text-final replacement can never make the answer visibly "stream twice".
-  const [n, setN] = useState(() => (done ? text.length : 0));
+  const [n, setN] = useState(0);
   const nRef = useRef(n), tRef = useRef(0);
   useEffect(() => {
-    if (instant || done) { nRef.current = text.length; setN(text.length); return; }
+    if (instant) { nRef.current = text.length; setN(text.length); return; }
     if (nRef.current >= text.length) return;
     let id = 0;
     const tick = () => {
@@ -338,9 +354,9 @@ function useReveal(text: string, done: boolean, instant: boolean) {
       const cps = revealCps(back, done, now);
       nRef.current = Math.min(text.length, nRef.current + cps * dt);
       setN(Math.floor(nRef.current));
-      if (nRef.current < text.length) id = window.setTimeout(tick, 16);
+      if (nRef.current < text.length) id = window.setTimeout(tick, done ? 48 : 16);
     };
-    id = window.setTimeout(tick, 16);
+    id = window.setTimeout(tick, done ? 48 : 16);
     return () => window.clearTimeout(id);
   }, [text, done, instant]);
   return instant ? text.length : Math.min(n, text.length);
