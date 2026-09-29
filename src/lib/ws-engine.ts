@@ -15,7 +15,7 @@
 
 import {
   nextReconnectDelay, transportSilent, requestBelongsToLive,
-  applyTurnTruth, watchdogAction,
+  applyTurnTruth, watchdogAction, mergeSessionInfo,
   type EventPayload,
 } from "./ws-helpers";
 import {
@@ -47,6 +47,10 @@ type Engine = {
   ownRpcIds: Set<string>;
   pendingRpcs: Map<string, { resolve: (v: any) => void; reject: (e: any) => void }>;
   pendingResumes: Set<string>;
+  /** resume rpc id -> stored session key it was sent for */
+  resumeKeys: Map<string, string>;
+  /** stored key the current liveSessionId is bound to (null = unbound) */
+  liveKey: string | null;
   pendingPreTurnRpcs: { id: string; method: string; params: any; resolve: any; reject: any }[];
 
   // create/prompt latches
@@ -76,6 +80,8 @@ const eng: Engine = {
   ownRpcIds: new Set(),
   pendingRpcs: new Map(),
   pendingResumes: new Set(),
+  resumeKeys: new Map(),
+  liveKey: null,
   pendingPreTurnRpcs: [],
   pendingCreate: false,
   createOnOpen: false,
@@ -109,6 +115,44 @@ function readStoredSid(): string | null {
     if (stored && wsGet().storedSessionId !== stored) wsGet().setStoredSessionId(stored);
     return stored;
   } catch { return null; }
+}
+
+// One place that sends a stored-key resume and remembers which key it was for.
+function sendResume(s: WebSocket, key: string) {
+  const id = ownRpcId();
+  eng.pendingResumes.add(id);
+  eng.resumeKeys.set(id, key);
+  s.send(JSON.stringify({ method: "session.resume", params: { session_id: key }, id }));
+}
+
+// Sidebar / URL switch to a different stored chat: the old live session id must
+// NOT stay bound (prompts, config.set and the selector popup all key off it -
+// the popup would show and edit the PREVIOUS chat's model/yolo/effort). Rebind
+// by resuming the newly selected chat. Never interrupts the old turn (isolation
+// is the event filter's job).
+function rebindToStored(key: string) {
+  const s = eng.socket;
+  if (!s || s.readyState !== 1) return; // onSocketOpen resumes the stored key
+  if (key === eng.liveKey) return;
+  for (const k of eng.resumeKeys.values()) if (k === key) return; // already in flight
+  eng.liveKey = null;
+  wsSet({ liveSessionId: null, sessionInfo: null, sessionInfoSid: null });
+  sendResume(s, key);
+}
+
+// Single funnel for model/provider/effort/yolo truth. Fed by session.info events AND
+// every reply that carries `info` (create, resume, watchdog probe, bg poll) — a reload
+// onto a live session emits no session.info, so the resume reply is the only source.
+function applySessionInfo(sid: string | null | undefined, incoming: any) {
+  if (!sid || !incoming || typeof incoming !== "object") return;
+  const st = wsGet();
+  const live = st.liveSessionId;
+  // Only the live session's info may drive the popup (mirrors the event filter).
+  if (live && sid !== live) return;
+  wsSet({
+    sessionInfo: mergeSessionInfo(st.sessionInfo, st.sessionInfoSid, sid, incoming),
+    sessionInfoSid: sid,
+  });
 }
 
 function ownRpcId(): string {
@@ -382,7 +426,8 @@ export function resetSession() {
   // filter's job, not a kill.
   clearWatchdog();
   setTurnRunning(false);
-  wsSet({ liveSessionId: null });
+  eng.liveKey = null;
+  wsSet({ liveSessionId: null, sessionInfo: null, sessionInfoSid: null });
   wsGet().setStoredSessionId(null);
   eng.pendingPreTurnRpcs = [];
   eng.pendingCreate = false;
@@ -444,6 +489,11 @@ export function startEngine() {
   eng.started = true;
   eng.disposed = false;
   connect();
+
+  // Chat switched from the sidebar / URL while a different session is bound.
+  useWsStore.subscribe((st, prev) => {
+    if (st.storedSessionId && st.storedSessionId !== prev.storedSessionId) rebindToStored(st.storedSessionId);
+  });
 
   // Android resume repair: android-resume.ts dispatches astra:ws-poke on app
   // resume. Registered HERE (not at module top level — the check files import
@@ -516,11 +566,7 @@ function onSocketOpen(s: WebSocket) {
   useWsStore.getState().setNextRetryIn(0);
   s.send(JSON.stringify({ jsonrpc: "2.0", id: ownRpcId(), method: "client.capabilities", params: { server_requests: true } }));
   const sid = readStoredSid();
-  if (sid) {
-    const id = ownRpcId();
-    eng.pendingResumes.add(id);
-    s.send(JSON.stringify({ method: "session.resume", params: { session_id: sid }, id }));
-  }
+  if (sid) sendResume(s, sid);
   if (eng.createOnOpen && !sid) {
     eng.createOnOpen = false;
     sendSessionCreate();
@@ -584,6 +630,11 @@ function onMessage(e: MessageEvent) {
   let data;
   try { data = JSON.parse(e.data); } catch { return; }
 
+  // Any reply carrying `info` (session.create / session.resume incl. probe + bg poll)
+  // refreshes the selector state. Resume/create replies set liveSessionId below, so
+  // for those the live check must not reject: apply after the sid is adopted.
+  const replyInfo = data.result && data.result.info && data.result.session_id ? data.result : null;
+
   if (data.method === "approval" && data.id) {
     if (!requestBelongsToLive(data.params, wsGet().liveSessionId)) return;
     clearWatchdog();
@@ -599,6 +650,7 @@ function onMessage(e: MessageEvent) {
   // watchdog probe reply
   if (data.id && eng.probeId === data.id) {
     eng.probeId = null;
+    if (replyInfo) applySessionInfo(replyInfo.session_id, replyInfo.info);
     const failed = !!data.error;
     const running = data.result ? data.result.running : undefined;
     if (failed || running === undefined) {
@@ -629,6 +681,7 @@ function onMessage(e: MessageEvent) {
   if (data.id && eng.pendingRpcs.has(data.id)) {
     const p = eng.pendingRpcs.get(data.id)!;
     eng.pendingRpcs.delete(data.id);
+    if (replyInfo) applySessionInfo(replyInfo.session_id, replyInfo.info);
     if (data.error) p.reject(data.error);
     else p.resolve(data.result);
     return;
@@ -636,17 +689,24 @@ function onMessage(e: MessageEvent) {
 
   if (data.id && eng.pendingResumes.has(data.id)) {
     eng.pendingResumes.delete(data.id);
+    const resumedKey = eng.resumeKeys.get(data.id) ?? null;
+    eng.resumeKeys.delete(data.id);
+    // Stale reply: user already moved on to another chat while this resume was in flight.
+    if (resumedKey && readStoredSid() !== resumedKey) return;
     if (data.error) {
       const msg = String(data.error?.message || data.error || "");
       const transient = /not owned|transport|unavailable|busy|5000|4001/i.test(msg);
       if (!transient) {
         wsGet().setStoredSessionId(null);
         wsSet({ liveSessionId: null });
+        eng.liveKey = null;
         setTurnRunning(false);
       }
       return;
     } else if (data.result && data.result.session_id) {
+      eng.liveKey = resumedKey;
       wsSet({ liveSessionId: data.result.session_id });
+      if (replyInfo) applySessionInfo(replyInfo.session_id, replyInfo.info);
       applyReplyTruth(data.result);
       flushQueueForSession(data.result.session_id);
       replayOpenRequests(data.result);
@@ -654,9 +714,11 @@ function onMessage(e: MessageEvent) {
   } else if (data.id && data.result && data.result.session_id && eng.ownRpcIds.has(data.id)) {
     eng.ownRpcIds.delete(data.id);
     wsSet({ liveSessionId: data.result.session_id });
+    if (replyInfo) applySessionInfo(replyInfo.session_id, replyInfo.info);
     eng.pendingCreate = false;
     eng.createOnOpen = false;
     const stored = data.result.stored_session_id;
+    eng.liveKey = stored || null; // set BEFORE the store write so the subscriber sees "already bound"
     if (stored) wsGet().setStoredSessionId(stored);
     applyReplyTruth(data.result);
     flushQueueForSession(data.result.session_id);
@@ -698,11 +760,7 @@ function onMessage(e: MessageEvent) {
           eng.socket.send(JSON.stringify({ jsonrpc: "2.0", id: ownRpcId(), method: "client.capabilities", params: { server_requests: true } }));
         }
         const sid = readStoredSid();
-        if (sid && eng.socket?.readyState === 1) {
-          const id = ownRpcId();
-          eng.pendingResumes.add(id);
-          eng.socket.send(JSON.stringify({ method: "session.resume", params: { session_id: sid }, id }));
-        }
+        if (sid && eng.socket?.readyState === 1) sendResume(eng.socket, sid);
       }
       emit({ type, payload });
       return;
@@ -711,7 +769,7 @@ function onMessage(e: MessageEvent) {
     if (session_id && session_id !== wsGet().liveSessionId) return;
 
     if (type === "session.info") {
-      wsSet({ sessionInfo: payload });
+      applySessionInfo(session_id, payload);
       emit({ type, payload, session_id });
     }
 

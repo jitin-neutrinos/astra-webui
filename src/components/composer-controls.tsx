@@ -71,7 +71,7 @@ export function filesToAttachments(files: File[]): Attachment[] {
   }));
 }
 
-export function ComposerControls({ attachments, setAttachments, disabled, sessionInfo, catalog, onPickModel, onPickEffort, onToggleYolo, onRemoveAttachment }: {
+export function ComposerControls({ attachments, setAttachments, disabled, sessionInfo, catalog, onPickModel, onPickEffort, onToggleYolo, onRemoveAttachment, onOpen, sessionPending }: {
   attachments: Attachment[];
   setAttachments: (fn: (a: Attachment[]) => Attachment[]) => void;
   disabled?: boolean;
@@ -81,13 +81,19 @@ export function ComposerControls({ attachments, setAttachments, disabled, sessio
   onPickEffort: (effort: string) => void;
   onToggleYolo: () => void;
   onRemoveAttachment: (id: string) => void;
+  /** fired each time the popup opens - parent re-fetches the provider/model catalog */
+  onOpen?: () => void;
+  /** a stored chat is being resumed and its real settings have not arrived yet */
+  sessionPending?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [panel, setPanel] = useState<Panel>(null);
   const [menuProvider, setMenuProvider] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const menuRef = useDismiss(open, () => { setOpen(false); setPanel(null); });
+  // Closing always drops the drill-down provider so the next open starts from the LIVE session.
+  const closeAll = () => { setOpen(false); setPanel(null); setMenuProvider(null); };
+  const menuRef = useDismiss(open, closeAll);
 
   const pickFiles = () => fileRef.current?.click();
 
@@ -101,8 +107,12 @@ export function ComposerControls({ attachments, setAttachments, disabled, sessio
   // menu ALWAYS shows the live selection, even before the user touches anything.
   const yolo = sessionInfo?.yolo || false;
   const effort = sessionInfo?.reasoning_effort || "";
-  const provider = sessionInfo?.provider || catalog?.provider || "";
-  const model = sessionInfo?.model || catalog?.model || "";
+  // Catalog default (config.yaml) is only a stand-in for a brand-new chat. While a stored
+  // chat is still resuming it would show the WRONG model as if it were the chat's own.
+  const pending = !!sessionPending && !sessionInfo;
+  const provider = sessionInfo?.provider || (pending ? "" : catalog?.provider || "");
+  const model = sessionInfo?.model || (pending ? "" : catalog?.model || "");
+  const unset = pending ? "Loading…" : "—";
   const activeProvider = menuProvider || provider;
 
   const providerLabel = (slug: string) =>
@@ -110,8 +120,6 @@ export function ComposerControls({ attachments, setAttachments, disabled, sessio
 
   // Open submenu in sync: when the provider panel picks a provider, the model panel follows it.
   useEffect(() => { if (panel === "model" && !menuProvider && provider) setMenuProvider(provider); }, [panel, menuProvider, provider]);
-
-  const closeAll = () => { setOpen(false); setPanel(null); };
 
   return (
     <div className="relative flex min-w-0 flex-wrap items-center gap-1.5" ref={menuRef}>
@@ -135,7 +143,7 @@ export function ComposerControls({ attachments, setAttachments, disabled, sessio
       <button type="button" className="chat-chip" disabled={disabled}
         aria-haspopup="dialog" aria-expanded={open} aria-controls="composer-options"
         aria-label="Composer options" title="Options"
-        onClick={() => { setOpen(!open); setPanel(null); }}>
+        onClick={() => { if (!open) onOpen?.(); setOpen(!open); setPanel(null); setMenuProvider(null); }}>
         <SlidersHorizontal className="h-4 w-4" strokeWidth={1.5} />
       </button>
 
@@ -173,14 +181,14 @@ export function ComposerControls({ attachments, setAttachments, disabled, sessio
               <p className="chat-menu-label">Provider</p>
               <button type="button" className="chat-menu-item chat-dropdown-row" aria-haspopup="menu"
                 onClick={() => setPanel("provider")}>
-                <span>{provider ? providerLabel(provider) : "—"}</span>
+                <span>{provider ? providerLabel(provider) : unset}</span>
                 <ChevronRight className="h-3.5 w-3.5 text-muted" strokeWidth={1.5} />
               </button>
 
               <p className="chat-menu-label">Model</p>
               <button type="button" className="chat-menu-item chat-dropdown-row" aria-haspopup="menu"
                 onClick={() => { if (provider) setMenuProvider(provider); setPanel("model"); }}>
-                <span>{model || "—"}</span>
+                <span>{model || unset}</span>
                 <ChevronRight className="h-3.5 w-3.5 text-muted" strokeWidth={1.5} />
               </button>
             </>
@@ -236,7 +244,11 @@ export function ComposerControls({ attachments, setAttachments, disabled, sessio
               <button type="button" className="chat-menu-back" onClick={() => setPanel("provider")}>
                 <ChevronLeft className="h-3.5 w-3.5" strokeWidth={1.5} /> {providerLabel(activeProvider)}
               </button>
-              {(catalog?.providers.find((p) => p.slug === activeProvider)?.models || []).map((m) => (
+              {(() => {
+                const list = catalog?.providers.find((p) => p.slug === activeProvider)?.models || [];
+                // Live model may be custom / not in the curated list - still show it, selected.
+                return activeProvider === provider && model && !list.includes(model) ? [model, ...list] : list;
+              })().map((m) => (
                 <button key={m} type="button" className="chat-menu-item"
                   aria-selected={m === model && activeProvider === provider}
                   onClick={() => { onPickModel({ provider: activeProvider, model: m }); closeAll(); }}>

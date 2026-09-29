@@ -60,3 +60,20 @@ export function watchdogAction(probeFailed: boolean, running: boolean | undefine
   if (probeFailed || running === undefined) return "wait";
   return running ? "stay" : "finalize";
 }
+
+// ---- session info (model / provider / effort / yolo) ----
+// The gateway's `info` object arrives in THREE places: the session.info event,
+// the create reply, and every resume reply (incl. the 45s watchdog probe). A
+// reload onto a still-live session gets NO session.info event at all - only the
+// resume reply carries the truth - so all three feed this one reducer.
+// Payloads can be the lazy shape (model + cwd only) or a cwd-only event, so:
+//  - same session: MERGE (absent keys keep their last known value)
+//  - pre-session optimistic picks (prevSid null, prev set): picks WIN over the
+//    lazy create info (else the user's pick flickers back to the default)
+//  - different session: REPLACE (a stale chat never leaks into the next one)
+export function mergeSessionInfo(prev: any, prevSid: string | null, sid: string, incoming: any): any {
+  if (!incoming || typeof incoming !== "object") return prev;
+  if (prev && prevSid === sid) return { ...prev, ...incoming };
+  if (prev && prevSid === null) return { ...incoming, ...prev };
+  return { ...incoming };
+}

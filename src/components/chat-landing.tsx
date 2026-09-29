@@ -233,7 +233,10 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   const [catalog, setCatalog] = useState<CatalogPayload | null>(null);
   useEffect(() => {
     xhrPathRef.current = homeP();
-    getCatalog().then((c) => setCatalog(c)).catch(() => { /* popover shows fallback rows */ });
+    getCatalog().then((c) => setCatalog(c)).catch(() => { /* popup retries on open */ });
+  }, []);
+  const refreshCatalog = useCallback(() => {
+    getCatalog(true).then((c) => setCatalog(c)).catch(() => { /* keep last good catalog */ });
   }, []);
 
   const flushOps = useCallback(() => {
@@ -860,21 +863,25 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     onNewChat?.();
   }, [onNewChat]);
 
+  // Selector handlers. Every pick is optimistic, then the gateway's session.info
+  // (authoritative) overwrites it; a rejected call rolls back to the exact prior
+  // value. All three are session-scoped on the gateway (scope:"session" / --session)
+  // so they persist for this chat across reloads and never rewrite config.yaml.
+  const note = (content: string) => setMessages((m) => [...m, {
+    id: nextId(), role: "assistant", segments: [], isStreaming: false, isSysNote: true, content,
+  } as any]);
+  const errText = (e: any) => String(e?.message || e?.data?.message || e || "request failed");
+
   const onToggleYolo = async () => {
-    const next = !sessionInfo?.yolo;
-    // Optimistic (create a stub when no session yet — session.info reconciles later)
-    setSessionInfo((prev: any) => ({ ...(prev || {}), yolo: next }));
+    const prev = !!sessionInfo?.yolo;
+    const next = !prev;
+    setSessionInfo((p: any) => ({ ...(p || {}), yolo: next }));
     try {
-      const res = await rpc("config.set", { key: "yolo", value: next ? "1" : "0" });
-      if (res && res.key === "yolo") {
-        setMessages((m) => [...m, {
-          id: nextId(), role: "assistant", segments: [], isStreaming: false, isSysNote: true,
-          content: next ? "Yolo mode active — tool calls in this chat run without approval" : "Yolo mode off — tool calls ask for approval first"
-        } as any]);
-      }
-    } catch {
-      // Revert
-      setSessionInfo((prev: any) => ({ ...(prev || {}), yolo: !next }));
+      await rpc("config.set", { key: "yolo", value: next ? "1" : "0", scope: "session" });
+      note(next ? "Yolo mode active — tool calls in this chat run without approval" : "Yolo mode off — tool calls ask for approval first");
+    } catch (e) {
+      setSessionInfo((p: any) => ({ ...(p || {}), yolo: prev }));
+      setErrorBanner(`Yolo change failed: ${errText(e)}`);
     }
   };
 
@@ -882,24 +889,37 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     const { provider, model } = params;
     const prevModel = sessionInfo?.model;
     const prevProv = sessionInfo?.provider;
-    setSessionInfo((prev: any) => ({ ...(prev || {}), model, provider }));
+    const effort = sessionInfo?.reasoning_effort || "";
+    const rollback = () => setSessionInfo((p: any) => ({ ...(p || {}), model: prevModel, provider: prevProv }));
+    setSessionInfo((p: any) => ({ ...(p || {}), model, provider }));
     try {
-      // Verified grammar: methods_config_set.py _set_model → parse_model_switch_args
-      await rpc("config.set", { key: "model", value: modelSwitchValue({ provider, model }) });
-    } catch {
-      setSessionInfo((prev: any) => ({ ...(prev || {}), model: prevModel, provider: prevProv }));
+      // A model switch re-resolves reasoning from config.yaml on the gateway and would
+      // silently drop this chat's effort pick — re-assert it in the same call.
+      const value = modelSwitchValue({ provider, model, effort });
+      let res = await rpc("config.set", { key: "model", value });
+      if (res?.confirm_required) {
+        // Expensive / unusual model: the gateway did NOT switch. Ask, then confirm.
+        if (!window.confirm(res.confirm_message || res.warning || `Switch to ${model}?`)) { rollback(); return; }
+        res = await rpc("config.set", { key: "model", value, confirm_expensive_model: true });
+      }
+      if (res?.deferred) note(`Model switch to ${model} queued — applies when the current reply finishes`);
+      else if (res?.warning) note(String(res.warning));
+    } catch (e) {
+      rollback();
+      setErrorBanner(`Model switch failed: ${errText(e)}`);
     }
   };
 
   const onPickEffort = async (effort: string) => {
     const prev = sessionInfo?.reasoning_effort;
-    setSessionInfo((prevS: any) => ({ ...(prevS || {}), reasoning_effort: effort }));
+    setSessionInfo((p: any) => ({ ...(p || {}), reasoning_effort: effort }));
     try {
-      // Key is "reasoning" (_CONFIG_SETTERS), not "reasoning_effort"
-      // scope: "session" prevents this menu pick from rewriting the global config
+      // Key is "reasoning" (_CONFIG_SETTERS), not "reasoning_effort";
+      // scope "session" keeps a menu pick from rewriting the global config.
       await rpc("config.set", { key: "reasoning", value: effort, scope: "session" });
-    } catch {
-      setSessionInfo((prevS: any) => ({ ...(prevS || {}), reasoning_effort: prev }));
+    } catch (e) {
+      setSessionInfo((p: any) => ({ ...(p || {}), reasoning_effort: prev }));
+      setErrorBanner(`Reasoning change failed: ${errText(e)}`);
     }
   };
 
@@ -1394,6 +1414,8 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
               setAttachments={setAttachments}
               sessionInfo={sessionInfo}
               catalog={catalog}
+              onOpen={refreshCatalog}
+              sessionPending={!!storedSessionId && !sessionInfo}
               onToggleYolo={onToggleYolo}
               onPickModel={onPickModel}
               onPickEffort={onPickEffort}

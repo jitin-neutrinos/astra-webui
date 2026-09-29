@@ -35,6 +35,8 @@ export type WsStatus = {
   lastError: string | null;
   /** latest session.info payload — powers yolo/model/reasoning toggles */
   sessionInfo: any;
+  /** which live session `sessionInfo` describes (merge within a session, replace across) */
+  sessionInfoSid: string | null;
 };
 
 const QUEUE_KEY = "astra-ws-queue-v1";
@@ -84,6 +86,7 @@ export const useWsStore = create<WsStore>((set) => ({
   queue: loadQueue(),
   lastError: null,
   sessionInfo: null,
+  sessionInfoSid: null,
 
   setConn: (ev) => set((s) => ({ conn: nextConnState(s.conn, ev) })),
   setNextRetryIn: (ms) => set({ nextRetryIn: ms }),

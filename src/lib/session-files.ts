@@ -28,13 +28,19 @@ export function getFileKind(name: string) {
   return "other";
 }
 
-export async function getCatalog() {
-  if (catalogCache) return catalogCache;
+// Catalog = which providers are authenticated + their curated models. It changes when the
+// user adds a key or the gateway updates, so the popup re-fetches on every open (`fresh`);
+// a failed fetch keeps the last good copy instead of caching the failure.
+export async function getCatalog(fresh = false) {
+  if (catalogCache && !fresh) return catalogCache;
   let res = await fetch("/api/hx/model/options");
   if (res.status === 503) {
     res = await fetch("/api/hx/model/options");
   }
-  if (!res.ok) throw new Error("Failed to load catalog");
+  if (!res.ok) {
+    if (catalogCache) return catalogCache;
+    throw new Error("Failed to load catalog");
+  }
   const raw: any = await res.json();
   // host payload: providers carry `name` (not `label`) and `models` may be null — normalize once
   catalogCache = {
