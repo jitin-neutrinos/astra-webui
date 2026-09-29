@@ -23,6 +23,9 @@ import { SubagentPanel, useSubagents } from "./subagent-panel";
 import { harnessRowFromToolStart, harnessRowId, mergeRoster, type HarnessRow } from "@/lib/harness-agents";
 import { Lightbox } from "./lightbox";
 import { getHermesHome, getCatalog } from "@/lib/session-files";
+import { createItem, onTurnComplete, reconcileWithServer } from "@/lib/bg-items";
+import type { BgItem } from "@/lib/bg-items";
+import { BgDock, SysNoteRow } from "./bg-dock";
 import type { CatalogPayload } from "./composer-controls";
 
 // Source: ~/.hermes/plugins/astra-brand/dashboard/dist/astra-core.js CHAT_TUI_COMMANDS
@@ -34,7 +37,7 @@ const TUI_COMMANDS = [
   "/skills", "/tools", "/memory", "/approvals", "/help", "/stop", "/status",
 ];
 
-type ChatMsg = { isSysNote?: boolean; content?: string; files?: {name: string, path: string}[] } & (
+type ChatMsg = { isSysNote?: boolean; bgId?: number; content?: string; files?: {name: string, path: string}[] } & (
     | { id: string; role: "user"; content: string; ts?: number }
     | { id: string; role: "assistant"; segments: Segment[]; isStreaming: boolean; ts?: number } );
 
@@ -187,6 +190,9 @@ function thinkingOf(payload: any): string {
 
 export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, onNewChat, onOpenNav, isActiveView = true }: { resetSignal: number, selectedSessionId: string | null, onSessionChange?: (id: string | null) => void, onNewChat?: () => void, onOpenNav?: () => void, isActiveView?: boolean }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [bgItems, setBgItems] = useState<BgItem[]>([]);
+  const bgItemsRef = useRef(bgItems);
+  useEffect(() => { bgItemsRef.current = bgItems; }, [bgItems]);
   const [chatTitle, setChatTitle] = useState(""); // mirrors ChatTitle's fetched/renamed title, for the browser tab
   const [lightbox, setLightbox] = useState<{ open: boolean; url: string; alt: string }>({ open: false, url: "", alt: "" });
   const [input, setInput] = useState("");
@@ -436,15 +442,11 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         const msg = payload?.error?.message || payload?.error || "The agent turn failed.";
         setErrorBanner(typeof msg === "string" ? msg : JSON.stringify(msg));
       }
-      // The gateway's authoritative final text rides on message.complete. Some
-      // providers (Anthropic through this gateway) emit NO message.delta frames
-      // at all, so without this the reply never renders live — only a reload
-      // (history re-pull) showed it. Reconciled against streamed text in
-      // applySegmentOps, so delta-emitting providers do not double-render.
       if (type === "message.complete") {
         const finalText = textOf(payload);
         if (finalText) { ensureActive(); pushOp({ op: "text-final", text: finalText }, true); }
       }
+      setBgItems(onTurnComplete);
       finalizeActive();
       return;
     }
@@ -521,6 +523,27 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   }, [ensureActive, pushOp, finalizeActive, resolveApproval, resolveClarify, resolveGate, noteHarness]);
 
   const { isStreaming, submitPrompt, submitBg, submitSteer, retryConnection, conn, nextRetryIn, interrupt, storedSessionId, setStoredSessionId, sendApprovalResponse, sendServerResponse, sessionInfo, setSessionInfo, rpc, liveSessionId, resetSession } = useHermesWS(handleEvent);
+
+  useEffect(() => {
+    const live = bgItems.some(it => it.status !== "done");
+    if (!live || !storedSessionId) return;
+
+    let dead = false;
+    const poll = async () => {
+      try {
+        // Same params as probeTurn — the gateway rejects unknown params (re_attach etc.).
+        const res = await rpc("session.resume", { session_id: storedSessionId, omit_messages: true });
+        if (dead) return;
+        if (res) {
+          setBgItems((items) => reconcileWithServer(items, { queued: res.queued || null, running: !!res.running }));
+        }
+      } catch {
+        // ignore
+      }
+    };
+    const t = window.setInterval(poll, 3000);
+    return () => { dead = true; window.clearInterval(t); };
+  }, [bgItems, storedSessionId, rpc]);
 
   // Live sub-agent roster for this chat (gateway subagent.list/subagent.tail),
   // merged with harness-CLI rows (claude/opencode/agy …) detected from tool events.
@@ -707,14 +730,23 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       setMessages((m) => [...m, { id: nextId(), role: "user", content: finalText, ts: Date.now() }]);
       const okSent = cmd.kind === "bg" ? await submitBg(cmd.text) : await submitSteer(cmd.text);
       if (okSent) {
+        const isLive = activeIdRef.current != null || isStreaming;
+        const item = createItem(cmd.kind, cmd.text, isLive);
+        setBgItems((items) => [...items, item]);
+        setMessages((m) => [...m, {
+          id: nextId(), role: "assistant", segments: [], isStreaming: false, isSysNote: true, bgId: item.id
+        } as any]);
+      } else if (cmd.kind === "steer") {
         setMessages((m) => [...m, {
           id: nextId(), role: "assistant", segments: [], isStreaming: false, isSysNote: true,
-          content: cmd.kind === "bg" ? "Queued — will run when the current reply finishes" : "Steered — course correction sent into the live turn",
+          content: "Steer already in flight — one course-correction at a time"
         } as any]);
       }
       taRef.current?.focus();
       return;
     }
+
+    // Normal message handling...
 
     const files = attachments.map(a => ({ name: a.file.name, path: a.serverPath! }));
     if (files.length > 0) {
@@ -756,6 +788,24 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     setTimeout(() => submitPrompt(finalText), 0);
     taRef.current?.focus();
   };
+
+  const removeBgItem = useCallback((id: number) => {
+    setBgItems((items) => items.filter((it) => it.id !== id));
+    setMessages((m) => m.filter((msg) => !(msg.isSysNote && msg.bgId === id)));
+  }, []);
+
+  const handleFollowUpBg = useCallback((text: string) => {
+    const isLive = activeIdRef.current != null || isStreaming;
+    submitBg(text).then((ok) => {
+      if (ok) {
+        const item = createItem("bg", text, isLive);
+        setBgItems((items) => [...items, item]);
+        setMessages((m) => [...m, {
+          id: nextId(), role: "assistant", segments: [], isStreaming: false, isSysNote: true, bgId: item.id
+        } as any]);
+      }
+    });
+  }, [submitBg, isStreaming]);
 
   const retry = () => { if (!isStreaming && !activeIdRef.current && lastPromptRef.current) void send(lastPromptRef.current); };
 
@@ -1149,7 +1199,13 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
           </div>
         ) : (
             <div ref={contentRef} className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
-              {messages.map((m, idx) => (
+              {messages.map((m, idx) => {
+                if (m.isSysNote && m.bgId) {
+                  const it = bgItems.find((x) => x.id === m.bgId);
+                  if (it) return <SysNoteRow key={m.id} item={it} onRemove={removeBgItem} />;
+                  return null;
+                }
+                return (
                 <div key={m.id} className={m.isSysNote ? "chat-sys-note" : "flex items-start gap-3"}>
                 {m.isSysNote ? (
                   <>◈ {m.content}</>
@@ -1222,13 +1278,15 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
                 </div>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
 
       <div className="relative z-10 px-3 pb-3 lg:px-6 lg:pb-6">
         <SubagentPanel subs={roster} open={suba.open} setOpen={suba.setOpen} now={suba.now} rpc={rpc} sessionId={liveSessionId || storedSessionId || null} />
+        <BgDock items={bgItems} onSubmitFollowUp={handleFollowUpBg} onRemove={removeBgItem} />
         <div
           className={cn("chat-composer mx-auto max-w-3xl", dragOver && "drag-over")}
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}

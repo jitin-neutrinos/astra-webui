@@ -234,7 +234,8 @@ body { background: var(--color-void); }
 .chat-chip-dot { width: 6px; height: 6px; border-radius: 9999px; background: var(--color-cyanx); box-shadow: 0 0 8px rgba(34,211,238,.7); }
 .chat-chip-caret { opacity: .6; }
 
-.chat-sys-note { font-family: var(--font-mono); font-size: 11px; color: var(--color-muted); }
+.chat-sys-note { font-family: var(--font-mono); font-size: 11px; color: var(--color-muted); transition: opacity 400ms ease, max-height 400ms ease; max-height: 60px; overflow: hidden; display: block; }
+.chat-sys-note[data-status="done"] { opacity: 0; max-height: 0; }
 
 .chat-menu { position: absolute; bottom: calc(100% + 8px); left: 0; min-width: 260px; max-height: 340px; overflow-y: auto; background: var(--surface-overlay); border: 1.5px solid rgba(248,250,252,.2); border-radius: 14px; padding: 8px; box-shadow: 0 20px 50px rgba(0,0,0,.6), 0 0 0 1px rgba(34,211,238,.15), inset 0 1px 0 rgba(255,255,255,.05); animation: chat-pop 160ms cubic-bezier(0.23,1,0.32,1) both; transform-origin: bottom left; z-index: 100; }
 .chat-menu-label { padding: 8px 10px 4px; font: 500 10px/1 var(--font-mono); text-transform: uppercase; letter-spacing: .18em; color: #94a3b8; }
@@ -795,4 +796,30 @@ body { background: var(--color-void); }
 
 @media (prefers-reduced-motion: no-preference) {
   body, [data-theme] body { transition: background-color 220ms var(--ease-brand, ease), color 220ms var(--ease-brand, ease); }
+}
+
+/* ── BG Dock UI ── */
+.bgd-wrap { margin-bottom: 10px; }
+.bgd-bar  { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 12px; border-radius: 12px 12px 0 0; border: 1px solid rgba(34,211,238,.22); border-bottom: none; background: rgba(34,211,238,.05); color: var(--color-cyanx); font: 500 11px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+.bgd-card { background: var(--color-midnight); border: 1px solid rgba(34,211,238,.22); border-top: none; border-radius: 0 0 12px 12px; padding: 4px 6px 6px; }
+.bgd-row  { transition: opacity 400ms ease, max-height 400ms ease, padding 400ms ease; max-height: 80px; overflow: hidden; }
+.bgd-row[data-status="done"] { opacity: 0; max-height: 0; padding-block: 0; overflow: hidden; }
+.bgd-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 12.5px/1.4 var(--font-sans); color: var(--color-brandtext); }
+.bgd-input{ font: 400 12px/1 var(--font-mono); border: 1px solid rgba(34,211,238,.25); background: transparent; color: var(--color-brandtext); transition: border-color 150ms; }
+.bgd-input:focus { border-color: var(--color-cyanx); }
+.bgd-pulse { position: relative; width: 7px; height: 7px; border-radius: 9999px; background: var(--color-cyanx); box-shadow: 0 0 8px rgba(34,211,238,.7); flex-shrink: 0; }
+.bgd-pulse::after { content: ""; position: absolute; inset: -4px; border-radius: 9999px; border: 1px solid rgba(34,211,238,.5); animation: suba-ping 1.8s cubic-bezier(0,0,.2,1) infinite; }
+
+[data-theme="light"] .bgd-bar { color: #0369a1; border-color: rgba(3,105,161,.35); background: rgba(3,105,161,.06); }
+[data-theme="light"] .bgd-card { background: var(--color-midnight); border-color: rgba(3,105,161,.35); }
+[data-theme="light"] .bgd-row + .bgd-row { border-top-color: rgba(15,23,42,.08); }
+[data-theme="light"] .bgd-text { color: var(--color-brandtext); }
+[data-theme="light"] .bgd-input { border-color: rgba(15,23,42,.14); color: var(--color-brandtext); }
+[data-theme="light"] .bgd-pulse { background: #0369a1; box-shadow: 0 0 8px rgba(3,105,161,.45); }
+[data-theme="light"] .bgd-pulse::after { border-color: rgba(3,105,161,.4); }
+
+@media (prefers-reduced-motion: reduce) {
+  .bgd-row, .chat-sys-note { transition: none; }
+  .bgd-row[data-status="done"], .chat-sys-note[data-status="done"] { display: none; }
+  .bgd-pulse::after { animation: none; opacity: 0; }
 }
