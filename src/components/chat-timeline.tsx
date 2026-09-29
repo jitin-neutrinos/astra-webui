@@ -667,10 +667,11 @@ function ApprovalRow({ seg, onRespond }: { seg: Segment; onRespond: (reqId: stri
 // emitted them. Interactions (approval / clarify / gate) land in their slot too,
 // never displaced. Each thought is its own collapsible (streams open, collapses
 // when done); tool rows keep the persisted per-tool collapse.
-export function TurnTimeline({ segments, streaming, sessionId, onToggleTool, onApprovalRespond, onClarifyAnswer, onGateRespond, onOpenImage }: {
+export function TurnTimeline({ segments, streaming, sessionId, ts, onToggleTool, onApprovalRespond, onClarifyAnswer, onGateRespond, onOpenImage }: {
   segments: Segment[];
   streaming: boolean;
   sessionId: string | null;
+  ts?: number;
   onToggleTool: (segId: string) => void;
   onApprovalRespond: (reqId: string, choice: string) => void;
   onClarifyAnswer: (reqId: string, result: { answer?: string; answers?: Record<string, string> }) => void;
@@ -686,6 +687,12 @@ export function TurnTimeline({ segments, streaming, sessionId, onToggleTool, onA
 
   return (
     <div className={cn("chat-turn", isRunning && "running")} aria-busy={isRunning}>
+      <div className="chat-turn-head">
+        <img src="/astra-logo.png" alt="" aria-hidden="true" className="chat-turn-logo" />
+        {ts != null && (
+          <div className="chat-turn-ts">{new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
+        )}
+      </div>
       {segments.map((seg, i) => {
         const reveal = i === lastIdx;
         if (seg.kind === "thinking") return <ThoughtRow key={seg.id} seg={seg} />;

@@ -237,6 +237,8 @@ body { background: var(--color-void); }
 @media (max-width: 640px) {
   .conn-banner { flex-wrap: wrap; gap: 6px 10px; justify-content: flex-start; padding: 8px 12px; }
   .conn-banner-sub { white-space: normal; }
+  /* mobile: bubbles fill the viewport with a slim aesthetic side gutter */
+  .chat-feed { padding-left: 10px; padding-right: 10px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -285,7 +287,17 @@ body { background: var(--color-void); }
 .chat-filechip button:hover { color: #f87171; }
 
 /* ---- turn timeline: thinking / tool / text / approval segments ---- */
+/* AI bubble fills the message column (2026-09-29): the avatar column is gone —
+   the Astra logo lives INSIDE the bubble as a header row (logo at very top,
+   timestamp beside it), and the turn content uses the full width below it. */
 .chat-turn { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--bubble-ai-border); border-radius: 14px; padding: 12px 14px; background: var(--bubble-ai-bg); animation: chat-turn-in 200ms cubic-bezier(0.23,1,0.32,1) both; min-width: 0; overflow-wrap: anywhere; }
+.chat-turn-head { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
+.chat-turn-logo { height: 22px; width: 22px; object-fit: contain; flex: 0 0 auto; filter: drop-shadow(0 0 10px rgba(34,211,238,0.39)); }
+.chat-turn-head .chat-turn-ts { margin: 0; }
+/* user bubble also fills the column; the J chip rides inline at the start of
+   the message text (avatar memory without a layout column) */
+.chat-user-chip { display: inline-flex; align-items: center; justify-content: center; height: 18px; width: 18px; margin-right: 6px; vertical-align: -4px; border-radius: 9999px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.10); font: 500 9px/1 var(--font-mono); color: var(--bubble-user-text); opacity: .75; }
+[data-theme="light"] .chat-user-chip { border-color: rgba(15,23,42,.18); background: rgba(255,255,255,.45); }
 /* code-copy float sits over the top-right corner; keep it inside the bubble */
 .chat-turn > div.relative.group { max-width: 100%; }
 /* ---- login background: brand blue-green glow wash (light mode) ----

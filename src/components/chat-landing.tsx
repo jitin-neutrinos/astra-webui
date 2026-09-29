@@ -1305,7 +1305,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
             </div>
           </div>
         ) : (
-            <div ref={contentRef} className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
+            <div ref={contentRef} className="chat-feed mx-auto flex w-full max-w-[52rem] flex-col gap-6 px-4 py-8">
               {messages.map((m, idx) => {
                 if (m.isSysNote && m.bgId) {
                   const it = bgItems.find((x) => x.id === m.bgId);
@@ -1314,19 +1314,13 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
                   return null;
                 }
                 return (
-                <div key={m.id} data-msg-id={m.id} className={m.isSysNote ? "chat-sys-note" : "flex items-start gap-3"}>
+                <div key={m.id} data-msg-id={m.id} className={m.isSysNote ? "chat-sys-note" : "flex w-full items-start"}>
                 {m.isSysNote ? (
                   <>◈ {m.content}</>
-                ) : m.role === "assistant" ? (
-                  <img src="/astra-logo.png" alt="" aria-hidden="true"
-                    className="mt-0.5 h-7 w-7 shrink-0 object-contain drop-shadow-[0_0_12px_rgba(34,211,238,0.39)]" />
-                ) : (
-                  <span aria-hidden="true"
-                    className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 font-mono text-xs text-slate-300">J</span>
-                )}
+                ) : null}
                 {!m.isSysNote && (
-                <div className="min-w-0 flex-1">
-                  {m.ts != null && (
+                <div className="min-w-0 w-full">
+                  {m.role === "user" && m.ts != null && (
                     <div className="chat-turn-ts">{new Date(m.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
                   )}
                   {m.role === "user" ? (
@@ -1336,14 +1330,14 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
                           {m.files.map(f => <MediaCard key={f.path} path={f.path} name={f.name} />)}
                         </div>
                       )}
-                      <div className="chat-bubble-user min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere] rounded-2xl px-4 py-3 text-sm leading-relaxed">
-                        {m.content.replace(/\n\nAttached file: .*/g, "")}
+                      <div className="chat-bubble-user min-w-0 w-full whitespace-pre-wrap [overflow-wrap:anywhere] rounded-2xl px-4 py-3 text-sm leading-relaxed">
+                        <span className="chat-user-chip" aria-hidden="true">J</span>{m.content.replace(/\n\nAttached file: .*/g, "")}
                       </div>
                     </div>
                   ) : m.segments.length ? (
-                    <TurnTimeline segments={m.segments} streaming={m.isStreaming} sessionId={storedSessionId || ""} onToggleTool={toggleToolCollapse} onApprovalRespond={respondApproval} onGateRespond={respondGate} onClarifyAnswer={respondClarify} onOpenImage={(url, alt) => setLightbox({ open: true, url, alt })} />
+                    <TurnTimeline segments={m.segments} streaming={m.isStreaming} sessionId={storedSessionId || ""} ts={m.ts} onToggleTool={toggleToolCollapse} onApprovalRespond={respondApproval} onGateRespond={respondGate} onClarifyAnswer={respondClarify} onOpenImage={(url, alt) => setLightbox({ open: true, url, alt })} />
                   ) : m.isStreaming ? (
-                    <span className="chat-bubble-ai flex w-fit items-center rounded-2xl px-3 py-1.5">
+                    <span className="chat-bubble-ai flex w-full items-center rounded-2xl px-3 py-2.5">
                       <AITextLoading texts={["Thinking...", "Working on it...", "Almost there..."]} />
                     </span>
                   ) : null}
@@ -1390,7 +1384,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         <SubagentPanel subs={roster} open={suba.open} setOpen={suba.setOpen} now={suba.now} rpc={rpc} sessionId={liveSessionId || storedSessionId || null} />
         <BgDock items={bgItems} onSubmitFollowUp={handleFollowUpBg} onDismiss={dismissBgItem} onOpenItem={openBgItem} />
         <div
-          className={cn("chat-composer mx-auto max-w-3xl", dragOver && "drag-over")}
+          className={cn("chat-composer mx-auto w-full max-w-[52rem]", dragOver && "drag-over")}
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); }}
           onDrop={(e) => {
