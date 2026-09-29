@@ -1,8 +1,11 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { FilesSkeleton } from "./ui/skeletons";
 import { ArrowLeft, File, FileImage, FileText, RefreshCw, AlertTriangle } from "lucide-react";
 import { getHermesHome, getHermesFiles } from "@/lib/session-files";
 import { mediaKind, kindInfo } from "@/lib/media-kinds";
+import { toItem, type MediaItem } from "@/lib/media-paths";
+
+const MediaViewer = lazy(() => import("./media-viewer"));
 
 function fmtSize(n: number) {
   if (n < 1024) return `${n} B`;
@@ -19,7 +22,7 @@ type FileEntry = {
   mime_type: string;
 };
 
-function FileRow({ entry }: { entry: FileEntry }) {
+function FileRow({ entry, onOpen }: { entry: FileEntry; onOpen?: (items: MediaItem[], index: number) => void }) {
   const [error, setError] = useState(false);
   const kind = mediaKind(entry.name);
   
@@ -38,12 +41,12 @@ function FileRow({ entry }: { entry: FileEntry }) {
   const renderPreview = () => {
     if (kind === "image") {
       return (
-        <a href={`/api/hx/files/download?path=${encodeURIComponent(entry.path)}`} target="_blank" rel="noreferrer" className="block w-12 h-12 rounded bg-black/50 overflow-hidden shrink-0 border border-white/10 relative group">
+        <button type="button" onClick={() => onOpen?.([{ path: entry.path, name: entry.name }], 0)} title="Open" className="block w-12 h-12 rounded bg-black/50 overflow-hidden shrink-0 border border-white/10 relative group cursor-pointer">
           <img src={`/api/hx/files/download?path=${encodeURIComponent(entry.path)}`} alt={entry.name} onError={() => setError(true)} className="w-full h-full object-cover" />
           <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
             <FileImage className="w-4 h-4 text-white" />
           </div>
-        </a>
+        </button>
       );
     }
     if (kind === "video") {
@@ -98,6 +101,11 @@ export function FilesPage({ onBack }: { onBack: () => void }) {
   const [generated, setGenerated] = useState<FileEntry[]>([]);
   const [genLoading, setGenLoading] = useState(true);
   const [genError, setGenError] = useState(false);
+
+  // R11: tap an image/video row → full-screen viewer over that section's list.
+  const [viewer, setViewer] = useState<{ items: MediaItem[]; index: number } | null>(null);
+  const openViewer = (list: FileEntry[], i: number) =>
+    setViewer({ items: list.map((e) => toItem(e.path, e.name)), index: i });
 
   const fetchUploads = async () => {
     setUploadsLoading(true);
@@ -194,7 +202,7 @@ export function FilesPage({ onBack }: { onBack: () => void }) {
             </div>
           ) : (
             <div className="space-y-1">
-              {uploads.map(e => <FileRow key={e.path} entry={e} />)}
+              {uploads.map((e, i) => <FileRow key={e.path} entry={e} onOpen={["image", "video", "audio"].includes(mediaKind(e.name)) ? () => openViewer(uploads, i) : undefined} />)}
             </div>
           )}
         </section>
@@ -218,11 +226,16 @@ export function FilesPage({ onBack }: { onBack: () => void }) {
             </div>
           ) : (
             <div className="space-y-1">
-              {generated.map(e => <FileRow key={e.path} entry={e} />)}
+              {generated.map((e, i) => <FileRow key={e.path} entry={e} onOpen={["image", "video", "audio"].includes(mediaKind(e.name)) ? () => openViewer(generated, i) : undefined} />)}
             </div>
           )}
         </section>
       </div>
+      {viewer && (
+        <Suspense fallback={null}>
+          <MediaViewer items={viewer.items} index={viewer.index} onClose={() => setViewer(null)} />
+        </Suspense>
+      )}
     </div>
   );
 }
