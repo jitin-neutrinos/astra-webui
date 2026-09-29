@@ -6,7 +6,6 @@
 // block, then all text below" bug.
 
 import type { GateEnvelope } from "../components/gates/gate-envelope";
-import { hashKey } from "./step-prefs";
 
 export type SegKind = "thinking" | "tool" | "text" | "approval" | "clarify" | "gate";
 
@@ -324,48 +323,12 @@ export function expandKeyBlocked(ctrlKey: boolean, metaKey: boolean, key: string
   return tag === "INPUT" || tag === "TEXTAREA";
 }
 
-// ---- thinking+response bundling (2026-09-29, render-side, PURE) -------------
-// Owner problem: "thinking is way far back, buried behind a crowd of tool
-// calls, MCP and other things." The engine keeps arrival order (correct for
-// dedup/timing); the RENDER groups each turn into a bundled reasoning card
-// (elements-/chain-of-thought shape) followed by the response text. Input is
-// never mutated — arrival order stays canonical for restore and checks.
-
-export interface ReasoningCard {
-  id: string;
-  thinking: Segment[];
-  tools: Segment[];
-}
-
-export function bundleTurnSegments(segments: Segment[]): {
-  reasoning: ReasoningCard | null;
-  response: Segment[];
-} {
-  const thinking = segments.filter((s) => s.kind === "thinking");
-  const tools = segments.filter((s) => s.kind === "tool");
-  const rest = segments.filter(
-    (s) => s.kind !== "thinking" && s.kind !== "tool",
-  );
-  if (!thinking.length && !tools.length) {
-    return { reasoning: null, response: segments };
-  }
-  const response = rest;
-  // Stable id across live/restored renders: thinking content hash (segment ids
-  // are NOT stable across restore paths — same reason step-prefs hashes them).
-  const thinkingHash = thinking[0]
-    ? hashKey((thinking[0].text || "").slice(0, 400))
-    : null;
-  const firstToolId = tools[0] && tools[0].id && !tools[0].id.startsWith("orphan-") && !tools[0].id.startsWith("s") ? tools[0].id : null;
-  const stableKey = thinkingHash ? `think:${thinkingHash}` : firstToolId ? `tool:${firstToolId}` : "";
-  return {
-    reasoning: {
-      id: stableKey || `cot-${Date.now()}`,
-      thinking,
-      tools,
-    },
-    response,
-  };
-}
+// ---- chronological render (2026-09-29) --------------------------------------
+// The engine keeps exact arrival order — Thought - Tool - Text interleave as
+// emitted. Rendering goes through applySegmentOps output DIRECTLY (TurnTimeline
+// maps segments in order); no render-side regrouping. The former render-side
+// bundler (all thinking+tools into one card) is deleted — the owner mandate is
+// strict chronology, not grouped cards.
 
 export function findNewestCollapsedToolSeg(
   turns: { id: string; segments: Segment[] }[],

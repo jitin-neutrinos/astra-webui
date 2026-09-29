@@ -90,3 +90,12 @@ def ratio(a,b):
 print(ratio("0f172a","f7f8fb"), ratio("0e7490","f7f8fb"), ratio("047857","f7f8fb"))
 EOF
 ```
+
+## AI component layer (2026-09-29 chronological timeline)
+
+Per-segment rows (ai-tool-call based; thoughts use the `.ai-thought` variant):
+
+| Element | Dark | Light | Notes |
+|---|---|---|---|
+| `.ai-thought .ai-plate` | `rgba(250,204,21,.10)` bg / `#fbbf24` icon | `rgba(180,83,9,.10)` / `#b45309` | amber lightbulb plate on Thinking rows |
+| `.ai-card` border | `rgba(248,250,252,.08)` | `rgba(15,23,42,.10)` | tool rows keep card chrome; thought rows are chrome-less |

@@ -19,17 +19,9 @@ import {
   AiToolCallError,
 } from "./ui/ai-tool-call";
 import type { ToolCallState } from "./ui/ai-tool-call";
-import {
-  AiChainOfThought,
-  AiChainOfThoughtHeader,
-  AiChainOfThoughtContent,
-  AiChainOfThoughtStep,
-} from "./ui/ai-chain-of-thought";
-import type { StepStatus } from "./ui/ai-chain-of-thought";
 
 import type { Segment, ClarifyQuestion } from "../lib/chat-segments";
 import {
-  bundleTurnSegments,
   turnIsRunning,
 } from "../lib/chat-segments";
 import { MEDIA_RE, mediaPaths, stripMediaLines } from "../lib/media-paths";
@@ -40,7 +32,6 @@ export {
   finalizeSegments,
   findNewestCollapsedToolSeg,
   expandKeyBlocked,
-  bundleTurnSegments,
   turnIsRunning,
 } from "../lib/chat-segments";
 export { MEDIA_RE, mediaPaths, stripMediaLines };
@@ -151,7 +142,7 @@ import { stepOpen, setStepOpen, hashKey } from "../lib/step-prefs";
 import { describeTool } from "../lib/tool-identity";
 import {
   FileText,
-  Brain,
+  Lightbulb,
 } from "lucide-react";
 
 // Stable per-step preference key. Tool steps: the provider tool_call id is
@@ -163,44 +154,36 @@ function stepPrefKey(seg: Segment): string {
   return seg.id;
 }
 
-// ---- ReasoningBundle: the elements-/chain-of-thought card -------------------
-// Wraps ALL thinking + tool segments of one turn. Open state: collapsed by
-// default (owner mandate), persisted user choice via step-prefs under the
-// turn's bundle key, updated LIVE (controlled open).
-
-function ReasoningBundle({
-  thinking,
-  tools,
-  onToggleTool,
-}: {
-  thinking: Segment[];
-  tools: Segment[];
-  onToggleTool: (segId: string) => void;
-}) {
-  // Turn-scoped key: first thinking's content hash, else first tool's id.
-  const bundleKey = useMemo(
-    () =>
-      thinking[0]
-        ? `bundle:think:${hashKey((thinking[0].text || "").slice(0, 400))}`
-        : tools[0]
-          ? `bundle:tool:${tools[0].id}`
-          : "bundle:empty",
-    [thinking, tools],
+// ---- ThoughtRow: ONE collapsible per thinking segment -----------------------
+// Chronological rendering (owner mandate 2026-09-29): every segment renders in
+// its arrival slot — no bundling, no regrouping. A thought streams OPEN, then
+// auto-collapses the moment it finishes ("as soon as the thought is done, it
+// collapses before the next activity"). User-open state persists via
+// step-prefs (`think:<content-hash>` key, stable live/restored); an auto-
+// collapse does NOT write the pref, so a user-opened thought stays open.
+function ThoughtRow({ seg }: { seg: Segment }) {
+  const prefKey = `think:${hashKey((seg.text || "").slice(0, 400))}`;
+  const running = seg.status === "run";
+  // Live-running thought streams OPEN; restored/done thought honors a persisted
+  // user-open, else collapsed (owner: never re-open on reload).
+  const [open, setOpen] = useState<boolean>(() =>
+    running ? true : (stepOpen(prefKey) ?? false),
   );
-
-  const thinkingDone = thinking.every((t) => t.status === "done");
-  const lastToolDone = !tools.length || tools[tools.length - 1].status === "done";
-  const anyRun = !thinkingDone || !lastToolDone;
-  const completedCount = tools.filter((t) => t.status === "done").length;
-  const stepCount = thinking.length + tools.length;
-
-  // LIVE open state: starts from the persisted pref (default collapsed), then
-  // the component owns it and persists on every toggle.
-  const [open, setOpen] = useState<boolean>(() => stepOpen(bundleKey) ?? false);
-  const keyRef = useRef(bundleKey);
+  const keyRef = useRef(prefKey);
   useEffect(() => {
-    keyRef.current = bundleKey;
-  }, [bundleKey]);
+    keyRef.current = prefKey;
+  }, [prefKey]);
+  const wasRunning = useRef(running);
+  useEffect(() => {
+    if (wasRunning.current && !running) {
+      // Thought just finished → auto-collapse BEFORE the next activity lands
+      // (owner mandate). Clear any pref written while it streamed so a reload
+      // stays collapsed; a user click AFTER completion re-persists normally.
+      setOpen(false);
+      setStepOpen(keyRef.current, false);
+    }
+    wasRunning.current = running;
+  }, [running]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggle = () => {
     const next = !open;
@@ -208,62 +191,30 @@ function ReasoningBundle({
     setStepOpen(keyRef.current, next);
   };
 
-  const label = thinking.length
-    ? "Thought process"
-    : tools.length === 1
-      ? "Tool call"
-      : "Tool calls";
-
-  // Header duration chip (visible while collapsed): the last step's duration.
-  const headerDur = useMemo(() => {
-    if (open) return null;
-    const last = tools[tools.length - 1] || thinking[thinking.length - 1];
-    return formatDur(last?.durationMs);
-  }, [open, thinking, tools]);
-
   return (
-    <div className="chat-step-wrap min-w-0" data-reasoning-bundle data-streaming={anyRun ? "true" : "false"}>
-      <AiChainOfThought open={open} onOpenChange={(o) => { if (o !== open) toggle(); }}>
-        <AiChainOfThoughtHeader
-          title={label}
-          stepCount={stepCount > 0 ? stepCount : undefined}
-          completedCount={stepCount > 0 && !anyRun ? completedCount : undefined}
-        >
-          {headerDur && (
-            <span className={cn("chat-step-dur mr-1 shrink-0 font-mono text-[10px]", anyRun ? "text-cyanx" : "text-[var(--color-brandtext)]")}>
-              {headerDur}
-            </span>
-          )}
-        </AiChainOfThoughtHeader>
-        <AiChainOfThoughtContent>
-          {thinking.map((seg) => {
-            const dur = formatDur(seg.durationMs);
-            const st: StepStatus = seg.status === "run" ? "active" : "complete";
-            return (
-              <AiChainOfThoughtStep
-                key={seg.id}
-                status={st}
-                title={
-                  <span className="flex items-center gap-1.5 min-w-0">
-                    <Brain className="size-3.5 shrink-0" />
-                    <span className="chat-step-label">Thinking{dur ? ` · ${dur}` : ""}</span>
-                  </span>
-                }
-              >
-                <div className="chat-think-text whitespace-pre-wrap">{seg.text}</div>
-              </AiChainOfThoughtStep>
-            );
-          })}
-          {tools.map((seg) => (
-            <BundleToolRow key={seg.id} seg={seg} onToggleTool={onToggleTool} />
-          ))}
-        </AiChainOfThoughtContent>
-      </AiChainOfThought>
-    </div>
+    <AiToolCall
+      name="Thinking"
+      state={running ? "running" : "completed"}
+      icon={<Lightbulb className="size-3.5" />}
+      open={open}
+      onOpenChange={(o) => { if (o !== open) toggle(); }}
+      className="bg-transparent border-0 ai-thought"
+    >
+      <AiToolCallHeader>
+        {seg.durationMs != null && (
+          <span className="chat-step-dur ml-1 shrink-0 font-mono text-[10px] text-[var(--color-brandtext)]">
+            {formatDur(seg.durationMs)}
+          </span>
+        )}
+      </AiToolCallHeader>
+      <AiToolCallContent>
+        <div className="chat-think-text whitespace-pre-wrap">{seg.text}</div>
+      </AiToolCallContent>
+    </AiToolCall>
   );
 }
 
-// ---- bundled tool row: elements-/tool-call card -----------------------------
+// ---- standalone tool row: elements-/tool-call card (arrival slot) -----------
 
 function BundleToolRow({ seg, onToggleTool }: { seg: Segment; onToggleTool: (segId: string) => void }) {
   const info = describeTool(seg.label, seg.argsText, seg.command);
@@ -691,11 +642,11 @@ function ApprovalRow({ seg, onRespond }: { seg: Segment; onRespond: (reqId: stri
 }
 
 // ---- turn container --------------------------------------------------------
-// Bundling: ONE reasoning card per turn (all thinking + tool rows, chain-of-
-// thought design), response text after it. Interactions (approval / clarify /
-// gate) and text stay OUTSIDE the card — they are never buried. Streaming text
-// follows the card exactly when the model emitted it.
-
+// Chronological (owner mandate 2026-09-29): every segment renders in its own
+// arrival slot — Thought - Tool Call - Response interleave exactly as the model
+// emitted them. Interactions (approval / clarify / gate) land in their slot too,
+// never displaced. Each thought is its own collapsible (streams open, collapses
+// when done); tool rows keep the persisted per-tool collapse.
 export function TurnTimeline({ segments, streaming, sessionId, onToggleTool, onApprovalRespond, onClarifyAnswer, onGateRespond, onOpenImage }: {
   segments: Segment[];
   streaming: boolean;
@@ -708,19 +659,13 @@ export function TurnTimeline({ segments, streaming, sessionId, onToggleTool, onA
 }) {
   if (!segments.length) return null;
 
-  const { reasoning, response } = bundleTurnSegments(segments);
   const isRunning = turnIsRunning(segments, streaming);
 
   return (
     <div className={cn("chat-turn", isRunning && "running")} aria-busy={isRunning}>
-      {reasoning && (
-        <ReasoningBundle
-          thinking={reasoning.thinking}
-          tools={reasoning.tools}
-          onToggleTool={onToggleTool}
-        />
-      )}
-      {response.map((seg) => {
+      {segments.map((seg) => {
+        if (seg.kind === "thinking") return <ThoughtRow key={seg.id} seg={seg} />;
+        if (seg.kind === "tool") return <BundleToolRow key={seg.id} seg={seg} onToggleTool={onToggleTool} />;
         if (seg.kind === "approval") return <ApprovalRow key={seg.id} seg={seg} onRespond={onApprovalRespond} />;
         if (seg.kind === "clarify") return <ClarifyCard key={seg.id} seg={seg} onAnswer={onClarifyAnswer} />;
         if (seg.kind === "gate") return <GateCard key={seg.id} seg={seg} sessionId={sessionId} onRespond={onGateRespond} onOpenImage={onOpenImage} />;

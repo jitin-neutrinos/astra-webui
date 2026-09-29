@@ -35,6 +35,7 @@ interface AiToolCallContextValue {
   name: string;
   state: ToolCallState;
   isOpen: boolean;
+  icon?: React.ReactNode;
 }
 
 const AiToolCallContext = React.createContext<AiToolCallContextValue | null>(
@@ -52,6 +53,8 @@ function useToolCallContext() {
 export interface AiToolCallProps {
   name: string;
   state: ToolCallState;
+  /** Header plate glyph; defaults to Wrench. (Thinking rows pass Lightbulb.) */
+  icon?: React.ReactNode;
   defaultOpen?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -62,6 +65,7 @@ export interface AiToolCallProps {
 function AiToolCall({
   name,
   state,
+  icon,
   defaultOpen = false,
   open: controlledOpen,
   onOpenChange,
@@ -84,8 +88,8 @@ function AiToolCall({
   );
 
   const contextValue = React.useMemo(
-    () => ({ name, state, isOpen }),
-    [name, state, isOpen],
+    () => ({ name, state, isOpen, icon }),
+    [name, state, isOpen, icon],
   );
 
   return (
@@ -108,7 +112,7 @@ interface AiToolCallHeaderProps {
 }
 
 function AiToolCallHeader({ children, className }: AiToolCallHeaderProps) {
-  const { name, state, isOpen } = useToolCallContext();
+  const { name, state, isOpen, icon } = useToolCallContext();
 
   const stateConfig = React.useMemo(() => {
     const configs: Record<
@@ -157,9 +161,7 @@ function AiToolCallHeader({ children, className }: AiToolCallHeaderProps) {
         className,
       )}
     >
-      <div className="ai-plate shrink-0">
-        <Wrench className="size-3.5" />
-      </div>
+      <div className="ai-plate shrink-0">{icon ?? <Wrench className="size-3.5" />}</div>
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <span className="chat-step-label">{name}</span>
         <span className={cn("shrink-0", stateConfig.className)}>

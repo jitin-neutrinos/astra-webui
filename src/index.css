@@ -432,6 +432,11 @@ body { background: var(--color-void); }
 [data-theme="light"] .chat-term-block.err { border-color: rgba(220,38,38,.25); background: rgba(220,38,38,.04); color: #b91c1c; }
 [data-theme="light"] .ai-io-label.err { color: #b91c1c; }
 
+/* ThoughtRow (chronological per-thought collapsibles): amber think plate on a
+   chrome-less card. Light-theme override per standing rule. */
+.ai-thought .ai-plate { background: rgba(250,204,21,.10); color: #fbbf24; }
+[data-theme="light"] .ai-thought .ai-plate { background: rgba(180,83,9,.10); color: #b45309; }
+
 .chat-term-cmd, .chat-term-args { font: 400 12px/1.5 var(--font-mono); color: var(--color-brandtext); background: var(--color-midnight); border: 1px solid rgba(248,250,252,.08); border-radius: 8px; padding: 8px 10px; margin: 0 0 6px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
 .chat-term-block { position: relative; }
 .chat-term-out { font: 400 12px/1.5 var(--font-mono); color: #d1d5db; background: var(--color-void); border: 1px solid rgba(248,250,252,.06); border-radius: 8px; padding: 8px 10px; margin: 0; overflow-x: auto; white-space: pre-wrap; word-break: break-word; max-height: 420px; overflow-y: auto; }
