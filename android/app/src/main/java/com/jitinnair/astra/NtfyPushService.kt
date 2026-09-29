@@ -342,6 +342,7 @@ class NtfyPushService : Service() {
                 handler.postDelayed(this, 60_000)
             }
         }
+        chatPrefRunnable = r
         handler.postDelayed(r, 60_000)
     }
 
