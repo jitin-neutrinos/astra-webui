@@ -1,6 +1,7 @@
 // astra-webui server: static dist + password-only auth API. ponytail: one file, zero deps.
 import { createServer, request } from "node:http";
-import { handleHxProxy, handleWsUpgrade } from "./hermes-proxy.mjs";
+import { handleHxProxy, handleWsUpgrade, forwardToUpstream } from "./hermes-proxy.mjs";
+import { getPendingGate, markGateAnswered } from "./ntfy-notify.mjs";
 
 import { createHmac, timingSafeEqual, randomBytes } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
@@ -69,7 +70,7 @@ const MIME = {
 function readBody(req) {
   return new Promise((resolveBody) => {
     let data = "";
-    req.on("data", (chunk) => { data += chunk; if (data.length > 1024) req.destroy(); });
+    req.on("data", (chunk) => { data += chunk; if (data.length > 16384) req.destroy(); });
     req.on("end", () => resolveBody(data));
     req.on("error", () => resolveBody(""));
   });
@@ -79,6 +80,44 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
   const path = url.pathname;
   const ip = req.headers["cf-connecting-ip"] || req.socket.remoteAddress || "?";
+
+  // Phone pop-up gate API. Auth = the ntfy credential the app already holds
+  // (Authorization header == NTFY_AUTH), constant-time compared; not cookie-based.
+  const gm = path.match(/^\/api\/gate\/([A-Za-z0-9_.:-]{1,80})$/);
+  if (gm) {
+    const want = Buffer.from(process.env.NTFY_AUTH || "\0");
+    const got = Buffer.from(String(req.headers.authorization || ""));
+    if (!process.env.NTFY_AUTH || got.length !== want.length || !timingSafeEqual(got, want)) {
+      res.writeHead(401, { "content-type": "application/json" });
+      return res.end('{"error":"unauthorized"}');
+    }
+    const g = getPendingGate(gm[1]);
+    if (!g) { res.writeHead(404, { "content-type": "application/json" }); return res.end('{"error":"gone"}'); }
+    if (req.method === "GET") {
+      res.writeHead(200, { "content-type": "application/json" });
+      return res.end(JSON.stringify(g));
+    }
+    if (req.method === "POST") {
+      if (g.answered) { res.writeHead(409, { "content-type": "application/json" }); return res.end('{"error":"already answered"}'); }
+      let b = {};
+      try { b = JSON.parse(await readBody(req)); } catch { /* bad */ }
+      let result = null;
+      if (g.kind === "approval") {
+        if (typeof b.choice === "string" && g.choices.includes(b.choice)) result = { choice: b.choice };
+      } else if (b.answers && typeof b.answers === "object") {
+        result = { answers: Object.fromEntries(Object.entries(b.answers).map(([k, v]) => [String(k), String(v)])) };
+      } else if (typeof b.answer === "string") {
+        result = { answer: b.answer };
+      }
+      if (!result) { res.writeHead(400, { "content-type": "application/json" }); return res.end('{"error":"bad answer"}'); }
+      const sent = forwardToUpstream(Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: g.id, result })));
+      if (!sent) { res.writeHead(503, { "content-type": "application/json" }); return res.end('{"error":"gateway offline"}'); }
+      markGateAnswered(g.id);
+      res.writeHead(200, { "content-type": "application/json" });
+      return res.end('{"ok":true}');
+    }
+    res.writeHead(405); return res.end();
+  }
 
   if (path === "/api/health") {
     res.writeHead(200, { "content-type": "application/json" });

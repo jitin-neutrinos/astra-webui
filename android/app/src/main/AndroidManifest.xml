@@ -25,6 +25,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".GateActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme.GatePopup"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true" />
+        <receiver android:name=".GateActionReceiver" android:exported="false" />
         <service
             android:name=".NtfyPushService"
             android:exported="false"

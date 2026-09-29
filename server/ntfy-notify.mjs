@@ -16,6 +16,27 @@ const NTFY_TOPIC = process.env.NTFY_TOPIC || "";
 const NTFY_AUTH = process.env.NTFY_AUTH || "";
 const NTFY_ENABLED = !!(NTFY_URL && NTFY_TOPIC);
 const quiet = {};
+// Pending gates the phone can fetch + answer (GET/POST /api/gate/:id). In-memory,
+// TTL 30 min; a restart drops them and the in-app card still works.
+const pending = new Map();
+const GATE_TTL_MS = 30 * 60 * 1000;
+export function getPendingGate(id) {
+  const g = pending.get(id);
+  if (!g) return null;
+  if (Date.now() - g.at > GATE_TTL_MS) { pending.delete(id); return null; }
+  return g;
+}
+export function markGateAnswered(id) { const g = pending.get(id); if (g) g.answered = true; }
+function gatherQuestions(inner) {
+  if (Array.isArray(inner.questions) && inner.questions.length) {
+    return inner.questions.map(q => ({
+      qid: q.qid || "", question: String(q.question || ""),
+      choices: Array.isArray(q.choices) ? q.choices.map(String) : [], multi_select: !!q.multi_select,
+    }));
+  }
+  return [{ qid: "", question: String(inner.question || "A question for you"),
+    choices: Array.isArray(inner.choices) ? inner.choices.map(String) : [], multi_select: !!inner.multi_select }];
+}
 
 export function notifyGateRequest(frame) {
   if (!NTFY_ENABLED) return;
@@ -58,9 +79,18 @@ export function notifyGateRequest(frame) {
       "Approval needed"
     ).slice(0, 180);
 
-    const click = sid
+    const click = (sid
       ? `https://astra.jitinnair.com/c/${sid}`
-      : "https://astra.jitinnair.com/";
+      : "https://astra.jitinnair.com/") + `?gate=${encodeURIComponent(id)}`;
+    const isClarify = method === "clarify" || (method !== "approval" && !inner.command);
+    pending.set(id, {
+      id, kind: isClarify ? "clarify" : "approval", sid, at: Date.now(), answered: false,
+      title: isClarify ? "Astra has a question" : "Astra needs approval",
+      command: String(inner.command || ""), description: String(inner.description || ""),
+      choices: Array.isArray(inner.choices) && inner.choices.length ? inner.choices.map(String) : ["once", "deny"],
+      questions: isClarify ? gatherQuestions(inner) : [],
+    });
+    if (pending.size > 100) pending.delete(pending.keys().next().value);
 
     // Extras carry the request identity to the Android shell so the card can
     // deep-link into the right chat (astra://open?path=/c/<sid>) without

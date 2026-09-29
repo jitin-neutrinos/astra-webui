@@ -206,67 +206,54 @@ class NtfyPushService : Service() {
         val title = json.optString("title", "Astra")
         val message = json.optString("message", "")
         val clickUrl = json.optString("click", "")
+        val msgId = json.optString("id", System.nanoTime().toString())
+        val notifId = msgId.hashCode().coerceAtLeast(2)
+        val gateId = try { Uri.parse(clickUrl).getQueryParameter("gate") ?: "" } catch (e: Exception) { "" }
+        val isApproval = title.contains("approval", ignoreCase = true)
 
-        // Deep link: prefer the app-scheme link minted from the chat path so a
-        // tap lands INSIDE the right chat even when the app was cold-started.
-        val openIntent = Intent(this, MainActivity::class.java).apply {
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        // Interactive pop-up card. No gate id (older server / plain push) -> open the chat.
+        val popup = if (gateId.isNotEmpty()) Intent(this, GateActivity::class.java).apply {
+            putExtra(GateActivity.EXTRA_GATE_ID, gateId)
+            putExtra(GateActivity.EXTRA_NOTIF_ID, notifId)
+            putExtra(GateActivity.EXTRA_CLICK, clickUrl)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        } else Intent(this, MainActivity::class.java).apply {
             action = Intent.ACTION_VIEW
             data = Uri.parse(clickPathToScheme(clickUrl))
             `package` = packageName
             addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
-        val openPi = PendingIntent.getActivity(
-            this, clickUrl.hashCode(), openIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        // Full-screen intent: SAME activity. Screen off/locked → Android shows
-        // this card full-screen over the lock screen; unlock/present → chat.
-        val fullScreenPi = PendingIntent.getActivity(
-            this, clickUrl.hashCode() + 1, openIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+        val contentPi = PendingIntent.getActivity(this, notifId, popup, flags)
+        val fullPi = PendingIntent.getActivity(this, notifId + 1, popup, flags)
 
         val builder = NotificationCompat.Builder(this, CHANNEL_PUSH)
             .setContentTitle(title)
             .setContentText(message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentIntent(openPi)
-            .setFullScreenIntent(fullScreenPi, true)
+            .setContentIntent(contentPi)
+            .setFullScreenIntent(fullPi, true)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
 
-        // Approve / Reject — deep-link straight into the chat with the choice
-        // pre-wired; one tap from the notification, no app navigation.
-        if (json.optString("extras_astra_kind") == "approval" || json.has("extras")) {
-            val approveIntent = Intent(this, MainActivity::class.java).apply {
-                action = Intent.ACTION_VIEW
-                data = Uri.parse(clickPathToScheme(clickUrl))
-                `package` = packageName
-                putExtra("gate_choice", "approve")
-                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            }
-            val rejectIntent = Intent(this, MainActivity::class.java).apply {
-                action = Intent.ACTION_VIEW
-                data = Uri.parse(clickPathToScheme(clickUrl))
-                `package` = packageName
-                putExtra("gate_choice", "reject")
-                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            }
-            builder.addAction(0, "Approve", PendingIntent.getActivity(
-                this, clickUrl.hashCode() + 2, approveIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
-            builder.addAction(0, "Reject", PendingIntent.getActivity(
-                this, clickUrl.hashCode() + 3, rejectIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+        // One-tap Approve / Deny that actually answers (posts to the Astra server).
+        if (gateId.isNotEmpty() && isApproval) {
+            fun act(choice: String, off: Int) = PendingIntent.getBroadcast(
+                this, notifId + off,
+                Intent(this, GateActionReceiver::class.java).apply {
+                    putExtra(GateActivity.EXTRA_GATE_ID, gateId)
+                    putExtra(GateActivity.EXTRA_NOTIF_ID, notifId)
+                    putExtra("choice", choice)
+                }, flags)
+            builder.addAction(0, "Approve", act("once", 2))
+            builder.addAction(0, "Deny", act("deny", 3))
         }
 
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(json.optString("id", System.nanoTime().toString()).hashCode().coerceAtLeast(2), builder.build())
+        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(notifId, builder.build())
     }
 
     private fun clickPathToScheme(clickUrl: String): String {

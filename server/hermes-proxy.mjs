@@ -160,7 +160,7 @@ const BACKOFF_TABLE = [1000, 2000, 4000, 8000];
 const pendingBrowserFrames = [];
 const PENDING_FRAME_CAP = 100;
 
-function forwardToUpstream(payload) {
+export function forwardToUpstream(payload) {
   if (!upstreamWs) return false;
   try {
     upstreamWs.write(encodeFrame(payload, { opcode: 0x1, masked: true }));
