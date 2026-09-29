@@ -21,6 +21,7 @@ import {
 import {
   useWsStore, wsGet, wsSet, wsQueuePush, wsQueueAll, wsQueueSet,
 } from "./ws-store";
+import { pushLiveSession } from "./native-session-bridge";
 import type { ConnEvent } from "./connection-state";
 
 type Listener = (ev: EventPayload) => void;
@@ -475,6 +476,52 @@ export function pokeResumeCheck() {
   }
 }
 
+// ---- R9: wake probes -------------------------------------------------------
+// A socket can look OPEN while its path is actually dead (CF tunnel reaped a
+// half-closed wire, device switched WiFi→LTE). The old wake path only dialed
+// when the socket was NOT open — a zombie-OPEN socket sat there until the 60s
+// liveness timer noticed silence. Now every wake event probes the wire with a
+// cheap RPC; failure force-cycles immediately with backoff reset.
+
+let wakeProbeInFlight = false; // single-flight: one probe per wake, never two
+
+function resetBackoffAndDialNow() {
+  eng.reconnectAttempt = 0;
+  if (eng.reconnectTimer !== null) {
+    window.clearTimeout(eng.reconnectTimer);
+    eng.reconnectTimer = null;
+  }
+  connect();
+}
+
+export function wakeProbe() { // exported for wake-probe.check.ts (behavioral test)
+  if (wakeProbeInFlight) return;
+  const s = eng.socket;
+  if (s && s.readyState === 1) {
+    // OPEN: prove the path with the cheap mtime probe, 3s deadline.
+    wakeProbeInFlight = true;
+    let settled = false;
+    const done = (failed: boolean) => {
+      if (settled) return;
+      settled = true;
+      wakeProbeInFlight = false;
+      if (!failed) return;
+      // Zombie-OPEN: force the cycle NOW instead of waiting out liveness.
+      eng.reconnectAttempt = 0;
+      try { s.close(); } catch { /* gone */ }
+      if (eng.socket === s) eng.socket = null;
+      window.dispatchEvent(new Event("online"));
+    };
+    window.setTimeout(() => done(true), 3000);
+    rpc("config.get", { key: "mtime" }).then(() => done(false)).catch(() => done(true));
+  } else if (s && s.readyState === 0) {
+    // CONNECTING: dial in flight — let it land; the 3s-open... nothing to do.
+  } else {
+    // CLOSED/CLOSING/none: cancel any pending backoff wait, dial now.
+    resetBackoffAndDialNow();
+  }
+}
+
 // ---- listener registry (React subscribes here) ----
 
 export function addListener(l: Listener): () => void {
@@ -528,6 +575,25 @@ export function startEngine() {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") tryImmediateReconnect();
   });
+
+  // R9 wake probes: on any wake signal, a zombie-OPEN socket is probed (not
+  // trusted) and a pending backoff wait is cut short — dial immediately.
+  // Guards keep one wake from arming probe + dial double.
+  window.addEventListener("online", wakeProbe);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") wakeProbe();
+  });
+  window.addEventListener("pageshow", wakeProbe);
+
+  // R1 native leg: mirror the live session identity into the shell so the
+  // background chat-socket subscribes (?sid=) to the chat the page is on.
+  // Fires on bind changes AND on start (restores identity after reload).
+  useWsStore.subscribe((st, prev) => {
+    const cur = `${st.liveSessionId ?? ""}|${st.storedSessionId ?? ""}`;
+    const was = `${prev.liveSessionId ?? ""}|${prev.storedSessionId ?? ""}`;
+    if (cur !== was) pushLiveSession(st.liveSessionId, st.storedSessionId);
+  });
+  pushLiveSession(wsGet().liveSessionId, wsGet().storedSessionId);
 }
 
 export function stopEngine() {
@@ -542,6 +608,10 @@ export function stopEngine() {
   eng.socket = null;
   eng.started = false;
 }
+
+// Test hook for src/lib/*.check.ts files (wake-probe.check.ts drives
+// wakeProbe through the real singleton). Not app API — never read in app code.
+export const __eng = eng;
 
 // ---- internals: connect/receive ----
 
@@ -599,8 +669,15 @@ function applyReplyTruth(result: any) {
 }
 
 function attachHandlers(s: WebSocket) {
-  s.onmessage = onMessage;
+  // A socket the engine already abandoned (recycled by the watchdog, the liveness timer or
+  // Android resume repair) can still hand over buffered frames and a late close event. The
+  // proxy broadcasts every upstream frame to every browser socket, so applying them would
+  // render each frame twice on top of the new socket's resume; its close would flip the
+  // banner offline and schedule a redundant reconnect + re-resume (a second open_requests
+  // replay). Only the CURRENT socket speaks; the new socket's session.resume is the truth.
+  s.onmessage = (e) => { if (eng.socket === s) onMessage(e); };
   s.onclose = () => {
+    if (eng.socket && eng.socket !== s) return; // superseded by a newer socket
     if (eng.socket === s) eng.socket = null;
     bumpConn({ type: "ws-closed" });
     emit({ type: "ws.closed", payload: {} });

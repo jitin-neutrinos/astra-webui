@@ -40,7 +40,14 @@ export default function App() {
   useEffect(() => {
     let alive = true;
     fetch("/api/me", { credentials: "same-origin" })
-      .then((res) => { if (alive) setStatus(res.ok ? "ready" : "login"); })
+      .then((res) => {
+        if (!alive) return;
+        setStatus(res.ok ? "ready" : "login");
+        if (res.ok) {
+          // R5: prune bg_items_<sid> keys for sessions the server forgot.
+          import("./lib/prune").then((m) => m.pruneStaleBgItems()).catch(() => {});
+        }
+      })
       .catch(() => { if (alive) setStatus("login"); });
     return () => { alive = false; };
   }, []);

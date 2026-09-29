@@ -47,7 +47,12 @@ function loadQueue(): QueuedPrompt[] {
     if (!raw) return [];
     const arr = JSON.parse(raw);
     return Array.isArray(arr)
-      ? arr.filter((q) => q && typeof q.text === "string" && typeof q.id === "string").slice(-20)
+      ? arr
+          // R5 staleness cap: a prompt queued >24h ago is never what the owner
+          // wants fired at a fresh session — drop it on load (count cap stays).
+          .filter((q) => q && typeof q.text === "string" && typeof q.id === "string"
+            && typeof q.queuedAt === "number" && Date.now() - q.queuedAt < 86_400_000)
+          .slice(-20)
       : [];
   } catch {
     return [];
