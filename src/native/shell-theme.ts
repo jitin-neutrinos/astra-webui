@@ -71,27 +71,60 @@ export async function initShellTheme() {
   // the status + navigation bars.
   await plugin('EdgeToEdge').enable?.().catch?.(() => {});
 
+  // ---- edge sampling ---------------------------------------------------
+  // The bars must read as a continuation of whatever the app paints at its very
+  // top / bottom edge (login glow, header, composer...), not a guessed theme
+  // token. Sample the real composited background there and hand it to the bars.
+  const parse = (c: string): [number, number, number, number] | null => {
+    const m = c.match(/rgba?\(([^)]+)\)/);
+    if (!m) return null;
+    const p = m[1].split(/[ ,/]+/).filter(Boolean).map(Number);
+    if (p.length < 3 || p.some((n) => Number.isNaN(n))) return null;
+    return [p[0], p[1], p[2], p.length > 3 ? p[3] : 1];
+  };
+  const sampleAt = (x: number, y: number, fallback: [number, number, number]): [number, number, number] => {
+    const layers: [number, number, number, number][] = [];
+    let el: Element | null = document.elementFromPoint(x, y);
+    while (el) {
+      const c = parse(getComputedStyle(el).backgroundColor);
+      if (c && c[3] > 0) { layers.push(c); if (c[3] >= 1) break; }
+      el = el.parentElement;
+    }
+    let [r, g, b] = fallback;
+    for (let i = layers.length - 1; i >= 0; i--) {
+      const [lr, lg, lb, la] = layers[i];
+      r = lr * la + r * (1 - la); g = lg * la + g * (1 - la); b = lb * la + b * (1 - la);
+    }
+    return [Math.round(r), Math.round(g), Math.round(b)];
+  };
+  const hex = (c: [number, number, number]) => '#' + c.map((n) => n.toString(16).padStart(2, '0')).join('');
+  const lum = (c: [number, number, number]) => (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
+
+  let lastTop = '', lastBottom = '', lastStyle = '', lastTheme = '';
   const updateColors = () => {
     const root = document.documentElement;
-    const computedStyle = getComputedStyle(root);
-    let color = computedStyle.getPropertyValue('--color-void').trim();
-    if (!color) {
-        color = getComputedStyle(document.body).getPropertyValue('--color-void').trim();
-    }
-
     const isLight = root.getAttribute('data-theme') === 'light';
-    if (!color) {
-        color = isLight ? '#f5f2ec' : '#0a0a0f';
-    }
-
-    try { plugin('EdgeToEdge').setBackgroundColor?.({ color }); } catch { /* optional */ }
+    const base: [number, number, number] = isLight ? [245, 242, 236] : [10, 10, 15];
+    const w = window.innerWidth, h = window.innerHeight;
+    const top = sampleAt(w / 2, 1, base);
+    const bottom = sampleAt(w / 2, h - 2, base);
+    const topHex = hex(top), bottomHex = hex(bottom);
+    if (topHex !== lastTop) { lastTop = topHex; try { plugin('EdgeToEdge').setStatusBarColor?.({ color: topHex }); } catch { /* optional */ } }
+    if (bottomHex !== lastBottom) { lastBottom = bottomHex; try { plugin('EdgeToEdge').setNavigationBarColor?.({ color: bottomHex }); } catch { /* optional */ } }
     // SystemBars style names the BACKGROUND: DARK = light icons, LIGHT = dark icons.
-    try { plugin('SystemBars').setStyle?.({ style: isLight ? 'LIGHT' : 'DARK' }); } catch { /* optional */ }
+    const style = (lum(top) + lum(bottom)) / 2 > 0.5 ? 'LIGHT' : 'DARK';
+    if (style !== lastStyle) { lastStyle = style; try { plugin('SystemBars').setStyle?.({ style }); } catch { /* optional */ } }
+    // Native pop-up (GateActivity) follows the app theme.
+    const t = isLight ? 'light' : 'dark';
+    if (t !== lastTheme) { lastTheme = t; try { plugin('Preferences').set?.({ key: 'astra_theme', value: t }); } catch { /* optional */ } }
   };
 
   // Wait a tick for CSS to apply, then update
   requestAnimationFrame(updateColors);
   setTimeout(updateColors, 100);
+  setTimeout(updateColors, 500);
+  setInterval(updateColors, 1200);
+  window.addEventListener('resize', updateColors);
   setTimeout(() => reportLayout('boot+2s'), 2000);
   setTimeout(() => reportLayout('boot+6s'), 6000);
 

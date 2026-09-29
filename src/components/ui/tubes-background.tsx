@@ -42,7 +42,7 @@ function applyGround(app: TubesApp | null, theme: "dark" | "light") {
   // from an existing material is the vehicle for setClearColor.
   const vehicle = app.tubes.tubes[0]?.material.color;
   if (!vehicle) return;
-  const groundHex = theme === "light" ? 0xece8df : 0x000000;
+  const groundHex = theme === "light" ? 0xece8df : 0x0a0a0f;
   const keep = { r: vehicle.r, g: vehicle.g, b: vehicle.b };
   vehicle.set?.(groundHex);
   app.three.renderer.setClearColor(vehicle, 1);

@@ -193,7 +193,7 @@ function broadcastStatus(state) {
   }
 }
 
-function broadcastFrame(payload, opcode) {
+export function broadcastFrame(payload, opcode) {
   const frame = encodeFrame(payload, { opcode, masked: false });
   for (const s of browserSockets) {
     try { s.write(frame); } catch { /* ignore */ }

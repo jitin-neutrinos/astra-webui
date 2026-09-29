@@ -95,6 +95,11 @@ function LoginScreen({ password, setPassword, clearError, error, busy, submit }:
   return (
     <div className="fixed inset-0 overflow-hidden bg-void font-sans">
       <TubesBackground />
+      {/* edge fades: the WebGL canvas (bloom) renders a shade off the void colour, so
+          feather its top/bottom into --color-void — the system bars then read as a
+          continuation of the screen instead of a strip. */}
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-10 h-24 bg-gradient-to-b from-void to-transparent" />
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-24 bg-gradient-to-t from-void to-transparent" />
       <ThemeIconButton />
 
       <div className="absolute inset-0 z-50 flex items-center justify-center p-6">

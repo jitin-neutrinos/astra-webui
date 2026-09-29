@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from "react";
-import { Check, ChevronDown, ChevronRight, Loader2, TriangleAlert, Copy } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Loader2, TriangleAlert, Copy, ShieldAlert, X, Clock } from "lucide-react";
 import { cn } from "../lib/utils";
 import { getFileKind } from "../lib/session-files";
 import { AudioPlayer } from "./audio-player";
@@ -499,36 +499,82 @@ function ClarifyCard({ seg, onAnswer }: {
   );
 }
 
+const APPROVAL_RECEIPT: Record<string, { label: string; tone: "ok" | "no" | "idle" }> = {
+  once: { label: "Approved once", tone: "ok" },
+  session: { label: "Allowed for this chat", tone: "ok" },
+  always: { label: "Always allowed", tone: "ok" },
+  deny: { label: "Denied", tone: "no" },
+  answered: { label: "Answered on another device", tone: "ok" },
+  cancelled: { label: "Request withdrawn", tone: "idle" },
+};
+
 function ApprovalRow({ seg, onRespond }: { seg: Segment; onRespond: (reqId: string, choice: string) => void }) {
   const p = seg.params || {};
   const choices = p.choices?.length ? p.choices : ["once", "deny"];
   const isCommandApproval = !!p.command;
-  const titleText = isCommandApproval ? "Approval needed" : (p.description ? "Choice required" : "Clarify");
-  const subText = p.description || (isCommandApproval ? "Astra wants to run a command" : "Select an option to continue.");
+  const eyebrow = isCommandApproval ? "Approval needed" : (p.description ? "Choice required" : "Clarify");
+  const title = p.description || (isCommandApproval ? "Astra wants to run a command" : "Select an option to continue.");
+  const [picked, setPicked] = useState<string | null>(null);
+  const resolved = seg.resolved ?? null;
+  const receipt = resolved ? (APPROVAL_RECEIPT[resolved] || { label: `Resolved: ${APPROVAL_LABELS[resolved] || resolved}`, tone: "ok" as const }) : null;
+  const state = resolved ? (receipt!.tone === "no" ? "denied" : receipt!.tone === "idle" ? "withdrawn" : "approved") : picked ? "sending" : "pending";
+  // 1..9 picks a choice — only while this is the single pending approval and the
+  // user is not typing somewhere (composer, inputs), so it never hijacks text entry.
+  useEffect(() => {
+    if (resolved || picked) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      const idx = Number(e.key) - 1;
+      if (!Number.isInteger(idx) || idx < 0 || idx >= choices.length) return;
+      if (document.querySelectorAll('.gate-approval[data-state="pending"]').length !== 1) return;
+      e.preventDefault();
+      setPicked(choices[idx]);
+      onRespond(seg.reqId!, choices[idx]);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [resolved, picked, choices, onRespond, seg.reqId]);
+
+  const Icon = state === "approved" ? Check : state === "denied" ? X : state === "withdrawn" ? Clock : ShieldAlert;
+
   return (
-    <div id={`chat-approval-${seg.reqId}`} className="chat-approval" role="alertdialog" aria-label={isCommandApproval ? "Command approval" : "Choice / Clarify"}>
-      <div className="chat-approval-head">
-        <span className="chat-approval-badge" aria-hidden="true">!</span>
-        <span className="chat-approval-title">{titleText}</span>
+    <div id={`chat-approval-${seg.reqId}`} className="gate-approval" data-state={state}
+      role={resolved ? "status" : "alertdialog"} aria-live={resolved ? "polite" : undefined}
+      aria-label={isCommandApproval ? "Command approval" : "Choice / Clarify"}>
+      <span className="ga-rail" aria-hidden="true" />
+      <div className="ga-head">
+        <span className="ga-icon" aria-hidden="true"><Icon size={15} strokeWidth={2.4} /></span>
+        <div className="ga-headtext">
+          <p className="ga-eyebrow">{resolved ? "Approval" : eyebrow}</p>
+          <p className="ga-title">{resolved ? receipt!.label : title}</p>
+        </div>
+        {!resolved && <span className="ga-live" aria-hidden="true"><i />Waiting</span>}
       </div>
-      <p className="chat-approval-sub">{subText}</p>
-      {!!p.command && <pre className="chat-approval-cmd" tabIndex={0}>{p.command}</pre>}
-      {seg.resolved ? (
-        <div className="chat-approval-resolved">{seg.resolved === "cancelled" ? "Request withdrawn" : `Resolved: ${APPROVAL_LABELS[seg.resolved] || seg.resolved}`}</div>
-      ) : (
-        <>
-          <div className="chat-approval-actions">
+
+      {!!p.command && (
+        <pre className="ga-cmd" tabIndex={0}><span className="ga-prompt" aria-hidden="true">$</span>{p.command}</pre>
+      )}
+      {resolved && p.description && <p className="ga-sub">{p.description}</p>}
+
+      {/* actions collapse smoothly into the receipt once resolved */}
+      <div className="ga-collapse" data-open={String(!resolved)}>
+        <div className="ga-collapse-inner">
+          <div className="ga-actions">
             {choices.map((c: string, i: number) => (
-              <button key={c} type="button" className={cn("chat-approval-btn", c === "deny" && "deny", c === "once" && "primary")}
-                onClick={() => onRespond(seg.reqId!, c)}>
-                <span className="chat-approval-key">{i + 1}</span>
-                {APPROVAL_LABELS[c] || c}
+              <button key={c} type="button" disabled={!!picked}
+                className={cn("ga-btn", c === "deny" && "deny", c === "once" && "primary", picked === c && "is-sending")}
+                onClick={() => { setPicked(c); onRespond(seg.reqId!, c); }}>
+                <kbd className="ga-key" aria-hidden="true">{i + 1}</kbd>
+                <span>{APPROVAL_LABELS[c] || c}</span>
+                {picked === c && <Loader2 size={13} className="ga-spin" aria-hidden="true" />}
               </button>
             ))}
           </div>
-          <div className="chat-approval-wait">Waiting for your decision — the turn is paused</div>
-        </>
-      )}
+          <p className="ga-foot">Turn paused until you decide · press a number key</p>
+        </div>
+      </div>
     </div>
   );
 }

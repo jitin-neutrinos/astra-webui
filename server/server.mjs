@@ -1,10 +1,10 @@
 // astra-webui server: static dist + password-only auth API. ponytail: one file, zero deps.
 import { createServer, request } from "node:http";
-import { handleHxProxy, handleWsUpgrade, forwardToUpstream } from "./hermes-proxy.mjs";
+import { handleHxProxy, handleWsUpgrade, forwardToUpstream, broadcastFrame } from "./hermes-proxy.mjs";
 import { getPendingGate, markGateAnswered } from "./ntfy-notify.mjs";
 
 import { createHmac, timingSafeEqual, randomBytes } from "node:crypto";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, stat, appendFile, mkdir } from "node:fs/promises";
 import { join, extname, resolve, sep, normalize } from "node:path";
 
 const HERMES_PASSWORD = process.env.ASTRA_HERMES_PASSWORD;
@@ -113,10 +113,36 @@ const server = createServer(async (req, res) => {
       const sent = forwardToUpstream(Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: g.id, result })));
       if (!sent) { res.writeHead(503, { "content-type": "application/json" }); return res.end('{"error":"gateway offline"}'); }
       markGateAnswered(g.id);
+      // Tell every open browser/app tab so the matching chat card closes itself.
+      try {
+        broadcastFrame(Buffer.from(JSON.stringify({ method: "event", params: { type: "request.answered",
+          payload: { id: g.id, kind: g.kind, by: "phone", result } } })), 0x1);
+      } catch { /* best effort */ }
       res.writeHead(200, { "content-type": "application/json" });
       return res.end('{"ok":true}');
     }
     res.writeHead(405); return res.end();
+  }
+
+  // Native-shell layout telemetry (what the phone ACTUALLY measures). Cookie-authed, append-only, tiny.
+  if (path === "/api/diag" && req.method === "POST") {
+    const ck = {};
+    (req.headers.cookie || "").split(";").forEach((c) => {
+      const i = c.indexOf("=");
+      if (i > 0) ck[c.slice(0, i).trim()] = c.slice(i + 1).trim();
+    });
+    if (!validToken(ck[COOKIE])) {
+      res.writeHead(401, { "content-type": "application/json" });
+      return res.end('{"error":"unauthenticated"}');
+    }
+    try {
+      const body = JSON.parse(await readBody(req));
+      const dir = join(process.env.HOME || ".", ".hermes/cache/scratch");
+      await mkdir(dir, { recursive: true });
+      await appendFile(join(dir, "astra-diag.jsonl"), JSON.stringify({ at: new Date().toISOString(), ...body }) + "\n");
+    } catch { /* ignore bad payloads */ }
+    res.writeHead(204);
+    return res.end();
   }
 
   if (path === "/api/health") {

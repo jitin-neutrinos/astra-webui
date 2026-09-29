@@ -504,6 +504,17 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       return;
     }
 
+    if (type === "request.answered") {
+      // Answered from another device (phone pop-up / notification action).
+      const r = (payload?.result || {}) as { choice?: string; answer?: string; answers?: Record<string, string> };
+      if (payload?.id) {
+        resolveApproval(payload.id, r.choice ?? "answered");
+        resolveClarify(payload.id, r.answers || (r.answer ? { answer: r.answer } : {}));
+        resolveGate(payload.id, null);
+      }
+      return;
+    }
+
     if (type === "request.cancel") {
       if (payload?.id) { resolveApproval(payload.id, null); resolveClarify(payload.id, null); resolveGate(payload.id, null); }
       return;
