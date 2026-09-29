@@ -77,8 +77,11 @@ class NtfyPushService : Service() {
                     description = "Approval requests and questions from Astra chats"
                     lockscreenVisibility = Notification.VISIBILITY_PUBLIC
                     setShowBadge(true)
+                    enableVibration(true)
+                    vibrationPattern = longArrayOf(0, 250, 150, 250)
                 }
             )
+            manager.deleteNotificationChannel("astra-push")
             manager.createNotificationChannel(
                 NotificationChannel(
                     CHANNEL_FG, "Astra connection",
@@ -233,6 +236,7 @@ class NtfyPushService : Service() {
             .setFullScreenIntent(fullScreenPi, true)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
 
@@ -262,7 +266,7 @@ class NtfyPushService : Service() {
         }
 
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(clickUrl.hashCode().coerceAtLeast(1), builder.build())
+        manager.notify(json.optString("id", System.nanoTime().toString()).hashCode().coerceAtLeast(2), builder.build())
     }
 
     private fun clickPathToScheme(clickUrl: String): String {
@@ -297,7 +301,7 @@ class NtfyPushService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
-        const val CHANNEL_PUSH = "astra-push"
+        const val CHANNEL_PUSH = "astra-push-v2"
         const val CHANNEL_FG = "astra-connection"
     }
 }
