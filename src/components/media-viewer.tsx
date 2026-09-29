@@ -279,7 +279,7 @@ export default function MediaViewer({ items, index, onClose }: { items: MediaIte
     <Lightbox
       open
       close={requestClose}
-      index={index}
+      index={cur}
       slides={slides}
       className="astra-viewer"
       plugins={multi ? [Zoom, Thumbnails, Counter] : [Zoom]}
