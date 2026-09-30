@@ -92,9 +92,19 @@ function hostOf(u: string | undefined): string | undefined {
   return m ? m[1].replace(/^www\./, "") : undefined;
 }
 
-export function describeTool(label: string | undefined, argsText: string | undefined, command?: string): ToolInfo {
+export function describeTool(label: string | undefined, argsText: string | undefined, command?: string, resultText?: string): ToolInfo {
   const raw = (label || "").trim();
   const args = parseArgs(argsText);
+  // File tools may lose `path` in args (double-encoded / elided) — the RESULT
+  // still names the file ("Edited 2 files · a.ts, y.ts"). Last-chance fallback
+  // so a file card NEVER says just "a file".
+  const fileFromResult = (() => {
+    const m = resultText?.match(/files?[^·\n]{0,20}·\s*([^\n"]+)/);
+    if (m) return m[1].split(",")[0].trim();
+    const j = resultText?.match(/"files_modified"\s*:\s*\["([^"]+)"/);
+    if (j) return j[1].split("/").pop() || j[1];
+    return undefined;
+  })();
 
   // MCP: provider convention mcp__<server>__<tool>
   const mcp = parseMcp(raw);
@@ -179,7 +189,7 @@ export function describeTool(label: string | undefined, argsText: string | undef
   // File tools — plain-verb + filename in the title, path as detail.
   if (raw === "read_file" || raw === "write_file") {
     const p = firstStr(args, ["path"]) || pathRegex(argsText);
-    const f = fileTail(p);
+    const f = fileTail(p) || fileFromResult;
     return {
       kind: "file", name: raw === "read_file" ? "Read file" : "Write file",
       title: raw === "read_file" ? (f ? `Read ${f}` : "Read a file") : (f ? `Saved ${f}` : "Saved a file"),
@@ -189,7 +199,7 @@ export function describeTool(label: string | undefined, argsText: string | undef
   }
   if (raw === "patch") {
     const p = firstStr(args, ["path"]) || pathRegex(argsText);
-    const f = fileTail(p);
+    const f = fileTail(p) || fileFromResult;
     return {
       kind: "file", name: "Edit file",
       title: f ? `Edited ${f}` : "Edited a file",

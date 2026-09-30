@@ -201,7 +201,7 @@ function ThoughtRow({ seg }: { seg: Segment }) {
 // ---- standalone tool row: elements-/tool-call card (arrival slot) -----------
 
 function BundleToolRow({ seg, onToggleTool }: { seg: Segment; onToggleTool: (segId: string) => void }) {
-  const info = describeTool(seg.label, seg.argsText, seg.command);
+  const info = describeTool(seg.label, seg.argsText, seg.command, seg.resultText);
   const prefKey = stepPrefKey(seg);
   const long = (seg.resultText?.length || 0) > 3000;
 
