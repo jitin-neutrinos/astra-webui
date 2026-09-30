@@ -24,7 +24,7 @@ import type { Segment, ClarifyQuestion } from "../lib/chat-segments";
 import {
   turnIsRunning,
 } from "../lib/chat-segments";
-import { MEDIA_RE, mediaPaths, stripMediaLines, toItem, pathFromApiUrl, type MediaItem } from "../lib/media-paths";
+import { MEDIA_RE, mediaPaths, mediaPathsSpaced, stripMediaLines, toItem, pathFromApiUrl, type MediaItem } from "../lib/media-paths";
 import { AnimatedCopyButton } from "../lib/animated-copy";
 import { revealCps } from "../lib/reveal-pace";
 
@@ -388,7 +388,7 @@ function TextRow({ seg, reveal, onOpenMedia }: { seg: Segment; reveal?: boolean;
   // history/reload restores — exactly the "latest streams, rest fade" ask.
   const n = useReveal(text, seg.status === "done", instant || reveal === false);
   const shown = useMemo(() => safeTail(text.slice(0, n)), [text, n]);
-  const paths = useMemo(() => mediaPaths(text), [text]);
+  const paths = useMemo(() => mediaPathsSpaced(text), [text]);
   const displayRaw = seg.status === "done" && n >= text.length ? text : shown;
   const display = useMemo(() => stripMediaLines(displayRaw), [displayRaw]);
 

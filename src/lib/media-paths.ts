@@ -2,9 +2,26 @@ import { CARD_EXTS, needsTranscode, kindInfo, mediaKind } from "./media-kinds.ts
 
 // Paths inside fenced code blocks or inline backticks do NOT become cards (R2):
 // code that references /home/x/a.png is prose, not media.
+//
+// Spaces in filenames are supported with a two-pass strategy:
+//  PASS 1 (strict, space-free) — zero false positives: `a.png and b.png` stays
+//         two refs, `/dir/My File.png` matches only `File.png`.
+//  PASS 2 (space-tolerant) — only for MEDIA: marker lines, where the author's
+//         intent is unambiguous (everything after the marker up to end-of-line
+//         or the next MEDIA:/path is the path). `MEDIA: ~/My Vid.mkv` cards.
 export const MEDIA_RE: RegExp = new RegExp(
   String.raw`(?<![\w:])(?<!/)(?:~|/)[\w./-]*\.(?:` + CARD_EXTS.join("|") + String.raw`)\b`,
   "gi",
+);
+
+// Space-tolerant match: starts strict, then extends through spaces ONLY while a
+// subsequent `\.<ext>` word-boundary end exists on the same line — so
+// `~/a/My File.png` captures the whole span but `a.png and b.png` cannot merge
+// (` and b` has no `.ext` after it… unless "b.png" is one, which PASS 1 already
+// took; the extension requirement keeps prose from leaking in).
+export const MEDIA_RE_SPACES: RegExp = new RegExp(
+  String.raw`(?<![\w:])(?<!/)(?:~|/)(?:[\w./-]+(?:\ [\w().,'/&-]+)*?)\.(?:` + CARD_EXTS.join("|") + String.raw`)\b`,
+  "g",
 );
 
 export function stripCode(text: string): string {
@@ -18,6 +35,34 @@ export function mediaPaths(text: string) {
   // MEDIA:<path> markers carry a colon before the path — the URL guard would reject them, so strip the marker first
   const stripped = stripCode(text).replace(/\bMEDIA:\s*(?=[~/])/g, "");
   return [...new Set(stripped.match(MEDIA_RE) ?? [])];
+}
+
+// Space-tolerant variant used for MEDIA: marker lines. Each MEDIA: line is
+// resolved independently: take the whole remainder-of-line as a candidate,
+// validate it against the space-tolerant regex anchored at the start, and fall
+// back to the strict per-extension match inside it.
+export function mediaPathsSpaced(text: string) {
+  const refs = new Set<string>();
+  const noMarkers = stripCode(text);
+  // strict pass over everything (covers prose + simple MEDIA: paths)
+  for (const m of noMarkers.replace(/\bMEDIA:\s*(?=[~/])/g, "").matchAll(MEDIA_RE)) refs.add(m[0]);
+  // space pass, MEDIA: lines only
+  for (const m of noMarkers.matchAll(/\bMEDIA:[ \t]*([^\n]+)/g)) {
+    // candidate = first whitespace-run-delimited token group that ends in a card
+    // extension; trailing prose after a blank-space run is excluded by requiring
+    // the FULL candidate tail to be the extension — take the longest suffix of
+    // space-separated tokens that still matches the anchored path shape.
+    const candidate = m[1].trim();
+    const tokens = candidate.split(/[ \t]+/);
+    for (let take = tokens.length; take >= 1; take--) {
+      const c = tokens.slice(0, take).join(" ");
+      const hit = c.match(
+        new RegExp(String.raw`^(?:~|/)[\w./-]*(?:\ [\w().,'/&-]+)*?\.(?:` + CARD_EXTS.join("|") + String.raw`)$`, "i"),
+      );
+      if (hit) { refs.add(hit[0]); break; }
+    }
+  }
+  return [...refs];
 }
 
 export const mediaRefs = mediaPaths; // alias used by new code (old name kept: verify-chat-timeline.ts imports it)
