@@ -246,12 +246,7 @@ function ThoughtRow({ seg }: { seg: Segment }) {
         )}
       </AiToolCallHeader>
       <AiToolCallContent>
-        {/* Thinking renders through the same sanitised markdown pipeline as
-            assistant text — bold, lists, inline code and fenced blocks all work.
-            Plain whitespace-pre-wrap showed raw asterisks and dashes. */}
-        <div ref={bodyRef} className="chat-think-text">
-          <RichText text={seg.text ?? ""} />
-        </div>
+        <div ref={bodyRef} className="chat-think-text whitespace-pre-wrap">{seg.text}</div>
       </AiToolCallContent>
     </AiToolCall>
   );
@@ -316,7 +311,7 @@ function BundleToolRow({ seg, onToggleTool }: { seg: Segment; onToggleTool: (seg
           <>
             <AiToolCallInput input={{ __fields: inFields }} />
             {!!seg.resultText && (
-              <AiToolCallOutput label={outFields.length === 0 ? "Output" : null}>
+              <AiToolCallOutput>
                 <AiToolCallFields label="Output" fields={outFields} />
                 {outFields.length === 0 && long && (
                   <pre className="chat-term-out" tabIndex={0}>{seg.resultText!.slice(0, 3000) + "\n…"}</pre>
