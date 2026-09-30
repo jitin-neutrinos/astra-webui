@@ -1313,3 +1313,19 @@ body { background: var(--color-void); }
 [data-theme="light"] .fg-chip-on { border-color:rgba(3,105,161,.55); background:rgba(3,105,161,.1); color:#0369a1; }
 [data-theme="light"] .fg-chip:hover { border-color:rgba(3,105,161,.5); color:var(--color-brandtext); }
 [data-theme="light"] .fg-page-btn:hover:not(:disabled) { border-color:rgba(3,105,161,.5); }
+
+/* ---- chats-panel unread badges (notifications 2026-09-30) ---- */
+.ast-unread-row { background: color-mix(in oklab, var(--color-cyanx) 7%, transparent); }
+.ast-unread-row:hover { background: color-mix(in oklab, var(--color-cyanx) 11%, transparent); }
+.ast-unread-pill {
+  min-width: 1.4rem; height: 1.4rem; padding: 0 .4rem;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--color-cyanx) 22%, transparent);
+  color: var(--color-cyanx);
+  border: 1px solid color-mix(in oklab, var(--color-cyanx) 45%, transparent);
+  font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+[data-theme="light"] .ast-unread-row { background: rgba(3,105,161,.08); }
+[data-theme="light"] .ast-unread-row:hover { background: rgba(3,105,161,.13); }
+[data-theme="light"] .ast-unread-pill { background: rgba(3,105,161,.12); color: #0369a1; border-color: rgba(3,105,161,.4); }

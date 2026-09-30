@@ -3,6 +3,7 @@ import { SessionsSkeleton } from "./ui/skeletons";
 import { ArrowLeft, Search, MessageSquare, ChevronLeft, ChevronRight, AlertCircle } from "lucide-react";
 import { sourcesParam, sourceLabel } from "@/lib/source-filter";
 import { cleanTitle } from "@/lib/chat-title";
+import { getUnreadCount } from "@/lib/notify";
 
 interface SessionMeta {
   id: string;
@@ -20,6 +21,13 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
   const [error, setError] = useState("");
 
   const limit = 10;
+  const [unreadTick, setUnreadTick] = useState(0);
+
+  useEffect(() => {
+    const onUnread = () => setUnreadTick(t => t + 1);
+    window.addEventListener("astra:unread-changed", onUnread);
+    return () => window.removeEventListener("astra:unread-changed", onUnread);
+  }, []);
 
   const [filterModal, setFilterModal] = useState<'all'|'web'|'telegram'|'terminal'>('all');
 
@@ -115,8 +123,8 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
         </div>
       </div>
       <div className="p-2 flex gap-1.5">
-        {["all","web","telegram","terminal"].map((m) => (
-          <button key={m} onClick={() => setFilterModal(m as any)} className={"px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wide border transition-colors " + (filterModal === m ? "bg-cyanx text-black border-cyanx" : "bg-white/5 text-slate-400 border-white/10 hover:text-white")}>{m === "all" ? "All" : m === "web" ? "Web" : m === "telegram" ? "Telegram" : "Terminal"}</button>
+        {["all","web","telegram","terminal","android"].map((m) => (
+          <button key={m} onClick={() => setFilterModal(m as any)} className={"px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wide border transition-colors " + (filterModal === m ? "bg-cyanx text-black border-cyanx" : "bg-white/5 text-slate-400 border-white/10 hover:text-white")}>{m === "all" ? "All" : m === "web" ? "Web" : m === "telegram" ? "Telegram" : m === "android" ? "Android" : "Terminal"}</button>
         ))}
       </div>
 
@@ -135,14 +143,15 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
           sessions.map(s => {
             const rowId = (s as any).session_id || s.id;
             const isActive = !!activeSessionId && rowId === activeSessionId;
+            const unread = unreadTick >= 0 ? getUnreadCount(rowId) : 0;
             return (
             <button
               key={s.id}
               onClick={() => onSelect(rowId)}
               aria-current={isActive ? "true" : undefined}
-              className={"w-full flex items-start gap-3 p-2.5 rounded-lg text-left transition-colors group press-feedback " + (isActive ? "bg-cyanx/10 border border-cyanx/30" : "border border-transparent hover:bg-white/5")}
+              className={"w-full flex items-start gap-3 p-2.5 rounded-lg text-left transition-colors group press-feedback " + (isActive ? "bg-cyanx/10 border border-cyanx/30" : unread > 0 ? "ast-unread-row border border-cyanx/25" : "border border-transparent hover:bg-white/5")}
             >
-              <MessageSquare className={"w-4 h-4 mt-0.5 shrink-0 " + (isActive ? "text-cyanx" : "text-slate-500 group-hover:text-cyanx/70")} />
+              <MessageSquare className={"w-4 h-4 mt-0.5 shrink-0 " + (isActive ? "text-cyanx" : unread > 0 ? "text-cyanx/80" : "text-slate-500 group-hover:text-cyanx/70")} />
               <div className="min-w-0 flex-1">
                 <span className="inline-block px-1 py-0.5 rounded text-[9px] font-mono uppercase tracking-wider bg-white/5 text-slate-500 mr-1.5">{sourceLabel((s as any).source || "")}</span>
                 <div className="text-sm text-slate-300 truncate">{cleanTitle(s.title) || s.preview || "Untitled session"}</div>
@@ -150,6 +159,7 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
                   {typeof s.last_activity_at === "number" ? new Date(s.last_activity_at * 1000).toLocaleString() : ""}
                 </div>
               </div>
+              {unread > 0 && <span className="ast-unread-pill shrink-0 self-center ml-1">{unread > 99 ? "99+" : unread}</span>}
             </button>
             );
           })
