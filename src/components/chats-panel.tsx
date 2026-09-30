@@ -1,47 +1,113 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { SessionsSkeleton } from "./ui/skeletons";
-import { ArrowLeft, Search, MessageSquare, ChevronLeft, ChevronRight, AlertCircle } from "lucide-react";
+import {
+  ArrowLeft, Search, ChevronLeft, ChevronRight, AlertCircle,
+  MoreHorizontal, Pin, PinOff, Pencil, Trash2, Check, X, Loader2,
+  Globe, Send, TerminalSquare, Smartphone, MessageSquare, Sparkles,
+} from "lucide-react";
 import { sourcesParam, sourceLabel } from "@/lib/source-filter";
 import { cleanTitle } from "@/lib/chat-title";
 import { getUnreadCount } from "@/lib/notify";
+import { rowKey, rowTime, timeAgo, sortRows, mergeRows, type SessionRow } from "@/lib/session-row";
 
-interface SessionMeta {
-  id: string;
-  title?: string | null;
-  preview?: string | null;
-  last_activity_at?: number;
+type SourceFilter = "all" | "web" | "telegram" | "terminal" | "android";
+
+const FILTERS: { key: SourceFilter; label: string; icon: typeof Globe }[] = [
+  { key: "all", label: "All", icon: Sparkles },
+  { key: "web", label: "Web", icon: Globe },
+  { key: "android", label: "Android", icon: Smartphone },
+  { key: "telegram", label: "TG", icon: Send },
+  { key: "terminal", label: "Term", icon: TerminalSquare },
+];
+
+const SOURCE_ICON: Record<string, typeof Globe> = {
+  webui: Globe, android: Smartphone, telegram: Send, cli: TerminalSquare, tui: TerminalSquare,
+};
+
+function SourceBadge({ source, active }: { source: string; active: boolean }) {
+  const Icon = SOURCE_ICON[source] || MessageSquare;
+  return (
+    <span
+      className={"ast-src-badge" + (active ? " ast-src-badge-on" : "")}
+      title={sourceLabel(source)}
+    >
+      <Icon className="w-2.5 h-2.5" aria-hidden />
+      <span className="hidden xl:inline">{sourceLabel(source)}</span>
+    </span>
+  );
 }
 
 export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () => void; onSelect: (id: string) => void; activeSessionId?: string | null }) {
   const [query, setQuery] = useState("");
-  const [sessions, setSessions] = useState<SessionMeta[]>([]);
+  const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [filter, setFilter] = useState<SourceFilter>("all");
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [renameText, setRenameText] = useState("");
+  const [busySid, setBusySid] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+  const limit = 15;
+  const listRef = useRef<HTMLDivElement | null>(null);
 
-  const limit = 10;
-  const [unreadTick, setUnreadTick] = useState(0);
-
+  // --- live refresh ---
   useEffect(() => {
-    const onUnread = () => setUnreadTick(t => t + 1);
+    const onUnread = () => setTick(t => t + 1);
     window.addEventListener("astra:unread-changed", onUnread);
     return () => window.removeEventListener("astra:unread-changed", onUnread);
   }, []);
 
-  const [filterModal, setFilterModal] = useState<'all'|'web'|'telegram'|'terminal'>('all');
+  useEffect(() => {
+    const onWs = (e: Event) => {
+      const ev = (e as CustomEvent<{ type?: string }>).detail;
+      if (ev && (ev.type === "sessions.changed" || ev.type === "session.started")) {
+        setTick(t => t + 1);
+      }
+    };
+    window.addEventListener("astra-ws-event", onWs);
+    return () => window.removeEventListener("astra-ws-event", onWs);
+  }, []);
+
+  // relative timestamps refresh each minute
+  useEffect(() => {
+    const t = window.setInterval(() => setTick(x => x + 1), 60_000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  // click-away closes the row menu / rename editor
+  useEffect(() => {
+    if (menuFor === null && renaming === null) return;
+    const onDown = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest(".ast-row-menu-wrap")) {
+        setMenuFor(null);
+        setRenaming(null);
+      }
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [menuFor, renaming]);
+
+  // close on Escape
+  useEffect(() => {
+    if (menuFor === null && renaming === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setMenuFor(null); setRenaming(null); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuFor, renaming]);
 
   const fetchSessions = useCallback(async (q: string, off: number) => {
     setLoading(true);
     setError("");
     try {
       const isSearch = q.trim() !== "";
-      let url = "";
-      if (isSearch) {
-        url = `/api/hx/sessions/search?q=${encodeURIComponent(q)}&limit=${limit}&sources=${encodeURIComponent(sourcesParam(filterModal as any))}`;
-      } else {
-        url = `/api/hx/sessions?limit=${limit}&offset=${off}&order=recent${filterModal !== "all" ? "&sources=" + encodeURIComponent(sourcesParam(filterModal as any)) : ""}`;
-      }
+      const url = isSearch
+        ? `/api/hx/sessions/search?q=${encodeURIComponent(q)}&limit=50&sources=${encodeURIComponent(sourcesParam(filter))}`
+        : `/api/hx/sessions?limit=${limit}&offset=${off}&order=recent&sources=${encodeURIComponent(sourcesParam(filter))}`;
       const res = await fetch(url);
       if (!res.ok) {
         if (res.status === 503) throw new Error("Agent backend busy (503).");
@@ -52,8 +118,8 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
       if (isSearch) {
         // search rows are messages-with-session-hints; dedupe by session id
         const seen = new Set<string>();
-        const rows = (data.results || []).filter((r: any) => {
-          const sid = r.session_id || r.id;
+        const rows = (data.results || []).filter((r: SessionRow) => {
+          const sid = rowKey(r);
           if (!sid || seen.has(sid)) return false;
           seen.add(sid);
           return true;
@@ -61,7 +127,7 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
         setSessions(rows);
         setTotal(rows.length);
       } else {
-        setSessions(data.sessions || []);
+        setSessions((prev) => mergeRows(prev, data.sessions || []));
         setTotal(data.total || 0);
       }
     } catch (e: any) {
@@ -71,43 +137,192 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
     } finally {
       setLoading(false);
     }
-  }, [filterModal]);
+  }, [filter]);
 
+  // Filter switch is a context change: the merged accumulation belongs to the OLD
+  // filter — clear it so the new fetch starts from a blank (skeleton) list.
+  useEffect(() => { setOffset(0); setSessions([]); setTotal(0); setLoading(true); }, [filter]);
+
+  // debounced (re)fetch on query/filter/offset; live ticks refetch silently (keep list)
   useEffect(() => {
-    setOffset(0);
-  }, [filterModal]);
+    const run = async () => {
+      if (query.trim() !== "") await fetchSessions(query, 0);
+      else await fetchSessions("", offset);
+    };
+    const isLiveRefresh = tick > 0 && query.trim() === "" && offset === 0;
+    const t = setTimeout(run, isLiveRefresh ? 1000 : 300);
+    return () => clearTimeout(t);
+  }, [query, offset, filter, fetchSessions, tick]);
 
   // The open chat was (re)named - live auto-name or rename: patch its row in place.
   useEffect(() => {
     const on = (e: Event) => {
       const { id, title } = (e as CustomEvent<{ id?: string; title?: string }>).detail || {};
-      if (id && title) setSessions((rows) => rows.map((r) => (r.id === id ? { ...r, title } : r)));
+      if (id && title) setSessions((rows) => rows.map((r) => (rowKey(r) === id ? { ...r, title } : r)));
     };
     window.addEventListener("astra:chat-title", on);
     return () => window.removeEventListener("astra:chat-title", on);
   }, []);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (query.trim() !== "") {
-        setOffset(0);
-        fetchSessions(query, 0);
-      } else {
-        fetchSessions("", offset);
-      }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [query, offset, filterModal, fetchSessions]);
+  const patchFlag = useCallback(async (sid: string, body: Record<string, unknown>) => {
+    setBusySid(sid);
+    try {
+      const res = await fetch(`/api/hx/sessions/${encodeURIComponent(sid)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      setSessions((rows) => rows.map((r) => (rowKey(r) === sid ? { ...r, ...body } as SessionRow : r)));
+      return true;
+    } catch {
+      return false;
+    } finally {
+      setBusySid(null);
+    }
+  }, []);
+
+  const doDelete = useCallback(async (sid: string) => {
+    setBusySid(sid);
+    try {
+      const res = await fetch(`/api/hx/sessions/${encodeURIComponent(sid)}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(String(res.status));
+      setSessions((rows) => rows.filter((r) => rowKey(r) !== sid));
+      setTotal((t) => Math.max(0, t - 1));
+      return true;
+    } catch {
+      return false;
+    } finally {
+      setBusySid(null);
+    }
+  }, []);
+
+  const startRename = (sid: string, current: string) => {
+    setMenuFor(null);
+    setRenaming(sid);
+    setRenameText(current);
+  };
+
+  const commitRename = async () => {
+    const sid = renaming;
+    if (!sid) return;
+    const t = renameText.trim();
+    setRenaming(null);
+    if (!t) return;
+    const row = sessions.find((r) => rowKey(r) === sid);
+    if (row && cleanTitle(row.title) === t) return;
+    await patchFlag(sid, { title: t });
+  };
+
+  const visible = useMemo(
+    () => (query.trim() !== "" ? sessions : sortRows(sessions)),
+    [sessions, query]
+  );
 
   const maxOffset = Math.max(0, total - (total % limit || limit));
+
+  const renderRow = (s: SessionRow) => {
+    const sid = rowKey(s);
+    const isActive = !!activeSessionId && sid === activeSessionId;
+    const unread = getUnreadCount(sid);
+    const live = !!s.is_active;
+    const src = (s as any).source || "";
+    const title = cleanTitle(s.title) || "Untitled session";
+    const t = rowTime(s);
+    const editing = renaming === sid;
+    const busy = busySid === sid;
+
+    return (
+      <div
+        key={sid}
+        className={"ast-chat-row group " + (isActive ? "ast-row-active" : unread > 0 ? "ast-unread-row" : "")}
+        data-session-id={sid}
+      >
+        {editing ? (
+          <div className="flex items-center gap-1.5 p-2">
+            <input
+              autoFocus
+              value={renameText}
+              onChange={(e) => setRenameText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commitRename();
+                if (e.key === "Escape") setRenaming(null);
+              }}
+              className="ast-rename-input"
+              aria-label="Rename session"
+              maxLength={200}
+            />
+            <button className="ast-icon-btn" onClick={commitRename} title="Save"><Check className="w-3.5 h-3.5" /></button>
+            <button className="ast-icon-btn" onClick={() => setRenaming(null)} title="Cancel"><X className="w-3.5 h-3.5" /></button>
+          </div>
+        ) : (
+          <button
+            onClick={() => onSelect(sid)}
+            aria-current={isActive ? "true" : undefined}
+            className="w-full text-left"
+          >
+            <div className="flex items-center gap-1.5">
+              <SourceBadge source={src} active={isActive || unread > 0} />
+              {s.model && <span className="ast-model-tag" title={`model: ${s.model}`}>{s.model}</span>}
+              <span className="ast-row-time" title={t ? new Date(t * 1000).toLocaleString() : undefined}>
+                {timeAgo(t)}
+              </span>
+              <span className="flex-1" />
+              {live && <span className="ast-live-dot" title="Session active now"><Loader2 className="w-2.5 h-2.5 animate-spin" /></span>}
+              {s.pinned && <Pin className="w-2.5 h-2.5 text-cyanx/80 shrink-0" aria-label="Pinned" />}
+              {unread > 0 && <span className="ast-unread-pill shrink-0">{unread > 99 ? "99+" : unread}</span>}
+            </div>
+            <div className={"ast-row-title truncate " + (unread > 0 ? "text-brandtext" : "")}>{title}</div>
+            <div className="ast-row-sub truncate">
+              {query.trim() !== "" && s.snippet ? s.snippet : (s.preview || "")}
+            </div>
+          </button>
+        )}
+        {!editing && (
+          <div className="ast-row-menu-wrap">
+            <button
+              className="ast-row-menu-btn"
+              onClick={(e) => { e.stopPropagation(); setMenuFor(menuFor === sid ? null : sid); }}
+              aria-label="Session actions"
+              aria-haspopup="menu"
+              aria-expanded={menuFor === sid}
+            >
+              <MoreHorizontal className="w-3.5 h-3.5" />
+            </button>
+            {menuFor === sid && (
+              <div className="ast-row-menu" role="menu">
+                <button className="ast-menu-item" role="menuitem" onClick={() => { setMenuFor(null); startRename(sid, title); }}>
+                  <Pencil className="w-3 h-3" /> Rename
+                </button>
+                <button className="ast-menu-item" role="menuitem" onClick={() => { setMenuFor(null); void patchFlag(sid, { pinned: !s.pinned }); }}>
+                  {s.pinned ? <><PinOff className="w-3 h-3" /> Unpin</> : <><Pin className="w-3 h-3" /> Pin</>}
+                </button>
+                <button className="ast-menu-item ast-menu-danger" role="menuitem" onClick={() => {
+                  setMenuFor(null);
+                  if (window.confirm(`Delete "${title}"? This cannot be undone.`)) void doDelete(sid);
+                }}>
+                  <Trash2 className="w-3 h-3" /> Delete
+                </button>
+              </div>
+            )}
+            {busy && <Loader2 className="w-3 h-3 animate-spin text-cyanx absolute right-2 top-2" />}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const searching = query.trim() !== "";
 
   return (
     <div className="flex h-full flex-col">
       <div className="p-4 flex items-center gap-2 border-b border-white/[0.07]">
-        <button onClick={onBack} className="nav-back-btn p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors">
+        <button onClick={onBack} className="nav-back-btn p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors" aria-label="Back">
           <ArrowLeft className="w-4 h-4" />
         </button>
         <span className="font-mono text-xs uppercase tracking-widest text-slate-300">Chats</span>
+        <span className="flex-1" />
+        {total > 0 && !searching && <span className="font-mono text-[10px] text-slate-500">{total}</span>}
       </div>
 
       <div className="p-3 border-b border-white/[0.07]">
@@ -117,18 +332,34 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
             type="text"
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="Search sessions..."
-            className="w-full bg-black/40 border border-white/10 rounded-lg pl-9 pr-3 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-cyanx/50 focus:ring-1 focus:ring-cyanx/50 transition-all"
+            placeholder="Search chats…"
+            className="w-full bg-black/40 border border-white/10 rounded-lg pl-9 pr-8 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-cyanx/50 focus:ring-1 focus:ring-cyanx/50 transition-all"
+            aria-label="Search chats"
           />
+          {query && (
+            <button onClick={() => setQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-200" aria-label="Clear search">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
-      <div className="p-2 flex gap-1.5">
-        {["all","web","telegram","terminal","android"].map((m) => (
-          <button key={m} onClick={() => setFilterModal(m as any)} className={"px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wide border transition-colors " + (filterModal === m ? "bg-cyanx text-black border-cyanx" : "bg-white/5 text-slate-400 border-white/10 hover:text-white")}>{m === "all" ? "All" : m === "web" ? "Web" : m === "telegram" ? "Telegram" : m === "android" ? "Android" : "Terminal"}</button>
+
+      <div className="px-3 pt-2.5 pb-1.5 flex gap-1" role="tablist" aria-label="Filter by source">
+        {FILTERS.map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            role="tab"
+            aria-selected={filter === key}
+            onClick={() => setFilter(key)}
+            className={"ast-filter-chip " + (filter === key ? "ast-filter-chip-on" : "")}
+          >
+            <Icon className="w-3 h-3" aria-hidden />
+            {label}
+          </button>
         ))}
       </div>
 
-      <div className="sidebar-scroll flex-1 overflow-y-auto p-2 space-y-1">
+      <div ref={listRef} className="sidebar-scroll flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
         {loading && sessions.length === 0 ? (
           <SessionsSkeleton />
         ) : error ? (
@@ -137,51 +368,33 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
             <span className="text-sm">{error}</span>
             <button onClick={() => fetchSessions(query, offset)} className="text-xs underline hover:text-red-300">Retry</button>
           </div>
-        ) : sessions.length === 0 ? (
-          <div className="p-4 text-center font-mono text-xs text-slate-500">No sessions found.</div>
+        ) : visible.length === 0 ? (
+          <div className="p-4 text-center font-mono text-xs text-slate-500">
+            {searching ? "No chats match." : "No sessions yet."}
+          </div>
         ) : (
-          sessions.map(s => {
-            const rowId = (s as any).session_id || s.id;
-            const isActive = !!activeSessionId && rowId === activeSessionId;
-            const unread = unreadTick >= 0 ? getUnreadCount(rowId) : 0;
-            return (
-            <button
-              key={s.id}
-              onClick={() => onSelect(rowId)}
-              aria-current={isActive ? "true" : undefined}
-              className={"w-full flex items-start gap-3 p-2.5 rounded-lg text-left transition-colors group press-feedback " + (isActive ? "bg-cyanx/10 border border-cyanx/30" : unread > 0 ? "ast-unread-row border border-cyanx/25" : "border border-transparent hover:bg-white/5")}
-            >
-              <MessageSquare className={"w-4 h-4 mt-0.5 shrink-0 " + (isActive ? "text-cyanx" : unread > 0 ? "text-cyanx/80" : "text-slate-500 group-hover:text-cyanx/70")} />
-              <div className="min-w-0 flex-1">
-                <span className="inline-block px-1 py-0.5 rounded text-[9px] font-mono uppercase tracking-wider bg-white/5 text-slate-500 mr-1.5">{sourceLabel((s as any).source || "")}</span>
-                <div className="text-sm text-slate-300 truncate">{cleanTitle(s.title) || s.preview || "Untitled session"}</div>
-                <div className="text-[10px] text-slate-500 font-mono mt-1">
-                  {typeof s.last_activity_at === "number" ? new Date(s.last_activity_at * 1000).toLocaleString() : ""}
-                </div>
-              </div>
-              {unread > 0 && <span className="ast-unread-pill shrink-0 self-center ml-1">{unread > 99 ? "99+" : unread}</span>}
-            </button>
-            );
-          })
+          visible.map(renderRow)
         )}
       </div>
 
-      {query.trim() === "" && total > limit && (
+      {!searching && total > limit && (
         <div className="p-3 border-t border-white/[0.07] flex items-center justify-between">
           <button
             disabled={offset === 0}
-            onClick={() => setOffset(Math.max(0, offset - limit))}
+            onClick={() => { setOffset(Math.max(0, offset - limit)); listRef.current?.scrollTo({ top: 0 }); }}
             className="p-1.5 rounded text-slate-400 hover:text-white hover:bg-white/5 disabled:opacity-30 disabled:pointer-events-none"
+            aria-label="Previous page"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
           <span className="font-mono text-[10px] text-slate-500">
-            {offset + 1}-{Math.min(total, offset + limit)} of {total}
+            {offset + 1}–{Math.min(total, offset + limit)} of {total}
           </span>
           <button
             disabled={offset >= maxOffset}
-            onClick={() => setOffset(offset + limit)}
+            onClick={() => { setOffset(offset + limit); listRef.current?.scrollTo({ top: 0 }); }}
             className="p-1.5 rounded text-slate-400 hover:text-white hover:bg-white/5 disabled:opacity-30 disabled:pointer-events-none"
+            aria-label="Next page"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
