@@ -109,6 +109,33 @@
 html { color-scheme: dark; }
 body { background: var(--color-void); }
 
+/* ============================================================================
+   THEME WIPE — circular View Transitions reveal on dark/light toggle, ported
+   from comindash (community-insights-dashboard), origin at the toggle button.
+   The animation itself is driven from theme-toggle.tsx via WAAPI on
+   ::view-transition-new(root); these rules disable the default cross-fade so
+   only the clip wipe runs. Firefox/legacy: `.theme-fading` gives a short
+   cross-fade of CSS variables instead of an instant flip.
+   ========================================================================== */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+html.theme-fading,
+html.theme-fading body,
+html.theme-fading body * {
+  transition:
+    background-color 260ms cubic-bezier(0.23, 1, 0.32, 1),
+    border-color 260ms cubic-bezier(0.23, 1, 0.32, 1),
+    color 260ms cubic-bezier(0.23, 1, 0.32, 1),
+    fill 260ms cubic-bezier(0.23, 1, 0.32, 1),
+    stroke 260ms cubic-bezier(0.23, 1, 0.32, 1) !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  html.theme-fading, html.theme-fading body, html.theme-fading body * { transition: none !important; }
+}
+
 /* Native (Capacitor) full-bleed: the WebView fills the screen and the system
    bars float OVER the page. These vars (0 in browsers) pad only the
    INTERACTIVE chrome so nothing tappable hides under a bar, while the theme
@@ -219,6 +246,28 @@ body { background: var(--color-void); }
 .chat-chip:active, .chat-suggest:active, .chat-approval-btn:active, .chat-step:active, .chat-head-link:active, .chat-popout-chip:active { transform: scale(0.96); }
 .chat-send[disabled] { opacity: .35; cursor: default; }
 .chat-send[disabled]:hover { background: var(--color-cyanx); }
+
+/* ---- New-chat header button (owner workflow 2026-10-01) --------------------
+   SOLID brand accent-blue fill (was translucent cyanx/10 — owner: fill it),
+   same gradient language as the solid .chat-send button. data-ncflow="press"
+   runs the 1s in-button loading animation: Plus swaps to a spinning Loader +
+   a bottom progress sweep that fills left→right across the hold. Mobile: text
+   hides, spinner centers via the absolute overlay. ---- */
+.nc-btn { position: relative; overflow: hidden; border: none; background: linear-gradient(180deg, #22d3ee, #0891b2); color: var(--color-void); cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,.25), 0 0 12px -2px rgba(34,211,238,.45); }
+.nc-btn:hover:not([disabled]) { filter: brightness(1.1); }
+.nc-btn[data-ncflow="press"] { filter: brightness(1.05); box-shadow: 0 0 22px rgba(34,211,238,.45); cursor: progress; }
+.nc-btn:disabled { cursor: progress; }
+.nc-btn-spin { animation: nc-rotate 900ms linear infinite; }
+@keyframes nc-rotate { to { transform: rotate(360deg); } }
+.nc-btn-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: rgba(10,10,15,.55); transform-origin: left center; transform: scaleX(0); animation: nc-progress 1s cubic-bezier(0.2,0,0,1) forwards; }
+[data-theme="light"] .nc-btn { background: linear-gradient(180deg, #06b6d4, #0e7490); color: #f8fafc; box-shadow: 0 1px 2px rgba(4,44,56,.18), 0 0 10px -2px rgba(6,182,212,.35); }
+[data-theme="light"] .nc-btn:hover:not([disabled]) { filter: brightness(1.06); }
+[data-theme="light"] .nc-btn-progress { background: rgba(255,255,255,.55); }
+@keyframes nc-progress { to { transform: scaleX(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .nc-btn-spin { animation-duration: 1.6s; }
+  .nc-btn-progress { animation-duration: 1s; }
+}
 /* stop button beside an always-live send: red-tinted, same geometry */
 .chat-send-stop { background: rgba(239,68,68,.16); color: #f87171; margin-left: -4px; }
 .chat-send-stop:hover { background: rgba(239,68,68,.28); color: #fca5a5; }

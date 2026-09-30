@@ -83,4 +83,26 @@ function FilesSkeleton({ n = 4 }: { n?: number }) {
   );
 }
 
-export { ChatFeedSkeleton, SessionsSkeleton, FilesSkeleton };
+// New-chat variant (owner workflow 2026-10-01): ONE minimal skeleton row shaped
+// like the live greeting turn (in-bubble logo head + text bars). Shown ONLY on
+// the new-chat path while the auto-greet's session is minting and no content
+// has streamed yet; replaced the moment the first segment lands.
+function NewChatGreetSkeleton() {
+  return (
+    <div className="chat-feed mx-auto flex w-full max-w-[52rem] flex-col gap-6 px-4 py-8" aria-busy="true" aria-label="Starting new chat">
+      <div className="chat-turn">
+        <div className="flex items-center gap-2 mb-2.5">
+          <Skeleton className="h-[22px] w-[22px] rounded-md" />
+          <Skeleton className="ml-auto h-2.5 w-10" />
+        </div>
+        <div className="space-y-2">
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-[92%]" />
+          <Skeleton className="h-3 w-[70%]" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export { ChatFeedSkeleton, NewChatGreetSkeleton, SessionsSkeleton, FilesSkeleton };

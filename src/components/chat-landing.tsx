@@ -17,7 +17,7 @@ import { hasRenderedReq, lastAssistantHasText } from "@/lib/chat-segments";
 import { cleanTitle } from "@/lib/chat-title";
 import { modelSwitchValue } from "@/lib/model-switch";
 import AITextLoading from "@/components/ui/ai-text-loading";
-import { ChatFeedSkeleton } from "@/components/ui/skeletons";
+import { ChatFeedSkeleton, NewChatGreetSkeleton } from "@/components/ui/skeletons";
 import { getHermesHome, getCatalog } from "@/lib/session-files";
 import {
   applySegmentOps, finalizeSegments, findNewestCollapsedToolSeg, expandKeyBlocked, TurnTimeline,
@@ -203,11 +203,52 @@ function thinkingOf(payload: any): string {
   return payload?.delta?.thinking ?? payload?.text ?? payload?.rendered ?? "";
 }
 
+
+// ---- UserBubble (owner 2026-10-01): 5-line clamp with "read more" ----------
+// Long user messages collapse to 5 rendered lines (CSS line-clamp — counts
+// WRAPPED lines, not just newlines) with an inline toggle. Overflow is measured
+// after paint via scrollHeight, so the toggle only appears when the clamp
+// actually cut something.
+function UserBubble({ msg, avatarUrl, onOpenMedia }: { msg: ChatMsg; avatarUrl: string; onOpenMedia: (items: MediaItem[], index: number) => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  const clampRef = useRef<HTMLDivElement | null>(null);
+  const body = (msg.content || "").replace(/\n\nAttached file: .*/g, "");
+  useEffect(() => {
+    const el = clampRef.current;
+    if (!el || expanded) { if (expanded) setOverflows(true); return; }
+    setOverflows(el.scrollHeight > el.clientHeight + 2);
+  }, [body, expanded]);
+  return (
+    <div className="chat-bubble-user min-w-0 w-full whitespace-pre-wrap [overflow-wrap:anywhere] rounded-2xl px-4 py-3 text-sm leading-relaxed">
+      <div className="chat-turn-head chat-turn-head-user">
+        <img src={avatarUrl} alt="" aria-hidden="true" className="chat-user-chip" />
+        {msg.ts != null && (
+          <div className="chat-turn-ts">{new Date(msg.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
+        )}
+      </div>
+      {msg.files && msg.files.length > 0 && (
+        <MediaGrid className="mb-2" items={msg.files.map((f) => toItem(f.path, f.name))} onOpen={onOpenMedia} />
+      )}
+      <div ref={clampRef} className={!expanded ? "user-msg-clamp" : undefined}>{body}</div>
+      {overflows && (
+        <button type="button" className="user-msg-toggle" aria-expanded={expanded}
+          onClick={() => setExpanded((v) => !v)}>
+          {expanded ? "Show less" : "Read more"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, onNewChat, onOpenNav, isActiveView = true }: { resetSignal: number, selectedSessionId: string | null, onSessionChange?: (id: string | null) => void, onNewChat?: () => void, onOpenNav?: () => void, isActiveView?: boolean }) {
   const [messages, setMessagesState] = useState<ChatMsg[]>([]);
   // history is in flight for this chat: show skeleton feed instead of the
-  // empty-state welcome (which flashed before history landed)
-  const [histLoading, setHistLoading] = useState(false);
+  // empty-state welcome (which flashed before history landed).
+  // Owner standing rule (2026-10-01): skeleton until EVERYTHING is loaded —
+  // start true whenever a chat is (or may be) selected so first paint, reload,
+  // and deep links never flash the welcome screen.
+  const [histLoading, setHistLoading] = useState(true);
   // which chat's history the rendered messages belong to — navigating to a
   // DIFFERENT chat clears the screen so its skeleton shows while fetching
   const loadedSidRef = useRef<string | null>(null);
@@ -246,6 +287,72 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   const [sentFlash, setSentFlash] = useState(false);
 
   const listRef = useRef<HTMLDivElement>(null);
+
+  // ---- history pagination (owner 2026-10-01) --------------------------------
+  // First load pulls only the newest HIST_PAGE rows; scrolling to the top pages
+  // in older ones (order=oldest&offset=<raw rows already held>). rawRowsRef
+  // holds the RAW (pre-rowsToTurns) rows oldest-first so offsets stay exact.
+  const HIST_PAGE = 200;
+  const rawRowsRef = useRef<any[]>([]);
+  const histDoneRef = useRef(false);
+  const loadingOlderRef = useRef(false);
+  const [olderLoading, setOlderLoading] = useState(false);
+
+  // Shared row→messages merge (initial page and scroll-up pages both use it).
+  const applyHistoryRows = useCallback(async (rawRows: any[], sid: string) => {
+    const rows = rowsToTurns(rawRows);
+    const sameMsg = (live: ChatMsg, row: Turn) => {
+      if (live.isSysNote || live.role !== row.role) return false;
+      if (live.role === "user") return (live.content || "").trim() === (row.content || "").trim();
+      const t1 = (live.segments || []).filter((s) => s.kind === "text").map((s) => s.text ?? "").join("\n\n").trim();
+      const t2 = (row.segments || []).filter((s) => s.kind === "text").map((s) => s.text ?? "").join("\n\n").trim();
+      if (t1 === "" && t2 === "") {
+        const kinds1 = (live.segments || []).map(s => s.kind).join();
+        const kinds2 = (row.segments || []).map(s => s.kind).join();
+        const labels1 = (live.segments || []).filter(s => s.kind === "tool").map(s => s.label).join();
+        const labels2 = (row.segments || []).filter(s => s.kind === "tool").map(s => s.label).join();
+        return kinds1 === kinds2 && labels1 === labels2;
+      }
+      return t1 === t2;
+    };
+    const toMsg = (r: Turn): ChatMsg => ({ ...r, id: r.id || nextId() } as ChatMsg);
+    setMessages((live) => {
+      if (liveSidRef.current !== sid || live.length === 0) return rows.map(toMsg);
+      if (activeIdRef.current != null) return live;
+      let li = live.length - 1, ri = rows.length - 1;
+      while (li >= 0 && ri >= 0 && sameMsg(live[li], rows[ri])) { li--; ri--; }
+      return [...rows.slice(0, ri + 1).map(toMsg), ...live.slice(li + 1)];
+    });
+    setErrorBanner("");
+    loadedSidRef.current = sid;
+  }, [setMessages]);
+
+  // Scroll-up pagination: fetch the next older page and prepend.
+  const loadOlder = useCallback(async () => {
+    const sid = storedSidRef.current;
+    if (!sid || loadingOlderRef.current || histDoneRef.current) return;
+    loadingOlderRef.current = true;
+    setOlderLoading(true);
+    const el = listRef.current;
+    const prevHeight = el?.scrollHeight ?? 0;
+    try {
+      const offset = rawRowsRef.current.length;
+      const res = await fetch(`/api/hx/sessions/${encodeURIComponent(sid)}/messages?order=oldest&limit=${HIST_PAGE}&offset=${offset}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const page = (data.messages || []).filter((r: any) => r && r.id != null && !rawRowsRef.current.some((x) => x.id === r.id));
+      if (page.length === 0) { histDoneRef.current = true; return; }
+      rawRowsRef.current = [...page, ...rawRowsRef.current];
+      if (page.length < HIST_PAGE) histDoneRef.current = true;
+      await applyHistoryRows(rawRowsRef.current, sid);
+      // Keep the reader anchored: restore the scroll offset over the prepended content.
+      requestAnimationFrame(() => {
+        const el2 = listRef.current;
+        if (el2) { el2.scrollTop = el2.scrollHeight - prevHeight + el2.scrollTop; }
+      });
+    } catch { /* keep what we have */ }
+    finally { loadingOlderRef.current = false; setOlderLoading(false); }
+  }, [applyHistoryRows]);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const uploading = attachments.some((a) => a.status === "uploading");
@@ -812,7 +919,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
 
   useEffect(() => {
     async function loadHistory() {
-      if (!storedSessionId) { setMessages([]); setHistLoading(false); loadedSidRef.current = null; return; }
+      if (!storedSessionId) { setMessages([]); setHistLoading(false); loadedSidRef.current = null; rawRowsRef.current = []; histDoneRef.current = false; return; }
       setHistLoading(true);
       // switching to another chat: drop the previous chat's rows immediately so
       // the skeleton holds the space (owner: chat switch shows loading state).
@@ -821,9 +928,12 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       // every later delta mapped over a list that no longer contained it:
       // feed froze empty on the welcome screen until reload. A real switch has
       // no live turn (the session-switch effect nulls activeIdRef); a mint does.
-      if (loadedSidRef.current !== storedSessionId && activeIdRef.current == null) setMessages([]);
+      if (loadedSidRef.current !== storedSessionId && activeIdRef.current == null) { setMessages([]); rawRowsRef.current = []; histDoneRef.current = false; }
       try {
-        const res = await fetch(`/api/hx/sessions/${encodeURIComponent(storedSessionId)}/messages?order=latest&limit=500`);
+        // Industry-standard first page only (owner 2026-10-01): the rest pages
+        // in as the user scrolls up (loadOlder). order=latest + reverse gives
+        // the oldest-first tail page.
+        const res = await fetch(`/api/hx/sessions/${encodeURIComponent(storedSessionId)}/messages?order=latest&limit=${HIST_PAGE}`);
         if (!res.ok) {
           if (res.status === 401) setErrorBanner("Unauthorized. Please log in.");
           else if (res.status === 503) setErrorBanner("Agent backend busy (503).");
@@ -835,34 +945,10 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         // rowsToTurns reconstructs thinking/tool segments from the persisted
         // reasoning/tool_calls/tool-result rows — approval/clarify segments
         // are the only kind never persisted, so restored turns never have them.
-        const rows = rowsToTurns(data.messages || []);
-        
-        const sameMsg = (live: ChatMsg, row: Turn) => {
-          if (live.isSysNote || live.role !== row.role) return false;
-          if (live.role === "user") return (live.content || "").trim() === (row.content || "").trim();
-          const t1 = (live.segments || []).filter((s) => s.kind === "text").map((s) => s.text ?? "").join("\n\n").trim();
-          const t2 = (row.segments || []).filter((s) => s.kind === "text").map((s) => s.text ?? "").join("\n\n").trim();
-          if (t1 === "" && t2 === "") {
-             const kinds1 = (live.segments || []).map(s => s.kind).join();
-             const kinds2 = (row.segments || []).map(s => s.kind).join();
-             const labels1 = (live.segments || []).filter(s => s.kind === "tool").map(s => s.label).join();
-             const labels2 = (row.segments || []).filter(s => s.kind === "tool").map(s => s.label).join();
-             return kinds1 === kinds2 && labels1 === labels2;
-          }
-          return t1 === t2;
-        };
-        const toMsg = (r: Turn): ChatMsg => ({ ...r, id: r.id || nextId() } as ChatMsg);
-
-        const sid = storedSessionId;
-        setMessages((live) => {
-          if (liveSidRef.current !== sid || live.length === 0) return rows.map(toMsg);
-          if (activeIdRef.current != null) return live;
-          let li = live.length - 1, ri = rows.length - 1;
-          while (li >= 0 && ri >= 0 && sameMsg(live[li], rows[ri])) { li--; ri--; }
-          return [...rows.slice(0, ri + 1).map(toMsg), ...live.slice(li + 1)];
-        });
-        setErrorBanner("");
-        loadedSidRef.current = sid;
+        const rows = (data.messages || []).slice().reverse();
+        rawRowsRef.current = rows;
+        histDoneRef.current = rows.length < HIST_PAGE;
+        await applyHistoryRows(rows, storedSessionId);
       } catch {
         setErrorBanner("Failed to load history.");
         if (liveSidRef.current !== storedSessionId) setMessages([]);
@@ -980,12 +1066,24 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     finalizeActive();
   };
 
-  // New chat via the chat header: reuse the exact sidebar New-chat path from App
-  // (URL sync + selection clear + drawer close). App is the only consumer, so the
-  // prop is required.
-  const sendReset = useCallback(() => {
-    onNewChat?.();
-  }, [onNewChat]);
+  // New chat via the chat header (owner workflow 2026-10-01, THIS button only):
+  // press → 1s loading animation on the button itself → reset to the new-chat
+  // screen, which holds skeleton rows until the auto-greet's first streamed
+  // content lands. Every other path (sidebar new chat, opening a session)
+  // keeps the old instant reset — ncFlow gates all of it.
+  const [ncFlow, setNcFlow] = useState<"idle" | "press" | "skeleton">("idle");
+  const ncTimerRef = useRef<number | null>(null);
+  const NC_HOLD_MS = 1000;
+  const onNewChatClick = useCallback(() => {
+    if (ncFlow !== "idle") return;
+    setNcFlow("press");
+    ncTimerRef.current = window.setTimeout(() => {
+      ncTimerRef.current = null;
+      setNcFlow("skeleton");
+      onNewChat?.();
+    }, NC_HOLD_MS);
+  }, [ncFlow, onNewChat]);
+  useEffect(() => () => { if (ncTimerRef.current != null) window.clearTimeout(ncTimerRef.current); }, []);
 
   // Selector handlers. Every pick is optimistic, then the gateway's session.info
   // (authoritative) overwrites it; a rejected call rolls back to the exact prior
@@ -1269,6 +1367,8 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   const onScroll = () => {
     const el = listRef.current;
     if (!el) return;
+    // Scroll-up pagination (owner 2026-10-01): near the top, pull older rows.
+    if (el.scrollTop < 240) void loadOlder();
     const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
     const prevTop = lastScrollTopRef.current;
     lastScrollTopRef.current = el.scrollTop;
@@ -1309,6 +1409,45 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       greetPendingRef.current = true;
     }
   }, [resetSignal, resetSession]);
+
+  // Exit the new-chat skeleton only after the reset has actually applied AND
+  // real content arrives: the greeting turn's first segment, or a user bubble.
+  // The gate matters because ncFlow flips to "skeleton" one render BEFORE the
+  // resetSignal effect clears messages — unprompted, that first render still
+  // holds the old chat's rows and the exit effect would kill the skeleton in
+  // the same frame (seen live: skeleton never painted).
+  const ncResetAppliedRef = useRef(false);
+  useEffect(() => {
+    if (ncFlow !== "skeleton") return;
+    if (messages.length === 0) { ncResetAppliedRef.current = true; return; }
+    const hasUser = messages.some((m) => m.role === "user");
+    const last = messages[messages.length - 1];
+    const hasContent = hasUser || (!!last && last.role === "assistant" && (last.segments?.length ?? 0) > 0);
+    if (ncResetAppliedRef.current && hasContent) setNcFlow("idle");
+  }, [messages, ncFlow]);
+
+  // Failsafe: a turn that dies before any segment (gateway down, turn-error)
+  // must not wedge the skeleton — fall back to the welcome screen after 15s.
+  // Selecting a DIFFERENT session mid-hold cancels the pending reset instead
+  // of yanking the user off to a fresh chat. Compare against the sid observed
+  // when the flow started — a merely-truthy storedSessionId is the NORMAL
+  // new-chat-from-existing-chat path and must not cancel anything.
+  const ncPrevSidRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (ncFlow === "skeleton") {
+      ncPrevSidRef.current = storedSessionId;
+      const t = window.setTimeout(() => setNcFlow("idle"), 15000);
+      return () => window.clearTimeout(t);
+    }
+    if (ncFlow === "press") {
+      if (ncPrevSidRef.current !== undefined && storedSessionId !== ncPrevSidRef.current && ncTimerRef.current != null) {
+        window.clearTimeout(ncTimerRef.current);
+        ncTimerRef.current = null;
+        setNcFlow("idle");
+      }
+      ncPrevSidRef.current = storedSessionId;
+    }
+  }, [ncFlow, storedSessionId]);
 
   // Only trigger the greeting when the session was actively RESUMED (resetSignal),
   // not just on reload — to avoid the duplicate greeting turn after every reload
@@ -1406,18 +1545,26 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
           )}
         </span>
         <span className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.25em] text-slate-500">
-          <button type="button" onClick={() => { void sendReset(); }}
-            aria-label="New chat" title="New chat"
-            className="flex h-10 items-center gap-2 rounded-lg border border-cyanx/30 bg-cyanx/10 px-4 text-sm text-cyanx shadow-[0_0_16px_rgba(34,211,238,0.12)] transition-all duration-150 hover:border-cyanx/50 hover:bg-cyanx/20 hover:shadow-[0_0_22px_rgba(34,211,238,0.25)] active:scale-[0.97] motion-reduce:transition-none max-lg:h-10 max-lg:w-10 max-lg:justify-center max-lg:p-0">
-            <Plus className="h-4 w-4 max-lg:h-5 max-lg:w-5" strokeWidth={2} />
-            <span className="max-lg:hidden">New chat</span>
+          <button type="button" onClick={onNewChatClick}
+            aria-label="New chat" title="New chat" data-ncflow={ncFlow} disabled={ncFlow !== "idle"}
+            className="nc-btn flex h-10 items-center gap-2 rounded-lg px-4 text-sm shadow-[0_0_16px_rgba(34,211,238,0.12)] transition-[border-color,background-color,box-shadow,opacity] duration-150 hover:shadow-[0_0_22px_rgba(34,211,238,0.25)] active:scale-[0.97] motion-reduce:transition-none max-lg:h-10 max-lg:w-10 max-lg:justify-center max-lg:p-0">
+            {ncFlow === "idle" && <Plus className="h-4 w-4 max-lg:h-5 max-lg:w-5" strokeWidth={2} />}
+            {ncFlow === "press" && (
+              <span aria-hidden="true" className="nc-btn-spin-wrap max-lg:absolute max-lg:inset-0 max-lg:flex max-lg:items-center max-lg:justify-center">
+                <Loader2 className="nc-btn-spin h-4 w-4 max-lg:h-5 max-lg:w-5" strokeWidth={2} />
+              </span>
+            )}
+            {ncFlow === "press" && <span className="nc-btn-progress" aria-hidden="true" />}
+            <span className="max-lg:hidden">{ncFlow === "press" ? "Starting…" : "New chat"}</span>
           </button>
         </span>
       </header>
 
       <div ref={listRef} onScroll={onScroll} className="chat-scroll relative z-10 min-h-0 flex-1" role="log" aria-label="Conversation">
-        {histLoading && messages.length === 0 && !isStreaming ? (
+        {histLoading && messages.length === 0 ? (
           <ChatFeedSkeleton />
+        ) : ncFlow === "skeleton" ? (
+          <NewChatGreetSkeleton />
         ) : empty ? (
           <div className="chat-welcome">
             <img src="/astra-logo.png" alt="" aria-hidden="true" className="chat-welcome-glyph" />
@@ -1435,6 +1582,11 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
           </div>
         ) : (
             <div ref={contentRef} className="chat-feed mx-auto flex w-full max-w-[52rem] flex-col gap-6 px-4 py-8">
+              {olderLoading && (
+                <div className="flex items-center justify-center gap-2 py-2 text-xs text-muted" aria-live="polite">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading earlier messages…
+                </div>
+              )}
               {messages.map((m, idx) => {
                 if (m.isSysNote && m.bgId) {
                   const it = bgItems.find((x) => x.id === m.bgId);
@@ -1451,18 +1603,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
                 <div className="min-w-0 w-full">
                   {m.role === "user" ? (
                     <div>
-                      <div className="chat-bubble-user min-w-0 w-full whitespace-pre-wrap [overflow-wrap:anywhere] rounded-2xl px-4 py-3 text-sm leading-relaxed">
-                        <div className="chat-turn-head chat-turn-head-user">
-                          <img src={avatarUrl} alt="" aria-hidden="true" className="chat-user-chip" />
-                          {m.ts != null && (
-                            <div className="chat-turn-ts">{new Date(m.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
-                          )}
-                        </div>
-                        {m.files && m.files.length > 0 && (
-                          <MediaGrid className="mb-2" items={m.files.map((f) => toItem(f.path, f.name))} onOpen={openMedia} />
-                        )}
-                        {m.content.replace(/\n\nAttached file: .*/g, "")}
-                      </div>
+                      <UserBubble msg={m} avatarUrl={avatarUrl} onOpenMedia={openMedia} />
                     </div>
                   ) : m.segments.length ? (
                     <TurnTimeline segments={m.segments} streaming={m.isStreaming} sessionId={storedSessionId || ""} ts={m.ts} onToggleTool={toggleToolCollapse} onApprovalRespond={respondApproval} onGateRespond={respondGate} onClarifyAnswer={respondClarify} onOpenMedia={openMedia} />
