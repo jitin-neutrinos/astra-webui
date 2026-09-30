@@ -9,6 +9,8 @@ import { sourcesParam, type SourceModal } from "@/lib/source-filter";
 import { cleanTitle } from "@/lib/chat-title";
 import { getUnreadCount, seedFromServer } from "@/lib/notify";
 import { rowKey, rowTime, timeAgo, sortRows, mergeRows, type SessionRow } from "@/lib/session-row";
+import { UnreadPill } from "./ui/unread-pill";
+import { CheckCheck } from "lucide-react";
 
 // Brand glyphs — single-color currentColor marks, no third-party assets.
 function TelegramGlyph({ className }: { className?: string }) {
@@ -274,7 +276,8 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
   const renderRow = (s: SessionRow) => {
     const sid = rowKey(s);
     const isActive = !!activeSessionId && sid === activeSessionId;
-    const unread = getUnreadCount(sid, (s as any).unread ? 1 : 0);
+    const serverUnread = (s as any).unread ? 1 : 0;
+    const unread = getUnreadCount(sid, serverUnread);
     const live = !!s.is_active;
     const src = (s as any).source || "";
     const title = cleanTitle(s.title) || "Untitled session";
@@ -321,9 +324,11 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
               <span className="flex-1" />
               {live && <span className="ast-live-dot" title="Session active now"><Loader2 className="w-2.5 h-2.5 animate-spin" /></span>}
               {s.pinned && <Pin className="w-2.5 h-2.5 text-cyanx/80 shrink-0" aria-label="Pinned" />}
-              {unread > 0 && <span className="ast-unread-pill shrink-0">{unread > 99 ? "99+" : unread}</span>}
+              {unread > 0
+                ? <UnreadPill count={unread} />
+                : ((s as any).unread === false && (s as any).last_read_at != null && <CheckCheck className="w-2.5 h-2.5 ast-read-tick" aria-label="Read" />)}
             </div>
-            <div className={"ast-row-title truncate " + (unread > 0 ? "text-brandtext" : "")}>{title}</div>
+            <div className={"ast-row-title truncate " + (unread > 0 ? "ast-row-title-unread" : "")}>{title}</div>
             <div className="ast-row-sub truncate">
               {query.trim() !== "" && s.snippet ? s.snippet : (s.preview || "")}
             </div>
@@ -367,11 +372,11 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
 
   return (
     <div className="flex h-full flex-col">
-      <div className="p-4 flex items-center gap-2 border-b border-white/[0.07]">
+      <div className="p-4 flex items-center gap-2 border-b border-white/[0.07] ast-panel-head">
         <button onClick={onBack} className="nav-back-btn p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors" aria-label="Back">
           <ArrowLeft className="w-4 h-4" />
         </button>
-        <span className="font-mono text-xs uppercase tracking-widest text-slate-300">Chats</span>
+        <span className="font-mono text-xs uppercase tracking-widest ast-panel-title">Chats</span>
         <span className="flex-1" />
         {total > 0 && !searching && <span className="font-mono text-[10px] text-slate-500">{total}</span>}
       </div>
@@ -384,11 +389,11 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
             value={query}
             onChange={e => setQuery(e.target.value)}
             placeholder="Search chats…"
-            className="w-full bg-black/40 border border-white/10 rounded-lg pl-9 pr-8 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-cyanx/50 focus:ring-1 focus:ring-cyanx/50 transition-all"
+            className="ast-chats-search w-full rounded-lg pl-9 pr-8 py-1.5 text-sm focus:outline-none focus:border-cyanx/50 focus:ring-1 focus:ring-cyanx/50 transition-all"
             aria-label="Search chats"
           />
           {query && (
-            <button onClick={() => setQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-200" aria-label="Clear search">
+            <button onClick={() => setQuery("")} className="ast-search-clear absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-200" aria-label="Clear search">
               <X className="w-3.5 h-3.5" />
             </button>
           )}

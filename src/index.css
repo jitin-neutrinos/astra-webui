@@ -1557,6 +1557,29 @@ html.theme-fading body * {
 [data-theme="light"] .ast-unread-row:hover { background: rgba(3,105,161,.13); }
 [data-theme="light"] .ast-unread-pill { background: rgba(3,105,161,.12); color: #0369a1; border-color: rgba(3,105,161,.4); }
 
+/* Unread row emphasis (emil-design-eng): title brighter + weight on unread rows. */
+.ast-unread-row .ast-row-title-unread { color: var(--color-brandtext); font-weight: 600; }
+[data-theme="light"] .ast-unread-row .ast-row-title-unread { color: #0c4a6e; }
+
+/* Read-tick: quiet confirmation a chat is caught up. Muted, shrinks on hover. */
+.ast-read-tick { color: var(--color-muted); opacity: .45; flex-shrink: 0; transition: opacity 130ms ease; }
+.ast-chat-row:hover .ast-read-tick { opacity: 0; }
+[data-theme="light"] .ast-read-tick { color: #64748b; opacity: .5; }
+
+/* Sidebar chrome theme overrides — replaces hardcoded slate values that were
+   invisible on the warm paper ground (standing light-theme rule). */
+.ast-panel-head { border-color: rgba(255,255,255,.07); }
+.ast-panel-title { color: var(--color-muted); }
+.ast-chats-search { background: rgba(0,0,0,.4); border: 1px solid rgba(255,255,255,.1); color: var(--color-brandtext); }
+.ast-chats-search::placeholder { color: rgba(107,114,128,.9); }
+.ast-search-clear { color: var(--color-muted); }
+.ast-search-clear:hover { color: var(--color-brandtext); }
+[data-theme="light"] .ast-panel-head { border-color: rgba(15,23,42,.10); }
+[data-theme="light"] .ast-chats-search { background: rgba(255,255,255,.55); border-color: rgba(15,23,42,.16); }
+[data-theme="light"] .ast-chats-search::placeholder { color: rgba(71,85,105,.75); }
+[data-theme="light"] .ast-search-clear { color: #64748b; }
+[data-theme="light"] .ast-search-clear:hover { color: #0f172a; }
+
 /* ---- chats-panel rows (sidebar revamp 2026-09-30) ---- */
 .ast-chat-row {
   position: relative;

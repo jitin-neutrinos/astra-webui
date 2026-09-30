@@ -92,9 +92,7 @@ function bump(key: string) {
   save();
   updateTitle();
   playChime();
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent("astra:unread-changed"));
-  }
+  notifyChanged();
 }
 
 export function setBaseTitle(t: string) {
@@ -111,6 +109,11 @@ export function setActiveSession(storedSid: string | null) {
 export function getUnreadCount(storedKey: string, serverUnread = 0): number {
   ensure();
   return Math.max(serverUnread, overlay[storedKey] || 0);
+}
+
+/** Has this chat been READ per the cross-device watermark? (Pill vs read-tick split.) */
+export function isRead(storedKey: string): boolean {
+  return !overlay[storedKey];
 }
 
 /** Count unread RESPONSES from history rows since a watermark (epoch seconds).
@@ -210,3 +213,10 @@ export function seedFromServer(rows: { id: string; unread?: boolean; last_read_a
 
 // test hooks
 export const _test = { reset: () => { overlay = {}; seenCompletes = {}; save(); }, overlayRef: () => overlay, setNow: (sid: string | null) => { currentStoredSid = sid; }, markReadRef: () => markRead };
+
+/** Notify listeners that the funnels re-read state (overlay changes, watermark, etc). */
+export function notifyChanged() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("astra:unread-changed"));
+  }
+}
