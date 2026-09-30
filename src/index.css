@@ -546,12 +546,12 @@ body { background: var(--color-void); }
 [data-theme="light"] .ai-sec:has(.ai-sec-pill.err)::before { background: linear-gradient(180deg, rgba(185,28,28,.45), rgba(185,28,28,.05)); }
 /* terminal window */
 .ai-term { border: 1px solid rgba(248,250,252,.09); border-radius: 10px; background: var(--color-void); overflow: hidden; }
-.ai-term-bar { display: flex; align-items: center; gap: 8px; padding: 3.5px 5px 3.5px 7px; background: rgba(248,250,252,.03); border-bottom: 1px solid rgba(248,250,252,.07); }
-.ai-term-dots { display: inline-flex; gap: 5px; flex: none; }
-.ai-term-dots i { width: 9px; height: 9px; border-radius: 9999px; background: rgba(248,250,252,.16); }
+.ai-term-bar { display: flex; align-items: center; gap: 6px; padding: 3px 6px 3px 7px; background: rgba(248,250,252,.03); border-bottom: 1px solid rgba(248,250,252,.07); }
+.ai-term-dots { display: inline-flex; gap: 3px; flex: none; }
+.ai-term-dots i { width: 6px; height: 6px; border-radius: 9999px; background: rgba(248,250,252,.16); }
 .ai-term-dots i:nth-child(1) { background: #ff5f57; } .ai-term-dots i:nth-child(2) { background: #febc2e; } .ai-term-dots i:nth-child(3) { background: #28c840; }
-.ai-term-title { flex: 1; min-width: 0; font: 500 8px/1 var(--font-mono); letter-spacing: .06em; color: var(--color-muted); text-transform: lowercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
-.ai-term-copy { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; flex: none; border: 1px solid rgba(248,250,252,.12); background: transparent; color: var(--color-muted); border-radius: 4px; cursor: pointer; transition: color 140ms ease, border-color 140ms ease, background-color 140ms ease, transform 120ms cubic-bezier(0.23,1,0.32,1); }
+.ai-term-title { flex: 1; min-width: 0; font: 500 9px/1 var(--font-mono); letter-spacing: .06em; color: var(--color-muted); text-transform: lowercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
+.ai-term-copy { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; flex: none; border: 1px solid rgba(248,250,252,.12); background: transparent; color: var(--color-muted); border-radius: 4px; cursor: pointer; transition: color 140ms ease, border-color 140ms ease, background-color 140ms ease, transform 120ms cubic-bezier(0.23,1,0.32,1); }
 .ai-term-copy:hover { color: var(--color-cyanx); border-color: rgba(34,211,238,.4); background: rgba(34,211,238,.08); }
 .ai-term-copy:active { transform: scale(0.92); }
 .ai-term-copy.is-copied { color: #34d399; border-color: rgba(52,211,153,.4); background: rgba(52,211,153,.08); }
@@ -638,6 +638,13 @@ body { background: var(--color-void); }
 .chat-term-expand:hover { background: rgba(34,211,238,.14); }
 
 .chat-text-seg { font: 400 14px/1.65 var(--font-sans); color: var(--color-brandtext); min-width: 0; overflow-wrap: anywhere; }
+/* ---- user bubble 5-line clamp (owner 2026-10-01) ---- */
+.user-msg-clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5; line-clamp: 5; overflow: hidden; }
+.user-msg-toggle { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; font: 500 11px/1 var(--font-sans); color: var(--color-cyanx); background: rgba(34,211,238,.07); border: 1px solid rgba(34,211,238,.22); border-radius: 9999px; padding: 4px 10px; cursor: pointer; transition: background-color 140ms ease, border-color 140ms ease, transform 120ms cubic-bezier(0.23,1,0.32,1); }
+.user-msg-toggle:hover { background: rgba(34,211,238,.13); border-color: rgba(34,211,238,.4); }
+.user-msg-toggle:active { transform: scale(0.96); }
+[data-theme="light"] .user-msg-toggle { color: #0369a1; background: rgba(3,105,161,.06); border-color: rgba(3,105,161,.25); }
+[data-theme="light"] .user-msg-toggle:hover { background: rgba(3,105,161,.12); border-color: rgba(3,105,161,.45); }
 /* Animated copy buttons (shadcn CodeBlockCopyButton pattern): Copy⇄Check
    crossfade + scale. .chat-copy-swap stacks both glyphs; .is-check on the
    button flips which one is visible. Works for chat-actions rows and the

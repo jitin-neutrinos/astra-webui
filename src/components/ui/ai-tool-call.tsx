@@ -341,7 +341,7 @@ function TerminalWindow({ title, text, maxHeight }: { title?: string; text: stri
         <span className="ai-term-title">{title || "terminal"}</span>
         <button type="button" className={cn("ai-term-copy", copied && "is-copied")} onClick={onCopy}
           aria-label={copied ? "Copied" : "Copy"} title={copied ? "Copied" : "Copy"}>
-          {copied ? <Check className="size-2" /> : <Copy className="size-2" />}
+          {copied ? <Check className="size-2.5" /> : <Copy className="size-2.5" />}
         </button>
       </div>
       <pre className="ai-term-body" style={maxHeight ? { maxHeight } : undefined} tabIndex={0}>{text}</pre>
