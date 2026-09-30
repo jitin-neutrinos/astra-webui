@@ -3,36 +3,59 @@ import { SessionsSkeleton } from "./ui/skeletons";
 import {
   ArrowLeft, Search, ChevronLeft, ChevronRight, AlertCircle,
   MoreHorizontal, Pin, PinOff, Pencil, Trash2, Check, X, Loader2,
-  Globe, Send, TerminalSquare, Smartphone, MessageSquare, Sparkles,
+  Globe, TerminalSquare, MessagesSquare,
 } from "lucide-react";
-import { sourcesParam, sourceLabel } from "@/lib/source-filter";
+import { sourcesParam, type SourceModal } from "@/lib/source-filter";
 import { cleanTitle } from "@/lib/chat-title";
 import { getUnreadCount } from "@/lib/notify";
 import { rowKey, rowTime, timeAgo, sortRows, mergeRows, type SessionRow } from "@/lib/session-row";
 
-type SourceFilter = "all" | "web" | "telegram" | "terminal" | "android";
+// Brand glyphs — single-color currentColor marks, no third-party assets.
+function TelegramGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden>
+      <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm4.9 6.9-1.7 8.1c-.13.57-.47.71-.95.44l-2.63-1.94-1.27 1.22c-.14.14-.26.26-.53.26l.19-2.68 4.88-4.41c.21-.19-.05-.29-.33-.1l-6.03 3.8-2.6-.81c-.56-.18-.57-.56.12-.83l10.15-3.92c.47-.17.88.11.73.86Z" />
+    </svg>
+  );
+}
 
-const FILTERS: { key: SourceFilter; label: string; icon: typeof Globe }[] = [
-  { key: "all", label: "All", icon: Sparkles },
+function AndroidGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden>
+      <path d="M6 9a6 6 0 0 1 12 0v5H6V9Zm-1.6 0a1.1 1.1 0 0 1 1.1 1.1v3.8a1.1 1.1 0 0 1-2.2 0v-3.8A1.1 1.1 0 0 1 4.4 9Zm15.2 0a1.1 1.1 0 0 1 1.1 1.1v3.8a1.1 1.1 0 0 1-2.2 0v-3.8a1.1 1.1 0 0 1 1.1-1.1ZM8.6 4.9l-.9-1.6a.35.35 0 0 1 .6-.35l.95 1.66A7.2 7.2 0 0 1 12 4.1c.94 0 1.84.16 2.66.46l.94-1.64a.35.35 0 0 1 .61.35l-.9 1.6A6 6 0 0 1 18 8.95H6a6 6 0 0 1 2.6-4.05Zm1.65 1.55a.55.55 0 1 0 0-1.1.55.55 0 0 0 0 1.1Zm3.5 0a.55.55 0 1 0 0-1.1.55.55 0 0 0 0 1.1Z" />
+    </svg>
+  );
+}
+
+function ZapGlyph({ className }: { className?: string }) {
+  // One-shot run: a single fired agent run.
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden>
+      <path d="M13 2 4.5 13.5H11L9.5 22 19 10h-6.8L13 2Z" />
+    </svg>
+  );
+}
+
+type GlyphFC = React.FC<{ className?: string }>;
+
+const FILTERS: { key: SourceModal; label: string; icon: GlyphFC }[] = [
+  { key: "all", label: "All", icon: MessagesSquare },
   { key: "web", label: "Web", icon: Globe },
-  { key: "android", label: "Android", icon: Smartphone },
-  { key: "telegram", label: "TG", icon: Send },
-  { key: "terminal", label: "Term", icon: TerminalSquare },
+  { key: "android", label: "Android", icon: AndroidGlyph },
+  { key: "telegram", label: "Telegram", icon: TelegramGlyph },
+  { key: "terminal", label: "Terminal", icon: TerminalSquare },
+  { key: "oneshot", label: "One-shots", icon: ZapGlyph },
 ];
 
-const SOURCE_ICON: Record<string, typeof Globe> = {
-  webui: Globe, android: Smartphone, telegram: Send, cli: TerminalSquare, tui: TerminalSquare,
+const SOURCE_ICON: Record<string, GlyphFC> = {
+  webui: Globe, android: AndroidGlyph, telegram: TelegramGlyph, cli: TerminalSquare, tui: TerminalSquare, oneshot: ZapGlyph,
 };
 
-function SourceBadge({ source, active }: { source: string; active: boolean }) {
-  const Icon = SOURCE_ICON[source] || MessageSquare;
+function SourceBadge({ source }: { source: string }) {
+  const Icon = SOURCE_ICON[source] || MessagesSquare;
   return (
-    <span
-      className={"ast-src-badge" + (active ? " ast-src-badge-on" : "")}
-      title={sourceLabel(source)}
-    >
-      <Icon className="w-2.5 h-2.5" aria-hidden />
-      <span className="hidden xl:inline">{sourceLabel(source)}</span>
+    <span className="ast-src-badge" title={source}>
+      <Icon className="w-2.5 h-2.5" />
     </span>
   );
 }
@@ -44,7 +67,7 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [filter, setFilter] = useState<SourceFilter>("all");
+  const [filter, setFilter] = useState<SourceModal>("all");
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameText, setRenameText] = useState("");
@@ -262,7 +285,7 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
             className="w-full text-left"
           >
             <div className="flex items-center gap-1.5">
-              <SourceBadge source={src} active={isActive || unread > 0} />
+              <SourceBadge source={src} />
               {s.model && <span className="ast-model-tag" title={`model: ${s.model}`}>{s.model}</span>}
               <span className="ast-row-time" title={t ? new Date(t * 1000).toLocaleString() : undefined}>
                 {timeAgo(t)}
@@ -344,7 +367,7 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
         </div>
       </div>
 
-      <div className="px-3 pt-2.5 pb-1.5 flex gap-1" role="tablist" aria-label="Filter by source">
+      <div className="px-2.5 pt-2.5 pb-1.5 flex flex-wrap gap-1" role="tablist" aria-label="Filter by source">
         {FILTERS.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
@@ -370,7 +393,7 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
           </div>
         ) : visible.length === 0 ? (
           <div className="p-4 text-center font-mono text-xs text-slate-500">
-            {searching ? "No chats match." : "No sessions yet."}
+            {searching ? "No chats match." : filter === "oneshot" ? "No one-shot runs." : "No sessions yet."}
           </div>
         ) : (
           visible.map(renderRow)

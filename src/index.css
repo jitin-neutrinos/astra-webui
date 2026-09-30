@@ -1368,26 +1368,23 @@ body { background: var(--color-void); }
 }
 .ast-live-dot { display: inline-flex; color: var(--color-cyanx); flex-shrink: 0; margin-right: 2px; }
 .ast-src-badge {
-  display: inline-flex; align-items: center; gap: 3px;
-  padding: 1.5px 5px;
-  border-radius: 5px;
-  background: rgba(255,255,255,.06);
-  color: var(--color-muted);
-  font: 500 8.5px/1.2 var(--font-mono);
-  text-transform: uppercase;
-  letter-spacing: .04em;
+  display: inline-flex; align-items: center; justify-content: center;
   flex-shrink: 0;
-  max-width: 7.5rem;
-  white-space: nowrap; overflow: hidden;
+  color: var(--color-muted);
+  transition: color 130ms ease;
 }
-.ast-src-badge-on { background: color-mix(in oklab, var(--color-cyanx) 16%, transparent); color: var(--color-cyanx); }
+/* Filled marks everywhere: custom glyphs fill via currentColor; lucide outline
+   icons get their paths filled so every source reads as a solid brand mark. */
+.ast-src-badge svg { fill: currentColor; stroke: none; }
+.ast-chat-row:hover .ast-src-badge { color: color-mix(in oklab, var(--color-cyanx) 80%, var(--color-brandtext)); }
+.ast-chat-row.ast-row-active .ast-src-badge { color: var(--color-cyanx); }
 .ast-model-tag {
   display: inline-block;
   max-width: 6rem;
   padding: 1.5px 5px;
   border-radius: 5px;
-  background: color-mix(in oklab, var(--color-violetx) 13%, transparent);
-  color: color-mix(in oklab, var(--color-violetx) 75%, var(--color-brandtext));
+  background: color-mix(in oklab, var(--color-cyanx) 12%, transparent);
+  color: color-mix(in oklab, var(--color-cyanx) 80%, var(--color-brandtext));
   font: 500 8.5px/1.2 var(--font-mono);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   flex-shrink: 1;
@@ -1454,18 +1451,17 @@ body { background: var(--color-void); }
 /* filter chips */
 .ast-filter-chip {
   display: inline-flex; align-items: center; gap: 4px;
-  padding: 3.5px 8px;
+  padding: 3px 7px;
   border-radius: 7px;
   border: 1px solid rgba(255,255,255,.10);
   background: rgba(255,255,255,.04);
   color: var(--color-muted);
-  font: 500 10px/1 var(--font-mono);
-  text-transform: uppercase;
-  letter-spacing: .04em;
+  font: 500 9.5px/1 var(--font-sans);
   cursor: pointer;
   white-space: nowrap;
   transition: color 130ms ease, border-color 130ms ease, background-color 130ms ease;
 }
+.ast-filter-chip svg { width: 11px; height: 11px; flex-shrink: 0; }
 .ast-filter-chip:hover { color: var(--color-brandtext); border-color: rgba(255,255,255,.2); }
 .ast-filter-chip-on {
   background: color-mix(in oklab, var(--color-cyanx) 15%, transparent);
@@ -1476,9 +1472,9 @@ body { background: var(--color-void); }
 /* light theme */
 [data-theme="light"] .ast-chat-row:hover { background: rgba(15,23,42,.05); }
 [data-theme="light"] .ast-chat-row.ast-row-active { background: rgba(3,105,161,.09); border-color: rgba(3,105,161,.35); }
-[data-theme="light"] .ast-src-badge { background: rgba(15,23,42,.06); }
-[data-theme="light"] .ast-src-badge-on { background: rgba(3,105,161,.13); color: #0369a1; }
-[data-theme="light"] .ast-model-tag { background: rgba(109,40,217,.09); color: #6d28d9; }
+[data-theme="light"] .ast-chat-row:hover .ast-src-badge { color: #0369a1; }
+[data-theme="light"] .ast-chat-row.ast-row-active .ast-src-badge { color: #0284c7; }
+[data-theme="light"] .ast-model-tag { background: rgba(3,105,161,.10); color: #0369a1; }
 [data-theme="light"] .ast-row-menu { background: #fdfaf3; border-color: rgba(15,23,42,.14); box-shadow: 0 14px 40px rgba(15,23,42,.18); }
 [data-theme="light"] .ast-menu-item:hover { background: rgba(15,23,42,.06); }
 [data-theme="light"] .ast-menu-danger:hover { background: rgba(220,38,38,.10); color: #dc2626; }
