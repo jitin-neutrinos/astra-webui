@@ -2,7 +2,7 @@ import { request as httpRequest } from "node:http";
 import { randomBytes } from "node:crypto";
 import { generateAcceptKey, encodeFrame, FrameDecoder } from "./ws-codec.mjs";
 
-import { notifyGateRequest } from "./ntfy-notify.mjs";
+import { notifyGateRequest, noteWebChatAnswer } from "./ntfy-notify.mjs";
 
 const HERMES_URL = "http://127.0.0.1:9119";
 const PASSWORD = process.env.ASTRA_HERMES_PASSWORD;
@@ -491,6 +491,11 @@ export function handleWsUpgrade(req, socket, head) {
       try { socket.write(encodeFrame(frame.payload, { opcode: 0xA, masked: false })); } catch {}
     } else if (frame.opcode === 0x1) {
       // forward to upstream if connected, else buffer until it is
+      // Chat-card gate answers ride this same path as JSON-RPC results —
+      // feed the gate ledger before forwarding (fire-and-forget, never throws).
+      if (frame.payload.length < 4096 && frame.payload.includes("\"result\"")) {
+        try { noteWebChatAnswer(frame.payload); } catch { /* never throws */ }
+      }
       if (!forwardToUpstream(frame.payload)) {
         bufferBrowserFrame(frame.payload);
       }

@@ -98,6 +98,23 @@ export function markGateAnswered(id) {
   if (g) g.answered = true;
 }
 
+// Web chat-card answers ride the normal browser→upstream WS as JSON-RPC
+// results ({id, result}). Called from the proxy for any browser frame that
+// mentions "result" — cheap pre-filter, parse only then.
+export function noteWebChatAnswer(raw) {
+  try {
+    const data = typeof raw === "string" ? JSON.parse(raw)
+      : Buffer.isBuffer(raw) ? JSON.parse(raw.toString("utf8"))
+      : raw;
+    const id = data && data.id ? String(data.id) : "";
+    if (!id || !data.result || !pending.has(id)) return;
+    const g = pending.get(id);
+    if (g.answered) return;
+    g.answered = true;
+    appendToLedger({ type: "answered", id, at: Date.now(), by: "chat", result: data.result });
+  } catch { /* never throw into the relay */ }
+}
+
 export function answerGateHelper(g, b, by) {
     let result = null;
     if (g.kind === "approval") {

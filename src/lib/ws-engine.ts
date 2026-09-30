@@ -175,6 +175,9 @@ function emit(ev: EventPayload) {
   for (const l of eng.listeners) {
     try { l(ev); } catch { /* one bad listener never kills dispatch */ }
   }
+  // Bridge for views outside the chat surface (approvals panel live-refresh):
+  // one DOM event per frame, payload = {type, payload}.
+  try { window.dispatchEvent(new CustomEvent("astra-ws-event", { detail: ev })); } catch { /* SSR/no-window guard */ }
 }
 
 function bumpConn(ev: ConnEvent) {

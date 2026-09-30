@@ -50,8 +50,8 @@ export function ApprovalsPage({ onBack }: { onBack: () => void }) {
 
       <div className="flex shrink-0 justify-center border-b border-white/[0.07] p-4 bg-midnight/30 md:sticky md:top-0 z-10">
         <div className="flex rounded-full bg-white/[0.04] p-1 w-full max-w-sm">
-          <button onClick={() => { setTab("approval"); setLoading(true); }} className={cn("flex-1 rounded-full px-4 py-1.5 text-sm font-medium transition-colors", tab === "approval" ? "bg-cyanx text-black" : "text-slate-400 hover:text-slate-200")}>Approvals</button>
-          <button onClick={() => { setTab("clarify"); setLoading(true); }} className={cn("flex-1 rounded-full px-4 py-1.5 text-sm font-medium transition-colors", tab === "clarify" ? "bg-cyanx text-black" : "text-slate-400 hover:text-slate-200")}>Reviews</button>
+          <button onClick={() => { setTab("approval"); setLoading(true); }} className={cn("flex-1 rounded-full px-4 py-1.5 text-sm font-medium transition-colors", tab === "approval" ? "bg-cyanx text-void" : "text-slate-400 hover:text-slate-200")}>Approvals</button>
+          <button onClick={() => { setTab("clarify"); setLoading(true); }} className={cn("flex-1 rounded-full px-4 py-1.5 text-sm font-medium transition-colors", tab === "clarify" ? "bg-cyanx text-void" : "text-slate-400 hover:text-slate-200")}>Reviews</button>
         </div>
       </div>
 
@@ -89,8 +89,11 @@ function formatRelative(ms: number) {
 function GateCard({ gate, onAnswered }: { gate: any, onAnswered: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const isPending = !gate.answered;
+  const GATE_TTL_MS = 30 * 60 * 1000;
+  const isExpired = isPending && (Date.now() - gate.at) > GATE_TTL_MS;
 
   const handleAnswer = async (choice: string) => {
     if (busy) return;
@@ -103,12 +106,20 @@ function GateCard({ gate, onAnswered }: { gate: any, onAnswered: () => void }) {
       });
       if (res.ok) {
         onAnswered();
+      } else if (res.status === 404) {
+        setError("This request expired or was answered elsewhere.");
+        onAnswered();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || `Couldn't deliver (${res.status}). Try again.`);
       }
-    } catch {}
+    } catch {
+      setError("No connection. Try again.");
+    }
     setBusy(false);
   };
 
-  const statusColor = isPending ? "bg-amber-500 animate-pulse" : (gate.result?.choice === "deny" ? "bg-redx" : "bg-green-500");
+  const statusColor = isExpired ? "bg-slate-500" : isPending ? "bg-amber-500 animate-pulse" : (gate.result?.choice === "deny" ? "bg-redx" : "bg-green-500");
   const d = new Date(gate.at);
   const isoTime = `${d.toLocaleString('default', { month: 'short' })} ${d.getDate()}, ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 
@@ -124,7 +135,7 @@ function GateCard({ gate, onAnswered }: { gate: any, onAnswered: () => void }) {
       isPending && "border-amber-500/30 bg-amber-500/[0.02]")}>
       <div className="flex items-center gap-2 mb-3">
         <div className={`h-2 w-2 rounded-full ${statusColor}`} />
-        <span className="font-medium text-slate-300 capitalize">{gate.kind}</span>
+        <span className="font-medium text-slate-300 capitalize">{isExpired ? "expired" : gate.kind === "clarify" ? "review" : gate.kind}</span>
         {gate.sid && <span className="ast-appr-sid rounded bg-white/10 px-1.5 py-0.5 font-mono text-[10px] text-slate-400">{gate.sid.substring(0, 8)}</span>}
         <span className="ml-auto text-xs text-muted flex gap-2"><span>{isoTime}</span> <span>{formatRelative(gate.at)}</span></span>
       </div>
@@ -155,7 +166,9 @@ function GateCard({ gate, onAnswered }: { gate: any, onAnswered: () => void }) {
         </div>
       )}
 
-      {isPending && gate.kind === "approval" && (
+      {isPending && !isExpired && gate.kind === "approval" && (
+        <>
+        {error && <p className="mb-2 text-[12px] text-redx">{error}</p>}
         <div className="flex items-center gap-3 mt-2">
           <button 
              disabled={busy}
@@ -166,10 +179,11 @@ function GateCard({ gate, onAnswered }: { gate: any, onAnswered: () => void }) {
           <button 
              disabled={busy}
              onClick={() => handleAnswer("once")}
-             className="flex-1 rounded-lg bg-cyanx py-2 font-medium text-black transition-opacity hover:opacity-90 disabled:opacity-50">
+             className="flex-1 rounded-lg bg-cyanx py-2 font-medium text-void transition-opacity hover:opacity-90 disabled:opacity-50">
              Approve
           </button>
         </div>
+        </>
       )}
     </div>
   );
