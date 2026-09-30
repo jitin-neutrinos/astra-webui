@@ -10,6 +10,9 @@
 // Fire-and-forget: never blocks the WS relay, never throws.
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
+import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { join, dirname } from "node:path";
+import { enrichGate } from "./gate-enrich.mjs";
 
 const NTFY_URL = process.env.NTFY_URL || "";
 const NTFY_TOPIC = process.env.NTFY_TOPIC || "";
@@ -20,13 +23,97 @@ const quiet = {};
 // TTL 30 min; a restart drops them and the in-app card still works.
 const pending = new Map();
 const GATE_TTL_MS = 30 * 60 * 1000;
+
+const LEDGER_FILE = process.env.ASTRA_GATE_LEDGER || join(process.cwd(), "data", "gate-ledger.jsonl");
+
+function appendToLedger(obj) {
+  const line = JSON.stringify(obj) + "\n";
+  mkdir(dirname(LEDGER_FILE), { recursive: true }).then(() => appendFile(LEDGER_FILE, line)).catch(() => {});
+}
+
+export async function listGates({ kind, since, limit = 200 } = {}) {
+  try {
+    const content = await readFile(LEDGER_FILE, "utf8");
+    const lines = content.split("\n").filter(l => l.trim());
+    const gates = new Map();
+    for (const line of lines) {
+      try {
+        const obj = JSON.parse(line);
+        if (obj.type === "gate") {
+          gates.set(obj.id, obj);
+        } else if (obj.type === "answered") {
+          const g = gates.get(obj.id);
+          if (g) {
+            g.answered = true;
+            g.by = obj.by;
+            g.answeredAt = obj.at;
+            g.result = obj.result;
+          }
+        }
+      } catch { }
+    }
+    let arr = Array.from(gates.values());
+    if (kind) arr = arr.filter(g => g.kind === kind);
+    if (since) arr = arr.filter(g => g.at > since);
+    arr.sort((a, b) => b.at - a.at);
+    if (limit) arr = arr.slice(0, limit);
+    return arr;
+  } catch (err) {
+    if (err.code === "ENOENT") return [];
+    throw err;
+  }
+}
+
+export async function gateStats() {
+  const gates = await listGates({ limit: 0 });
+  let total = gates.length;
+  let answered = 0;
+  let pending = 0;
+  let approved = 0;
+  let denied = 0;
+  for (const g of gates) {
+    if (g.answered) {
+      answered++;
+      if (g.result && g.result.choice === "once") approved++;
+      if (g.result && g.result.choice === "deny") denied++;
+    } else {
+      pending++;
+    }
+  }
+  return {
+    total, pending, answered, approved, denied,
+    answeredPct: total ? Math.round((answered / total) * 100) : 0
+  };
+}
+
 export function getPendingGate(id) {
   const g = pending.get(id);
   if (!g) return null;
   if (Date.now() - g.at > GATE_TTL_MS) { pending.delete(id); return null; }
   return g;
 }
-export function markGateAnswered(id) { const g = pending.get(id); if (g) g.answered = true; }
+
+export function markGateAnswered(id) {
+  const g = pending.get(id);
+  if (g) g.answered = true;
+}
+
+export function answerGateHelper(g, b, by) {
+    let result = null;
+    if (g.kind === "approval") {
+      if (typeof b.choice === "string" && g.choices.includes(b.choice)) result = { choice: b.choice };
+    } else if (b.answers && typeof b.answers === "object") {
+      result = { answers: Object.fromEntries(Object.entries(b.answers).map(([k, v]) => [String(k), String(v)])) };
+    } else if (typeof b.answer === "string") {
+      result = { answer: b.answer };
+    }
+    if (!result) { return { error: "bad answer", status: 400 }; }
+    
+    markGateAnswered(g.id);
+    appendToLedger({ type: "answered", id: g.id, at: Date.now(), by, result });
+    return { result };
+}
+
 function gatherQuestions(inner) {
   if (Array.isArray(inner.questions) && inner.questions.length) {
     return inner.questions.map(q => ({
@@ -38,11 +125,23 @@ function gatherQuestions(inner) {
     choices: Array.isArray(inner.choices) ? inner.choices.map(String) : [], multi_select: !!inner.multi_select }];
 }
 
+function maskCommand(cmd) {
+  if (!cmd) return cmd;
+  if (/password|token|secret|api[_-]?key/i.test(cmd)) {
+    if (cmd.includes("=")) {
+      return cmd.replace(/=([^\s]+)/g, "=•••");
+    }
+    const parts = cmd.split(/\s+/);
+    if (parts.length > 2) {
+      return parts.slice(0, 2).join(" ") + " •••";
+    }
+  }
+  return cmd;
+}
+
 export function notifyGateRequest(frame) {
   if (!NTFY_ENABLED) return;
   try {
-    // hermes-proxy passes the raw WS payload (a UTF-8 Buffer); accept objects
-    // too so unit tests / other callers can pass a parsed frame directly.
     const raw = frame && frame.payload !== undefined ? frame.payload : frame;
     let data;
     if (Buffer.isBuffer(raw) || raw instanceof Uint8Array) {
@@ -53,15 +152,12 @@ export function notifyGateRequest(frame) {
       data = raw;
     }
     if (!data || typeof data !== "object") return;
-    // approval/clarify frames arrive as method:"approval"/"clarify", or with a
-    // generic srq-* id (session_scoping fix). Batches ride params.questions[].
     const method = String(data.method || "").toLowerCase();
     const isGate =
       method === "approval" ||
       method === "clarify" ||
       /^(srq-)/i.test(String(data.id || ""));
     if (!isGate) return;
-    // never double-notify the same request id
     const id = String(data.id || "");
     if (!id || quiet[id]) return;
     quiet[id] = true;
@@ -83,18 +179,30 @@ export function notifyGateRequest(frame) {
       ? `https://astra.jitinnair.com/c/${sid}`
       : "https://astra.jitinnair.com/") + `?gate=${encodeURIComponent(id)}`;
     const isClarify = method === "clarify" || (method !== "approval" && !inner.command);
-    pending.set(id, {
+    
+    let command = maskCommand(String(inner.command || ""));
+    let description = String(inner.description || "");
+    let choices = Array.isArray(inner.choices) && inner.choices.length ? inner.choices.map(String) : ["once", "deny"];
+    let questions = isClarify ? gatherQuestions(inner) : [];
+    
+    // Call enrichGate
+    const enriched = enrichGate({ command, description, question: inner.question, questions: inner.questions }, isClarify ? "clarify" : "approval");
+
+    const gateData = {
       id, kind: isClarify ? "clarify" : "approval", sid, at: Date.now(), answered: false,
       title: isClarify ? "Astra has a question" : "Astra needs approval",
-      command: String(inner.command || ""), description: String(inner.description || ""),
-      choices: Array.isArray(inner.choices) && inner.choices.length ? inner.choices.map(String) : ["once", "deny"],
-      questions: isClarify ? gatherQuestions(inner) : [],
-    });
+      command, description,
+      choices,
+      questions,
+      ...enriched
+    };
+
+    pending.set(id, gateData);
     if (pending.size > 100) pending.delete(pending.keys().next().value);
 
-    // Extras carry the request identity to the Android shell so the card can
-    // deep-link into the right chat (astra://open?path=/c/<sid>) without
-    // re-parsing the body.
+    // Ledger
+    appendToLedger({ type: "gate", ...gateData });
+
     postNtfy({
       topic: NTFY_TOPIC,
       message: q,
@@ -108,7 +216,7 @@ export function notifyGateRequest(frame) {
         astra_reqid: id,
       },
     });
-  } catch { /* never throw */ }
+  } catch (e) { console.error(e); }
 }
 
 function postNtfy(body) {

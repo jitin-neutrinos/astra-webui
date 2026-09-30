@@ -39,6 +39,7 @@ import { createItem, onTurnComplete, reconcileWithServer, dismissItem } from "@/
 import { loadItems, saveItems } from "@/lib/bg-items";
 import type { BgItem } from "@/lib/bg-items";
 import { BgDock, SysNoteRow } from "./bg-dock";
+import avatarUrl from "@/assets/avatar-jitin.webp";
 import type { CatalogPayload } from "./composer-controls";
 
 // Source: ~/.hermes/plugins/astra-brand/dashboard/dist/astra-core.js CHAT_TUI_COMMANDS
@@ -1430,7 +1431,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
                     <div>
                       <div className="chat-bubble-user min-w-0 w-full whitespace-pre-wrap [overflow-wrap:anywhere] rounded-2xl px-4 py-3 text-sm leading-relaxed">
                         <div className="chat-turn-head chat-turn-head-user">
-                          <span className="chat-user-chip" aria-hidden="true">J</span>
+                          <img src={avatarUrl} alt="" aria-hidden="true" className="chat-user-chip" />
                           {m.ts != null && (
                             <div className="chat-turn-ts">{new Date(m.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
                           )}

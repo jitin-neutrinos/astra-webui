@@ -385,7 +385,7 @@ class NtfyPushService : Service() {
     }
 
     private fun showChatNotification(sid: String, payload: JSONObject?) {
-        val info = resolveSessionInfo(sid)
+        val info = resolveSessionInfo(sid, payload?.optString("stored_session_id"))
         val snippet = (payload?.optString("text") ?: "")
             .replace('\n', ' ').trim().take(140)
         val displaySnippet = if (snippet.isEmpty()) "Your reply is ready." else snippet
@@ -443,7 +443,34 @@ class NtfyPushService : Service() {
     private val sessionCache = mutableMapOf<String, SessionInfo>()
     private val sessionNotFoundCache = mutableMapOf<String, Long>()
 
-    private fun resolveSessionInfo(sid: String): SessionInfo {
+    // storedHint = stored_session_id stamped by the proxy (live→stored
+    // bridge). With it, title + deep link resolve against the STORED id —
+    // the only id the history API and /c/<id> route understand. Without
+    // it (mapping unknown), the old live-sid fallback applies.
+    private fun resolveSessionInfo(sid: String, storedHint: String?): SessionInfo {
+        if (!storedHint.isNullOrEmpty()) {
+            sessionCache[sid]?.let { return it }
+            val cookie = readSessionCookie()
+                ?: return SessionInfo("Astra chat", storedHint)
+            return try {
+                val request = Request.Builder()
+                    .url("https://astra.jitinnair.com/api/hx/session-info/$storedHint")
+                    .header("Cookie", cookie)
+                    .build()
+                sharedClient().newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val json = JSONObject(response.body?.string() ?: "{}")
+                        val title = json.optString("title", "Astra chat")
+                        SessionInfo(if (title.isEmpty()) "Astra chat" else title, storedHint)
+                    } else {
+                        SessionInfo("Astra chat", storedHint)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "resolveSessionInfo(hint) failed", e)
+                SessionInfo("Astra chat", storedHint)
+            }
+        }
         sessionCache[sid]?.let { return it }
         val now = System.currentTimeMillis()
         if (sessionNotFoundCache.containsKey(sid) && now - sessionNotFoundCache[sid]!! < 600000L) {

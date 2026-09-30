@@ -20,6 +20,7 @@ import {
   ChevronDown,
   Briefcase,
   Activity,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as notify from "@/lib/notify";
@@ -179,6 +180,7 @@ function LoginScreen({ password, setPassword, clearError, error, busy, submit }:
 
 import { FilesPage } from "./components/files-page";
 import { ConfigPage } from "./components/config-page";
+import { ApprovalsPage } from "./components/approvals-page";
 import TubesBackground from "./components/ui/tubes-background";
 
 /* ---------------- shell: sidebar + chat landing ---------------- */
@@ -190,16 +192,17 @@ function Shell({ onLogout }: { onLogout: () => void }) {
   // address bar, browser back/forward, and reload all land on the right page —
   // previously non-chat views were just an in-memory flag with no URL of their own,
   // so navigating away and back (or reloading) always dropped you back into chat.
-  const parsePath = (): { view: 'chat' | 'files' | 'tracker' | 'config'; sessionId: string | null } => {
+  const parsePath = (): { view: 'chat' | 'files' | 'tracker' | 'config' | 'approvals'; sessionId: string | null } => {
     const p = location.pathname;
     if (p === "/files") return { view: "files", sessionId: null };
     if (p === "/tracker") return { view: "tracker", sessionId: null };
     if (p === "/config") return { view: "config", sessionId: null };
+    if (p === "/approvals") return { view: "approvals", sessionId: null };
     const match = p.match(/^\/c\/([A-Za-z0-9_-]+)$/);
     return { view: "chat", sessionId: match ? match[1] : null };
   };
   const initial = parsePath();
-  const [view, setView] = useState<'chat' | 'files' | 'tracker' | 'config'>(initial.view);
+  const [view, setView] = useState<'chat' | 'files' | 'tracker' | 'config' | 'approvals'>(initial.view);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("astra-sidebar-collapsed") === "1");
   const toggleSidebar = () => setSidebarCollapsed((c) => {
     localStorage.setItem("astra-sidebar-collapsed", c ? "0" : "1");
@@ -211,10 +214,11 @@ function Shell({ onLogout }: { onLogout: () => void }) {
   // Non-chat views own their own path + title directly (chat's own path/title
   // effect only runs while it is the active view — see ChatLanding's isActiveView).
   useEffect(() => {
-    const TITLES: Record<typeof view, string> = { chat: "Astra", files: "Files — Astra", tracker: "Global Token Tracker — Astra", config: "Config — Astra" };
+    const TITLES: Record<typeof view, string> = { chat: "Astra", files: "Files — Astra", tracker: "Global Token Tracker — Astra", config: "Config — Astra", approvals: "Approvals & Reviews — Astra" };
     if (view === "files" && location.pathname !== "/files") history.pushState({}, "", "/files");
     else if (view === "tracker" && location.pathname !== "/tracker") history.pushState({}, "", "/tracker");
     else if (view === "config" && location.pathname !== "/config") history.pushState({}, "", "/config");
+    else if (view === "approvals" && location.pathname !== "/approvals") history.pushState({}, "", "/approvals");
     if (view !== "chat") notify.setBaseTitle(TITLES[view]);
   }, [view]);
 
@@ -269,6 +273,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
           onOpenFiles={() => { closeDrawer(); setView('files'); }}
           onOpenTracker={() => { closeDrawer(); setView('tracker'); }}
           onOpenConfig={() => { closeDrawer(); setView('config'); }}
+          onOpenApprovals={() => { closeDrawer(); setView('approvals'); }}
         />
         <div className={cn("flex flex-1 flex-col overflow-hidden", view !== 'chat' && "hidden")}>
           <ChatLanding resetSignal={resetSignal} selectedSessionId={selectedSessionId} onSessionChange={setActiveSessionId}
@@ -285,12 +290,15 @@ function Shell({ onLogout }: { onLogout: () => void }) {
         {view === 'config' && (
           <ConfigPage onBack={() => setView('chat')} />
         )}
+        {view === 'approvals' && (
+          <ApprovalsPage onBack={() => setView('chat')} />
+        )}
       </div>
     </div>
   );
 }
 
-function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDrawer, onToggleCollapse, onLogout, onSelectSession, onOpenFiles, onOpenTracker, onOpenConfig }: { activeView: 'chat' | 'files' | 'tracker' | 'config'; collapsed: boolean; drawerOpen: boolean; activeSessionId: string | null; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onSelectSession: (id: string) => void; onOpenFiles: () => void; onOpenTracker?: () => void; onOpenConfig?: () => void; }) {
+function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDrawer, onToggleCollapse, onLogout, onSelectSession, onOpenFiles, onOpenTracker, onOpenConfig, onOpenApprovals }: { activeView: 'chat' | 'files' | 'tracker' | 'config' | 'approvals'; collapsed: boolean; drawerOpen: boolean; activeSessionId: string | null; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onSelectSession: (id: string) => void; onOpenFiles: () => void; onOpenTracker?: () => void; onOpenConfig?: () => void; onOpenApprovals?: () => void; }) {
   const [mode, setMode] = useState<'nav' | 'chats'>('nav');
   
   const asideChatsRef = useRef<HTMLElement>(null);
@@ -377,6 +385,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
       label: "Operate",
       icon: <Activity className="h-3.5 w-3.5" strokeWidth={1.5} />,
       items: [
+        { name: "Approvals & Reviews", icon: <ShieldCheck className="h-4 w-4" strokeWidth={1.5} />, onClick: () => { onOpenApprovals?.(); } },
         { name: "Cron Jobs", icon: <Clock className="h-4 w-4" strokeWidth={1.5} /> },
         { name: "Logs", icon: <ScrollText className="h-4 w-4" strokeWidth={1.5} /> },
         { name: "System Health", icon: <HeartPulse className="h-4 w-4" strokeWidth={1.5} /> },
@@ -488,6 +497,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
                 : item.name === "Files" ? activeView === "files"
                 : item.name === "Global Token Tracker" ? activeView === "tracker"
                 : item.name === "Config" ? activeView === "config"
+                : item.name === "Approvals & Reviews" ? activeView === "approvals"
                 : false;
               return (
               <button key={item.name} type="button" onClick={item.onClick}

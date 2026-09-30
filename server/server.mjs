@@ -1,7 +1,7 @@
 // astra-webui server: static dist + password-only auth API. ponytail: one file, zero deps.
 import { createServer, request } from "node:http";
 import { handleHxProxy, handleWsUpgrade, forwardToUpstream, broadcastFrame } from "./hermes-proxy.mjs";
-import { getPendingGate, markGateAnswered } from "./ntfy-notify.mjs";
+import { getPendingGate, markGateAnswered, listGates, gateStats, answerGateHelper } from "./ntfy-notify.mjs";
 import { handleTranscode } from "./transcode.mjs";
 
 import { createHmac, timingSafeEqual, randomBytes } from "node:crypto";
@@ -102,27 +102,69 @@ const server = createServer(async (req, res) => {
       if (g.answered) { res.writeHead(409, { "content-type": "application/json" }); return res.end('{"error":"already answered"}'); }
       let b = {};
       try { b = JSON.parse(await readBody(req)); } catch { /* bad */ }
-      let result = null;
-      if (g.kind === "approval") {
-        if (typeof b.choice === "string" && g.choices.includes(b.choice)) result = { choice: b.choice };
-      } else if (b.answers && typeof b.answers === "object") {
-        result = { answers: Object.fromEntries(Object.entries(b.answers).map(([k, v]) => [String(k), String(v)])) };
-      } else if (typeof b.answer === "string") {
-        result = { answer: b.answer };
-      }
-      if (!result) { res.writeHead(400, { "content-type": "application/json" }); return res.end('{"error":"bad answer"}'); }
-      const sent = forwardToUpstream(Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: g.id, result })));
+      
+      const ah = answerGateHelper(g, b, "phone");
+      if (ah.error) { res.writeHead(ah.status, { "content-type": "application/json" }); return res.end(`{"error":"${ah.error}"}`); }
+      
+      const sent = forwardToUpstream(Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: g.id, result: ah.result })));
       if (!sent) { res.writeHead(503, { "content-type": "application/json" }); return res.end('{"error":"gateway offline"}'); }
-      markGateAnswered(g.id);
-      // Tell every open browser/app tab so the matching chat card closes itself.
       try {
         broadcastFrame(Buffer.from(JSON.stringify({ method: "event", params: { type: "request.answered",
-          payload: { id: g.id, kind: g.kind, by: "phone", result } } })), 0x1);
+          payload: { id: g.id, kind: g.kind, by: "phone", result: ah.result } } })), 0x1);
       } catch { /* best effort */ }
       res.writeHead(200, { "content-type": "application/json" });
       return res.end('{"ok":true}');
     }
     res.writeHead(405); return res.end();
+  }
+
+  if (path === "/api/gates" && req.method === "GET") {
+    const cookies = {};
+    (req.headers.cookie || "").split(";").forEach((c) => {
+      const i = c.indexOf("=");
+      if (i > 0) cookies[c.slice(0, i).trim()] = c.slice(i + 1).trim();
+    });
+    if (!validToken(cookies[COOKIE])) {
+      res.writeHead(401, { "content-type": "application/json" });
+      return res.end('{"error":"unauthenticated"}');
+    }
+    const searchParams = url.searchParams;
+    const kind = searchParams.get("kind") || "";
+    const limit = parseInt(searchParams.get("limit") || "200", 10);
+    const gates = await listGates({ kind, limit });
+    const stats = await gateStats();
+    res.writeHead(200, { "content-type": "application/json" });
+    return res.end(JSON.stringify({ gates, stats }));
+  }
+
+  const gma = path.match(/^\/api\/gates\/([A-Za-z0-9_.:-]{1,80})\/answer$/);
+  if (gma && req.method === "POST") {
+    const cookies = {};
+    (req.headers.cookie || "").split(";").forEach((c) => {
+      const i = c.indexOf("=");
+      if (i > 0) cookies[c.slice(0, i).trim()] = c.slice(i + 1).trim();
+    });
+    if (!validToken(cookies[COOKIE])) {
+      res.writeHead(401, { "content-type": "application/json" });
+      return res.end('{"error":"unauthenticated"}');
+    }
+    const g = getPendingGate(gma[1]);
+    if (!g) { res.writeHead(404, { "content-type": "application/json" }); return res.end('{"error":"gone"}'); }
+    if (g.answered) { res.writeHead(409, { "content-type": "application/json" }); return res.end('{"error":"already answered"}'); }
+    let b = {};
+    try { b = JSON.parse(await readBody(req)); } catch { /* bad */ }
+    
+    const ah = answerGateHelper(g, b, "web");
+    if (ah.error) { res.writeHead(ah.status, { "content-type": "application/json" }); return res.end(`{"error":"${ah.error}"}`); }
+    
+    const sent = forwardToUpstream(Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: g.id, result: ah.result })));
+    if (!sent) { res.writeHead(503, { "content-type": "application/json" }); return res.end('{"error":"gateway offline"}'); }
+    try {
+      broadcastFrame(Buffer.from(JSON.stringify({ method: "event", params: { type: "request.answered",
+        payload: { id: g.id, kind: g.kind, by: "web", result: ah.result } } })), 0x1);
+    } catch { /* best effort */ }
+    res.writeHead(200, { "content-type": "application/json" });
+    return res.end('{"ok":true}');
   }
 
   // Native-shell layout telemetry (what the phone ACTUALLY measures). Cookie-authed, append-only, tiny.

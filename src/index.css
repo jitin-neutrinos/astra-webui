@@ -1329,3 +1329,37 @@ body { background: var(--color-void); }
 [data-theme="light"] .ast-unread-row { background: rgba(3,105,161,.08); }
 [data-theme="light"] .ast-unread-row:hover { background: rgba(3,105,161,.13); }
 [data-theme="light"] .ast-unread-pill { background: rgba(3,105,161,.12); color: #0369a1; border-color: rgba(3,105,161,.4); }
+
+/* approvals panel */
+.ast-appr-sid {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+}
+[data-theme="light"] .ast-appr-sid {
+  background-color: rgba(0, 0, 0, 0.05);
+  color: #64748b;
+}
+
+.ast-appr-sev {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+[data-theme="light"] .ast-appr-sev {
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+.ast-appr-cmd {
+  background-color: rgba(0, 0, 0, 0.4);
+  color: #cbd5e1;
+  border-color: rgba(255, 255, 255, 0.05);
+}
+.ast-appr-cmd:hover {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+[data-theme="light"] .ast-appr-cmd {
+  background-color: rgba(0, 0, 0, 0.03);
+  color: #334155;
+  border-color: rgba(0, 0, 0, 0.05);
+}
+[data-theme="light"] .ast-appr-cmd:hover {
+  border-color: rgba(0, 0, 0, 0.1);
+}

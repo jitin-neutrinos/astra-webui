@@ -203,8 +203,18 @@ function broadcastStatus(state) {
   }
 }
 
+// live transport id -> stored session key, learned from session.resume /
+// session.create RPC replies relayed through here (the web client's own
+// resumes teach it). The Android chat leg consumes the mapping via the
+// stored_session_id stamp on message.complete/error frames so its title
+// fetch + deep link hit ids the history API can actually resolve.
+export const sidMap = new Map();
+export function recordSidMapping(liveSid, storedKey) {
+  if (liveSid && storedKey && liveSid !== storedKey) sidMap.set(String(liveSid), String(storedKey));
+}
+
 export function broadcastFrame(payload, opcode) {
-  const frame = encodeFrame(payload, { opcode, masked: false });
+  let frame = encodeFrame(payload, { opcode, masked: false });
   // Filter leg: only when at least one sid-tagged or filter=complete socket is connected
   // do we pay for a JSON.parse. Untagged sockets are relayed opaquely (unchanged).
   let passForTagged = false;
@@ -221,6 +231,14 @@ export function broadcastFrame(payload, opcode) {
   if ((anyTagged || anyCompleteFilter) && opcode === 0x1) {
     try {
       const msg = JSON.parse(payload.toString());
+      // RPC replies ride the same relay: session.resume/create results
+      // carry {result:{session_id, session_key|stored_session_id}} —
+      // record the live→stored mapping whenever one passes through.
+      const r = msg && msg.result;
+      if (r && r.session_id) {
+        const stored = r.session_key || r.stored_session_id;
+        if (stored) recordSidMapping(r.session_id, stored);
+      }
       // Envelope: {method:"event", params:{type, session_id, payload}}
       const p = msg && msg.params;
       if (p) {
@@ -228,6 +246,12 @@ export function broadcastFrame(payload, opcode) {
         if (p.type === "message.complete" || p.type === "message.error") {
           passForTagged = true;
           parsedSid = p.session_id;
+          const stored = sidMap.get(parsedSid);
+          if (stored && p.payload && typeof p.payload === "object") {
+            p.payload.stored_session_id = stored;
+            payload = Buffer.from(JSON.stringify(msg));
+            frame = encodeFrame(payload, { opcode, masked: false });
+          }
         }
       }
     } catch { /* unparseable: tagged sockets just don't get this frame */ }
@@ -358,6 +382,15 @@ async function connectUpstream() {
         // Gate notifications ride the same relay frames (proxy broadcasts every
         // upstream text frame to every browser). Fire-and-forget — never delays
         // the relay or throws.
+        // Learn live→stored session ids even when no filtered socket is
+        // connected (cheap probe: small frames mentioning session_key only).
+        if (frame.payload.length < 8192 && frame.payload.includes("\"session_key\"")) {
+          try {
+            const r = JSON.parse(frame.payload.toString()).result;
+            const stored = r && (r.session_key || r.stored_session_id);
+            if (r && r.session_id && stored) recordSidMapping(r.session_id, stored);
+          } catch { /* not an RPC reply */ }
+        }
         try { notifyGateRequest(frame.payload); } catch { /* never throws */ }
         broadcastFrame(frame.payload, frame.opcode);
       }

@@ -478,10 +478,17 @@ class GateActivity : Activity() {
     private fun renderApproval(g: JSONObject, accent: Int) {
         val cmd = g.optString("command")
         val desc = g.optString("description")
-        content.addView(label(
-            desc.ifEmpty { if (cmd.isNotEmpty()) "Astra wants to run a command" else "Astra is asking permission to continue." },
-            18f, ink, Typeface.BOLD
-        ).apply { setLineSpacing(0f, 1.12f); setPadding(0, dp(16), 0, 0) })
+        val whatItDoes = g.optString("whatItDoes")
+        val impact = g.optString("impact")
+        val severity = g.optString("severity", "moderate")
+        val risk = g.optString("risk")
+        
+        val sevColor = when (severity) {
+            "low" -> muted
+            "high" -> c("#FB923C", "#C2410C")
+            "critical" -> danger
+            else -> warn
+        }
 
         if (cmd.isNotEmpty()) {
             val box = LinearLayout(this).apply {
@@ -491,18 +498,45 @@ class GateActivity : Activity() {
             }
             box.addView(label("$", 13f, accent, Typeface.BOLD, mono = true).apply { setPadding(0, 0, dp(8), 0) })
             val tv = label(cmd, 13f, ink, mono = true).apply {
-                maxLines = 4; ellipsize = TextUtils.TruncateAt.END; setLineSpacing(0f, 1.25f)
+                maxLines = 2; ellipsize = TextUtils.TruncateAt.END; setLineSpacing(0f, 1.25f)
             }
             box.addView(tv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            // long commands: tap to expand / collapse, no dead-end truncation
+            content.addView(box, LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) })
+            
+            val toggle = label("Show full command", 11.5f, muted).apply { setPadding(dp(2), dp(6), 0, 0) }
             box.setOnClickListener {
                 val open = tv.maxLines == Int.MAX_VALUE
-                tv.maxLines = if (open) 4 else Int.MAX_VALUE
+                tv.maxLines = if (open) 2 else Int.MAX_VALUE
+                toggle.text = if (open) "Show full command" else "Hide full command"
                 it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
             }
-            content.addView(box, LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) })
             tv.post { if (tv.layout != null && tv.layout.getEllipsisCount(tv.lineCount - 1) > 0)
-                content.addView(label("Tap the command to expand", 11.5f, muted).apply { setPadding(dp(2), dp(6), 0, 0) }, content.indexOfChild(box) + 1) }
+                content.addView(toggle, content.indexOfChild(box) + 1) }
+        }
+
+        val heading = whatItDoes.ifEmpty { desc.ifEmpty { if (cmd.isNotEmpty()) "Astra wants to run a command" else "Astra is asking permission to continue." } }
+        content.addView(label(
+            heading,
+            18f, ink, Typeface.BOLD
+        ).apply { setLineSpacing(0f, 1.12f); setPadding(0, dp(16), 0, dp(14)) })
+
+        content.addView(label("IMPACT", 9.5f, muted, mono = true).apply { letterSpacing = 0.14f })
+        val impactRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(6), 0, dp(14)) }
+        impactRow.addView(label(severity.uppercase(), 10.5f, sevColor, Typeface.BOLD, mono = true).apply {
+            letterSpacing = 0.1f; background = rounded(tint(sevColor, 26), 12); setPadding(dp(8), dp(2), dp(8), dp(2))
+        })
+        impactRow.addView(label(impact.ifEmpty { "System state modified" }, 13f, ink).apply { setPadding(dp(8), 0, 0, 0) })
+        content.addView(impactRow)
+
+        content.addView(label("RISK", 9.5f, muted, mono = true).apply { letterSpacing = 0.14f })
+        val riskRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.TOP; setPadding(0, dp(6), 0, dp(14)) }
+        val rIcon = if (severity == "high" || severity == "critical") badge("⚠", warn, 16, 10f) else badge("•", muted, 16, 12f)
+        riskRow.addView(rIcon.apply { (layoutParams as LinearLayout.LayoutParams).topMargin = dp(2) })
+        riskRow.addView(label(risk.ifEmpty { "Please review carefully." }, 13f, muted).apply { setLineSpacing(0f, 1.2f); setPadding(dp(8), 0, 0, 0) })
+        content.addView(riskRow)
+
+        if (severity == "critical") {
+            content.addView(View(this).apply { background = GradientDrawable().apply { setColor(tint(danger, 70)) }; layoutParams = LinearLayout.LayoutParams(-1, dp(2)).apply { topMargin = dp(4); bottomMargin = dp(10) } })
         }
 
         val choices = g.optJSONArray("choices") ?: JSONArray().put("once").put("deny")
@@ -511,10 +545,11 @@ class GateActivity : Activity() {
         val extras = list.filter { it != "once" && it != "deny" }
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val gap = dp(10)
-        // thumb order: destructive on the left, primary on the right (reach + Fitts)
+        
         if ("deny" in list) {
             var b: TextView? = null
             b = action(labels["deny"]!!, "deny") { post(JSONObject().put("choice", "deny"), b, denied = true) }
+            if (severity == "critical") b.background = rounded(tint(danger, 28), 14, tint(danger, 200), 2)
             row.addView(b, LinearLayout.LayoutParams(0, dp(52), 1f))
         }
         if ("once" in list) {
@@ -527,7 +562,7 @@ class GateActivity : Activity() {
             b = action(labels[c] ?: c, "choice") { post(JSONObject().put("choice", c), b) }
             content.addView(b, LinearLayout.LayoutParams(-1, dp(52)).apply { topMargin = dp(10) })
         }
-        content.addView(row, LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(18) })
+        content.addView(row, LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
         content.addView(label("Astra is paused until you decide.", 12f, muted).apply { gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0) },
             LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
