@@ -12,7 +12,16 @@ import { useEffect, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import PdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?worker&inline";
 
-pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
+// Worker init is DEFERRED to first getDocument, not module scope: the inline-
+// worker constructor pulls helpers that live in the index chunk, and module-
+// scope construction raced chunk init order under rolldown code-splitting
+// ("Cannot access 't' before initialization" → every PDF preview failed).
+let workerReady = false;
+function ensurePdfWorker() {
+  if (workerReady) return;
+  pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
+  workerReady = true;
+}
 
 interface Props {
   url: string;
@@ -71,6 +80,7 @@ async function cachedThumb(doc: pdfjsLib.PDFDocumentProxy, key: string, width: n
 
 /** Page-1 JPEG thumbnail (data URL) for grid tiles. Loads the doc via range requests. */
 export async function pdfThumb(url: string, width: number): Promise<string> {
+  ensurePdfWorker();
   const doc = await pdfjsLib.getDocument({ url, withCredentials: true, disableAutoFetch: true, rangeChunkSize: 262144 }).promise;
   try {
     return await cachedThumb(doc, `${url}#${width}`, width);
@@ -169,6 +179,7 @@ export default function PdfView({ url, onLoad, onError }: Props) {
 
     (async () => {
       try {
+        ensurePdfWorker();
         doc = onLoad
           ? await pdfjsLib.getDocument({ data: await onLoad() }).promise
           : await pdfjsLib.getDocument({ url, withCredentials: true, disableAutoFetch: true, rangeChunkSize: 262144 }).promise;
