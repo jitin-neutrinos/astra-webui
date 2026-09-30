@@ -594,7 +594,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       activeIdRef.current = null;
       const sid = storedSidRef.current; // hook return not yet declared this early
       if (sid) {
-        fetch(`/api/hx/sessions/${encodeURIComponent(sid)}/messages?order=oldest&limit=500`)
+        fetch(`/api/hx/sessions/${encodeURIComponent(sid)}/messages?order=latest&limit=500`)
           .then((r) => (r.ok ? r.json() : null))
           .then((d) => { if (d) setMessages(rowsToTurns(d.messages || []).map((r) => ({ ...r, id: r.id || nextId() })) as ChatMsg[]); })
           .catch(() => {});
@@ -804,7 +804,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       // the skeleton holds the space (owner: chat switch shows loading state)
       if (loadedSidRef.current !== storedSessionId) setMessages([]);
       try {
-        const res = await fetch(`/api/hx/sessions/${encodeURIComponent(storedSessionId)}/messages?order=oldest&limit=500`);
+        const res = await fetch(`/api/hx/sessions/${encodeURIComponent(storedSessionId)}/messages?order=latest&limit=500`);
         if (!res.ok) {
           if (res.status === 401) setErrorBanner("Unauthorized. Please log in.");
           else if (res.status === 503) setErrorBanner("Agent backend busy (503).");
