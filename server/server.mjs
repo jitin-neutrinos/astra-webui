@@ -3,6 +3,7 @@ import { createServer, request } from "node:http";
 import { handleHxProxy, handleWsUpgrade, forwardToUpstream, broadcastFrame } from "./hermes-proxy.mjs";
 import { getPendingGate, markGateAnswered, listGates, gateStats, answerGateHelper } from "./ntfy-notify.mjs";
 import { handleTranscode } from "./transcode.mjs";
+import { listVault, vaultValues, vaultDevices, VAULT_TTL, vaultSign, vaultVerify } from "./vault.mjs";
 
 import { createHmac, timingSafeEqual, randomBytes } from "node:crypto";
 import { readFile, stat, appendFile, mkdir } from "node:fs/promises";
@@ -22,6 +23,7 @@ const SECRET = process.env.ASTRA_WEBUI_SECRET || randomBytes(32).toString("hex")
 const PORT = Number(process.env.ASTRA_WEBUI_PORT || 3011);
 const DIST = resolve(import.meta.dirname, "..", "dist");
 const COOKIE = "astra_session";
+const VCOOKIE = "astra_vault";
 const TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days ("maintain persistent uplink")
 
 // --- auth (mirrors the dashboard login: server-side verify + HttpOnly session cookie) ---
@@ -236,6 +238,74 @@ const server = createServer(async (req, res) => {
     res.setHeader("set-cookie", `${COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`);
     res.writeHead(200, { "content-type": "application/json" });
     return res.end('{"ok":true}');
+  }
+
+  // --- vault: re-gated env-var registry (auth on EVERY visit — the vault
+  // cookie is short-lived (10 min) and minted ONLY by re-verifying the same
+  // password as login; GETs never refresh it, so every reload/revisit
+  // re-challenges). Values are AES-256-GCM encrypted at rest in the registry.
+  const vcookies = () => {
+    const ck = {};
+    (req.headers.cookie || "").split(";").forEach((c) => {
+      const i = c.indexOf("=");
+      if (i > 0) ck[c.slice(0, i).trim()] = c.slice(i + 1).trim();
+    });
+    return ck;
+  };
+  const sessionOk = () => validToken(vcookies()[COOKIE]);
+  const vaultUnlocked = () => {
+    const ck = vcookies();
+    return validToken(ck[COOKIE]) && vaultVerify(SECRET, ck[VCOOKIE]);
+  };
+  const vjson = (code, obj, headers) => {
+    res.writeHead(code, { "content-type": "application/json", ...(headers || {}) });
+    return res.end(JSON.stringify(obj));
+  };
+
+  if (path === "/api/vault/status") {
+    if (!sessionOk()) return vjson(401, { error: "unauthenticated" });
+    const list = await listVault();
+    return vjson(200, { unlocked: vaultUnlocked(), ttlMs: VAULT_TTL, ...(list.ok ? { entries: list.entries.length } : { registry: false }) });
+  }
+
+  if (path === "/api/vault/unlock" && req.method === "POST") {
+    if (!sessionOk()) return vjson(401, { error: "unauthenticated" });
+    if (rateLimited(ip)) return vjson(429, { ok: false, error: "Too many attempts. Wait 10 minutes." });
+    let password = "";
+    try { password = JSON.parse(await readBody(req)).password ?? ""; } catch { /* treat as bad */ }
+    if (!checkPassword(password)) return vjson(401, { ok: false, error: "Access denied. Invalid security key." });
+    attempts.delete(ip);
+    const exp = String(Date.now() + VAULT_TTL);
+    const token = `${exp}.${vaultSign(SECRET, exp)}`;
+    return vjson(200, { ok: true, ttlMs: VAULT_TTL }, {
+      "set-cookie": `${VCOOKIE}=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${Math.floor(VAULT_TTL / 1000)}`,
+    });
+  }
+
+  if (path === "/api/vault/lock" && req.method === "POST") {
+    if (!sessionOk()) return vjson(401, { error: "unauthenticated" });
+    return vjson(200, { ok: true }, { "set-cookie": `${VCOOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0` });
+  }
+
+  if (path === "/api/vault/entries") {
+    if (!vaultUnlocked()) return vjson(403, { error: "vault locked" });
+    const list = await listVault();
+    if (!list.ok) return vjson(500, { error: list.error });
+    return vjson(200, list);
+  }
+
+  if (path === "/api/vault/values") {
+    if (!vaultUnlocked()) return vjson(403, { error: "vault locked" });
+    const vals = await vaultValues();
+    if (!vals.ok) return vjson(500, { error: vals.error });
+    return vjson(200, vals);
+  }
+
+  if (path === "/api/vault/devices") {
+    if (!vaultUnlocked()) return vjson(403, { error: "vault locked" });
+    const dev = await vaultDevices();
+    if (!dev.ok) return vjson(500, { error: dev.error });
+    return vjson(200, dev);
   }
 
   if (path === "/api/me") {

@@ -7,7 +7,6 @@ import {
   EyeOff,
   Folder,
   Settings2,
-  FileCode2,
   Braces,
   Blocks,
   Plug,
@@ -21,6 +20,7 @@ import {
   Briefcase,
   Activity,
   ShieldCheck,
+  Vault as VaultIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as notify from "@/lib/notify";
@@ -181,6 +181,7 @@ function LoginScreen({ password, setPassword, clearError, error, busy, submit }:
 import { FilesPage } from "./components/files-page";
 import { ConfigPage } from "./components/config-page";
 import { ApprovalsPage } from "./components/approvals-page";
+import VaultPage from "./components/vault-page";
 import TubesBackground from "./components/ui/tubes-background";
 
 /* ---------------- shell: sidebar + chat landing ---------------- */
@@ -192,17 +193,18 @@ function Shell({ onLogout }: { onLogout: () => void }) {
   // address bar, browser back/forward, and reload all land on the right page —
   // previously non-chat views were just an in-memory flag with no URL of their own,
   // so navigating away and back (or reloading) always dropped you back into chat.
-  const parsePath = (): { view: 'chat' | 'files' | 'tracker' | 'config' | 'approvals'; sessionId: string | null } => {
+  const parsePath = (): { view: 'chat' | 'files' | 'tracker' | 'config' | 'approvals' | 'vault'; sessionId: string | null } => {
     const p = location.pathname;
     if (p === "/files") return { view: "files", sessionId: null };
     if (p === "/tracker") return { view: "tracker", sessionId: null };
     if (p === "/config") return { view: "config", sessionId: null };
     if (p === "/approvals") return { view: "approvals", sessionId: null };
+    if (p === "/vault" || p === "/env") return { view: "vault", sessionId: null };
     const match = p.match(/^\/c\/([A-Za-z0-9_-]+)$/);
     return { view: "chat", sessionId: match ? match[1] : null };
   };
   const initial = parsePath();
-  const [view, setView] = useState<'chat' | 'files' | 'tracker' | 'config' | 'approvals'>(initial.view);
+  const [view, setView] = useState<'chat' | 'files' | 'tracker' | 'config' | 'approvals' | 'vault'>(initial.view as 'chat' | 'files' | 'tracker' | 'config' | 'approvals' | 'vault');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("astra-sidebar-collapsed") === "1");
   const toggleSidebar = () => setSidebarCollapsed((c) => {
     localStorage.setItem("astra-sidebar-collapsed", c ? "0" : "1");
@@ -214,11 +216,12 @@ function Shell({ onLogout }: { onLogout: () => void }) {
   // Non-chat views own their own path + title directly (chat's own path/title
   // effect only runs while it is the active view — see ChatLanding's isActiveView).
   useEffect(() => {
-    const TITLES: Record<typeof view, string> = { chat: "Astra", files: "Files — Astra", tracker: "Global Token Tracker — Astra", config: "Config — Astra", approvals: "Approvals & Reviews — Astra" };
+    const TITLES: Record<typeof view, string> = { chat: "Astra", files: "Files — Astra", tracker: "Global Token Tracker — Astra", config: "Config — Astra", approvals: "Approvals & Reviews — Astra", vault: "Vault — Astra" };
     if (view === "files" && location.pathname !== "/files") history.pushState({}, "", "/files");
     else if (view === "tracker" && location.pathname !== "/tracker") history.pushState({}, "", "/tracker");
     else if (view === "config" && location.pathname !== "/config") history.pushState({}, "", "/config");
     else if (view === "approvals" && location.pathname !== "/approvals") history.pushState({}, "", "/approvals");
+    else if (view === "vault" && location.pathname !== "/vault") history.pushState({}, "", "/vault");
     if (view !== "chat") notify.setBaseTitle(TITLES[view]);
   }, [view]);
 
@@ -274,6 +277,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
           onOpenTracker={() => { closeDrawer(); setView('tracker'); }}
           onOpenConfig={() => { closeDrawer(); setView('config'); }}
           onOpenApprovals={() => { closeDrawer(); setView('approvals'); }}
+          onOpenVault={() => { closeDrawer(); setView('vault'); }}
         />
         <div className={cn("flex flex-1 flex-col overflow-hidden", view !== 'chat' && "hidden")}>
           <ChatLanding resetSignal={resetSignal} selectedSessionId={selectedSessionId} onSessionChange={setActiveSessionId}
@@ -293,12 +297,15 @@ function Shell({ onLogout }: { onLogout: () => void }) {
         {view === 'approvals' && (
           <ApprovalsPage onBack={() => setView('chat')} />
         )}
+        {view === 'vault' && (
+          <VaultPage />
+        )}
       </div>
     </div>
   );
 }
 
-function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDrawer, onToggleCollapse, onLogout, onSelectSession, onOpenFiles, onOpenTracker, onOpenConfig, onOpenApprovals }: { activeView: 'chat' | 'files' | 'tracker' | 'config' | 'approvals'; collapsed: boolean; drawerOpen: boolean; activeSessionId: string | null; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onSelectSession: (id: string) => void; onOpenFiles: () => void; onOpenTracker?: () => void; onOpenConfig?: () => void; onOpenApprovals?: () => void; }) {
+function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDrawer, onToggleCollapse, onLogout, onSelectSession, onOpenFiles, onOpenTracker, onOpenConfig, onOpenApprovals, onOpenVault }: { activeView: 'chat' | 'files' | 'tracker' | 'config' | 'approvals' | 'vault'; collapsed: boolean; drawerOpen: boolean; activeSessionId: string | null; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onSelectSession: (id: string) => void; onOpenFiles: () => void; onOpenTracker?: () => void; onOpenConfig?: () => void; onOpenApprovals?: () => void; onOpenVault?: () => void; }) {
   const [mode, setMode] = useState<'nav' | 'chats'>('nav');
   
   const asideChatsRef = useRef<HTMLElement>(null);
@@ -374,7 +381,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
       icon: <Settings2 className="h-3.5 w-3.5" strokeWidth={1.5} />,
       items: [
         { name: "Config", icon: <Settings2 className="h-4 w-4" strokeWidth={1.5} />, onClick: () => { onOpenConfig?.(); } },
-        { name: "Env", icon: <FileCode2 className="h-4 w-4" strokeWidth={1.5} /> },
+        { name: "Vault", icon: <VaultIcon className="h-4 w-4" strokeWidth={1.5} />, onClick: () => { onOpenVault?.(); } },
         { name: "Skills", icon: <Braces className="h-4 w-4" strokeWidth={1.5} /> },
         { name: "Plugins", icon: <Blocks className="h-4 w-4" strokeWidth={1.5} /> },
         { name: "MCP", icon: <Plug className="h-4 w-4" strokeWidth={1.5} /> },
