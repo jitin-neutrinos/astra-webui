@@ -33,7 +33,13 @@ interface Props {
 // module-level concurrency cap shared by page renders AND pdfThumb (R9)
 const running = new Set<Promise<unknown>>();
 const waiting: Array<() => void> = [];
+let queued = 0;
 function limit<T>(job: () => Promise<T>): Promise<T> {
+  // The runner must fire in a MICROTASK, not synchronously inside the Promise
+  // executor: `running.add(run)` references `run` itself, and a synchronous
+  // exec() reads the binding before `new Promise` returns → TDZ crash.
+  // A `claimed` counter is checked optimistically BEFORE the microtask, so a
+  // synchronous burst of limit() calls cannot all observe running.size 0.
   const run = new Promise<T>((resolve, reject) => {
     const exec = () => {
       job().then(resolve, reject).finally(() => {
@@ -42,7 +48,7 @@ function limit<T>(job: () => Promise<T>): Promise<T> {
       });
       running.add(run as unknown as Promise<unknown>);
     };
-    if (running.size < 2) exec();
+    if (running.size + queued < 2) { queued++; queueMicrotask(() => { queued--; exec(); }); }
     else waiting.push(exec);
   });
   return run;
