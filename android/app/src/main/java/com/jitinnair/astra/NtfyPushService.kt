@@ -58,7 +58,6 @@ class NtfyPushService : Service() {
     private var chatAttempt = 0
     private var chatRunnable: Runnable? = null
     private var chatPrefRunnable: Runnable? = null
-    private var chatCurrentSid: String? = null
     private var chatCookie: String? = null
     private var appForeground = false
 
@@ -81,6 +80,31 @@ class NtfyPushService : Service() {
             ACTION_SESSION_CHANGED -> {
                 chatAttempt = 0
                 reconnectChatLeg("session-changed")
+            }
+            ACTION_CHAT_OPENED -> {
+                val storedKey = intent?.getStringExtra("stored_key")
+                if (storedKey != null) {
+                    val sid = chatStates.entries.firstOrNull { it.value.storedKey == storedKey }?.key
+                    if (sid != null) {
+                        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                        val state = chatStates.remove(sid)
+                        if (state != null) manager.cancel(state.notifId)
+                        updateGroupSummary()
+                    }
+                }
+            }
+            ACTION_CHAT_CLEARED -> {
+                val sid = intent?.getStringExtra("sid")
+                if (sid != null) {
+                    chatStates.remove(sid)
+                    updateGroupSummary()
+                }
+            }
+            ACTION_CHAT_CLEARED_ALL -> {
+                val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                for ((_, state) in chatStates) manager.cancel(state.notifId)
+                chatStates.clear()
+                updateGroupSummary()
             }
         }
         return START_STICKY
@@ -269,28 +293,24 @@ class NtfyPushService : Service() {
 
     private fun connectChatLeg() {
         if (!isRunning) return
-        val (sid, _) = chatIdentity()
         val cookie = readSessionCookie()
-        chatCurrentSid = sid
         chatCookie = cookie
-        if (sid.isEmpty() || cookie.isNullOrEmpty()) {
-            // No identity yet (never logged in / cookie replay pending): stay
-            // quiet, the 60s prefs watcher re-fires once the page pushes one.
+        if (cookie.isNullOrEmpty()) {
             scheduleChatReconnect("no-identity")
             return
         }
         val request = Request.Builder()
-            .url("wss://astra.jitinnair.com/api/hx/ws?sid=${Uri.encode(sid)}")
+            .url("wss://astra.jitinnair.com/api/hx/ws?filter=complete")
             .header("Cookie", cookie)
             .build()
         chatSocket = sharedClient().newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(ws: WebSocket, response: Response) {
-                Log.d(TAG, "chat WS opened sid=$sid")
+                Log.d(TAG, "chat WS opened filter=complete")
                 chatAttempt = 0
             }
 
             override fun onMessage(ws: WebSocket, text: String) {
-                handleChatFrame(sid, text)
+                handleChatFrame(text)
             }
 
             override fun onClosed(ws: WebSocket, code: Int, reason: String) {
@@ -333,9 +353,8 @@ class NtfyPushService : Service() {
         val r = object : Runnable {
             override fun run() {
                 if (!isRunning) return
-                val (sid, _) = chatIdentity()
                 val cookie = readSessionCookie()
-                if (sid != chatCurrentSid || cookie != chatCookie) {
+                if (cookie != chatCookie) {
                     chatAttempt = 0
                     reconnectChatLeg("identity-changed")
                 }
@@ -347,19 +366,18 @@ class NtfyPushService : Service() {
     }
 
     // R3: message.complete while backgrounded → quiet notification.
-    private fun handleChatFrame(sid: String, text: String) {
-        // Deltas are 95% of frames — substring prescan, no parse.
+    private fun handleChatFrame(text: String) {
         if (!text.contains("message.complete")) return
         try {
             val msg = JSONObject(text)
             val params = msg.optJSONObject("params") ?: return
             if (params.optString("type") != "message.complete") return
-            if (params.optString("session_id") != sid) return
+            val sid = params.optString("session_id")
+            if (sid.isEmpty()) return
             val payload = params.optJSONObject("payload")
-            // Belt-and-braces: gates are ntfy's job, never double-notify one.
             if (payload != null && (payload.has("gate") || payload.has("approval"))) return
             if (payload != null && payload.optString("status") == "error") return
-            if (appForeground) return // the open page renders live
+            if (appForeground) return
             showChatNotification(sid, payload)
         } catch (e: Exception) {
             Log.e(TAG, "chat frame parse", e)
@@ -367,34 +385,144 @@ class NtfyPushService : Service() {
     }
 
     private fun showChatNotification(sid: String, payload: JSONObject?) {
-        val stored = chatIdentity().second ?: sid
+        val info = resolveSessionInfo(sid)
         val snippet = (payload?.optString("text") ?: "")
             .replace('\n', ' ').trim().take(140)
+        val displaySnippet = if (snippet.isEmpty()) "Your reply is ready." else snippet
+        
         val notifId = ("chat:$sid").hashCode().coerceAtLeast(2)
+        val state = chatStates.getOrPut(sid) { ChatState(info.title, info.storedKey, 0, notifId, mutableListOf()) }
+        state.count++
+        state.lines.add(displaySnippet)
+        if (state.lines.size > 6) state.lines.removeAt(0)
+
         val intent = Intent(this, MainActivity::class.java).apply {
             action = Intent.ACTION_VIEW
-            data = Uri.parse("astra://open?path=/c/$stored")
+            data = Uri.parse("astra://open?path=/c/${info.storedKey}")
             `package` = packageName
             addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
-        val pi = PendingIntent.getActivity(
-            this, notifId, intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+        val pi = PendingIntent.getActivity(this, notifId, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
+        val deleteIntent = Intent(this, NtfyPushService::class.java).apply {
+            action = ACTION_CHAT_CLEARED
+            putExtra("sid", sid)
+        }
+        val deletePi = PendingIntent.getService(this, notifId, deleteIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
+        val person = androidx.core.app.Person.Builder().setName("Astra").build()
+        val messagingStyle = NotificationCompat.MessagingStyle(person)
+        messagingStyle.conversationTitle = state.title
+        for (line in state.lines) {
+            messagingStyle.addMessage(line, System.currentTimeMillis(), person)
+        }
+
         val builder = NotificationCompat.Builder(this, CHANNEL_CHAT)
-            .setContentTitle("Astra replied")
-            .setContentText(if (snippet.isEmpty()) "Your reply is ready." else snippet)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(if (snippet.isEmpty()) "Your reply is ready." else snippet))
+            .setContentTitle(state.title)
+            .setContentText(displaySnippet)
+            .setStyle(messagingStyle)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentIntent(pi)
+            .setDeleteIntent(deletePi)
             .setAutoCancel(true)
+            .setGroup(GROUP_KEY_CHAT)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setNumber(state.count)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            
         (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(notifId, builder.build())
+        
+        updateGroupSummary()
     }
 
     // ---------------------------------------------------------------------
     // Gate notification
     // ---------------------------------------------------------------------
+
+    data class SessionInfo(val title: String, val storedKey: String)
+    private val sessionCache = mutableMapOf<String, SessionInfo>()
+    private val sessionNotFoundCache = mutableMapOf<String, Long>()
+
+    private fun resolveSessionInfo(sid: String): SessionInfo {
+        sessionCache[sid]?.let { return it }
+        val now = System.currentTimeMillis()
+        if (sessionNotFoundCache.containsKey(sid) && now - sessionNotFoundCache[sid]!! < 600000L) {
+            return SessionInfo("Astra chat", sid)
+        }
+
+        val cookie = readSessionCookie() ?: return SessionInfo("Astra chat", sid)
+        val request = Request.Builder()
+            .url("https://astra.jitinnair.com/api/hx/session-info/$sid")
+            .header("Cookie", cookie)
+            .build()
+        try {
+            val response = sharedClient().newCall(request).execute()
+            if (response.isSuccessful) {
+                val json = JSONObject(response.body?.string() ?: "{}")
+                val title = json.optString("title", "Astra chat")
+                val storedKey = json.optString("session_key", sid)
+                val info = SessionInfo(if (title.isEmpty()) "Astra chat" else title, if (storedKey.isEmpty()) sid else storedKey)
+                sessionCache[sid] = info
+                return info
+            } else {
+                sessionNotFoundCache[sid] = now
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "resolveSessionInfo failed", e)
+            sessionNotFoundCache[sid] = now
+        }
+        return SessionInfo("Astra chat", sid)
+    }
+
+    data class ChatState(var title: String, var storedKey: String, var count: Int, val notifId: Int, val lines: MutableList<String>)
+    private val chatStates = mutableMapOf<String, ChatState>()
+    private val GROUP_KEY_CHAT = "astra-chat-replies"
+
+    private fun updateGroupSummary() {
+        if (chatStates.isEmpty()) {
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.cancel(2001)
+            // ponytail: vendor-launcher dependent ceiling
+            me.leolin.shortcutbadger.ShortcutBadger.applyCount(applicationContext, 0)
+            return
+        }
+
+        var totalUnread = 0
+        val inboxStyle = NotificationCompat.InboxStyle()
+        for ((_, state) in chatStates) {
+            totalUnread += state.count
+            val line = "${state.title}: ${state.count} new"
+            inboxStyle.addLine(line)
+        }
+
+        val title = "$totalUnread new replies" + if (chatStates.size > 1) " · ${chatStates.size} chats" else ""
+        val intent = Intent(this, MainActivity::class.java).apply {
+            action = Intent.ACTION_VIEW
+            `package` = packageName
+            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+        val pi = PendingIntent.getActivity(this, 2001, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
+        val deleteIntent = Intent(this, NtfyPushService::class.java).apply {
+            action = ACTION_CHAT_CLEARED_ALL
+        }
+        val deletePi = PendingIntent.getService(this, 2001, deleteIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
+        val builder = NotificationCompat.Builder(this, CHANNEL_CHAT)
+            .setContentTitle(title)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setStyle(inboxStyle)
+            .setGroup(GROUP_KEY_CHAT)
+            .setGroupSummary(true)
+            .setContentIntent(pi)
+            .setDeleteIntent(deletePi)
+            .setAutoCancel(true)
+            .setNumber(totalUnread)
+        
+        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(2001, builder.build())
+        me.leolin.shortcutbadger.ShortcutBadger.applyCount(applicationContext, totalUnread)
+    }
+
     private fun showGateNotification(json: JSONObject) {
         val title = json.optString("title", "Astra")
         val message = json.optString("message", "")
@@ -490,5 +618,8 @@ class NtfyPushService : Service() {
         const val ACTION_APP_FOREGROUND = "com.jitinnair.astra.APP_FOREGROUND"
         const val ACTION_APP_BACKGROUND = "com.jitinnair.astra.APP_BACKGROUND"
         const val ACTION_SESSION_CHANGED = "com.jitinnair.astra.SESSION_CHANGED"
+        const val ACTION_CHAT_OPENED = "com.jitinnair.astra.CHAT_OPENED"
+        const val ACTION_CHAT_CLEARED = "com.jitinnair.astra.CHAT_CLEARED"
+        const val ACTION_CHAT_CLEARED_ALL = "com.jitinnair.astra.CHAT_CLEARED_ALL"
     }
 }

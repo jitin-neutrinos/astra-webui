@@ -267,6 +267,20 @@ const server = createServer(async (req, res) => {
     });
   }
 
+  if (path.startsWith("/api/hx/session-info/")) {
+    const cookies = {};
+    (req.headers.cookie || "").split(";").forEach((c) => {
+      const i = c.indexOf("=");
+      if (i > 0) cookies[c.slice(0, i).trim()] = c.slice(i + 1).trim();
+    });
+    if (!validToken(cookies[COOKIE])) {
+      res.writeHead(401, { "content-type": "application/json" });
+      return res.end('{"error":"unauthenticated"}');
+    }
+    req.url = req.url.replace("/api/hx/session-info/", "/api/hx/sessions/");
+    return handleHxProxy(req, res);
+  }
+
   if (path.startsWith("/api/hx/")) {
     const cookies = {};
     (req.headers.cookie || "").split(";").forEach((c) => {

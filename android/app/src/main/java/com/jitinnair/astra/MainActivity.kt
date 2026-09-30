@@ -125,13 +125,28 @@ public class MainActivity : BridgeActivity() {
             val uri = intent.data ?: return
             if ("astra" != uri.scheme) return
             val path = uri.getQueryParameter("path") ?: return
+            
+            if (path.startsWith("/c/")) {
+                val storedKey = path.substring(3)
+                if (storedKey.isNotEmpty()) {
+                    val prefs = getSharedPreferences("CapacitorStorage", android.content.Context.MODE_PRIVATE)
+                    prefs.edit().putString("astra_stored_key", storedKey).apply()
+
+                    val svc = Intent(this, NtfyPushService::class.java).apply {
+                        action = NtfyPushService.ACTION_CHAT_OPENED
+                        putExtra("stored_key", storedKey)
+                    }
+                    try { startService(svc) } catch (_: Exception) {}
+                }
+            }
+
             val web = bridge?.webView ?: return
             // Only same-app SPA paths are honored; strip anything that looks
             // like a scheme/host injection before it reaches location.href.
             val safePath = if (path.startsWith("/") && !path.contains("://") && !path.startsWith("//")) path else "/"
             web.post {
                 web.evaluateJavascript(
-                    "window.location.href = 'https://astra.jitinnair.com" + safePath.replace("'", "\\'") + "';",
+                    "window.location.href = 'https://astra.jitinnair.com" + safePath.replace("'", "\\\\'") + "';",
                     null
                 )
             }
