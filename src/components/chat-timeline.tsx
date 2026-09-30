@@ -38,12 +38,12 @@ export {
 } from "../lib/chat-segments";
 export { MEDIA_RE, mediaPaths, stripMediaLines };
 
-import { Marked } from "marked";
 import DOMPurify from "dompurify";
+import { renderRichHtml } from "../lib/rich-html";
+import { wireCodeCopyButtons } from "../lib/rich-pre";
 import { safeTail } from "../lib/safe-tail";
 import { copyText } from "../lib/copy-text";
 
-const md = new Marked({ gfm: true, breaks: true });
 let purifyHooked = false;
 
 export function RichText({ text, onOpenMedia, streaming }: { text: string; onOpenMedia?: (items: MediaItem[], index: number) => void; streaming?: boolean }) {
@@ -63,67 +63,13 @@ export function RichText({ text, onOpenMedia, streaming }: { text: string; onOpe
       purifyHooked = true;
     }
 
-    let processed = text;
-    let matches: RegExpMatchArray | null = null;
-    if (streaming) {
-      // detect odd fence count -> close it
-      matches = processed.match(/```/g);
-      if (matches && matches.length % 2 !== 0) {
-        processed += "\n```";
-      }
-    }
-
-    let sanitized = DOMPurify.sanitize(md.parse(processed, { async: false }) as string, {
-      ADD_ATTR: ["target", "loading"], FORBID_TAGS: ["style", "form"], FORBID_ATTR: ["srcset"],
-    });
-
-    if (streaming && matches && matches.length % 2 !== 0) {
-      // only the trailing unterminated block is actually streaming — a global
-      // replace would also tag earlier, already-closed code blocks
-      const lastOpen = sanitized.lastIndexOf("<pre><code");
-      if (lastOpen !== -1) {
-        sanitized = sanitized.slice(0, lastOpen) + '<pre data-streaming="true"><code' + sanitized.slice(lastOpen + "<pre><code".length);
-      }
-    }
-    return sanitized;
+    return renderRichHtml(text, streaming);
   }, [text, streaming]);
 
   useEffect(() => {
     const root = containerRef.current;
     if (!root) return;
-    // One-time style injection for the DOM-built code copy buttons (they are
-    // created imperatively below, outside React — same swap animation as the
-    // React-side .chat-copy-swap buttons).
-    if (!document.getElementById("chat-code-copy-style")) {
-      const st = document.createElement("style");
-      st.id = "chat-code-copy-style";
-      st.textContent = `
-.chat-code-copy { position:relative; overflow:hidden; }
-.chat-code-copy .cc-swap { position:absolute; inset:0; }
-.chat-code-copy .cc-swap svg { position:absolute; inset:0; width:100%; height:100%; transition:opacity 160ms ease, transform 160ms ease; }
-.chat-code-copy .cc-swap svg.cc-check { opacity:0; transform:scale(.5) rotate(-45deg); }
-.chat-code-copy.is-check .cc-swap svg.cc-copy { opacity:0; transform:scale(.5) rotate(45deg); }
-.chat-code-copy.is-check .cc-swap svg.cc-check { opacity:1; transform:scale(1) rotate(0deg); color:#34d399; }
-[data-theme="light"] .chat-code-copy.is-check .cc-swap svg.cc-check { color:#047857; }`;
-      document.head.appendChild(st);
-    }
-    const pres = root.querySelectorAll("pre:not([data-cb])");
-    pres.forEach((pre) => {
-      pre.setAttribute("data-cb", "1");
-      const btn = document.createElement("button");
-      btn.className = "chat-code-copy";
-      btn.innerHTML = `<span class="cc-swap" aria-hidden="true"><svg class="cc-copy" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg><svg class="cc-check" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>`;
-      btn.setAttribute("aria-label", "Copy code");
-      btn.title = "Copy";
-      btn.onclick = () => {
-        void copyText(pre.textContent || "").then((ok) => {
-          if (!ok) return;
-          btn.classList.add("is-check");
-          btn.title = "Copied";
-          setTimeout(() => { btn.classList.remove("is-check"); btn.title = "Copy"; }, 2000);
-        });
-      };
-    });
+    wireCodeCopyButtons(root, copyText);
 
     const imgs = root.querySelectorAll("img:not([data-lb])");
     imgs.forEach((el) => {
@@ -157,7 +103,7 @@ function formatDur(ms?: number) {
 
 import { stepOpen, setStepOpen, hashKey } from "../lib/step-prefs";
 import { describeTool } from "../lib/tool-identity";
-import { describeInput, describeOutput, excerpt } from "../lib/tool-io";
+import { describeInput, describeOutput } from "../lib/tool-io";
 import {
   Lightbulb,
 } from "lucide-react";
@@ -238,7 +184,6 @@ function ThoughtRow({ seg }: { seg: Segment }) {
       className="bg-transparent border-0 ai-thought"
     >
       <AiToolCallHeader>
-        <span className="chat-step-preview truncate">{excerpt(seg.text, 70)}</span>
         {seg.durationMs != null && (
           <span className="chat-step-dur shrink-0 font-mono text-[10px] text-[var(--color-brandtext)]">
             {formatDur(seg.durationMs)}
@@ -257,7 +202,6 @@ function ThoughtRow({ seg }: { seg: Segment }) {
 function BundleToolRow({ seg, onToggleTool }: { seg: Segment; onToggleTool: (segId: string) => void }) {
   const info = describeTool(seg.label, seg.argsText, seg.command);
   const prefKey = stepPrefKey(seg);
-  const meta = (info.kind === "terminal" ? (seg.command || info.meta) : info.meta)?.replace(/\s+/g, " ").slice(0, 110);
   const long = (seg.resultText?.length || 0) > 3000;
 
   // Controlled open, initialized from the persisted per-tool pref (collapsed
@@ -289,6 +233,9 @@ function BundleToolRow({ seg, onToggleTool }: { seg: Segment; onToggleTool: (seg
     <AiToolCall
       name={info.name}
       state={state}
+      kind={info.kind}
+      title={info.title}
+      detail={info.detail}
       open={open}
       onOpenChange={(o) => { if (o !== open) toggle(); }}
       className="bg-transparent border-0"
@@ -297,7 +244,6 @@ function BundleToolRow({ seg, onToggleTool }: { seg: Segment; onToggleTool: (seg
         {info.kind === "mcp" && <span className="chat-step-kind">MCP</span>}
         {info.kind === "skill" && <span className="chat-step-kind">SKILL</span>}
         {info.kind === "browser" && <span className="chat-step-kind">WEB</span>}
-        {!!meta && <span className="chat-step-preview truncate">{meta}</span>}
         {dur && <span className={cn("chat-step-dur shrink-0 font-mono text-[10px]", seg.status === "run" ? "text-cyanx" : "text-[var(--color-brandtext)]")}>{dur}</span>}
         {seg.status === "done" && seg.exitCode != null && seg.exitCode !== 0 && <span className="chat-step-exit">exit {seg.exitCode}</span>}
       </AiToolCallHeader>

@@ -8,21 +8,29 @@
 // auto-open effect is therefore removed; open/close is fully controlled.
 
 import * as React from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import * as CollapsiblePrimitive from "@radix-ui/react-collapsible";
 import {
-  AlertTriangle,
-  Check,
+  BookOpen,
+  Bot,
   ChevronDown,
-  Clock,
+  Database,
+  FileText,
+  Globe,
   Loader2,
+  Plug,
+  Search,
   ShieldQuestion,
+  SquareTerminal,
   Wrench,
-  X,
 } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 import { describeInput, type IOField } from "../../lib/tool-io";
+import { renderRichHtml } from "../../lib/rich-html";
+import { wireCodeCopyButtons } from "../../lib/rich-pre";
+import { copyText } from "../../lib/copy-text";
 
 export type ToolCallState =
   | "pending"
@@ -37,6 +45,9 @@ interface AiToolCallContextValue {
   state: ToolCallState;
   isOpen: boolean;
   icon?: React.ReactNode;
+  kind?: string;
+  title?: string;
+  detail?: string;
 }
 
 const AiToolCallContext = React.createContext<AiToolCallContextValue | null>(
@@ -54,8 +65,14 @@ function useToolCallContext() {
 export interface AiToolCallProps {
   name: string;
   state: ToolCallState;
-  /** Header plate glyph; defaults to Wrench. (Thinking rows pass Lightbulb.) */
+  /** Header plate glyph; per-kind default via toolKindIcon. */
   icon?: React.ReactNode;
+  /** Tool family (terminal/file/web/...) — picks the default glyph. */
+  kind?: string;
+  /** Plain-english title; falls back to name. */
+  title?: string;
+  /** Secondary mono line under the title (path / command / host). */
+  detail?: string;
   defaultOpen?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -63,10 +80,31 @@ export interface AiToolCallProps {
   className?: string;
 }
 
+// Per-kind header glyphs — a non-coder should recognize the TYPE of activity
+// at a glance even before reading the title.
+const KIND_ICONS: Record<string, React.ReactNode> = {
+  terminal: <SquareTerminal className="size-3.5" />,
+  file: <FileText className="size-3.5" />,
+  web: <Globe className="size-3.5" />,
+  browser: <Globe className="size-3.5" />,
+  skill: <BookOpen className="size-3.5" />,
+  mcp: <Plug className="size-3.5" />,
+  memory: <Database className="size-3.5" />,
+  delegate: <Bot className="size-3.5" />,
+  search: <Search className="size-3.5" />,
+};
+
+export function toolKindIcon(kind?: string): React.ReactNode {
+  return (kind && KIND_ICONS[kind]) || <Wrench className="size-3.5" />;
+}
+
 function AiToolCall({
   name,
   state,
   icon,
+  kind,
+  title,
+  detail,
   defaultOpen = false,
   open: controlledOpen,
   onOpenChange,
@@ -89,8 +127,8 @@ function AiToolCall({
   );
 
   const contextValue = React.useMemo(
-    () => ({ name, state, isOpen, icon }),
-    [name, state, isOpen, icon],
+    () => ({ name, state, isOpen, icon, kind, title, detail }),
+    [name, state, isOpen, icon, kind, title, detail],
   );
 
   return (
@@ -98,6 +136,7 @@ function AiToolCall({
       <CollapsiblePrimitive.Root
         data-slot="ai-tool-call"
         data-run={state === "running" ? "1" : undefined}
+        data-state={state}
         open={isOpen}
         onOpenChange={handleOpenChange}
         className={cn("ai-card overflow-hidden", className)}
@@ -114,7 +153,7 @@ interface AiToolCallHeaderProps {
 }
 
 function AiToolCallHeader({ children, className }: AiToolCallHeaderProps) {
-  const { name, state, isOpen, icon } = useToolCallContext();
+  const { name, state, isOpen, icon, kind, title, detail } = useToolCallContext();
 
   const stateConfig = React.useMemo(() => {
     const configs: Record<
@@ -122,24 +161,24 @@ function AiToolCallHeader({ children, className }: AiToolCallHeaderProps) {
       { icon: React.ReactNode; label: string; className: string }
     > = {
       pending: {
-        icon: <Clock className="size-3" />,
-        label: "Pending",
-        className: "ait-badge idle",
+        icon: null,
+        label: "",
+        className: "ait-badge none",
       },
       running: {
         icon: <Loader2 className="size-3 animate-spin" />,
-        label: "Running",
+        label: "Working",
         className: "ait-badge run",
       },
       completed: {
-        icon: <Check className="size-3" />,
-        label: "Done",
-        className: "ait-badge ok",
+        icon: null,
+        label: "",
+        className: "ait-badge none",
       },
       error: {
-        icon: <X className="size-3" />,
-        label: "Error",
-        className: "ait-badge err",
+        icon: null,
+        label: "",
+        className: "ait-badge none",
       },
       "awaiting-approval": {
         icon: <ShieldQuestion className="size-3" />,
@@ -147,13 +186,43 @@ function AiToolCallHeader({ children, className }: AiToolCallHeaderProps) {
         className: "ait-badge warn",
       },
       denied: {
-        icon: <AlertTriangle className="size-3" />,
-        label: "Denied",
-        className: "ait-badge warn",
+        icon: null,
+        label: "",
+        className: "ait-badge none",
       },
     };
     return configs[state];
   }, [state]);
+
+  // Owner (2026-09-30): only Running keeps a pill. Done/error/denied/pending
+  // states are signalled by the ICON color alone (green/red via data-state CSS);
+  // render nothing for the hidden states.
+  if (!stateConfig || stateConfig.className === "ait-badge none") return (
+    <CollapsiblePrimitive.Trigger
+      data-slot="ai-tool-call-header"
+      className={cn(
+        "flex w-full items-center gap-2 px-2 py-1.5 text-left text-[12.5px] font-medium transition-colors hover:bg-white/[0.03] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyanx/40 rounded-md min-w-0",
+        className,
+      )}
+    >
+      <div className="ai-plate shrink-0">{icon ?? toolKindIcon(kind)}</div>
+      <div className="flex min-w-0 flex-1 items-center gap-2 ai-head-left">
+        <span className="chat-step-titleblock">
+          <span className="chat-step-title">{title || name}</span>
+          {detail && <span className="chat-step-detail">{detail}</span>}
+        </span>
+      </div>
+      <div className="flex min-w-0 items-center gap-2 ai-head-right shrink-[2]">
+        {children}
+      </div>
+      <ChevronDown
+        className={cn(
+          "size-3.5 shrink-0 text-[var(--color-muted)] transition-transform duration-200",
+          isOpen && "rotate-180",
+        )}
+      />
+    </CollapsiblePrimitive.Trigger>
+  );
 
   return (
     <CollapsiblePrimitive.Trigger
@@ -163,9 +232,12 @@ function AiToolCallHeader({ children, className }: AiToolCallHeaderProps) {
         className,
       )}
     >
-      <div className="ai-plate shrink-0">{icon ?? <Wrench className="size-3.5" />}</div>
+      <div className="ai-plate shrink-0">{icon ?? toolKindIcon(kind)}</div>
       <div className="flex min-w-0 flex-1 items-center gap-2 ai-head-left">
-        <span className="chat-step-label">{name}</span>
+        <span className="chat-step-titleblock">
+          <span className="chat-step-title">{title || name}</span>
+          {detail && <span className="chat-step-detail">{detail}</span>}
+        </span>
         <span className={cn("shrink-0", stateConfig.className)}>
           {stateConfig.icon}
           {stateConfig.label}
@@ -206,6 +278,25 @@ function AiToolCallContent({ children, className }: AiToolCallContentProps) {
 // Human-readable input/output rows (owner 2026-09-29): expanding a card shows
 // labeled key-value fields ("Query", "Command", "Find → Replace with") instead
 // of raw machine JSON. Long values get their own capped scroll region.
+// RICH (owner 2026-09-30): `md` fields render through the SAME markdown
+// pipeline as chat messages (marked + DOMPurify), so lists, tables, links,
+// bold and code blocks come out formatted — with the same per-block copy
+// buttons. Plain/mono rows keep the exact old rendering.
+function RichFieldVal({ field }: { field: IOField }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const html = useMemo(() => renderRichHtml(field.value), [field.value]);
+  useEffect(() => {
+    if (ref.current) wireCodeCopyButtons(ref.current, copyText);
+  }, [html]);
+  return (
+    <div
+      ref={ref}
+      className={cn("chat-md ai-io-md", field.long && "tall")}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+}
+
 function AiToolCallFields({ label, fields, err }: { label: string; fields: IOField[]; err?: boolean }) {
   if (!fields.length) return null;
   return (
@@ -215,9 +306,11 @@ function AiToolCallFields({ label, fields, err }: { label: string; fields: IOFie
         {fields.map((f, i) => (
           <div key={i} className="ai-io-row">
             <dt className="ai-io-key" title={f.key}>{f.key}</dt>
-            <dd className={cn("ai-io-val", f.mono && "mono", f.long && "tall")}
+            <dd className={cn("ai-io-val", f.mono && "mono", f.long && !f.md && "tall")}
               title={f.mono ? f.value : undefined}>
-              {f.long ? f.value : (f.value.length > 240 ? f.value.slice(0, 240) + "…" : f.value)}
+              {f.md
+                ? <RichFieldVal field={f} />
+                : (f.long ? f.value : (f.value.length > 240 ? f.value.slice(0, 240) + "…" : f.value))}
             </dd>
           </div>
         ))}

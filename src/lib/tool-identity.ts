@@ -1,6 +1,11 @@
 // Rich tool identity: every collapsed step header shows WHAT ran — typed name,
 // human meta line, and structured INPUT/OUTPUT bodies (owner requirement:
 // MCP/plugin/skill/file/terminal calls identified by name with input+output).
+// 2026-09-30 owner pass: titles are now PLAIN-ENGLISH verb-first summaries a
+// non-coder understands ("Edited auth.ts", "Ran a command", "Searched the web
+// for …"), with the technical detail kept as a secondary `detail` line rendered
+// in mono under the title. `meta` (server/step hints) still exported for the
+// input body. Icons are chosen per kind by the renderer (toolIcon()).
 // 2026-09-29 upgrade: the DISPLAY NAME is the concrete thing (skill name, MCP
 // tool+server, browser step comment) — never a generic "Tool call"/"MCP".
 
@@ -8,6 +13,8 @@ export interface ToolInfo {
   kind: "mcp" | "skill" | "terminal" | "file" | "web" | "browser" | "memory" | "delegate" | "search" | "tool";
   name: string;        // display name, e.g. "astra-webui" or "get_doc_page"
   meta?: string;       // short human line for the header, e.g. "neutrinos-docs MCP"
+  detail?: string;     // secondary mono line under the title (path/command/host)
+  title?: string;      // plain-english verb-first title; falls back to name
   input?: string;      // labeled INPUT body (falls back to raw args)
   inputLabel?: string; // e.g. "COMMAND", "FILE", "SKILL", "QUERY"
 }
@@ -53,6 +60,20 @@ function browserStep(args: Record<string, any> | null): string | undefined {
   return m[1].trim().slice(0, 110);
 }
 
+// Bare filename / short tail of a path, for titles: "Edited auth.ts".
+function fileTail(p: string | undefined): string | undefined {
+  if (!p) return undefined;
+  const t = p.split("/").filter(Boolean).pop();
+  return t || p;
+}
+
+// Trim a host down to the readable part for titles.
+function hostOf(u: string | undefined): string | undefined {
+  if (!u) return undefined;
+  const m = u.match(/^(?:https?:\/\/)?([^/\s]+)/);
+  return m ? m[1].replace(/^www\./, "") : undefined;
+}
+
 export function describeTool(label: string | undefined, argsText: string | undefined, command?: string): ToolInfo {
   const raw = (label || "").trim();
   const args = parseArgs(argsText);
@@ -60,9 +81,21 @@ export function describeTool(label: string | undefined, argsText: string | undef
   // MCP: provider convention mcp__<server>__<tool>
   const mcp = parseMcp(raw);
   if (mcp) {
+    // Humanize well-known MCP verbs; keep the real tool name as the detail.
+    const t = mcp.tool;
+    let title: string;
+    if (/^get_|^read_|^fetch_/.test(t)) title = "Looked up information";
+    else if (/^search|^find_/.test(t)) title = "Searched a connected service";
+    else if (/^list|^browse/.test(t)) title = "Listed items";
+    else if (/^create|^add_|^insert/.test(t)) title = "Created an entry";
+    else if (/^update|^edit_|^modify|^rename/.test(t)) title = "Updated an entry";
+    else if (/^delete|^remove|^trash/.test(t)) title = "Removed an entry";
+    else if (/^send|^post|^submit/.test(t)) title = "Sent a request";
+    else title = `Used a connected tool`;
     return {
-      kind: "mcp", name: mcp.tool,
+      kind: "mcp", name: mcp.tool, title,
       meta: `${mcp.server} MCP`,
+      detail: `${mcp.tool} · ${mcp.server}`,
       input: firstStr(args, ["query", "path", "url", "name", "topic", "command"]) ?? argsText,
       inputLabel: "INPUT",
     };
@@ -71,68 +104,159 @@ export function describeTool(label: string | undefined, argsText: string | undef
   // Skill lifecycle — the card's NAME is the skill itself
   if (raw === "skill_view") {
     const s = firstStr(args, ["name"]);
-    return { kind: "skill", name: s || "Skill", meta: "skill read", input: argsText, inputLabel: "SKILL" };
+    return {
+      kind: "skill", name: s || "Skill", title: s ? `Loaded the ${s} playbook` : "Loaded a playbook",
+      meta: "skill read", detail: s, input: argsText, inputLabel: "SKILL",
+    };
   }
   if (raw === "skill_manage") {
     const ops = args?.operations;
     const first = Array.isArray(ops) ? ops[0] : undefined;
     const skill = (first && (first.name || (first.content && first.new_text === undefined))) ? first.name : first?.name;
     const n = Array.isArray(ops) ? ops.length : undefined;
-    return { kind: "skill", name: skill || "Skill update", meta: n ? `${n} change${n > 1 ? "s" : ""}` : "skill write", input: argsText, inputLabel: "CHANGES" };
+    return {
+      kind: "skill", name: skill || "Skill update",
+      title: skill ? `Updated the ${skill} playbook` : "Updated a playbook",
+      meta: n ? `${n} change${n > 1 ? "s" : ""}` : "skill write",
+      detail: skill, input: argsText, inputLabel: "CHANGES",
+    };
   }
-  if (raw === "skills_list") return { kind: "skill", name: "Skills catalog", meta: "all installed skills", input: argsText, inputLabel: "INPUT" };
+  if (raw === "skills_list") {
+    return { kind: "skill", name: "Skills catalog", title: "Checked available playbooks", meta: "all installed skills", input: argsText, inputLabel: "INPUT" };
+  }
 
   // Terminal — the command IS the identity
   if (raw === "terminal" || raw === "bash" || raw === "shell") {
-    return { kind: "terminal", name: "Terminal", meta: command || firstStr(args, ["command"]), input: argsText, inputLabel: "COMMAND" };
+    const cmd = command || firstStr(args, ["command"]) || "";
+    const head = cmd.replace(/\s+/g, " ").trim().slice(0, 60);
+    // First word usually tells the story: git → checked the project history, etc.
+    const verb = head.split(" ")[0];
+    const known: Record<string, string> = {
+      git: "Worked with the project's history (git)",
+      npm: "Ran a project task (npm)",
+      npx: "Ran a project task (npx)",
+      node: "Ran a script with Node",
+      python: "Ran a script with Python",
+      python3: "Ran a script with Python",
+      pip: "Installed Python packages",
+      cargo: "Built with Rust (cargo)",
+      go: "Ran a Go task",
+      docker: "Ran something in Docker",
+      curl: "Contacted a web service (curl)",
+      ssh: "Connected to another machine",
+      systemctl: "Managed a background service",
+      ls: "Listed a folder's contents",
+      cat: "Read a file",
+      grep: "Searched inside files",
+      find: "Searched for files",
+    };
+    return {
+      kind: "terminal", name: "Terminal",
+      title: known[verb] || (verb ? `Ran a command (${verb})` : "Ran a command"),
+      meta: head || undefined, detail: head || undefined,
+      input: argsText, inputLabel: "COMMAND",
+    };
   }
 
-  // File tools — show the path
+  // File tools — plain-verb + filename in the title, path as detail.
   if (raw === "read_file" || raw === "write_file") {
     const p = firstStr(args, ["path"]);
-    return { kind: "file", name: raw === "read_file" ? "Read file" : "Write file", meta: p, input: argsText, inputLabel: p ? "FILE" : "INPUT" };
+    const f = fileTail(p);
+    return {
+      kind: "file", name: raw === "read_file" ? "Read file" : "Write file",
+      title: raw === "read_file" ? (f ? `Read ${f}` : "Read a file") : (f ? `Saved ${f}` : "Saved a file"),
+      meta: p, detail: p,
+      input: argsText, inputLabel: p ? "FILE" : "INPUT",
+    };
   }
   if (raw === "patch") {
     const p = firstStr(args, ["path"]);
-    return { kind: "file", name: "Edit file", meta: p, input: argsText, inputLabel: "FILE" };
+    const f = fileTail(p);
+    return {
+      kind: "file", name: "Edit file",
+      title: f ? `Edited ${f}` : "Edited a file",
+      meta: p, detail: p, input: argsText, inputLabel: "FILE",
+    };
   }
 
   // Web
-  if (raw === "web_search" || raw === "web_extract") {
-    const q = firstStr(args, ["query", "urls"]);
-    return { kind: "web", name: raw === "web_search" ? "Web search" : "Fetch page", meta: q, input: argsText, inputLabel: raw === "web_search" ? "QUERY" : "URL" };
+  if (raw === "web_search") {
+    const q = firstStr(args, ["query"]);
+    return {
+      kind: "web", name: "Web search",
+      title: q ? `Searched the web for “${q}”` : "Searched the web",
+      meta: q, input: argsText, inputLabel: "QUERY",
+    };
+  }
+  if (raw === "web_extract") {
+    const u = firstStr(args, ["urls", "url"]);
+    const host = hostOf(u?.split(/[\s,]+/)[0]);
+    return {
+      kind: "web", name: "Fetch page",
+      title: host ? `Read the page at ${host}` : "Read a web page",
+      meta: u, detail: u, input: argsText, inputLabel: "URL",
+    };
   }
 
-  // Browser — name = the step comment ("Searching Amazon…"), meta = tool
+  // Browser — title = the step comment ("Searching Amazon…"), detail = host.
   if (raw.startsWith("browser")) {
     const step = browserStep(args);
+    const url = firstStr(args, ["url"]) || firstStr(args, ["code"])?.match(/https?:\/\/[^\s'"]+/)?.[0];
+    const host = hostOf(url);
     return {
       kind: "browser",
       name: step || (raw === "browser_exec" ? "Browser" : raw.replace(/^browser_?/, "Browser · ")),
+      title: step || (host ? `Worked in the browser on ${host}` : "Worked in the browser"),
       meta: step ? "browser" : firstStr(args, ["code", "url"])?.replace(/\s+/g, " ").slice(0, 120),
+      detail: host,
       input: argsText, inputLabel: "SCRIPT",
     };
   }
 
   // Memory / knowledge
   if (raw === "memory" || raw === "fact_store") {
-    return { kind: "memory", name: raw === "memory" ? "Memory" : "Fact store", meta: firstStr(args, ["action"]) ? `action: ${firstStr(args, ["action"])}` : undefined, input: argsText, inputLabel: "INPUT" };
+    const act = firstStr(args, ["action"]);
+    const titles: Record<string, string> = {
+      add: "Saved something to memory",
+      update: "Updated its memory",
+      remove: "Removed a memory",
+      delete: "Removed a memory",
+      search: "Checked its memory",
+      probe: "Recalled everything about a topic",
+      reason: "Connected memories to reason",
+    };
+    return {
+      kind: "memory", name: raw === "memory" ? "Memory" : "Fact store",
+      title: (act && titles[act]) || "Used its memory",
+      meta: act ? `action: ${act}` : undefined,
+      input: argsText, inputLabel: "INPUT",
+    };
   }
 
-  // Delegation — name = first task goal
+  // Delegation — title = plain verb + goal
   if (raw === "delegate_task") {
     const tasks = Array.isArray(args?.tasks) ? (args!.tasks as any[]) : [];
     const goal = tasks[0]?.goal;
-    return { kind: "delegate", name: typeof goal === "string" ? excerptOf(goal, 80) : "Delegate", meta: tasks.length > 1 ? `+${tasks.length - 1} more task${tasks.length > 2 ? "s" : ""}` : "subagent", input: argsText, inputLabel: "TASK" };
+    const short = typeof goal === "string" ? excerptOf(goal, 80) : undefined;
+    return {
+      kind: "delegate", name: typeof goal === "string" ? short! : "Delegate",
+      title: short ? `Asked a helper agent to: ${short}` : "Asked a helper agent to help",
+      meta: tasks.length > 1 ? `+${tasks.length - 1} more task${tasks.length > 2 ? "s" : ""}` : "subagent",
+      input: argsText, inputLabel: "TASK",
+    };
   }
 
   // Search
   if (raw === "search_files" || raw === "tool_search" || raw === "tool_describe") {
-    return { kind: "search", name: raw === "search_files" ? "Search files" : raw === "tool_search" ? "Find tools" : "Tool docs", meta: firstStr(args, ["pattern", "queries", "names"]), input: argsText, inputLabel: "INPUT" };
+    const q = firstStr(args, ["pattern", "queries", "names"]);
+    if (raw === "search_files") {
+      return { kind: "search", name: "Search files", title: q ? `Searched the project for “${q}”` : "Searched the project's files", meta: q, detail: q, input: argsText, inputLabel: "INPUT" };
+    }
+    return { kind: "search", name: raw === "tool_search" ? "Find tools" : "Tool docs", title: raw === "tool_search" ? "Looked for a suitable tool" : "Read a tool's manual", meta: q, input: argsText, inputLabel: "INPUT" };
   }
 
   // Generic tool (plugin calls, unknown MCP shapes) — pretty name + args
-  return { kind: "tool", name: prettyName(raw) || "Tool", meta: firstStr(args, ["path", "query", "name", "command"]), input: argsText, inputLabel: "INPUT" };
+  return { kind: "tool", name: prettyName(raw) || "Tool", title: `Used ${prettyName(raw) || "a tool"}`, meta: firstStr(args, ["path", "query", "name", "command"]), input: argsText, inputLabel: "INPUT" };
 }
 
 function excerptOf(text: string, max: number): string {

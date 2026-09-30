@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
-import { ArrowUp, Square, TriangleAlert, RotateCcw, Pencil, ChevronDown, Plus, WifiOff, Loader2, CheckCircle2 } from "lucide-react";
+import { ArrowUp, Square, TriangleAlert, RotateCcw, Pencil, ChevronDown, Plus, WifiOff, Loader2, CheckCircle2, Check } from "lucide-react";
 import * as notify from "@/lib/notify";
 import { AnimatedCopyButton } from "@/lib/animated-copy";
 import { cn } from "@/lib/utils";
@@ -26,6 +26,7 @@ import {
 } from "./chat-timeline";
 import { ComposerControls, filesToAttachments, type Attachment } from "./composer-controls";
 import { AttachmentTray } from "./attachment-tray";
+import { RotatingPlaceholder } from "./composer-anim";
 import { newId, uniqueUploadName } from "@/lib/upload-names";
 import { loadDraft, saveDraft, clearDraft, moveDraft } from "@/lib/drafts";
 import { toast } from "@/lib/toast";
@@ -241,6 +242,8 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   useEffect(() => { atBottomRef.current = atBottom; }, [atBottom]);
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashActive, setSlashActive] = useState(0);
+  // Send-button sent-flash (morphs to a check briefly after send).
+  const [sentFlash, setSentFlash] = useState(false);
 
   const listRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -875,6 +878,10 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     if (!finalText && doneCount === 0) return;
     // Send rule (R8d): disabled with a visible reason, never auto-sent.
     if (uploading || failedUp) { toast(sendHint); return; }
+    // Sent-flash: button morphs to a check for 900ms so the user sees the
+    // message left the building even before the reply stream opens.
+    setSentFlash(true);
+    window.setTimeout(() => setSentFlash(false), 900);
 
     // Slash-command routing (always allowed — even mid-stream):
     //   /bg    → queue as a run-after envelope (never disturbs the live turn)
@@ -1548,17 +1555,29 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
             </div>
           )}
           <AttachmentTray items={attachments} onRemove={removeAttachment} onRetry={retryAttachment} countLabel={sendHint || (attachments.length > 0 ? `${attachments.length} file${attachments.length === 1 ? "" : "s"}` : undefined)} />
-          <textarea
-            ref={taRef}
-            rows={1}
-            value={input}
-            onChange={(e) => onInputChange(e.target.value)}
-            onKeyDown={onKey}
-            onPaste={onPaste}
-            placeholder={isStreaming ? "Reply, /bg to queue, /steer to correct…" : empty ? "Message Astra… (/ for commands)" : "Reply…"}
-            aria-label="Message Astra"
-            className="chat-composer-input"
-          />
+          <div className="composer-field">
+            <textarea
+              ref={taRef}
+              rows={1}
+              value={input}
+              onChange={(e) => onInputChange(e.target.value)}
+              onKeyDown={onKey}
+              onPaste={onPaste}
+              placeholder=""
+              aria-label="Message Astra"
+              className="chat-composer-input"
+            />
+            <RotatingPlaceholder
+              phrases={
+                isStreaming
+                  ? ["Reply, /bg to queue, /steer to correct…", "/steer redirects the running task…"]
+                  : empty
+                    ? ["Message Astra…", "/ for commands", "Ask anything — Astra can browse, build, and deploy…"]
+                    : ["Reply…", "Continue the conversation…"]
+              }
+              active={input.length === 0}
+            />
+          </div>
           <div className="chat-composer-bar">
             <ComposerControls
               setAttachments={setAttachments}
@@ -1587,8 +1606,9 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
               aria-label={sendHint || (isStreaming ? "Queue message" : "Send message")}
               title={sendHint || undefined}
               className="chat-send"
+              data-sent={sentFlash || undefined}
             >
-              <ArrowUp className="h-4 w-4" strokeWidth={1.8} />
+              {sentFlash ? <Check className="h-4 w-4" strokeWidth={2} /> : <ArrowUp className="h-4 w-4" strokeWidth={1.8} />}
             </button>
           </div>
         </div>

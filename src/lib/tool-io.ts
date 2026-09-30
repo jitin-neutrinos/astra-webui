@@ -7,6 +7,7 @@ export interface IOField {
   value: string;  // display value (pre-clamped)
   mono?: boolean; // render in mono (commands, code, paths)
   long?: boolean; // tall text: gets its own capped scroll region
+  md?: boolean;   // render as rich markdown (lists, tables, links, code)
 }
 
 const KEY_LABELS: Record<string, string> = {
@@ -26,6 +27,11 @@ const KEY_LABELS: Record<string, string> = {
 const LONG_KEYS = new Set([
   "code", "content", "old_string", "new_string", "text", "goal",
   "context", "description", "script", "body", "prompt",
+]);
+// Input keys that are natural-language documents (not code) — render rich so
+// the structure the agent wrote (lists, headers) stays readable.
+const INPUT_PROSE_KEYS = new Set([
+  "content", "text", "goal", "context", "description", "prompt", "body",
 ]);
 // Values that are code-ish / path-ish and read best in mono.
 const MONO_KEYS = new Set([
@@ -108,6 +114,7 @@ export function describeInput(
         value: isLong ? raw.slice(0, 4000) : shortVal(raw),
         mono: MONO_KEYS.has(k),
         long: isLong,
+        md: INPUT_PROSE_KEYS.has(k) && isLong && /[\n#*>|]/.test(raw),
       });
     }
   } else if (argsText && argsText.trim()) {
@@ -139,6 +146,14 @@ const OUT_KEYS: Array<[string, string]> = [
   ["message", "Message"],
 ];
 
+// Output keys whose values are human prose or structured documents (summaries,
+// report bodies, content fields) — these render as rich markdown in the card so
+// lists, tables, links and code blocks survive. Machine-ish keys (stdout,
+// stderr, exit codes, error text) stay plain/mono.
+const PROSE_KEYS = new Set([
+  "description", "summary", "content", "result", "text", "message", "title",
+]);
+
 function firstStrOf(o: any, keys: string[]): string | undefined {
   for (const k of keys) {
     const v = o?.[k];
@@ -169,7 +184,7 @@ export function describeOutput(_label: string | undefined, resultText: string | 
       });
       const firstContent = firstStrOf(parsed[0], ["content", "description", "text", "summary"]);
       if (firstContent && firstContent.length > 80) {
-        fields.push({ key: "First result", value: firstContent.slice(0, 4000), long: true });
+        fields.push({ key: "First result", value: firstContent.slice(0, 4000), long: true, md: true });
       }
       return fields;
     }
@@ -197,6 +212,7 @@ export function describeOutput(_label: string | undefined, resultText: string | 
         value: isLong ? raw.slice(0, 4000) : shortVal(raw),
         mono: k === "stdout" || k === "stderr" || k === "exit_code",
         long: isLong,
+        md: PROSE_KEYS.has(k) && !/^(stdout|stderr|exit_code)$/.test(k) && (isLong || /[\n#*|\-] /.test(raw)),
       });
     }
     if (fields.length === 0) {
