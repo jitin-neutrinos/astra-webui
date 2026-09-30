@@ -111,11 +111,6 @@ export function getUnreadCount(storedKey: string, serverUnread = 0): number {
   return Math.max(serverUnread, overlay[storedKey] || 0);
 }
 
-/** Has this chat been READ per the cross-device watermark? (Pill vs read-tick split.) */
-export function isRead(storedKey: string): boolean {
-  return !overlay[storedKey];
-}
-
 /** Count unread RESPONSES from history rows since a watermark (epoch seconds).
  * Only assistant rows with real text count; tool/thinking/error rows never do. */
 export function countUnreadResponses(rows: { role: string; timestamp?: number; content?: string | null; text?: string | null; display_content?: string | null }[], since: number | null | undefined): number {
