@@ -17,6 +17,7 @@ import {
   AiToolCallOutput,
   AiToolCallError,
   AiToolCallFields,
+  TerminalWindow,
 } from "./ui/ai-tool-call";
 import type { ToolCallState } from "./ui/ai-tool-call";
 
@@ -249,10 +250,11 @@ function BundleToolRow({ seg, onToggleTool }: { seg: Segment; onToggleTool: (seg
       </AiToolCallHeader>
       <AiToolCallContent>
         {info.kind === "terminal" ? (
-          <div className="chat-term-block">
-            {!!seg.command && <pre className="chat-term-cmd">$ {seg.command}</pre>}
-            {!!seg.resultText && <pre className="chat-term-out" tabIndex={0}>{long ? seg.resultText.slice(0, 3000) + "\n…" : seg.resultText}</pre>}
-          </div>
+          <TerminalWindow
+            title={info.kind === "terminal" ? "shell" : undefined}
+            text={[seg.command ? `$ ${seg.command}` : "", long ? seg.resultText!.slice(0, 3000) + "\n…" : seg.resultText || ""].filter(Boolean).join("\n\n")}
+            maxHeight="420px"
+          />
         ) : (
           <>
             <AiToolCallInput input={{ __fields: inFields }} />
@@ -260,7 +262,7 @@ function BundleToolRow({ seg, onToggleTool }: { seg: Segment; onToggleTool: (seg
               <AiToolCallOutput>
                 <AiToolCallFields label="Output" fields={outFields} />
                 {outFields.length === 0 && long && (
-                  <pre className="chat-term-out" tabIndex={0}>{seg.resultText!.slice(0, 3000) + "\n…"}</pre>
+                  <TerminalWindow title="output" text={seg.resultText!.slice(0, 3000) + "\n…"} maxHeight="420px" />
                 )}
                 {long && (
                   <button type="button" className="chat-term-expand" onClick={() => { if (!open) toggle(); }} title="Expand full output (Ctrl+O)">

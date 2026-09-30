@@ -36,10 +36,28 @@ function parseMcp(raw: string): { server: string; tool: string } | null {
 
 function parseArgs(argsText: string | undefined): Record<string, any> | null {
   if (!argsText) return null;
+  let v: unknown;
   try {
-    const v = JSON.parse(argsText);
-    return v && typeof v === "object" ? v : null;
+    v = JSON.parse(argsText);
   } catch { return null; }
+  // Some harnesses double-encode: the args arrive as a JSON *string* whose
+  // body is itself JSON ("{\"path\": …}"). Parse the inner layer too.
+  if (typeof v === "string") {
+    try {
+      const inner = JSON.parse(v);
+      if (inner && typeof inner === "object") return inner as Record<string, any>;
+    } catch { /* fall through */ }
+  }
+  return v && typeof v === "object" ? (v as Record<string, any>) : null;
+}
+
+// Regex fallback for file tools whose args failed to parse at all — pulls the
+// path straight out of the raw text so the title always names the file.
+function pathRegex(argsText: string | undefined): string | undefined {
+  if (!argsText) return undefined;
+  const m = argsText.match(/"path"\s*:\s*"((?:[^"\\]|\\.)+)"/);
+  if (!m) return undefined;
+  try { return JSON.parse(`"${m[1]}"`); } catch { return m[1]; }
 }
 
 function firstStr(a: Record<string, any> | null, keys: string[]): string | undefined {
@@ -160,7 +178,7 @@ export function describeTool(label: string | undefined, argsText: string | undef
 
   // File tools — plain-verb + filename in the title, path as detail.
   if (raw === "read_file" || raw === "write_file") {
-    const p = firstStr(args, ["path"]);
+    const p = firstStr(args, ["path"]) || pathRegex(argsText);
     const f = fileTail(p);
     return {
       kind: "file", name: raw === "read_file" ? "Read file" : "Write file",
@@ -170,12 +188,26 @@ export function describeTool(label: string | undefined, argsText: string | undef
     };
   }
   if (raw === "patch") {
-    const p = firstStr(args, ["path"]);
+    const p = firstStr(args, ["path"]) || pathRegex(argsText);
     const f = fileTail(p);
     return {
       kind: "file", name: "Edit file",
       title: f ? `Edited ${f}` : "Edited a file",
       meta: p, detail: p, input: argsText, inputLabel: "FILE",
+    };
+  }
+
+  // Code execution (Hermes execute_code): the first comment line of the script
+  // IS the step description, same convention as browser_exec.
+  if (raw === "execute_code" || raw === "execute-command") {
+    const code = firstStr(args, ["code"]);
+    const m = code?.match(/^[^\S\n]*#[^\S\n]*([^#^\n][^\n]*?)\s*$/m);
+    const step = m?.[1]?.trim().slice(0, 90);
+    return {
+      kind: "terminal", name: "Run code",
+      title: step || "Ran a block of Python",
+      meta: step || "python", detail: step ? "python" : undefined,
+      input: argsText, inputLabel: "CODE",
     };
   }
 
@@ -256,7 +288,15 @@ export function describeTool(label: string | undefined, argsText: string | undef
   }
 
   // Generic tool (plugin calls, unknown MCP shapes) — pretty name + args
-  return { kind: "tool", name: prettyName(raw) || "Tool", title: `Used ${prettyName(raw) || "a tool"}`, meta: firstStr(args, ["path", "query", "name", "command"]), input: argsText, inputLabel: "INPUT" };
+  const known = firstStr(args, ["path", "query", "name", "command"]);
+  const p = (raw === "write_file" || raw === "patch" || raw === "read_file") ? (known || pathRegex(argsText)) : known;
+  if (p) {
+    const f = fileTail(p);
+    if (/write|save/i.test(raw)) return { kind: "file", name: prettyName(raw) || "Tool", title: f ? `Saved ${f}` : `Saved a file`, meta: p, detail: p, input: argsText, inputLabel: "FILE" };
+    if (/edit|patch/i.test(raw)) return { kind: "file", name: prettyName(raw) || "Tool", title: f ? `Edited ${f}` : `Edited a file`, meta: p, detail: p, input: argsText, inputLabel: "FILE" };
+    if (/read/i.test(raw)) return { kind: "file", name: prettyName(raw) || "Tool", title: f ? `Read ${f}` : `Read a file`, meta: p, detail: p, input: argsText, inputLabel: "FILE" };
+  }
+  return { kind: "tool", name: prettyName(raw) || "Tool", title: `Used ${prettyName(raw) || "a tool"}`, meta: known, input: argsText, inputLabel: "INPUT" };
 }
 
 function excerptOf(text: string, max: number): string {

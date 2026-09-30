@@ -31,6 +31,7 @@ import { describeInput, type IOField } from "../../lib/tool-io";
 import { renderRichHtml } from "../../lib/rich-html";
 import { wireCodeCopyButtons } from "../../lib/rich-pre";
 import { copyText } from "../../lib/copy-text";
+import { Check, Copy } from "lucide-react";
 
 export type ToolCallState =
   | "pending"
@@ -300,8 +301,10 @@ function RichFieldVal({ field }: { field: IOField }) {
 function AiToolCallFields({ label, fields, err }: { label: string; fields: IOField[]; err?: boolean }) {
   if (!fields.length) return null;
   return (
-    <div data-slot="ai-tool-call-fields" className="space-y-1.5">
-      <span className={cn("ai-io-label", err && "err")}>{label}</span>
+    <section data-slot="ai-tool-call-fields" className="ai-sec">
+      <header className="ai-sec-head">
+        <span className={cn("ai-sec-pill", err && "err")}>{label}</span>
+      </header>
       <dl className="ai-io-fields">
         {fields.map((f, i) => (
           <div key={i} className="ai-io-row">
@@ -315,6 +318,33 @@ function AiToolCallFields({ label, fields, err }: { label: string; fields: IOFie
           </div>
         ))}
       </dl>
+    </section>
+  );
+}
+
+// Terminal window (owner 2026-09-30 revamp): command + output live inside a
+// mac-style window with traffic lights, a title, and a copy button — replaces
+// the old stacked grey <pre> blocks.
+function TerminalWindow({ title, text, maxHeight }: { title?: string; text: string; maxHeight?: string }) {
+  const [copied, setCopied] = React.useState(false);
+  const onCopy = () => {
+    void copyText(text).then((ok) => {
+      if (!ok) return;
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    });
+  };
+  return (
+    <div className="ai-term" data-slot="ai-terminal">
+      <div className="ai-term-bar">
+        <span className="ai-term-dots" aria-hidden="true"><i /><i /><i /></span>
+        <span className="ai-term-title">{title || "terminal"}</span>
+        <button type="button" className={cn("ai-term-copy", copied && "is-copied")} onClick={onCopy}
+          aria-label={copied ? "Copied" : "Copy"} title={copied ? "Copied" : "Copy"}>
+          {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+        </button>
+      </div>
+      <pre className="ai-term-body" style={maxHeight ? { maxHeight } : undefined} tabIndex={0}>{text}</pre>
     </div>
   );
 }
@@ -353,15 +383,15 @@ interface AiToolCallOutputProps {
 
 function AiToolCallOutput({ children, className }: AiToolCallOutputProps) {
   return (
-    <div
+    <section
       data-slot="ai-tool-call-output"
-      className={cn("space-y-1.5", className)}
+      className={cn("ai-sec", className)}
     >
-      <span className="ai-io-label">Output</span>
-      <div className="chat-term-block">
-        {children}
-      </div>
-    </div>
+      <header className="ai-sec-head">
+        <span className="ai-sec-pill">Output</span>
+      </header>
+      {children}
+    </section>
   );
 }
 
@@ -372,13 +402,15 @@ interface AiToolCallErrorProps {
 
 function AiToolCallError({ error, className }: AiToolCallErrorProps) {
   return (
-    <div
+    <section
       data-slot="ai-tool-call-error"
-      className={cn("space-y-1.5", className)}
+      className={cn("ai-sec", className)}
     >
-      <span className="ai-io-label err">Error</span>
-      <div className="chat-term-block err">{error}</div>
-    </div>
+      <header className="ai-sec-head">
+        <span className="ai-sec-pill err">Error</span>
+      </header>
+      <TerminalWindow title="error" text={error} />
+    </section>
   );
 }
 
@@ -390,4 +422,5 @@ export {
   AiToolCallOutput,
   AiToolCallError,
   AiToolCallFields,
+  TerminalWindow,
 };
