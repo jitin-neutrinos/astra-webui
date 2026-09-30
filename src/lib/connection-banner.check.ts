@@ -1,5 +1,5 @@
 // Connection banner state machine checks. Run: npx tsx src/lib/connection-banner.check.ts
-import { nextConnState, fmtSeconds, RESTORED_MS } from "./connection-state.ts";
+import { nextConnState, fmtSeconds, RESTORED_MS, bannerVisible, BANNER_AFTER_MS } from "./connection-state.ts";
 
 let failures = 0;
 function ok(cond: boolean, msg: string) {
@@ -34,6 +34,16 @@ ok(fmtSeconds(1234) === "1.23s", "1234ms → 1.23s");
 ok(fmtSeconds(0) === "0s", "0ms → 0s");
 ok(fmtSeconds(-500) === "0s", "negative clamps to 0s");
 ok(RESTORED_MS >= 1500 && RESTORED_MS <= 4000, "restored confirmation lives 1.5-4s");
+
+// Banner chrome: never before 60s down, any non-online state after that.
+ok(BANNER_AFTER_MS === 60_000, "banner delay is 60s");
+ok(!bannerVisible("online", 120_000), "online never banners");
+ok(!bannerVisible("offline", 59_999), "59.999s offline stays hidden");
+ok(bannerVisible("offline", 60_000), "60s offline shows");
+ok(!bannerVisible("checking", 1_000), "brief checking stays hidden");
+ok(bannerVisible("checking", 60_000), "long checking shows");
+ok(!bannerVisible("restored", 10_000), "brief restored confirmation stays hidden");
+ok(bannerVisible("restored", 70_000), "restored after a long outage still confirms");
 
 if (failures) { console.error(`${failures} check(s) failed`); throw new Error(`${failures} connection-banner check(s) failed`); }
 console.log("PASS: connection-banner checks");

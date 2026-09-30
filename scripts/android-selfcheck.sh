@@ -127,8 +127,12 @@ grep -q 'addRequestHeader("Cookie"' "$MAIN_KT" || { echo "FAIL: download request
 grep -q 'OnBackPressedCallback' "$MAIN_KT" || { echo "FAIL: MainActivity missing back handler (viewer can't close on Back)."; exit 1; }
 echo "PASS: download listener + back handler."
 
-# v1.7.0 / R8 assertions
-grep -q 'versionCode 11' android/app/build.gradle || { echo "FAIL: versionCode not bumped to 11."; exit 1; }
+# v1.9.0 battery: 60s client ping, 5min identity watch, session-info cache, summary coalesce.
+grep -q 'versionCode 13' android/app/build.gradle || { echo "FAIL: versionCode not bumped to 13."; exit 1; }
+grep -q 'pingInterval(60' "$SERVICE_KT" || { echo "FAIL: chat/ntfy ping still 30s."; exit 1; }
+grep -q 'publishGroupSummary' "$SERVICE_KT" || { echo "FAIL: group-summary coalesce missing."; exit 1; }
+grep -q 'cookieCacheAt' "$SERVICE_KT" || { echo "FAIL: cookie cache missing."; exit 1; }
+grep -q 'ntfyDownSince' "$SERVICE_KT" || { echo "FAIL: FGS reconnect text still updates on every blip."; exit 1; }
 grep -q 'ShortcutBadger' android/app/build.gradle || { echo "FAIL: ShortcutBadger not in build.gradle."; exit 1; }
 grep -q 'GROUP_KEY_CHAT' "$SERVICE_KT" || { echo "FAIL: GROUP_KEY_CHAT not found in NtfyPushService.kt."; exit 1; }
 grep -q 'filter=complete' "$SERVICE_KT" || { echo "FAIL: filter=complete not found in NtfyPushService.kt."; exit 1; }

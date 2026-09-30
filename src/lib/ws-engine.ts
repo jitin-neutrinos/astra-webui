@@ -734,7 +734,10 @@ function onMessage(e: MessageEvent) {
   }
   
   if (data.method === "event" && data.params && data.params.type === "message.complete") {
-    notify.handleComplete(data.params.session_id, data.params.payload);
+    const liveSid = data.params.session_id;
+    const mapped = notify.storedKeyFor(liveSid);
+    const fid = data.params.payload && data.params.payload.turn_id != null ? data.params.payload.turn_id : (data.id ?? liveSid + ":" + String(data.params.payload?.ts ?? 0));
+    notify.handleComplete(liveSid, mapped, data.params.payload, fid);
   }
 
   // watchdog probe reply
@@ -796,9 +799,9 @@ function onMessage(e: MessageEvent) {
     } else if (data.result && data.result.session_id) {
       eng.liveKey = resumedKey;
       wsSet({ liveSessionId: data.result.session_id });
-      notify.setActiveSession(data.result.session_id);
-      if (data.result.session_key) notify.mapSession(data.result.session_id, data.result.session_key);
-      else notify.mapSession(data.result.session_id, data.result.session_id);
+      const mappedStored = data.result.session_key || data.result.session_id;
+      notify.mapSession(data.result.session_id, mappedStored);
+      notify.setActiveSession(mappedStored === data.result.session_id ? notify.storedKeyFor(data.result.session_id) || mappedStored : mappedStored);
       if (replyInfo) applySessionInfo(replyInfo.session_id, replyInfo.info);
       applyReplyTruth(data.result);
       flushQueueForSession(data.result.session_id);
@@ -807,9 +810,9 @@ function onMessage(e: MessageEvent) {
   } else if (data.id && data.result && data.result.session_id && eng.ownRpcIds.has(data.id)) {
     eng.ownRpcIds.delete(data.id);
     wsSet({ liveSessionId: data.result.session_id });
-    notify.setActiveSession(data.result.session_id);
-    if (data.result.stored_session_id) notify.mapSession(data.result.session_id, data.result.stored_session_id);
-    else notify.mapSession(data.result.session_id, data.result.session_id);
+    const mappedStored2 = data.result.stored_session_id || data.result.session_id;
+    notify.mapSession(data.result.session_id, mappedStored2);
+    notify.setActiveSession(mappedStored2 === data.result.session_id ? notify.storedKeyFor(data.result.session_id) || mappedStored2 : mappedStored2);
     if (replyInfo) applySessionInfo(replyInfo.session_id, replyInfo.info);
     eng.pendingCreate = false;
     eng.createOnOpen = false;

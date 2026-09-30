@@ -44,7 +44,16 @@ class NtfyPushService : Service() {
     private var webSocket: WebSocket? = null
     private var isRunning = false
     private var reconnectAttempt = 0
+    private var ntfyDownSince = 0L
     private val handler = Handler(Looper.getMainLooper())
+    // ponytail: 30s cookie cache, not a watcher. Upgrade if login must show in <30s while backgrounded.
+    private var cookieCache: String? = null
+    private var cookieCacheAt = 0L
+    private var summaryQueued = false
+    private val summaryRunnable = Runnable {
+        summaryQueued = false
+        publishGroupSummary()
+    }
     private val TAG = "NtfyPushService"
     private val NOTIFICATION_ID = 1001
     private var reconnectRunnable: Runnable? = null
@@ -211,6 +220,7 @@ class NtfyPushService : Service() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 Log.d(TAG, "WebSocket opened")
                 reconnectAttempt = 0
+                ntfyDownSince = 0L
                 val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 manager.notify(NOTIFICATION_ID, foregroundNotification("Connected"))
             }
@@ -242,11 +252,15 @@ class NtfyPushService : Service() {
 
     private fun scheduleReconnect() {
         if (!isRunning) return
+        if (ntfyDownSince == 0L) ntfyDownSince = System.currentTimeMillis()
         reconnectRunnable?.let { handler.removeCallbacks(it) }
         val delaySec = min(300.0, 1.0 * (2.0).pow(reconnectAttempt)).toLong().coerceAtLeast(1)
         reconnectAttempt++
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(NOTIFICATION_ID, foregroundNotification("Reconnecting in ${delaySec}s"))
+        // Status text only after 60s down. Dial still happens immediately.
+        if (System.currentTimeMillis() - ntfyDownSince >= 60_000L) {
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.notify(NOTIFICATION_ID, foregroundNotification("Reconnecting in ${delaySec}s"))
+        }
         val r = Runnable { if (isRunning) connectWebSocket() }
         reconnectRunnable = r
         handler.postDelayed(r, delaySec * 1000)
@@ -266,7 +280,9 @@ class NtfyPushService : Service() {
     }
 
     private fun readSessionCookie(): String? {
-        return try {
+        val now = System.currentTimeMillis()
+        if (now - cookieCacheAt < 30_000L) return cookieCache
+        val cookie = try {
             // HttpOnly cookies ARE visible here (web-plan verified fact).
             android.webkit.CookieManager.getInstance()
                 .getCookie("https://astra.jitinnair.com")
@@ -277,6 +293,9 @@ class NtfyPushService : Service() {
             Log.e(TAG, "cookie read failed", e)
             null
         }
+        cookieCache = cookie
+        cookieCacheAt = now
+        return cookie
     }
 
     // One OkHttp client for both legs (connection pool + threads shared).
@@ -284,7 +303,7 @@ class NtfyPushService : Service() {
         if (client == null) {
             client = OkHttpClient.Builder()
                 .readTimeout(0, TimeUnit.MILLISECONDS)
-                .pingInterval(30, TimeUnit.SECONDS)
+                .pingInterval(60, TimeUnit.SECONDS)
                 .retryOnConnectionFailure(true)
                 .build()
         }
@@ -323,7 +342,10 @@ class NtfyPushService : Service() {
                 Log.e(TAG, "chat WS failure code=$code", t)
                 // 401/403 = session cookie dead — long backoff; the prefs
                 // watcher re-arms fast once the next in-app login writes one.
-                if (code == 401 || code == 403) chatAttempt = chatAttempt.coerceAtLeast(6)
+                if (code == 401 || code == 403) {
+                    cookieCacheAt = 0L
+                    chatAttempt = chatAttempt.coerceAtLeast(6)
+                }
                 scheduleChatReconnect(if (code == 401 || code == 403) "auth" else "failure")
             }
         })
@@ -358,11 +380,11 @@ class NtfyPushService : Service() {
                     chatAttempt = 0
                     reconnectChatLeg("identity-changed")
                 }
-                handler.postDelayed(this, 60_000)
+                handler.postDelayed(this, 300_000)
             }
         }
         chatPrefRunnable = r
-        handler.postDelayed(r, 60_000)
+        handler.postDelayed(r, 300_000)
     }
 
     // R3: message.complete while backgrounded → quiet notification.
@@ -450,6 +472,10 @@ class NtfyPushService : Service() {
     private fun resolveSessionInfo(sid: String, storedHint: String?): SessionInfo {
         if (!storedHint.isNullOrEmpty()) {
             sessionCache[sid]?.let { return it }
+            val now = System.currentTimeMillis()
+            if (sessionNotFoundCache.containsKey(sid) && now - sessionNotFoundCache[sid]!! < 600_000L) {
+                return SessionInfo("Astra chat", storedHint)
+            }
             val cookie = readSessionCookie()
                 ?: return SessionInfo("Astra chat", storedHint)
             return try {
@@ -461,13 +487,17 @@ class NtfyPushService : Service() {
                     if (response.isSuccessful) {
                         val json = JSONObject(response.body?.string() ?: "{}")
                         val title = json.optString("title", "Astra chat")
-                        SessionInfo(if (title.isEmpty()) "Astra chat" else title, storedHint)
+                        val info = SessionInfo(if (title.isEmpty()) "Astra chat" else title, storedHint)
+                        sessionCache[sid] = info
+                        info
                     } else {
+                        sessionNotFoundCache[sid] = now
                         SessionInfo("Astra chat", storedHint)
                     }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "resolveSessionInfo(hint) failed", e)
+                sessionNotFoundCache[sid] = now
                 SessionInfo("Astra chat", storedHint)
             }
         }
@@ -506,6 +536,19 @@ class NtfyPushService : Service() {
     private val GROUP_KEY_CHAT = "astra-chat-replies"
 
     private fun updateGroupSummary() {
+        if (chatStates.isEmpty()) {
+            handler.removeCallbacks(summaryRunnable)
+            summaryQueued = false
+            publishGroupSummary()
+            return
+        }
+        // ponytail: 5s coalesce. Per-chat notification still posts immediately.
+        if (summaryQueued) return
+        summaryQueued = true
+        handler.postDelayed(summaryRunnable, 5_000)
+    }
+
+    private fun publishGroupSummary() {
         if (chatStates.isEmpty()) {
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.cancel(2001)
@@ -630,6 +673,7 @@ class NtfyPushService : Service() {
         reconnectRunnable?.let { handler.removeCallbacks(it) }
         chatRunnable?.let { handler.removeCallbacks(it) }
         chatPrefRunnable?.let { handler.removeCallbacks(it) }
+        handler.removeCallbacks(summaryRunnable)
         webSocket?.close(1000, "Service destroyed")
         chatSocket?.close(1000, "Service destroyed")
         client?.dispatcher?.executorService?.shutdown()

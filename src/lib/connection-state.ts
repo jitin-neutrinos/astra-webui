@@ -16,6 +16,14 @@ export type ConnState = "online" | "offline" | "checking" | "restored";
 
 export const RESTORED_MS = 2400;
 
+// Top connection banner stays hidden through brief blips. Reconnect still
+// starts immediately — this only gates the chrome.
+export const BANNER_AFTER_MS = 60_000;
+
+export function bannerVisible(state: ConnState, downMs: number): boolean {
+  return state !== "online" && downMs >= BANNER_AFTER_MS;
+}
+
 export type ConnEvent =
   | { type: "ws-open" }
   | { type: "ws-closed" }

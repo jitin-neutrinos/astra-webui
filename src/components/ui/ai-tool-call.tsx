@@ -164,17 +164,17 @@ function AiToolCallHeader({ children, className }: AiToolCallHeaderProps) {
       )}
     >
       <div className="ai-plate shrink-0">{icon ?? <Wrench className="size-3.5" />}</div>
-      <div className="flex min-w-0 flex-1 items-center gap-2 ai-head-left">
-        <span className="chat-step-label">{name}</span>
+      {/* Left: only the card name; description pills moved right. */}
+      <div className="flex min-w-0 flex-1 items-center gap-2 truncate">
+        <span className="chat-step-label truncate">{name}</span>
+      </div>
+      {/* Right meta cluster (owner 2026-09-29): only time + running/done pill;
+          the pill has no background, just text + border, and lives next to time. */}
+      <div className="flex shrink-0 items-center gap-2 ai-head-right">
         <span className={cn("shrink-0", stateConfig.className)}>
           {stateConfig.icon}
-          {stateConfig.label}
+          <span className="sr-only">{stateConfig.label}</span>
         </span>
-      </div>
-      {/* Right meta cluster (owner 2026-09-29): description + duration + exit
-          ALWAYS hug the right edge on every card type — the old layout let
-          short previews float mid-card. */}
-      <div className="flex min-w-0 items-center gap-2 ai-head-right shrink-[2]">
         {children}
       </div>
       <ChevronDown
@@ -206,22 +206,33 @@ function AiToolCallContent({ children, className }: AiToolCallContentProps) {
 // Human-readable input/output rows (owner 2026-09-29): expanding a card shows
 // labeled key-value fields ("Query", "Command", "Find → Replace with") instead
 // of raw machine JSON. Long values get their own capped scroll region.
-function AiToolCallFields({ label, fields, err }: { label: string; fields: IOField[]; err?: boolean }) {
+// `label` is omitted when the caller nests AiToolCallFields inside: that block
+// carries its own label, and printing it twice is what produced the stacked
+// "Output Output Output" the owner saw on edit-file and code-execute cards.
+function AiToolCallFields({ label, fields, err }: { label?: string; fields: IOField[]; err?: boolean }) {
   if (!fields.length) return null;
+  // A lone field whose key restates the section label ("Output" → "Output")
+  // would print the word twice in a row. Render just the value in that case:
+  // the heading above already says what it is.
+  const collapseSingle = fields.length === 1 && !!label && fields[0].key === label;
   return (
     <div data-slot="ai-tool-call-fields" className="space-y-1.5">
-      <span className={cn("ai-io-label", err && "err")}>{label}</span>
-      <dl className="ai-io-fields">
-        {fields.map((f, i) => (
-          <div key={i} className="ai-io-row">
-            <dt className="ai-io-key" title={f.key}>{f.key}</dt>
-            <dd className={cn("ai-io-val", f.mono && "mono", f.long && "tall")}
-              title={f.mono ? f.value : undefined}>
-              {f.long ? f.value : (f.value.length > 240 ? f.value.slice(0, 240) + "…" : f.value)}
-            </dd>
-          </div>
-        ))}
-      </dl>
+      {label && <span className={cn("ai-io-label", err && "err")}>{label}</span>}
+      {collapseSingle ? (
+        <pre className={cn("ai-io-val mono tall", "chat-term-out")} tabIndex={0}>{fields[0].value}</pre>
+      ) : (
+        <dl className="ai-io-fields">
+          {fields.map((f, i) => (
+            <div key={i} className="ai-io-row">
+              <dt className="ai-io-key" title={f.key}>{f.key}</dt>
+              <dd className={cn("ai-io-val", f.mono && "mono", f.long && "tall")}
+                title={f.mono ? f.value : undefined}>
+                {f.long ? f.value : (f.value.length > 240 ? f.value.slice(0, 240) + "…" : f.value)}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
     </div>
   );
 }
@@ -253,18 +264,20 @@ function safeJson(v: unknown): string {
   try { return JSON.stringify(v) ?? ""; } catch { return ""; }
 }
 
-interface AiToolCallOutputProps {
+// `label` defaults to null: when the caller nests AiToolCallFields inside, that
+// block already prints "Output", and a second one here is the duplicate the
+// owner reported on edit-file / code-execute cards.
+function AiToolCallOutput({ children, className, label = null }: {
   children?: React.ReactNode;
   className?: string;
-}
-
-function AiToolCallOutput({ children, className }: AiToolCallOutputProps) {
+  label?: string | null;
+}) {
   return (
     <div
       data-slot="ai-tool-call-output"
       className={cn("space-y-1.5", className)}
     >
-      <span className="ai-io-label">Output</span>
+      {label && <span className="ai-io-label">{label}</span>}
       <div className="chat-term-block">
         {children}
       </div>

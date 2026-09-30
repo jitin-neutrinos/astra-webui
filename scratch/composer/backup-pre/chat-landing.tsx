@@ -812,13 +812,8 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       if (!storedSessionId) { setMessages([]); setHistLoading(false); loadedSidRef.current = null; return; }
       setHistLoading(true);
       // switching to another chat: drop the previous chat's rows immediately so
-      // the skeleton holds the space (owner: chat switch shows loading state).
-      // BUT a fresh chat mints its sid MID-TURN (greeting already streaming) —
-      // that flip is not a switch. Wiping there deleted the live bubble, and
-      // every later delta mapped over a list that no longer contained it:
-      // feed froze empty on the welcome screen until reload. A real switch has
-      // no live turn (the session-switch effect nulls activeIdRef); a mint does.
-      if (loadedSidRef.current !== storedSessionId && activeIdRef.current == null) setMessages([]);
+      // the skeleton holds the space (owner: chat switch shows loading state)
+      if (loadedSidRef.current !== storedSessionId) setMessages([]);
       try {
         const res = await fetch(`/api/hx/sessions/${encodeURIComponent(storedSessionId)}/messages?order=latest&limit=500`);
         if (!res.ok) {

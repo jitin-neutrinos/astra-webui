@@ -1,37 +1,52 @@
-let unread: Record<string, number> = {};
-let sidmap: Record<string, string> = {};
-let restored = false;
-let currentLiveSid: string | null = null;
+// Unread tracking, WhatsApp model:
+// - SERVER watermark (`last_read_at` via PATCH /api/hx/sessions/<id> {unread:false}) is the
+//   cross-device source of truth; a chat is read when its OWNER views it on ANY device.
+// - LIVE events (message.complete over the WS) bump a local in-memory overlay so the pill
+//   appears instantly; the overlay is reconciled away the next time the row is opened.
+// - Only assistant RESPONSES count (message.complete), never tool calls / thinking /
+//   errors / gate or approval requests.
+// - The auto-greet kickoff ("New chat just started…") is a UI convention, not a message:
+//   never counted anywhere.
+let overlay: Record<string, number> = {};
+let seenCompletes: Record<string, true> = {};
+let currentStoredSid: string | null = null;
 let baseTitle = "Astra";
 
-let audioCtx: AudioContext | null = null;
+/** live session id -> stored row key (sessions rotate ids on compression; rows list tips). */
+let sidmap: Record<string, string> = {};
 
-function restore() {
-  if (restored) return;
-  restored = true;
-  try {
-    const u = localStorage.getItem("astra_unread_v1");
-    if (u) unread = JSON.parse(u);
-    const s = localStorage.getItem("astra_sidmap_v1");
-    if (s) sidmap = JSON.parse(s);
-  } catch {
-    // ignore
+export function mapSession(liveSid: string, storedKey: string) {
+  if (sidmap[liveSid] !== storedKey) {
+    sidmap[liveSid] = storedKey;
   }
 }
+
+export function storedKeyFor(liveSid: string): string | null {
+  return sidmap[liveSid] || null;
+}
+
+let audioCtx: AudioContext | null = null;
+let chimeMuted = false;
+export function setChimeMuted(m: boolean) { chimeMuted = m; }
+export function isChimeMuted() { return chimeMuted; }
 
 function save() {
-  if (!restored) return; // safety
-  try {
-    localStorage.setItem("astra_unread_v1", JSON.stringify(unread));
-    localStorage.setItem("astra_sidmap_v1", JSON.stringify(sidmap));
-  } catch {
-    // ignore
-  }
+  try { localStorage.setItem("astra_unread_overlay_v1", JSON.stringify(overlay)); } catch { /* ignore */ }
 }
+function restore() {
+  try {
+    const o = localStorage.getItem("astra_unread_overlay_v1");
+    if (o) overlay = JSON.parse(o);
+  } catch { /* ignore */ }
+}
+let restored = false;
+function ensure() { if (!restored) { restored = true; restore(); } }
+
+const GREET_RE = /^New chat just started\. Greet me briefly and naturally, then ask what I'd like to work on\.\s*$/;
 
 function computeTotal(): number {
-  restore();
-  return Object.values(unread).reduce((a, b) => a + b, 0);
+  ensure();
+  return Object.values(overlay).reduce((a, b) => a + b, 0);
 }
 
 function updateTitle() {
@@ -42,30 +57,28 @@ function updateTitle() {
 }
 
 function playChime() {
+  if (chimeMuted) return;
   if (typeof window === "undefined" || !window.AudioContext) return;
   try {
     if (!audioCtx) audioCtx = new AudioContext();
     if (audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
-    
+
     const t = audioCtx.currentTime;
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
-    
+
     osc.connect(gain);
     gain.connect(audioCtx.destination);
-    
+
     osc.type = "sine";
-    // note 1: 880Hz for 90ms
     osc.frequency.setValueAtTime(880, t);
-    // note 2: 660Hz after 90ms
     osc.frequency.setValueAtTime(660, t + 0.09);
-    
-    // gain envelope
+
     gain.gain.setValueAtTime(0, t);
     gain.gain.linearRampToValueAtTime(0.15, t + 0.02);
     gain.gain.setValueAtTime(0.15, t + 0.18);
     gain.gain.linearRampToValueAtTime(0, t + 0.22);
-    
+
     osc.start(t);
     osc.stop(t + 0.22);
   } catch {
@@ -73,46 +86,9 @@ function playChime() {
   }
 }
 
-export function setBaseTitle(t: string) {
-  baseTitle = t;
-  updateTitle();
-}
-
-export function setActiveSession(sid: string | null) {
-  currentLiveSid = sid;
-}
-
-export function mapSession(liveSid: string, storedKey: string) {
-  restore();
-  if (sidmap[liveSid] !== storedKey) {
-    sidmap[liveSid] = storedKey;
-    save();
-  }
-}
-
-export function clearChat(storedKey: string) {
-  restore();
-  if (unread[storedKey]) {
-    delete unread[storedKey];
-    save();
-    updateTitle();
-    // Dispatch event for UI to update immediately
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("astra:unread-changed"));
-    }
-  }
-}
-
-export function handleComplete(sessionId: string, payload: any) {
-  restore();
-  if (payload?.status === "error" || payload?.gate || payload?.approval) return;
-  
-  if (sessionId === currentLiveSid && typeof document !== "undefined" && document.visibilityState === "visible") {
-    return;
-  }
-  
-  const storedKey = sidmap[sessionId] || sessionId;
-  unread[storedKey] = (unread[storedKey] || 0) + 1;
+function bump(key: string) {
+  ensure();
+  overlay[key] = (overlay[key] || 0) + 1;
   save();
   updateTitle();
   playChime();
@@ -121,12 +97,116 @@ export function handleComplete(sessionId: string, payload: any) {
   }
 }
 
-export function getUnreadCount(storedKey: string): number {
-  restore();
-  return unread[storedKey] || 0;
+export function setBaseTitle(t: string) {
+  baseTitle = t;
+  updateTitle();
+}
+
+/** The chat the user is CURRENTLY looking at (stored id, not live id). */
+export function setActiveSession(storedSid: string | null) {
+  currentStoredSid = storedSid;
+}
+
+/** Server-authoritative unread count for a row + live overlay on top. */
+export function getUnreadCount(storedKey: string, serverUnread = 0): number {
+  ensure();
+  return Math.max(serverUnread, overlay[storedKey] || 0);
+}
+
+/** Count unread RESPONSES from history rows since a watermark (epoch seconds).
+ * Only assistant rows with real text count; tool/thinking/error rows never do. */
+export function countUnreadResponses(rows: { role: string; timestamp?: number; content?: string | null; text?: string | null; display_content?: string | null }[], since: number | null | undefined): number {
+  if (!since) return 0;
+  const main = (r: any) =>
+    (typeof r.text === "string" ? r.text
+      : typeof r.content === "string" ? r.content
+      : typeof r.display_content === "string" ? r.display_content
+      : "") || "";
+  let n = 0;
+  for (const r of rows) {
+    if (r.role !== "assistant") continue;
+    const ts = typeof r.timestamp === "number" ? r.timestamp : 0;
+    if (ts <= since) continue;
+    const t = main(r).trim();
+    if (!t || GREET_RE.test(t)) continue;
+    n++;
+  }
+  return n;
+}
+
+/** A response turn completed on the wire. Keyed by the STORED session id when known. */
+export function handleComplete(sessionId: string, storedKey: string | null, payload: any, frameId?: string | number | string[]) {
+  ensure();
+  if (payload?.status === "error" || payload?.gate || payload?.approval) return;
+  const main = typeof payload?.text === "string" ? payload.text : "";
+  if (GREET_RE.test((main || "").trim())) return;
+  // replay dedupe: the gateway replays message.complete after reconnects
+  const fid = frameId != null ? String(Array.isArray(frameId) ? frameId.join(",") : frameId) : null;
+  if (fid) {
+    if (seenCompletes[fid]) return;
+    seenCompletes[fid] = true;
+    // bounded: keep the last 200 seen frames
+    const keys = Object.keys(seenCompletes);
+    if (keys.length > 200) for (const k of keys.slice(0, keys.length - 200)) delete seenCompletes[k];
+  }
+  const key = storedKey || sidmap[sessionId] || sessionId;
+  if (key === currentStoredSid && typeof document !== "undefined" && document.visibilityState === "visible") {
+    // watching THIS chat: mark it read server-side right away (watermark stays honest)
+    void markRead(key);
+    return;
+  }
+  bump(key);
+}
+
+/** Viewing a chat clears its overlay AND stamps the server watermark. */
+export async function clearChat(storedKey: string) {
+  ensure();
+  let changed = false;
+  if (overlay[storedKey]) {
+    delete overlay[storedKey];
+    save();
+    updateTitle();
+    changed = true;
+  }
+  if (typeof window !== "undefined" && changed) {
+    window.dispatchEvent(new CustomEvent("astra:unread-changed"));
+  }
+  await markRead(storedKey);
+}
+
+async function markRead(storedKey: string) {
+  try {
+    await fetch(`/api/hx/sessions/${encodeURIComponent(storedKey)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ unread: false }),
+    });
+  } catch { /* offline: watermark retries on next view */ }
 }
 
 export function getTotalUnread(): number {
-  restore();
   return computeTotal();
 }
+
+/** Server rows carry `unread` (bool) + `last_read_at`; seed the overlay for rows we
+ *  have no local count for so devices that never saw the live event still show a pill. */
+export function seedFromServer(rows: { id: string; unread?: boolean; last_read_at?: number | null }[], since: number | null | undefined): void {
+  ensure();
+  let changed = false;
+  for (const r of rows) {
+    if (r.unread && overlay[r.id] == null && r.id !== currentStoredSid) {
+      // 1 stands for "has unread responses" — countUnreadResponses refines when history loads
+      overlay[r.id] = 1;
+      changed = true;
+    }
+  }
+  void since;
+  if (changed) {
+    save();
+    updateTitle();
+    if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("astra:unread-changed"));
+  }
+}
+
+// test hooks
+export const _test = { reset: () => { overlay = {}; seenCompletes = {}; save(); }, overlayRef: () => overlay, setNow: (sid: string | null) => { currentStoredSid = sid; }, markReadRef: () => markRead };

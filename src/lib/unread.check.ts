@@ -1,72 +1,96 @@
 import assert from 'node:assert';
 
-// Mock localStorage and document
+// Mock localStorage / document / window / fetch
 const mockStore: Record<string, string> = {};
 (global as any).localStorage = {
   getItem: (k: string) => mockStore[k] || null,
   setItem: (k: string, v: string) => { mockStore[k] = v; }
 };
-
 let title = "";
+let visibility = "hidden";
 (global as any).document = {
-  visibilityState: "hidden",
+  get visibilityState() { return visibility; },
   set title(t: string) { title = t; },
   get title() { return title; }
 };
-
-(global as any).window = {
-  dispatchEvent: () => {}
+(global as any).window = { dispatchEvent: () => {} };
+const markedRead: string[] = [];
+(global as any).fetch = async (url: any, init?: any) => {
+  if (init?.method === "PATCH" && String(url).includes("/api/hx/sessions/")) {
+    markedRead.push(String(url));
+    return { ok: true };
+  }
+  return { ok: true };
 };
-
-mockStore["astra_unread_v1"] = JSON.stringify({ "k1": 2 });
-mockStore["astra_sidmap_v1"] = JSON.stringify({ "live1": "k1" });
 
 import * as notify from "./notify";
 
+notify._test.reset();
 notify.setBaseTitle("My Astra");
-assert.equal(title, "(2) My Astra");
-assert.equal(notify.getTotalUnread(), 2);
-assert.equal(notify.getUnreadCount("k1"), 2);
+assert.equal(title, "My Astra"); // no unread yet
 
-// Handle complete for mapped session
-notify.handleComplete("live1", { text: "hello" });
-assert.equal(notify.getUnreadCount("k1"), 3);
-assert.equal(title, "(3) My Astra");
+// 1) mapped session: complete bumps the STORED key
+notify.mapSession("live1", "k1");
+notify.handleComplete("live1", null, { text: "hello" });
+assert.equal(notify.getUnreadCount("k1"), 1, "mapped bump");
+assert.equal(title, "(1) My Astra", "title counts overlay");
 
-// Handle complete for unmapped session
-notify.handleComplete("live2", { text: "hello" });
-assert.equal(notify.getUnreadCount("live2"), 1);
-assert.equal(title, "(4) My Astra");
+// 2) unmapped session: falls back to live id
+notify.handleComplete("live2", null, { text: "hello" });
+assert.equal(notify.getUnreadCount("live2"), 1, "unmapped bump");
 
-// Map session dynamically
-notify.mapSession("live3", "k3");
-notify.handleComplete("live3", { text: "hi" });
-assert.equal(notify.getUnreadCount("k3"), 1);
+// 3) response-only: tool calls / thinking / errors / gates never count
+notify.handleComplete("live9", null, { status: "error" });
+notify.handleComplete("live9", null, { gate: "x" });
+notify.handleComplete("live9", null, { approval: "y" });
+assert.equal(notify.getUnreadCount("live9"), 0, "non-responses skipped");
 
-// Active session skip
-notify.setActiveSession("live4");
-(global as any).document.visibilityState = "visible";
-notify.handleComplete("live4", { text: "hi" });
-assert.equal(notify.getUnreadCount("live4"), 0);
-assert.equal(title, "(5) My Astra"); // unchanged
+// 4) auto-greet never counts
+notify.handleComplete("live10", null, { text: "New chat just started. Greet me briefly and naturally, then ask what I'd like to work on." });
+assert.equal(notify.getUnreadCount("live10"), 0, "greet skipped");
 
-// Active session, but hidden
-(global as any).document.visibilityState = "hidden";
-notify.handleComplete("live4", { text: "hi" });
-assert.equal(notify.getUnreadCount("live4"), 1);
-assert.equal(title, "(6) My Astra"); // increased
+// 5) watching the CURRENT chat (visible) → no bump, watermark stamped instead
+notify.setActiveSession("k1");
+visibility = "visible";
+notify.handleComplete("live1", "k1", { text: "hi" });
+assert.equal(notify.getUnreadCount("k1"), 1, "no bump while watching");
+assert.ok(markedRead.some(u => u.endsWith("/k1")), "server watermark stamped");
 
-// Error skip
-notify.handleComplete("live4", { status: "error" });
-assert.equal(notify.getUnreadCount("live4"), 1);
+// 6) another tab's session bumps even if THIS tab has it "current" but hidden
+visibility = "hidden";
+notify.handleComplete("live1", "k1", { text: "hi again" });
+assert.equal(notify.getUnreadCount("k1"), 2, "hidden → bump");
 
-// Gate skip
-notify.handleComplete("live4", { gate: "xyz" });
-assert.equal(notify.getUnreadCount("live4"), 1);
+// 7) replay dedupe: same frame id counted once
+notify.setActiveSession(null);
+notify.handleComplete("live11", null, { text: "a" }, "frame-7");
+notify.handleComplete("live11", null, { text: "a" }, "frame-7");
+assert.equal(notify.getUnreadCount("live11"), 1, "replay deduped");
 
-// Clear chat
+// 8) clearChat wipes overlay AND stamps watermark
 notify.clearChat("k1");
-assert.equal(notify.getUnreadCount("k1"), 0);
-assert.equal(title, "(3) My Astra"); // live2(1) + k3(1) + live4(1)
+assert.equal(notify.getUnreadCount("k1"), 0, "cleared");
+assert.ok(markedRead.filter(u => u.endsWith("/k1")).length >= 2, "watermark on clear");
+
+// 9) server seed: rows flagged unread get a pill on a device that never saw the event
+notify._test.setNow(null);
+notify.seedFromServer([{ id: "srv1", unread: true }, { id: "srv2", unread: false }], null);
+assert.equal(notify.getUnreadCount("srv1", 1), 1, "server-unread row shows pill");
+assert.equal(notify.getUnreadCount("srv2", 0), 0, "read row stays clean");
+// local overlay wins when larger
+notify.handleComplete("srv2", null, { text: "new" });
+assert.equal(notify.getUnreadCount("srv2", 0), 1, "overlay over server");
+
+// 10) countUnreadResponses: only assistant rows with text after the watermark
+const rows = [
+  { role: "user", timestamp: 100, content: "q" },
+  { role: "assistant", timestamp: 101, content: "answer one" },
+  { role: "tool", timestamp: 102, content: "tool out" },
+  { role: "assistant", timestamp: 103, content: "" },             // empty: skip
+  { role: "assistant", timestamp: 104, content: "New chat just started. Greet me briefly and naturally, then ask what I'd like to work on." }, // greet: skip
+  { role: "assistant", timestamp: 105, content: "answer two" },
+];
+assert.equal(notify.countUnreadResponses(rows as any, 100), 2, "two real responses");
+assert.equal(notify.countUnreadResponses(rows as any, null), 0, "no watermark = read");
 
 console.log("unread.check.ts passed");

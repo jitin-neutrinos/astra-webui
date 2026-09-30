@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { sourcesParam, type SourceModal } from "@/lib/source-filter";
 import { cleanTitle } from "@/lib/chat-title";
-import { getUnreadCount } from "@/lib/notify";
+import { getUnreadCount, seedFromServer } from "@/lib/notify";
 import { rowKey, rowTime, timeAgo, sortRows, mergeRows, type SessionRow } from "@/lib/session-row";
 
 // Brand glyphs — single-color currentColor marks, no third-party assets.
@@ -56,6 +56,31 @@ function SourceBadge({ source }: { source: string }) {
   return (
     <span className="ast-src-badge" title={source}>
       <Icon className="w-2.5 h-2.5" />
+    </span>
+  );
+}
+
+
+// "tok:5.7M $:12.32" — totals across the whole session, model-chip styling.
+function fmtTok(n: number | null | undefined): string {
+  if (typeof n !== "number" || !isFinite(n) || n <= 0) return "";
+  if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + "M";
+  if (n >= 1e3) return (n / 1e3).toFixed(n >= 1e4 ? 0 : 1) + "k";
+  return String(Math.round(n));
+}
+function fmtUsd(n: number | null | undefined): string {
+  if (typeof n !== "number" || !isFinite(n) || n <= 0) return "";
+  return n >= 100 ? n.toFixed(0) : n.toFixed(2);
+}
+export function TokenCostChip({ row }: { row: any }) {
+  const tok = (row?.input_tokens || 0) + (row?.output_tokens || 0) + (row?.cache_read_tokens || 0) + (row?.cache_write_tokens || 0);
+  const cost = row?.actual_cost_usd ?? row?.estimated_cost_usd;
+  const t = fmtTok(tok);
+  const c = fmtUsd(cost);
+  if (!t && !c) return null;
+  return (
+    <span className="ast-tok-chip" title={`tokens ${tok.toLocaleString()}${cost ? ` · $${c}` : ""}`}>
+      {t ? `tok:${t}` : ""}{t && c ? " " : ""}{c ? `$:${c}` : ""}
     </span>
   );
 }
@@ -150,7 +175,9 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
         setSessions(rows);
         setTotal(rows.length);
       } else {
-        setSessions((prev) => mergeRows(prev, data.sessions || []));
+        const rows: SessionRow[] = data.sessions || [];
+        seedFromServer(rows as any, null);
+        setSessions((prev) => mergeRows(prev, rows));
         setTotal(data.total || 0);
       }
     } catch (e: any) {
@@ -247,7 +274,7 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
   const renderRow = (s: SessionRow) => {
     const sid = rowKey(s);
     const isActive = !!activeSessionId && sid === activeSessionId;
-    const unread = getUnreadCount(sid);
+    const unread = getUnreadCount(sid, (s as any).unread ? 1 : 0);
     const live = !!s.is_active;
     const src = (s as any).source || "";
     const title = cleanTitle(s.title) || "Untitled session";
@@ -287,6 +314,7 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
             <div className="flex items-center gap-1.5">
               <SourceBadge source={src} />
               {s.model && <span className="ast-model-tag" title={`model: ${s.model}`}>{s.model}</span>}
+              <TokenCostChip row={s as any} />
               <span className="ast-row-time" title={t ? new Date(t * 1000).toLocaleString() : undefined}>
                 {timeAgo(t)}
               </span>
