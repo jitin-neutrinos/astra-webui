@@ -314,14 +314,20 @@ export function applySegmentOps(segments: Segment[], ops: SegOp[]): Segment[] {
 }
 
 export function finalizeSegments(segments: Segment[]): Segment[] {
-  return segments.map((s) => {
-    if (s.status === "run") {
-      const t0 = segTiming.get(s.id);
-      segTiming.delete(s.id);
-      return { ...s, status: "done" as const, durationMs: t0 ? Math.max(0, Date.now() - t0) : s.durationMs };
-    }
-    return { ...s, status: "done" as const };
-  });
+  return segments
+    // Zombie purge (owner 2026-10-01): a tool segment still "run" with NO
+    // result text at finalize time never completed — the stream dropped, the
+    // session recycled, or the row was never persisted. An empty spinner card
+    // that says Working forever is worse than nothing: drop it.
+    .filter((s) => !(s.kind === "tool" && s.status === "run" && !s.resultText && !s.argsText))
+    .map((s) => {
+      if (s.status === "run") {
+        const t0 = segTiming.get(s.id);
+        segTiming.delete(s.id);
+        return { ...s, status: "done" as const, durationMs: t0 ? Math.max(0, Date.now() - t0) : s.durationMs };
+      }
+      return { ...s, status: "done" as const };
+    });
 }
 
 // A turn with an UNRESOLVED approval is paused, not streaming: the model is

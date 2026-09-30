@@ -191,17 +191,73 @@ export function rowsToTurns(rows: HistoryRow[]): Turn[] {
            toolSeg.durationMs = Math.max(0, rowTs - assistantTs);
         }
       } else {
-        currentTurn.segments.push({
-          id: `orphan-${row.id}`,
-          kind: "tool",
-          status: "done",
-          label: row.tool_name || "tool",
-          resultText: resText,
-          exitCode,
-          collapsed: true // owner mandate
-        });
+        // Orphan result (no matching call id — gateway recycled the id or the
+        // call row sits on an unloaded page). Try to adopt the OLDEST pending
+        // call with the SAME tool name: that pair is the same logical tool use
+        // split by an id mismatch, and adopting gives the card its path back.
+        let adopted: (typeof turns)[number]["segments"][number] | null = null;
+        for (const t of turns) {
+          if (t.role !== "assistant") continue;
+          const s = t.segments.find((x) => x.kind === "tool" && x.label === (row.tool_name || "") && !x.resultText && !String(x.id).startsWith("orphan-"));
+          if (s) { adopted = s; break; }
+        }
+        if (adopted) {
+          adopted.resultText = resText;
+          adopted.exitCode = exitCode;
+          adopted.collapsed = true;
+        } else {
+          currentTurn.segments.push({
+            id: `orphan-${row.id}`,
+            kind: "tool",
+            status: "done",
+            label: row.tool_name || "tool",
+            resultText: resText,
+            exitCode,
+            collapsed: true // owner mandate
+          });
+        }
       }
     }
+  }
+
+  // Zombie purge (owner 2026-10-01): drop tool segments whose result row never
+  // arrived (interrupted turn, dropped stream) — they would render as empty
+  // "Read a file" / spinner cards forever. A segment with args OR a result
+  // stays (intent visible); TRULY empty ones (no args, no result) are dropped.
+  // Second orphan pass: adoption during the row scan only sees EARLIER turns;
+  // an orphan whose same-name call sits in a LATER turn (id mismatch across a
+  // page boundary) gets one more chance here.
+  for (const t of turns) {
+    if (t.role !== "assistant") continue;
+    for (const s of t.segments) {
+      if (s.kind !== "tool" || !String(s.id).startsWith("orphan-")) continue;
+      const host = turns.find((t2) => t2.role === "assistant" && t2.segments.some((x) => x.kind === "tool" && x.label === s.label && !x.resultText && !String(x.id).startsWith("orphan-")));
+      const cand = host?.segments.find((x) => x.kind === "tool" && x.label === s.label && !x.resultText && !String(x.id).startsWith("orphan-"));
+      if (cand) {
+        cand.resultText = s.resultText;
+        cand.exitCode = s.exitCode;
+        cand.collapsed = true;
+        s.resultText = ""; // emptied → filtered below
+      }
+    }
+    t.segments = t.segments.filter((s) => {
+      if (s.kind !== "tool") return true;
+      const hasArgs = !!(s.argsText && s.argsText.trim() && s.argsText !== "{}");
+      const hasResult = !!(s.resultText && s.resultText.trim());
+      if (!hasArgs && !hasResult) return false;
+      // File tools (owner 2026-10-01): a card that cannot be TITLED with its
+      // filename is not shown — "Read a file"/"Edited a file" is banned. Orphan
+      // results whose call row is on an unloaded page return whole (id-matched)
+      // once pagination brings the call in; interrupted path-less calls never
+      // had a result and are zombie work.
+      if (s.label === "read_file" || s.label === "write_file" || s.label === "patch") {
+        const argsHavePath = hasArgs && /"(path|file_path)"\s*:/.test(s.argsText!);
+        const resultNamesFile = hasResult && /(files_modified|"path"\s*:|Edited \d+ file)/.test(s.resultText!);
+        return argsHavePath || resultNamesFile;
+      }
+      return true;
+    });
+    for (const s of t.segments) if (s.kind === "tool" && s.status === "run") s.status = "done";
   }
 
   return turns;

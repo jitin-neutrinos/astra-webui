@@ -581,7 +581,10 @@ export function TurnTimeline({ segments, streaming, sessionId, ts, onToggleTool,
         )}
       </div>
       {segments.map((seg, i) => {
-        const reveal = i === lastIdx;
+        // Slow sweep ONLY for the chat being watched live (owner 2026-10-01):
+        // a restored/navigated-into chat paints whole; `streaming` here means
+        // THIS turn is the live one in the active view.
+        const reveal = !!streaming && i === lastIdx;
         if (seg.kind === "thinking") return <ThoughtRow key={seg.id} seg={seg} />;
         if (seg.kind === "tool") return <BundleToolRow key={seg.id} seg={seg} onToggleTool={onToggleTool} />;
         if (seg.kind === "approval") return <ApprovalRow key={seg.id} seg={seg} onRespond={onApprovalRespond} />;

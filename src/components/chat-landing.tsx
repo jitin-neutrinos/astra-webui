@@ -289,11 +289,16 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   const listRef = useRef<HTMLDivElement>(null);
 
   // ---- history pagination (owner 2026-10-01) --------------------------------
-  // First load pulls only the newest HIST_PAGE rows; scrolling to the top pages
-  // in older ones (order=oldest&offset=<raw rows already held>). rawRowsRef
-  // holds the RAW (pre-rowsToTurns) rows oldest-first so offsets stay exact.
+  // Gateway semantics (measured 2026-10-01 against /api/hx/sessions/<sid>/
+  // messages): rows are ALWAYS returned oldest-first ascending. order=latest
+  // selects the window anchored at the END of the session (offset skips back
+  // from the newest row); order=oldest anchors at the START. So:
+  //   initial load  → order=latest&limit=PAGE   (newest PAGE rows, ascending)
+  //   scroll-up     → order=latest&limit=PAGE&offset=<held count>
+  // Never .reverse() the result — that rotates the chat (first message sinks
+  // to the bottom, newest work renders on top) on every reload.
   const HIST_PAGE = 200;
-  const rawRowsRef = useRef<any[]>([]);
+  const rawRowsRef = useRef<any[]>([]); // RAW rows, oldest-first ascending
   const histDoneRef = useRef(false);
   const loadingOlderRef = useRef(false);
   const [olderLoading, setOlderLoading] = useState(false);
@@ -337,7 +342,10 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     const prevHeight = el?.scrollHeight ?? 0;
     try {
       const offset = rawRowsRef.current.length;
-      const res = await fetch(`/api/hx/sessions/${encodeURIComponent(sid)}/messages?order=oldest&limit=${HIST_PAGE}&offset=${offset}`);
+      // order=latest&offset skips BACK from the newest row — the window just
+      // above what we already hold. (order=oldest&offset skips from the START
+      // and would re-fetch rows we already have, dead-ending pagination.)
+      const res = await fetch(`/api/hx/sessions/${encodeURIComponent(sid)}/messages?order=latest&limit=${HIST_PAGE}&offset=${offset}`);
       if (!res.ok) return;
       const data = await res.json();
       const page = (data.messages || []).filter((r: any) => r && r.id != null && !rawRowsRef.current.some((x) => x.id === r.id));
@@ -945,7 +953,9 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         // rowsToTurns reconstructs thinking/tool segments from the persisted
         // reasoning/tool_calls/tool-result rows — approval/clarify segments
         // are the only kind never persisted, so restored turns never have them.
-        const rows = (data.messages || []).slice().reverse();
+        // order=latest already returns rows oldest-first ascending — NO reverse
+        // (reversing rotates the feed: newest work on top, first message last).
+        const rows = data.messages || [];
         rawRowsRef.current = rows;
         histDoneRef.current = rows.length < HIST_PAGE;
         await applyHistoryRows(rows, storedSessionId);

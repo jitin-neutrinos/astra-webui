@@ -39,12 +39,31 @@ export type WsStatus = {
   sessionInfoSid: string | null;
 };
 
-const QUEUE_KEY = "astra-ws-queue-v1";
+const TAB_QUEUE_KEY = "astra-ws-queue-v2";
 
 function loadQueue(): QueuedPrompt[] {
+  // PER-TAB queue (sessionStorage) + legacy-migrate from the old SHARED
+  // localStorage queue — only when it's empty so two tabs never split one list.
+  let store: Pick<Storage, "getItem" | "setItem" | "removeItem"> | null = null;
+  try { store = sessionStorage; } catch { /* private mode */ }
+  if (!store) {
+    try { store = localStorage; } catch { /* private mode */ }
+  }
+  let raw: string | null = null;
+  try { raw = store?.getItem(TAB_QUEUE_KEY) ?? null; } catch { /* private mode */ }
+  if (!raw) {
+    // Legacy one-time migration: adopt the old shared queue into this tab's
+    // own space if (and only if) it has no queue of its own yet.
+    try {
+      const legacy = localStorage.getItem("astra-ws-queue-v1");
+      if (legacy) {
+        try { localStorage.removeItem("astra-ws-queue-v1"); } catch { /* ignore */ }
+        raw = legacy;
+      }
+    } catch { /* ignore */ }
+  }
+  if (!raw) return [];
   try {
-    const raw = localStorage.getItem(QUEUE_KEY);
-    if (!raw) return [];
     const arr = JSON.parse(raw);
     return Array.isArray(arr)
       ? arr
@@ -60,9 +79,15 @@ function loadQueue(): QueuedPrompt[] {
 }
 
 function saveQueue(queue: QueuedPrompt[]) {
+  let store: Pick<Storage, "getItem" | "setItem" | "removeItem"> | null = null;
+  try { store = sessionStorage; } catch { /* private mode */ }
+  if (!store) {
+    try { store = localStorage; } catch { /* private mode */ }
+  }
   try {
-    if (queue.length) localStorage.setItem(QUEUE_KEY, JSON.stringify(queue.slice(-20)));
-    else localStorage.removeItem(QUEUE_KEY);
+    if (!store) return;
+    if (queue.length) store.setItem(TAB_QUEUE_KEY, JSON.stringify(queue.slice(-20)));
+    else store.removeItem(TAB_QUEUE_KEY);
   } catch { /* private mode */ }
 }
 

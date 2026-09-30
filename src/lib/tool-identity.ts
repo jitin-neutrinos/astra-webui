@@ -103,7 +103,15 @@ export function describeTool(label: string | undefined, argsText: string | undef
     if (m) return m[1].split(",")[0].trim();
     const j = resultText?.match(/"files_modified"\s*:\s*\["([^"]+)"/);
     if (j) return j[1].split("/").pop() || j[1];
-    return undefined;
+    // read_file result shape: {"path": "/a/b.ts", ...} (path echoed back)
+    const p = resultText && /^[\s{]*"/.test(resultText) ? (() => {
+      try {
+        const parsed = JSON.parse(resultText!);
+        if (parsed && typeof parsed.path === "string") return parsed.path;
+      } catch { /* not json */ }
+      return undefined;
+    })() : undefined;
+    return p;
   })();
 
   // MCP: provider convention mcp__<server>__<tool>

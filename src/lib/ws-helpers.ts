@@ -10,6 +10,25 @@
 // anywhere, including node-run checks.
 
 export type EventPayload = { type: string; payload: any; session_id?: string };
+
+// ---- Durable storage keys: per-tab queue, cross-tab session registry ----
+// True concurrent chats (tab A and tab B running different conversations at
+// the same time) need the durable offline prompt queue to be PER-TAB: a shared
+// localStorage queue let tab A's queued prompt flush into tab B's freshly
+// minted chat after a reconnect. Session ids themselves stay GLOBAL so the
+// sidebar/other tabs can see and resume them.
+export const TAB_QUEUE_KEY = "astra-ws-queue-v2"; // sessionStorage: survives reloads, never crosses tabs
+export const SESSION_INDEX_KEY = "astra-session-index-v1"; // localStorage: cross-tab registry of live chats
+
+export function storageForQueue(): Pick<Storage, "getItem" | "setItem" | "removeItem"> | null {
+  if (typeof sessionStorage === "undefined") return null;
+  return sessionStorage;
+}
+
+export function storageForSessions(): Pick<Storage, "getItem" | "setItem" | "removeItem"> | null {
+  if (typeof localStorage === "undefined") return null;
+  return localStorage;
+}
 export type SessionInfo = {
   cwd?: string;
   yolo?: boolean;

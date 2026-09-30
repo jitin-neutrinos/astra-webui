@@ -511,10 +511,10 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
                 aria-current={active ? "page" : undefined}
                 title={!expanded ? item.name : undefined}
                 className={cn(
-                  "relative flex h-11 w-full items-center rounded-md border-l-2 transition-colors duration-200 press-feedback",
+                  "relative flex h-11 w-full items-center rounded-md transition-colors duration-200 press-feedback",
                   active
-                    ? "border-cyanx bg-cyanx/10 text-cyanx"
-                    : "border-transparent text-slate-300 hover:bg-white/5 hover:text-white",
+                    ? "bg-cyanx/10 text-cyanx"
+                    : "text-slate-300 hover:bg-white/5 hover:text-white",
                 )}>
                 <span className="grid h-full w-12 shrink-0 place-content-center text-muted">{item.icon}</span>
                 {expanded && <span className="truncate text-sm font-medium">{item.name}</span>}
@@ -536,7 +536,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
         <ThemeToggle expanded={expanded} />
         <button type="button" onClick={onLogout}
           title={!expanded ? "Logout" : undefined}
-          className="relative flex h-11 w-full items-center rounded-md border-l-2 border-transparent text-slate-400 transition-colors duration-200 hover:border-redx/60 hover:bg-redx/10 hover:text-redx press-feedback">
+          className="relative flex h-11 w-full items-center rounded-md text-slate-400 transition-colors duration-200 hover:bg-redx/10 hover:text-redx press-feedback">
           <span className="grid h-full w-12 shrink-0 place-content-center">
             <LogOut className="h-4 w-4" strokeWidth={1.5} />
           </span>
