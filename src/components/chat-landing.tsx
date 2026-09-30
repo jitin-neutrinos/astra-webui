@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
 import { ArrowUp, Square, TriangleAlert, RotateCcw, Pencil, ChevronDown, Plus, WifiOff, Loader2, CheckCircle2 } from "lucide-react";
+import * as notify from "@/lib/notify";
 import { AnimatedCopyButton } from "@/lib/animated-copy";
 import { cn } from "@/lib/utils";
 import { useHermesWS } from "@/lib/hermes-ws";
@@ -763,15 +764,16 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     // "chat slug doesn't update right when navigating between pages").
     if (!isActiveView) return;
     if (storedSessionId) {
+      notify.clearChat(storedSessionId);
       if (location.pathname !== `/c/${storedSessionId}`) {
         history.pushState({}, "", `/c/${storedSessionId}`);
       }
-      document.title = chatTitle ? `${chatTitle} — Astra` : "Chat — Astra";
+      notify.setBaseTitle(chatTitle ? `${chatTitle} — Astra` : "Chat — Astra");
     } else {
       if (location.pathname.startsWith("/c/")) {
         history.replaceState({}, "", "/");
       }
-      document.title = "Astra";
+      notify.setBaseTitle("Astra");
     }
   }, [storedSessionId, isActiveView, chatTitle]);
 

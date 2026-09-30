@@ -22,6 +22,7 @@ import {
   Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import * as notify from "@/lib/notify";
 import { ChatLanding } from "./components/chat-landing";
 import { ThemeToggle, ThemeIconButton } from "./components/theme-toggle";
 import { ChatsPanel } from "./components/chats-panel";
@@ -214,7 +215,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
     if (view === "files" && location.pathname !== "/files") history.pushState({}, "", "/files");
     else if (view === "tracker" && location.pathname !== "/tracker") history.pushState({}, "", "/tracker");
     else if (view === "config" && location.pathname !== "/config") history.pushState({}, "", "/config");
-    if (view !== "chat") document.title = TITLES[view];
+    if (view !== "chat") notify.setBaseTitle(TITLES[view]);
   }, [view]);
 
   useEffect(() => {

@@ -205,26 +205,41 @@ function broadcastStatus(state) {
 
 export function broadcastFrame(payload, opcode) {
   const frame = encodeFrame(payload, { opcode, masked: false });
-  // Filter leg: only when at least one sid-tagged socket is connected do we
-  // pay for a JSON.parse. Untagged sockets are relayed opaquely (unchanged).
+  // Filter leg: only when at least one sid-tagged or filter=complete socket is connected
+  // do we pay for a JSON.parse. Untagged sockets are relayed opaquely (unchanged).
   let passForTagged = false;
   let parsedSid = null;
   let anyTagged = false;
-  for (const info of browserSockets.values()) if (info.sid) { anyTagged = true; break; }
-  if (anyTagged && opcode === 0x1) {
+  let anyCompleteFilter = false;
+  let parsedType = null;
+  
+  for (const info of browserSockets.values()) {
+    if (info.sid) anyTagged = true;
+    if (info.filter) anyCompleteFilter = true;
+  }
+  
+  if ((anyTagged || anyCompleteFilter) && opcode === 0x1) {
     try {
       const msg = JSON.parse(payload.toString());
       // Envelope: {method:"event", params:{type, session_id, payload}}
       const p = msg && msg.params;
-      if (p && (p.type === "message.complete" || p.type === "message.error")) {
-        passForTagged = true;
-        parsedSid = p.session_id;
+      if (p) {
+        parsedType = p.type;
+        if (p.type === "message.complete" || p.type === "message.error") {
+          passForTagged = true;
+          parsedSid = p.session_id;
+        }
       }
     } catch { /* unparseable: tagged sockets just don't get this frame */ }
   }
+  
   for (const [s, info] of browserSockets) {
-    if (info.sid && opcode === 0x1) {
-      if (!passForTagged || parsedSid !== info.sid) continue;
+    if (opcode === 0x1) {
+      if (info.sid) {
+        if (!passForTagged || parsedSid !== info.sid) continue;
+      } else if (info.filter) {
+        if (parsedType !== "message.complete" && parsedType !== "message.error") continue;
+      }
     }
     try { s.write(frame); } catch { /* error handler destroys the socket */ }
   }
@@ -403,7 +418,8 @@ function scheduleReconnect() {
 export function handleWsUpgrade(req, socket, head) {
   const url = new URL(req.url, "http://x");
   const sid = url.searchParams.get("sid") || null; // ?sid= → filtered background leg
-  const info = { sid, lastPong: Date.now() };
+  const filterComplete = url.searchParams.get("filter") === "complete";
+  const info = { sid, filter: filterComplete, lastPong: Date.now() };
   
   const key = req.headers["sec-websocket-key"];
   const accept = generateAcceptKey(key);

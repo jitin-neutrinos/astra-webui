@@ -23,6 +23,10 @@ import {
 } from "./ws-store";
 import { pushLiveSession } from "./native-session-bridge";
 import type { ConnEvent } from "./connection-state";
+import { Capacitor } from "@capacitor/core";
+import * as notify from "./notify";
+
+const APP_SOURCE = Capacitor.isNativePlatform() ? "android" : "webui";
 
 type Listener = (ev: EventPayload) => void;
 
@@ -138,6 +142,7 @@ function rebindToStored(key: string) {
   for (const k of eng.resumeKeys.values()) if (k === key) return; // already in flight
   eng.liveKey = null;
   wsSet({ liveSessionId: null, sessionInfo: null, sessionInfoSid: null });
+  notify.setActiveSession(null);
   sendResume(s, key);
 }
 
@@ -285,7 +290,7 @@ function flushQueueForSession(sid: string) {
 }
 
 function sendPrompt(sid: string, text: string, queued = false) {
-  rpc("prompt.submit", { session_id: sid, text, surface: "webui", ...(queued ? { queued: true } : {}) })
+  rpc("prompt.submit", { session_id: sid, text, surface: APP_SOURCE, ...(queued ? { queued: true } : {}) })
     .catch((err: any) => {
       setTurnRunning(false);
       emit({
@@ -299,7 +304,7 @@ function sendSessionCreate() {
   if (eng.pendingCreate || wsGet().liveSessionId) return;
   if (!eng.socket || eng.socket.readyState !== 1) { eng.createOnOpen = true; return; }
   eng.pendingCreate = true;
-  eng.socket.send(JSON.stringify({ method: "session.create", params: { source: "webui" }, id: ownRpcId() }));
+  eng.socket.send(JSON.stringify({ method: "session.create", params: { source: APP_SOURCE }, id: ownRpcId() }));
 }
 
 // ---- public RPC ----
@@ -360,7 +365,7 @@ export function submitPrompt(content: string) {
 export function submitBg(content: string): Promise<boolean> {
   const sid = wsGet().liveSessionId || readStoredSid();
   if (!sid) { emit({ type: "message.error", payload: { error: "No session yet — send a message first." } }); return Promise.resolve(false); }
-  return rpc("prompt.submit", { session_id: sid, text: content, surface: "webui", queued: true })
+  return rpc("prompt.submit", { session_id: sid, text: content, surface: APP_SOURCE, queued: true })
     .then(() => true)
     .catch((err: any) => {
       emit({ type: "message.error", payload: { error: err?.message || err?.data?.message || String(err) } });
@@ -387,7 +392,7 @@ export async function submitSteer(content: string): Promise<boolean> {
     const prev = await rpc("config.get", { key: "busy" }).then((r: any) => (typeof r?.value === "string" ? r.value : "interrupt")).catch(() => "interrupt");
     if (prev !== "steer") await rpc("config.set", { key: "busy", value: "steer" }).catch(() => {});
     try {
-      await rpc("prompt.submit", { session_id: sid, text: content, surface: "webui" });
+      await rpc("prompt.submit", { session_id: sid, text: content, surface: APP_SOURCE });
       return true;
     } finally {
       if (prev !== "steer") await rpc("config.set", { key: "busy", value: prev }).catch(() => {});
@@ -429,6 +434,7 @@ export function resetSession() {
   setTurnRunning(false);
   eng.liveKey = null;
   wsSet({ liveSessionId: null, sessionInfo: null, sessionInfoSid: null });
+  notify.setActiveSession(null);
   wsGet().setStoredSessionId(null);
   eng.pendingPreTurnRpcs = [];
   eng.pendingCreate = false;
@@ -723,6 +729,10 @@ function onMessage(e: MessageEvent) {
     clearWatchdog();
     emit({ type: data.method, payload: { id: data.id, params: data.params || {} } });
   }
+  
+  if (data.method === "event" && data.params && data.params.type === "message.complete") {
+    notify.handleComplete(data.params.session_id, data.params.payload);
+  }
 
   // watchdog probe reply
   if (data.id && eng.probeId === data.id) {
@@ -783,6 +793,9 @@ function onMessage(e: MessageEvent) {
     } else if (data.result && data.result.session_id) {
       eng.liveKey = resumedKey;
       wsSet({ liveSessionId: data.result.session_id });
+      notify.setActiveSession(data.result.session_id);
+      if (data.result.session_key) notify.mapSession(data.result.session_id, data.result.session_key);
+      else notify.mapSession(data.result.session_id, data.result.session_id);
       if (replyInfo) applySessionInfo(replyInfo.session_id, replyInfo.info);
       applyReplyTruth(data.result);
       flushQueueForSession(data.result.session_id);
@@ -791,6 +804,9 @@ function onMessage(e: MessageEvent) {
   } else if (data.id && data.result && data.result.session_id && eng.ownRpcIds.has(data.id)) {
     eng.ownRpcIds.delete(data.id);
     wsSet({ liveSessionId: data.result.session_id });
+    notify.setActiveSession(data.result.session_id);
+    if (data.result.stored_session_id) notify.mapSession(data.result.session_id, data.result.stored_session_id);
+    else notify.mapSession(data.result.session_id, data.result.session_id);
     if (replyInfo) applySessionInfo(replyInfo.session_id, replyInfo.info);
     eng.pendingCreate = false;
     eng.createOnOpen = false;
