@@ -68,7 +68,10 @@ class NtfyPushService : Service() {
 
     private fun astraPersona(): androidx.core.app.Person = androidx.core.app.Person.Builder()
         .setName("Astra")
-        .setIcon(IconCompat.createWithResource(this, R.drawable.ic_astra_badge))
+        // Real launcher art, as-is (full-color gradient star) — not a redrawn glyph.
+        .setIcon(IconCompat.createWithBitmap(
+            android.graphics.BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher_foreground)
+        ))
         .build()
 
     // ---- chat leg (R1): second socket, same service, shared client ----------
