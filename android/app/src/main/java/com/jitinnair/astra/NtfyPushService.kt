@@ -215,21 +215,21 @@ class NtfyPushService : Service() {
             unread > 0 -> builder
                 .setContentTitle("$unread unread ${if (unread == 1) "reply" else "replies"}")
                 .setContentText(if (chatStates.size > 1) "${chatStates.size} chats waiting" else "Tap to open Astra")
-                .setSmallIcon(R.drawable.ic_unread_count)
                 .setColor(brandColor)
                 .setNumber(unread)
             ntfyUp -> builder
                 .setContentTitle("Astra")
                 .setContentText("Connected")
-                .setSmallIcon(R.drawable.ic_status_dot)
                 .setColor(greenStatus)
             else -> builder
                 .setContentTitle("Astra")
                 .setContentText(if (ntfyDownSince > 0) "Reconnecting…" else "Connecting…")
-                .setSmallIcon(R.drawable.ic_status_dot)
                 .setColor(redStatus)
         }
+        // Full-color logo everywhere, including the silent status row. State
+        // still reads through setColor (green/red/cyan) on tinting ROMs.
         return builder
+            .setSmallIcon(IconCompat.createWithBitmap(fullLogo()))
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
