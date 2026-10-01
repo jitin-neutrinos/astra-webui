@@ -93,4 +93,24 @@ const rows = [
 assert.equal(notify.countUnreadResponses(rows as any, 100), 2, "two real responses");
 assert.equal(notify.countUnreadResponses(rows as any, null), 0, "no watermark = read");
 
+// 11) TAB-TITLE vs PILLS (2026-10-01 live bug): a stale orphan overlay key (live
+// session id that never mapped to a stored row) must NOT inflate the total once
+// the chat list is known. Fresh orphans survive (mapping may still land); stale
+// ones (t older than TTL) are pruned on the next seed/total.
+notify._test.reset();
+notify.handleComplete("orphan-live", null, { text: "x" });            // orphan bump
+notify.handleComplete("real-row", null, { text: "y" });               // legit bump
+notify.seedFromServer([{ id: "real-row", unread: true }], null);      // list lands: orphan NOT in it
+// age the orphan past TTL
+const ov = notify._test.overlayRef() as Record<string, { n: number; t: number }>;
+ov["orphan-live"].t = Date.now() - 11 * 60 * 1000;
+notify.seedFromServer([{ id: "real-row", unread: true }], null);      // prune triggers
+assert.equal(notify.getTotalUnread(), 1, "stale orphan pruned; total == visible pill count");
+
+// 12) legacy store shape {key:number} still restores (fresh module instance —
+// restore is one-shot per module, so import with a cache-busting query)
+mockStore["astra_unread_overlay_v1"] = JSON.stringify({ legacy: 3 });
+const notify2 = await import(/* @vite-ignore */ "./notify?legacy-shape" as string);
+assert.equal(notify2.getTotalUnread(), 3, "legacy overlay migrated");
+
 console.log("unread.check.ts passed");

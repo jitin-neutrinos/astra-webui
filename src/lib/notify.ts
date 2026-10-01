@@ -7,10 +7,17 @@
 //   errors / gate or approval requests.
 // - The auto-greet kickoff ("New chat just started…") is a UI convention, not a message:
 //   never counted anywhere.
-let overlay: Record<string, number> = {};
+// Overlay entries carry a `t` (bumped-at, ms). The overlay is a CACHE — orphan entries
+// (live session ids that never mapped to a stored row, chats that were deleted) must
+// never outlive the chat list, or the tab-title count drifts above the visible pills.
+let overlay: Record<string, { n: number; t: number }> = {};
 let seenCompletes: Record<string, true> = {};
 let currentStoredSid: string | null = null;
 let baseTitle = "Astra";
+
+/** Known stored-row keys from the last full sessions fetch — the pruning set. */
+let knownRowKeys: Set<string> | null = null;
+const ORPHAN_TTL_MS = 10 * 60 * 1000; // keep young orphans (list may be mid-load / mapped later)
 
 /** live session id -> stored row key (sessions rotate ids on compression; rows list tips). */
 let sidmap: Record<string, string> = {};
@@ -36,7 +43,18 @@ function save() {
 function restore() {
   try {
     const o = localStorage.getItem("astra_unread_overlay_v1");
-    if (o) overlay = JSON.parse(o);
+    if (o) {
+      const parsed: unknown = JSON.parse(o);
+      // legacy shape {key: number} → migrate; current shape {key: {n,t}}
+      overlay = {};
+      for (const [k, v] of Object.entries((parsed as Record<string, unknown>) || {})) {
+        if (typeof v === "number") overlay[k] = { n: v, t: 0 }; // unknown age: pruned at first list load, server re-seeds if real
+        else if (v && typeof v === "object" && typeof (v as { n?: unknown }).n === "number") {
+          const rec = v as { n: number; t?: number };
+          overlay[k] = { n: rec.n, t: rec.t || 0 };
+        }
+      }
+    }
   } catch { /* ignore */ }
 }
 let restored = false;
@@ -46,7 +64,25 @@ const GREET_RE = /^New chat just started\. Greet me briefly and naturally, then 
 
 function computeTotal(): number {
   ensure();
-  return Object.values(overlay).reduce((a, b) => a + b, 0);
+  pruneOrphans();
+  return Object.values(overlay).reduce((a, e) => a + e.n, 0);
+}
+
+/** Drop overlay entries whose key is not a known chat row AND is older than the
+ *  orphan TTL. Called from computeTotal (title) and seedFromServer.
+ *  Returns true when anything was removed. */
+function pruneOrphans(nowMs = Date.now()): boolean {
+  if (!knownRowKeys) return false; // no full list yet — nothing to prune against
+  let changed = false;
+  for (const k of Object.keys(overlay)) {
+    if (knownRowKeys.has(k)) continue;
+    if (nowMs - (overlay[k]?.t || 0) > ORPHAN_TTL_MS) {
+      delete overlay[k];
+      changed = true;
+    }
+  }
+  if (changed) save();
+  return changed;
 }
 
 function updateTitle() {
@@ -88,7 +124,8 @@ function playChime() {
 
 function bump(key: string) {
   ensure();
-  overlay[key] = (overlay[key] || 0) + 1;
+  const cur = overlay[key];
+  overlay[key] = { n: (cur?.n || 0) + 1, t: Date.now() };
   save();
   updateTitle();
   playChime();
@@ -108,7 +145,7 @@ export function setActiveSession(storedSid: string | null) {
 /** Server-authoritative unread count for a row + live overlay on top. */
 export function getUnreadCount(storedKey: string, serverUnread = 0): number {
   ensure();
-  return Math.max(serverUnread, overlay[storedKey] || 0);
+  return Math.max(serverUnread, overlay[storedKey]?.n || 0);
 }
 
 /** Count unread RESPONSES from history rows since a watermark (epoch seconds).
@@ -218,14 +255,18 @@ export function getTotalUnread(): number {
 
 /** Server rows carry `unread` (bool) + `last_read_at`; seed the overlay for rows we
  *  have no local count for so devices that never saw the live event still show a pill.
- *  Read rows RECONCILE the overlay away — a read on another device clears ours. */
+ *  Read rows RECONCILE the overlay away — a read on another device clears ours.
+ *  The row list is also the pruning set: overlay entries not in it (and not fresh)
+ *  are orphans and get dropped, keeping the tab-title total equal to the pills. */
 export function seedFromServer(rows: { id: string; unread?: boolean; last_read_at?: number | null }[], since: number | null | undefined): void {
   ensure();
   let changed = false;
+  knownRowKeys = new Set(rows.map((r) => r.id));
+  changed = pruneOrphans() || changed;
   for (const r of rows) {
     if (r.unread && overlay[r.id] == null && r.id !== currentStoredSid) {
       // 1 stands for "has unread responses" — countUnreadResponses refines when history loads
-      overlay[r.id] = 1;
+      overlay[r.id] = { n: 1, t: Date.now() };
       changed = true;
     } else if (!r.unread && overlay[r.id] != null) {
       // server says read (another device stamped the watermark) — drop our overlay
