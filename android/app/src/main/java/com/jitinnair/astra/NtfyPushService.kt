@@ -239,12 +239,12 @@ class NtfyPushService : Service() {
                 .setColor(brandColor)
                 .setNumber(unread)
             ntfyUp -> builder
-                .setContentTitle("Astra")
-                .setContentText("Connected")
+                .setContentTitle("Connected")
+                .setContentText("Listening for replies & approvals")
                 .setColor(greenStatus)
             else -> builder
-                .setContentTitle("Astra")
-                .setContentText(if (ntfyDownSince > 0) "Reconnecting…" else "Connecting…")
+                .setContentTitle(if (ntfyDownSince > 0) "Reconnecting…" else "Connecting…")
+                .setContentText("Notifications will resume shortly")
                 .setColor(redStatus)
         }
         // Full-color logo everywhere, including the silent status row. State
@@ -552,10 +552,10 @@ class NtfyPushService : Service() {
             sessionCache[sid]?.let { return it }
             val now = System.currentTimeMillis()
             if (sessionNotFoundCache.containsKey(sid) && now - sessionNotFoundCache[sid]!! < 600_000L) {
-                return SessionInfo("Astra chat", storedHint)
+                return SessionInfo("Chat", storedHint)
             }
             val cookie = readSessionCookie()
-                ?: return SessionInfo("Astra chat", storedHint)
+                ?: return SessionInfo("Chat", storedHint)
             return try {
                 val request = Request.Builder()
                     .url("https://astra.jitinnair.com/api/hx/session-info/$storedHint")
@@ -564,28 +564,28 @@ class NtfyPushService : Service() {
                 sharedClient().newCall(request).execute().use { response ->
                     if (response.isSuccessful) {
                         val json = JSONObject(response.body?.string() ?: "{}")
-                        val title = json.optString("title", "Astra chat")
-                        val info = SessionInfo(if (title.isEmpty()) "Astra chat" else title, storedHint)
+                        val title = json.optString("title", "Chat")
+                        val info = SessionInfo(if (title.isEmpty()) "Chat" else title, storedHint)
                         sessionCache[sid] = info
                         info
                     } else {
                         sessionNotFoundCache[sid] = now
-                        SessionInfo("Astra chat", storedHint)
+                        SessionInfo("Chat", storedHint)
                     }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "resolveSessionInfo(hint) failed", e)
                 sessionNotFoundCache[sid] = now
-                SessionInfo("Astra chat", storedHint)
+                SessionInfo("Chat", storedHint)
             }
         }
         sessionCache[sid]?.let { return it }
         val now = System.currentTimeMillis()
         if (sessionNotFoundCache.containsKey(sid) && now - sessionNotFoundCache[sid]!! < 600000L) {
-            return SessionInfo("Astra chat", sid)
+            return SessionInfo("Chat", sid)
         }
 
-        val cookie = readSessionCookie() ?: return SessionInfo("Astra chat", sid)
+        val cookie = readSessionCookie() ?: return SessionInfo("Chat", sid)
         val request = Request.Builder()
             .url("https://astra.jitinnair.com/api/hx/session-info/$sid")
             .header("Cookie", cookie)
@@ -594,9 +594,9 @@ class NtfyPushService : Service() {
             val response = sharedClient().newCall(request).execute()
             if (response.isSuccessful) {
                 val json = JSONObject(response.body?.string() ?: "{}")
-                val title = json.optString("title", "Astra chat")
+                val title = json.optString("title", "Chat")
                 val storedKey = json.optString("session_key", sid)
-                val info = SessionInfo(if (title.isEmpty()) "Astra chat" else title, if (storedKey.isEmpty()) sid else storedKey)
+                val info = SessionInfo(if (title.isEmpty()) "Chat" else title, if (storedKey.isEmpty()) sid else storedKey)
                 sessionCache[sid] = info
                 return info
             } else {
@@ -606,7 +606,7 @@ class NtfyPushService : Service() {
             Log.e(TAG, "resolveSessionInfo failed", e)
             sessionNotFoundCache[sid] = now
         }
-        return SessionInfo("Astra chat", sid)
+        return SessionInfo("Chat", sid)
     }
 
     data class ChatState(var title: String, var storedKey: String, var count: Int, val notifId: Int, val lines: MutableList<String>)
@@ -674,6 +674,39 @@ class NtfyPushService : Service() {
         publishStatus()   // unread count on the persistent status notification
     }
 
+    // Gate id -> chat title for the notification body (header already says Astra).
+    // GET /api/gate/:id with the ntfy cred the service already holds; title via
+    // the existing session-info resolver. 15s in-memory cache, null on any miss.
+    private val gateTitleCache = mutableMapOf<String, Pair<String, Long>>()
+    private fun gateChatTitle(gateId: String): String? {
+        val now = System.currentTimeMillis()
+        gateTitleCache[gateId]?.let { (t, at) ->
+            if (now - at < 60_000L) return t
+        }
+        val parts = (getSharedPreferences("CapacitorStorage", Context.MODE_PRIVATE)
+            .getString("ntfy_conn", "") ?: "").split("|")
+        if (parts.size < 3) return null
+        return try {
+            val req = Request.Builder()
+                .url("https://astra.jitinnair.com/api/gate/$gateId")
+                .header("Authorization", "Basic ${parts[2]}")
+                .build()
+            sharedClient().newCall(req).execute().use { r ->
+                if (!r.isSuccessful) return null
+                val g = JSONObject(r.body?.string() ?: "{}")
+                val sid = g.optString("sid", "")
+                if (sid.isEmpty()) return null
+                val info = resolveSessionInfo(sid, g.optString("stored_session_id"))
+                val t = info.title.takeUnless { it == "Chat" }
+                if (t != null) gateTitleCache[gateId] = t to now
+                t
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "gateChatTitle failed", e)
+            null
+        }
+    }
+
     private fun showGateNotification(json: JSONObject) {
         val title = json.optString("title", "Astra")
         val message = json.optString("message", "")
@@ -682,6 +715,16 @@ class NtfyPushService : Service() {
         val notifId = msgId.hashCode().coerceAtLeast(2)
         val gateId = try { Uri.parse(clickUrl).getQueryParameter("gate") ?: "" } catch (e: Exception) { "" }
         val isApproval = title.contains("approval", ignoreCase = true)
+
+        // Body title = the chat's name (owner spec: header already says Astra).
+        // Chain: gate id -> sid -> session title. Fall back to kind text, never "Astra".
+        val chatTitle = if (gateId.isNotEmpty()) gateChatTitle(gateId) else null
+        val bodyTitle = when {
+            chatTitle != null -> chatTitle
+            isApproval -> "Approval needed"
+            title.contains("question", ignoreCase = true) -> "Question"
+            else -> "Update"
+        }
 
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         // Interactive pop-up card. No gate id (older server / plain push) -> open the chat.
@@ -700,7 +743,7 @@ class NtfyPushService : Service() {
         val fullPi = PendingIntent.getActivity(this, notifId + 1, popup, flags)
 
         val builder = NotificationCompat.Builder(this, CHANNEL_PUSH)
-            .setContentTitle(title)
+            .setContentTitle(bodyTitle)
             .setContentText(message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
             .setSmallIcon(IconCompat.createWithBitmap(fullLogo()))
