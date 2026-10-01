@@ -65,6 +65,9 @@ class NtfyPushService : Service() {
     // ---- brand (flat, no gradients) -----------------------------------------
     // cyanx token from the web index.css; one accent everywhere.
     private val brandColor: Int get() = 0xFF22D3EE.toInt()
+    private val greenStatus: Int get() = 0xFF10B981.toInt()   // okay token (GateActivity)
+    private val redStatus: Int get() = 0xFFEF4444.toInt()
+    private var ntfyUp = false   // gate socket health → status dot
 
     /** Flat Astra badge rasterized once — large icon for banner / panel / lockscreen. */
     private fun astraBadgeBitmap(): Bitmap {
@@ -96,8 +99,8 @@ class NtfyPushService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannels()
-        startAsForeground("Connecting…")
         isRunning = true
+        startAsForeground()
         connectWebSocket()
         connectChatLeg()
         startChatPrefWatch()
@@ -182,8 +185,8 @@ class NtfyPushService : Service() {
         }
     }
 
-    private fun startAsForeground(text: String) {
-        val notification = foregroundNotification(text)
+    private fun startAsForeground() {
+        val notification = statusNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
@@ -191,19 +194,46 @@ class NtfyPushService : Service() {
         }
     }
 
-    private fun foregroundNotification(text: String): Notification {
+    // ---- foreground status notification: unread count > connection dot -------------
+    // Owner spec: unread chats → count tile in cyan; none unread + connected → green
+    // dot; not connected → red dot. Flat colors only.
+    private fun totalUnread(): Int = chatStates.values.sumOf { it.count }
+
+    private fun publishStatus() {
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(NOTIFICATION_ID, statusNotification())
+    }
+
+    private fun statusNotification(): Notification {
+        val unread = totalUnread()
         val intent = Intent(this, MainActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(
-            this, 0, intent, PendingIntent.FLAG_IMMUTABLE
-        )
-        return NotificationCompat.Builder(this, CHANNEL_FG)
-            .setContentTitle("Astra")
-            .setContentText(text)
-            .setSmallIcon(R.drawable.ic_astra_notify)
-            .setColor(brandColor)
+        val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+        val builder = NotificationCompat.Builder(this, CHANNEL_FG)
+        when {
+            unread > 0 -> builder
+                .setContentTitle("$unread unread ${if (unread == 1) "reply" else "replies"}")
+                .setContentText(if (chatStates.size > 1) "${chatStates.size} chats waiting" else "Tap to open Astra")
+                .setSmallIcon(R.drawable.ic_unread_count)
+                .setColor(brandColor)
+                .setLargeIcon(astraBadgeBitmap())
+                .setNumber(unread)
+            ntfyUp -> builder
+                .setContentTitle("Astra")
+                .setContentText("Connected")
+                .setSmallIcon(R.drawable.ic_status_dot)
+                .setColor(greenStatus)
+            else -> builder
+                .setContentTitle("Astra")
+                .setContentText(if (ntfyDownSince > 0) "Reconnecting…" else "Connecting…")
+                .setSmallIcon(R.drawable.ic_status_dot)
+                .setColor(redStatus)
+        }
+        return builder
             .setContentIntent(pendingIntent)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setShowWhen(false)
             .build()
     }
 
@@ -245,8 +275,8 @@ class NtfyPushService : Service() {
                 Log.d(TAG, "WebSocket opened")
                 reconnectAttempt = 0
                 ntfyDownSince = 0L
-                val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                manager.notify(NOTIFICATION_ID, foregroundNotification("Connected"))
+                ntfyUp = true
+                publishStatus()
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -277,13 +307,14 @@ class NtfyPushService : Service() {
     private fun scheduleReconnect() {
         if (!isRunning) return
         if (ntfyDownSince == 0L) ntfyDownSince = System.currentTimeMillis()
+        ntfyUp = false
+        publishStatus()
         reconnectRunnable?.let { handler.removeCallbacks(it) }
         val delaySec = min(300.0, 1.0 * (2.0).pow(reconnectAttempt)).toLong().coerceAtLeast(1)
         reconnectAttempt++
         // Status text only after 60s down. Dial still happens immediately.
         if (System.currentTimeMillis() - ntfyDownSince >= 60_000L) {
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.notify(NOTIFICATION_ID, foregroundNotification("Reconnecting in ${delaySec}s"))
+            publishStatus()
         }
         val r = Runnable { if (isRunning) connectWebSocket() }
         reconnectRunnable = r
@@ -580,6 +611,7 @@ class NtfyPushService : Service() {
             manager.cancel(2001)
             // ponytail: vendor-launcher dependent ceiling
             me.leolin.shortcutbadger.ShortcutBadger.applyCount(applicationContext, 0)
+            publishStatus()   // back to green/red dot
             return
         }
 
@@ -619,6 +651,7 @@ class NtfyPushService : Service() {
         
         (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(2001, builder.build())
         me.leolin.shortcutbadger.ShortcutBadger.applyCount(applicationContext, totalUnread)
+        publishStatus()   // unread count on the persistent status notification
     }
 
     private fun showGateNotification(json: JSONObject) {
