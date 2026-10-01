@@ -8,8 +8,6 @@ import android.content.Context.NOTIFICATION_SERVICE
 import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
-import androidx.core.content.ContextCompat
-import androidx.core.graphics.drawable.IconCompat
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -63,13 +61,8 @@ class GateActionReceiver : BroadcastReceiver() {
         if (!ok) { title = "Couldn't send"; text = "Open Astra and answer there." }
         else if (denied) { title = "Denied"; text = "Astra will not run it." }
         else { title = "Approved"; text = "Astra is continuing." }
-        val d = ContextCompat.getDrawable(context, R.drawable.ic_astra_badge)!!
-        val bmp = android.graphics.Bitmap.createBitmap(d.intrinsicWidth, d.intrinsicHeight, android.graphics.Bitmap.Config.ARGB_8888)
-        val canvas = android.graphics.Canvas(bmp)
-        d.setBounds(0, 0, canvas.width, canvas.height); d.draw(canvas)
         val n = NotificationCompat.Builder(context, CONFIRM_CHANNEL)
             .setSmallIcon(R.drawable.ic_astra_notify)
-            .setLargeIcon(bmp)
             .setColor(0xFF22D3EE.toInt())
             .setContentTitle(title)
             .setContentText(text)

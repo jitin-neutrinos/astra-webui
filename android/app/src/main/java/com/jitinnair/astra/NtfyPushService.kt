@@ -9,8 +9,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.ServiceInfo
-import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
@@ -19,7 +17,6 @@ import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.RemoteInput
-import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.IconCompat
 import okhttp3.*
 import org.json.JSONObject
@@ -68,16 +65,6 @@ class NtfyPushService : Service() {
     private val greenStatus: Int get() = 0xFF10B981.toInt()   // okay token (GateActivity)
     private val redStatus: Int get() = 0xFFEF4444.toInt()
     private var ntfyUp = false   // gate socket health → status dot
-
-    /** Flat Astra badge rasterized once — large icon for banner / panel / lockscreen. */
-    private fun astraBadgeBitmap(): Bitmap {
-        val d = ContextCompat.getDrawable(this, R.drawable.ic_astra_badge)!!
-        val bmp = Bitmap.createBitmap(d.intrinsicWidth, d.intrinsicHeight, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bmp)
-        d.setBounds(0, 0, canvas.width, canvas.height)
-        d.draw(canvas)
-        return bmp
-    }
 
     private fun astraPersona(): androidx.core.app.Person = androidx.core.app.Person.Builder()
         .setName("Astra")
@@ -215,7 +202,6 @@ class NtfyPushService : Service() {
                 .setContentText(if (chatStates.size > 1) "${chatStates.size} chats waiting" else "Tap to open Astra")
                 .setSmallIcon(R.drawable.ic_unread_count)
                 .setColor(brandColor)
-                .setLargeIcon(astraBadgeBitmap())
                 .setNumber(unread)
             ntfyUp -> builder
                 .setContentTitle("Astra")
@@ -499,7 +485,6 @@ class NtfyPushService : Service() {
             .setContentText(displaySnippet)
             .setStyle(messagingStyle)
             .setSmallIcon(R.drawable.ic_astra_notify)
-            .setLargeIcon(astraBadgeBitmap())
             .setColor(brandColor)
             .setContentIntent(pi)
             .setDeleteIntent(deletePi)
@@ -639,7 +624,6 @@ class NtfyPushService : Service() {
         val builder = NotificationCompat.Builder(this, CHANNEL_CHAT)
             .setContentTitle(title)
             .setSmallIcon(R.drawable.ic_astra_notify)
-            .setLargeIcon(astraBadgeBitmap())
             .setColor(brandColor)
             .setStyle(inboxStyle)
             .setGroup(GROUP_KEY_CHAT)
@@ -684,7 +668,6 @@ class NtfyPushService : Service() {
             .setContentText(message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
             .setSmallIcon(R.drawable.ic_astra_notify)
-            .setLargeIcon(astraBadgeBitmap())
             .setColor(brandColor)
             .setColorized(isApproval)   // approvals: flat solid-cyan banner (call-style)
             .setContentIntent(contentPi)
