@@ -55,26 +55,40 @@ export async function initAndroidShell(): Promise<void> {
   // Ensure the native foreground service holds ONE subscription to the ntfy
   // topic. Config comes from the server (env-injected NTFY_URL/TOPIC/AUTH b64)
   // so no secret is bundled into the APK and rotation is server-side.
-  try {
-    const res = await fetch("/api/ntfy-config", { credentials: "same-origin" });
-    if (res.ok) {
-      const cfg = await res.json();
-      if (cfg?.url && cfg?.topic && cfg?.auth) {
-        const conn = `${cfg.url}|${cfg.topic}|${cfg.auth}`;
-        const prev = (await Preferences.get({ key: "ntfy_conn" })).value;
-        if (prev !== conn) {
-          await Preferences.set({ key: "ntfy_conn", value: conn });
+  //
+  // Re-arm on EVERY app resume, not just process start: a fresh install (or
+  // cleared data) cold-boots this module BEFORE login, /api/ntfy-config 401s,
+  // and the old once-per-process guard then left the push service idle
+  // forever ("subscribers=0" on ntfy, no notifications at all). Login only
+  // happens later, so the retry has to ride the resume event.
+  let arming = false;
+  const armPushPipe = async () => {
+    if (arming) return;
+    arming = true;
+    try {
+      const res = await fetch("/api/ntfy-config", { credentials: "same-origin" });
+      if (res.ok) {
+        const cfg = await res.json();
+        if (cfg?.url && cfg?.topic && cfg?.auth) {
+          const conn = `${cfg.url}|${cfg.topic}|${cfg.auth}`;
+          const prev = (await Preferences.get({ key: "ntfy_conn" })).value;
+          if (prev !== conn) {
+            await Preferences.set({ key: "ntfy_conn", value: conn });
+          }
+          await (Capacitor as any).Plugins?.NativeNtfy?.start();
         }
-        await (Capacitor as any).Plugins?.NativeNtfy?.start();
       }
-    }
-  } catch { /* push unavailable — chat still works fully */ }
+    } catch { /* push unavailable — chat still works fully */ }
+    arming = false;
+  };
+  armPushPipe();
 
   // -- 1+3. resume repair + gate events --------------------------------------
   // The Kotlin side emits `astra:resume-check` on every onResume + ~10s later.
   // Chat-landing listens for `astra:ws-poke` and calls pokeResumeCheck().
   window.addEventListener("astra:resume-check", () => {
     window.dispatchEvent(new CustomEvent("astra:ws-poke"));
+    armPushPipe();   // re-arm push after login-then-resume (fresh-install path)
   });
 
   window.addEventListener("astra:gate", ((e: CustomEvent) => {
