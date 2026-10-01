@@ -9,6 +9,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.ServiceInfo
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
@@ -65,6 +67,16 @@ class NtfyPushService : Service() {
     private val greenStatus: Int get() = 0xFF10B981.toInt()   // okay token (GateActivity)
     private val redStatus: Int get() = 0xFFEF4444.toInt()
     private var ntfyUp = false   // gate socket health → status dot
+
+    /** Full-color launcher logo bitmap — small-icon slot. Owner wants the real
+     *  logo in the panel group header; ROMs that allow color render it as-is. */
+    private var logoBmp: Bitmap? = null
+    private fun fullLogo(): Bitmap {
+        logoBmp?.let { return it }
+        val bmp = android.graphics.BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher)
+        logoBmp = bmp
+        return bmp
+    }
 
     private fun astraPersona(): androidx.core.app.Person = androidx.core.app.Person.Builder()
         .setName("Astra")
@@ -487,7 +499,7 @@ class NtfyPushService : Service() {
             .setContentTitle(state.title)
             .setContentText(displaySnippet)
             .setStyle(messagingStyle)
-            .setSmallIcon(R.drawable.ic_astra_notify)
+            .setSmallIcon(IconCompat.createWithBitmap(fullLogo()))
             .setColor(brandColor)
             .setContentIntent(pi)
             .setDeleteIntent(deletePi)
@@ -626,7 +638,7 @@ class NtfyPushService : Service() {
 
         val builder = NotificationCompat.Builder(this, CHANNEL_CHAT)
             .setContentTitle(title)
-            .setSmallIcon(R.drawable.ic_astra_notify)
+            .setSmallIcon(IconCompat.createWithBitmap(fullLogo()))
             .setColor(brandColor)
             .setStyle(inboxStyle)
             .setGroup(GROUP_KEY_CHAT)
@@ -670,7 +682,7 @@ class NtfyPushService : Service() {
             .setContentTitle(title)
             .setContentText(message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
-            .setSmallIcon(R.drawable.ic_astra_notify)
+            .setSmallIcon(IconCompat.createWithBitmap(fullLogo()))
             .setColor(brandColor)
             .setColorized(isApproval)   // approvals: flat solid-cyan banner (call-style)
             .setContentIntent(contentPi)

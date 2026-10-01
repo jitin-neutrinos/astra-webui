@@ -128,7 +128,7 @@ grep -q 'OnBackPressedCallback' "$MAIN_KT" || { echo "FAIL: MainActivity missing
 echo "PASS: download listener + back handler."
 
 # v1.9.0 battery: 60s client ping, 5min identity watch, session-info cache, summary coalesce.
-grep -q 'versionCode 18' android/app/build.gradle || { echo "FAIL: versionCode not bumped to 18." ; exit 1; }
+grep -q 'versionCode 19' android/app/build.gradle || { echo "FAIL: versionCode not bumped to 19." ; exit 1; }
 grep -q 'pingInterval(60' "$SERVICE_KT" || { echo "FAIL: chat/ntfy ping still 30s."; exit 1; }
 grep -q 'publishGroupSummary' "$SERVICE_KT" || { echo "FAIL: group-summary coalesce missing."; exit 1; }
 grep -q 'cookieCacheAt' "$SERVICE_KT" || { echo "FAIL: cookie cache missing."; exit 1; }
