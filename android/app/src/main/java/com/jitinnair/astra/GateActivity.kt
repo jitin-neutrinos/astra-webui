@@ -1,6 +1,5 @@
 package com.jitinnair.astra
 
-import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ObjectAnimator
 import android.app.Activity
@@ -13,14 +12,12 @@ import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
 import android.text.InputType
 import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
-import android.view.VelocityTracker
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -28,7 +25,6 @@ import android.view.animation.PathInterpolator
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.view.ViewCompat
@@ -43,15 +39,18 @@ import org.json.JSONObject
 import kotlin.concurrent.thread
 
 /**
- * Interactive approval / question sheet (Authenticator / Okta Verify style).
+ * Interactive approval / question popup (centered dialog, minimal).
  * Launched by the push notification (tap, or lock-screen full-screen intent).
- * Fetches the pending gate from the Astra server, renders it as a bottom-docked
+ * Fetches the pending gate from the Astra server, renders it as a centered
  * card and posts the answer straight back.
+ *
+ * Layout: scrim + centered sheet. Sheet = scrollable body (capped at ~62% of
+ * the screen, so long question lists scroll INSIDE the card) + fixed footer
+ * that always holds the actions (Approve / Deny / Send never scroll away).
  *
  * States: loading (skeleton) -> ready -> sending (in-place) -> result
  * (approved / denied / already answered) -> animated dismiss.
- * Follows the app's light/dark theme, uses the Astra brand tokens (same values as
- * the in-chat approval card) and the brand easing curve.
+ * Light/dark themed, Astra brand tokens, brand easing curve.
  */
 class GateActivity : Activity() {
 
@@ -64,8 +63,9 @@ class GateActivity : Activity() {
 
     private lateinit var root: FrameLayout
     private lateinit var scrim: View
-    private lateinit var sheet: LinearLayout       // docked container (drag target)
-    private lateinit var content: LinearLayout     // swappable body inside the sheet
+    private lateinit var sheet: LinearLayout       // centered card
+    private lateinit var content: LinearLayout     // scrollable body
+    private lateinit var foot: LinearLayout        // pinned actions
 
     // ---- brand tokens (index.css @theme + [data-theme="light"]) -------------
     private var light = false
@@ -94,6 +94,14 @@ class GateActivity : Activity() {
     private fun rounded(fill: Int, radiusDp: Int, stroke: Int? = null, strokeDp: Int = 1) = GradientDrawable().apply {
         setColor(fill); cornerRadius = dp(radiusDp).toFloat()
         if (stroke != null) setStroke(dp(strokeDp), stroke)
+    }
+
+    /** ScrollView that never grows past maxPx — the card scrolls internally. */
+    private class MaxHScrollView(ctx: Context, private val maxPx: Int) : ScrollView(ctx) {
+        override fun onMeasure(w: Int, h: Int) {
+            val capped = if (maxPx > 0) MeasureSpec.makeMeasureSpec(maxPx, MeasureSpec.AT_MOST) else h
+            super.onMeasure(w, capped)
+        }
     }
 
     // ---- lifecycle ---------------------------------------------------------
@@ -131,11 +139,11 @@ class GateActivity : Activity() {
     @Suppress("OVERRIDE_DEPRECATION")
     override fun onBackPressed() { if (!busy) dismiss() }
 
-    // ---- shell: scrim + docked sheet + drag-to-dismiss ---------------------
+    // ---- shell: scrim + centered card --------------------------------------
     private fun buildShell() {
         root = FrameLayout(this)
         scrim = View(this).apply {
-            setBackgroundColor(Color.parseColor(if (light) "#66101820" else "#B3000000"))
+            setBackgroundColor(Color.parseColor(if (light) "#66101820" else "#B30A0A0F"))
             alpha = 0f
             setOnClickListener { if (!busy) dismiss() }
         }
@@ -144,99 +152,73 @@ class GateActivity : Activity() {
         sheet = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = rounded(surface, 26, hairline)
-            elevation = dp(16).toFloat()
-            // stop taps inside the sheet from reaching the scrim
+            elevation = dp(18).toFloat()
+            // stop taps inside the card from reaching the scrim
             isClickable = true
         }
-        // handle + drag zone
-        val handle = View(this).apply { background = rounded(tint(muted, 90), 3) }
-        val dragZone = FrameLayout(this).apply {
-            addView(handle, FrameLayout.LayoutParams(dp(36), dp(4), Gravity.CENTER))
-            setOnTouchListener(dragListener())
-        }
-        sheet.addView(dragZone, LinearLayout.LayoutParams(-1, dp(22)))
 
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(2), dp(20), dp(18))
+            setPadding(dp(22), dp(20), dp(22), dp(16))
         }
-        val scroll = ScrollView(this).apply { isVerticalScrollBarEnabled = false; overScrollMode = View.OVER_SCROLL_NEVER; addView(content) }
+        // Body scrolls once the gate is taller than ~62% of the screen.
+        val maxBody = (resources.displayMetrics.heightPixels * 0.62f).toInt()
+        val scroll = MaxHScrollView(this, maxBody).apply {
+            isVerticalScrollBarEnabled = false; overScrollMode = View.OVER_SCROLL_NEVER; addView(content)
+        }
         sheet.addView(scroll, LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT))
 
-        val lp = FrameLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
-            setMargins(dp(10), dp(48), dp(10), dp(10))
+        foot = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(22), dp(6), dp(22), dp(18))
         }
+        sheet.addView(foot, LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT))
+
+        val cardW = minOf(resources.displayMetrics.widthPixels - dp(40), dp(400))
+        val lp = FrameLayout.LayoutParams(cardW, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
         root.addView(sheet, lp)
         setContentView(root)
 
-        // dock above the gesture bar / 3-button nav, below the status bar
+        // stay inside the status bar / gesture bar / keyboard
         ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
             val b = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
             val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
-            lp.topMargin = b.top + dp(12)
+            lp.topMargin = b.top + dp(10)
             lp.bottomMargin = maxOf(b.bottom, ime.bottom) + dp(10)
             sheet.layoutParams = lp
             insets
         }
 
-        // entrance: scrim fades, sheet rises with the brand curve
-        sheet.alpha = 0f
-        sheet.post {
-            sheet.translationY = sheet.height.coerceAtLeast(dp(240)).toFloat() * 0.35f + dp(40)
-            sheet.animate().alpha(1f).translationY(0f).setDuration(340).setInterpolator(ease).start()
-            scrim.animate().alpha(1f).setDuration(260).start()
-        }
-    }
-
-    /** Velocity-aware swipe-down. A quick flick dismisses regardless of distance. */
-    private fun dragListener(): View.OnTouchListener {
-        var startY = 0f
-        var vt: VelocityTracker? = null
-        return View.OnTouchListener { v, e ->
-            if (busy || dismissing) return@OnTouchListener false
-            when (e.actionMasked) {
-                MotionEvent.ACTION_DOWN -> { startY = e.rawY; vt = VelocityTracker.obtain().also { it.addMovement(e) }; v.parent.requestDisallowInterceptTouchEvent(true); true }
-                MotionEvent.ACTION_MOVE -> {
-                    vt?.addMovement(e)
-                    val dy = e.rawY - startY
-                    // rubber-band upwards, follow downwards
-                    sheet.translationY = if (dy > 0) dy else dy * 0.12f
-                    scrim.alpha = (1f - (dy / (sheet.height * 1.2f)).coerceIn(0f, 1f) * 0.8f)
-                    true
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    vt?.computeCurrentVelocity(1000)
-                    val vy = vt?.yVelocity ?: 0f
-                    vt?.recycle(); vt = null
-                    val dy = sheet.translationY
-                    if (e.actionMasked == MotionEvent.ACTION_UP && (dy > sheet.height * 0.33f || vy > 1400f)) dismiss()
-                    else {
-                        sheet.animate().translationY(0f).setDuration(260).setInterpolator(ease).start()
-                        scrim.animate().alpha(1f).setDuration(200).start()
-                    }
-                    true
-                }
-                else -> false
-            }
-        }
+        // entrance: scrim fades, card scales in from 0.95 (never from 0)
+        sheet.alpha = 0f; sheet.scaleX = 0.95f; sheet.scaleY = 0.95f
+        sheet.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(260).setInterpolator(ease).start()
+        scrim.animate().alpha(1f).setDuration(200).start()
     }
 
     private fun dismiss() {
         if (isFinishing || dismissing) return
         dismissing = true
-        scrim.animate().alpha(0f).setDuration(200).start()
-        sheet.animate().translationY(sheet.height.toFloat() + dp(60)).alpha(0.4f).setDuration(220)
+        scrim.animate().alpha(0f).setDuration(160).start()
+        sheet.animate().scaleX(0.96f).scaleY(0.96f).alpha(0f).setDuration(180)
             .setInterpolator(PathInterpolator(0.4f, 0f, 1f, 1f)).setListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(a: Animator) { finish(); overridePendingTransition(0, 0) }
+                override fun onAnimationEnd(a: android.animation.Animator) { finish(); overridePendingTransition(0, 0) }
             }).start()
     }
 
     // ---- content swapping (crossfade, no layout jumps) ---------------------
-    private fun swap(build: () -> Unit) {
+    private fun swap(body: (LinearLayout.() -> Unit)?, footer: (LinearLayout.() -> Unit)? = null) {
         val apply = {
-            content.removeAllViews(); build()
+            content.removeAllViews(); body?.invoke(content)
+            foot.removeAllViews(); footer?.invoke(foot)
+            if (foot.childCount == 0) foot.visibility = View.GONE else {
+                foot.visibility = View.VISIBLE
+                // hairline divider between scroll area and pinned actions
+                foot.addView(View(this).apply { background = rounded(hairline, 0) },
+                    0, LinearLayout.LayoutParams(-1, dp(1)).apply { bottomMargin = dp(12) })
+            }
             content.alpha = 0f; content.translationY = dp(6).toFloat()
             content.animate().alpha(1f).translationY(0f).setDuration(220).setInterpolator(ease).start()
+            if (foot.visibility == View.VISIBLE) { foot.alpha = 0f; foot.animate().alpha(1f).setDuration(220).setInterpolator(ease).start() }
         }
         if (content.childCount == 0) apply()
         else content.animate().alpha(0f).setDuration(110).withEndAction { apply() }.start()
@@ -269,10 +251,13 @@ class GateActivity : Activity() {
             addView(dot, FrameLayout.LayoutParams(dp(6), dp(6), Gravity.CENTER))
         }
         ring.animate().cancel()
-        val ping = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 1600; repeatCount = android.animation.ValueAnimator.INFINITE
+        val ping = ObjectAnimator.ofFloat(0f, 1f).apply {
+            duration = 1600; repeatCount = ObjectAnimator.INFINITE
             interpolator = PathInterpolator(0f, 0f, 0.2f, 1f)
-            addUpdateListener { val t = it.animatedValue as Float; ring.scaleX = 0.7f + 1.6f * t; ring.scaleY = ring.scaleX; ring.alpha = 0.9f * (1f - t) }
+            addUpdateListener {
+                val t = it.animatedValue as Float
+                ring.scaleX = 0.7f + 1.6f * t; ring.scaleY = ring.scaleX; ring.alpha = 0.9f * (1f - t)
+            }
         }
         ping.start()
         return LinearLayout(this).apply {
@@ -295,7 +280,7 @@ class GateActivity : Activity() {
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             includeFontPadding = false
             background = rounded(fill, 14, stroke)
-            minHeight = dp(if (kind == "quiet") 44 else 52)
+            minHeight = dp(if (kind == "quiet") 40 else 52)
             isClickable = true; isFocusable = true
             setOnTouchListener { v, e ->
                 when (e.actionMasked) {
@@ -308,36 +293,36 @@ class GateActivity : Activity() {
         }
     }
 
-    private fun header(isApproval: Boolean, title: String, accent: Int): View {
+    /** One-line header: badge + eyebrow + waiting pill. */
+    private fun header(isApproval: Boolean, accent: Int): View {
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         row.addView(badge(if (isApproval) "!" else "?", accent))
-        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, dp(8), 0) }
-        col.addView(label(if (isApproval) "APPROVAL NEEDED" else "QUESTION FOR YOU", 10.5f, accent, Typeface.BOLD, mono = true).apply { letterSpacing = 0.14f })
-        col.addView(label("Astra", 12.5f, muted).apply { setPadding(0, dp(3), 0, 0) })
-        row.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        row.addView(label(if (isApproval) "APPROVAL NEEDED" else "QUESTION FOR YOU", 10.5f, accent, Typeface.BOLD, mono = true)
+            .apply { letterSpacing = 0.14f; setPadding(dp(12), 0, 0, 0) })
+        row.addView(space(0).apply { layoutParams = LinearLayout.LayoutParams(0, 1, 1f) })
         row.addView(waitingPill(accent))
         return row
     }
 
     // ---- states ------------------------------------------------------------
     private fun showSkeleton() {
-        content.removeAllViews()
-        fun bar(w: Int, h: Int, r: Int = 8, top: Int = 12) = View(this).apply {
-            background = rounded(surfaceHi, r)
-            layoutParams = LinearLayout.LayoutParams(if (w < 0) -1 else dp(w), dp(h)).apply { topMargin = dp(top) }
-            ObjectAnimator.ofFloat(this, "alpha", 0.35f, 1f).apply { duration = 760; repeatMode = ObjectAnimator.REVERSE; repeatCount = ObjectAnimator.INFINITE }.start()
-        }
-        val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        r.addView(bar(34, 34, 11, 0)); r.addView(bar(120, 12, 6, 0).apply { (layoutParams as LinearLayout.LayoutParams).marginStart = dp(12) })
-        content.addView(r)
-        content.addView(bar(-1, 20)); content.addView(bar(220, 20, 8, 8)); content.addView(bar(-1, 56, 12, 16))
-        content.addView(bar(-1, 52, 14, 14))
+        swap(body = {
+            fun bar(w: Int, h: Int, r: Int = 8, top: Int = 12) = View(this@GateActivity).apply {
+                background = rounded(surfaceHi, r)
+                layoutParams = LinearLayout.LayoutParams(if (w < 0) -1 else dp(w), dp(h)).apply { topMargin = dp(top) }
+                ObjectAnimator.ofFloat(this, "alpha", 0.35f, 1f).apply { duration = 760; repeatMode = ObjectAnimator.REVERSE; repeatCount = ObjectAnimator.INFINITE }.start()
+            }
+            val r = LinearLayout(this@GateActivity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            r.addView(bar(34, 34, 11, 0)); r.addView(bar(120, 12, 6, 0).apply { (layoutParams as LinearLayout.LayoutParams).marginStart = dp(12) })
+            addView(r)
+            addView(bar(-1, 20)); addView(bar(220, 20, 8, 8)); addView(bar(-1, 56, 12, 16))
+        })
     }
 
     private fun showSending(picked: View?) {
         busy = true
         // In-place: the tapped button becomes a spinner row, the rest dim. No layout jump.
-        for (i in 0 until content.childCount) walkDim(content.getChildAt(i), picked)
+        for (i in 0 until sheet.childCount) walkDim(sheet.getChildAt(i), picked)
         (picked as? TextView)?.let {
             it.text = "Sending…"
             it.animate().scaleX(1f).scaleY(1f).setDuration(120).start()
@@ -355,23 +340,23 @@ class GateActivity : Activity() {
         busy = false
         val col = when (tone) { 1 -> okay; -1 -> danger; else -> muted }
         val glyph = when (tone) { 1 -> "✓"; -1 -> "✕"; else -> "•" }
-        swap {
-            val wrap = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(0, dp(14), 0, dp(6)) }
+        swap(body = {
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(22), dp(26), dp(22), dp(10))
             val mark = badge(glyph, col, 64, 26f).apply {
                 background = rounded(tint(col, 34), 32, col, 2)
                 scaleX = 0.5f; scaleY = 0.5f; alpha = 0f
                 animate().scaleX(1f).scaleY(1f).alpha(1f).setStartDelay(90).setDuration(380)
                     .setInterpolator(PathInterpolator(0.34f, 1.56f, 0.64f, 1f)).start()
             }
-            wrap.addView(mark)
-            wrap.addView(label(msg, 17f, ink, Typeface.BOLD).apply { gravity = Gravity.CENTER; setPadding(0, dp(14), 0, 0) })
-            if (sub.isNotEmpty()) wrap.addView(label(sub, 13f, muted).apply { gravity = Gravity.CENTER; setPadding(dp(8), dp(6), dp(8), 0) })
-            content.addView(wrap, LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(mark)
+            addView(label(msg, 17f, ink, Typeface.BOLD).apply { gravity = Gravity.CENTER; setPadding(0, dp(14), 0, 0) })
+            if (sub.isNotEmpty()) addView(label(sub, 13f, muted).apply { gravity = Gravity.CENTER; setPadding(dp(8), dp(6), dp(8), 0) })
+        }, footer = {
             if (!autoClose) {
-                content.addView(space(14))
-                content.addView(action("Close", "choice") { dismiss() }, LinearLayout.LayoutParams(-1, dp(52)))
+                addView(action("Close", "choice") { dismiss() }, LinearLayout.LayoutParams(-1, dp(52)))
             }
-        }
+        })
         if (autoClose) {
             sheet.performHapticFeedback(if (tone >= 0) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.REJECT)
             sheet.postDelayed({ dismiss() }, 1100)
@@ -464,25 +449,33 @@ class GateActivity : Activity() {
         val isApproval = g.optString("kind") == "approval"
         // A command about to run is the riskier gate: amber accent. Questions use brand cyan.
         val accent = if (isApproval && g.optString("command").isNotEmpty()) warn else brand
-        swap {
-            content.addView(header(isApproval, g.optString("title"), accent))
-            if (isApproval) renderApproval(g, accent) else renderClarify(g)
-            if (errorLine != null) {
-                content.addView(label(errorLine, 12.5f, danger).apply { setPadding(0, dp(12), 0, 0) })
+        swap(
+            body = {
+                addView(header(isApproval, accent))
+                if (isApproval) renderApprovalBody(g, this, accent)
+                else renderClarifyBody(g, this)
+                if (errorLine != null) {
+                    addView(label(errorLine, 12.5f, danger).apply { setPadding(0, dp(12), 0, 0) })
+                }
+            },
+            footer = {
+                if (isApproval) renderApprovalFooter(g, this)
+                else renderClarifyFooter(g, this)
+                addView(action("Open in chat", "quiet") { openChatFallback() },
+                    LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(4) })
             }
-            content.addView(action("Open in chat", "quiet") { openChatFallback() },
-                LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(6) })
-        }
+        )
     }
 
-    private fun renderApproval(g: JSONObject, accent: Int) {
+    /** Minimal approval body: heading -> command -> one severity line. */
+    private fun renderApprovalBody(g: JSONObject, box: LinearLayout, accent: Int) {
         val cmd = g.optString("command")
         val desc = g.optString("description")
         val whatItDoes = g.optString("whatItDoes")
-        val impact = g.optString("impact")
         val severity = g.optString("severity", "moderate")
         val risk = g.optString("risk")
-        
+        val impact = g.optString("impact")
+
         val sevColor = when (severity) {
             "low" -> muted
             "high" -> c("#FB923C", "#C2410C")
@@ -490,62 +483,59 @@ class GateActivity : Activity() {
             else -> warn
         }
 
+        val heading = whatItDoes.ifEmpty { desc.ifEmpty { if (cmd.isNotEmpty()) "Astra wants to run a command" else "Astra is asking permission to continue." } }
+        box.addView(label(heading, 18f, ink, Typeface.BOLD)
+            .apply { setLineSpacing(0f, 1.12f); setPadding(0, dp(16), 0, dp(14)) })
+
         if (cmd.isNotEmpty()) {
-            val box = LinearLayout(this).apply {
+            val wellBox = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 setPadding(dp(12), dp(11), dp(12), dp(11))
                 background = rounded(well, 12, hairline)
             }
-            box.addView(label("$", 13f, accent, Typeface.BOLD, mono = true).apply { setPadding(0, 0, dp(8), 0) })
+            wellBox.addView(label("$", 13f, accent, Typeface.BOLD, mono = true).apply { setPadding(0, 0, dp(8), 0) })
             val tv = label(cmd, 13f, ink, mono = true).apply {
                 maxLines = 2; ellipsize = TextUtils.TruncateAt.END; setLineSpacing(0f, 1.25f)
             }
-            box.addView(tv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            content.addView(box, LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) })
-            
+            wellBox.addView(tv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            box.addView(wellBox, LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT))
+
             val toggle = label("Show full command", 11.5f, muted).apply { setPadding(dp(2), dp(6), 0, 0) }
-            box.setOnClickListener {
+            wellBox.setOnClickListener {
                 val open = tv.maxLines == Int.MAX_VALUE
                 tv.maxLines = if (open) 2 else Int.MAX_VALUE
                 toggle.text = if (open) "Show full command" else "Hide full command"
                 it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
             }
             tv.post { if (tv.layout != null && tv.layout.getEllipsisCount(tv.lineCount - 1) > 0)
-                content.addView(toggle, content.indexOfChild(box) + 1) }
+                box.addView(toggle, box.indexOfChild(wellBox) + 1) }
         }
 
-        val heading = whatItDoes.ifEmpty { desc.ifEmpty { if (cmd.isNotEmpty()) "Astra wants to run a command" else "Astra is asking permission to continue." } }
-        content.addView(label(
-            heading,
-            18f, ink, Typeface.BOLD
-        ).apply { setLineSpacing(0f, 1.12f); setPadding(0, dp(16), 0, dp(14)) })
-
-        content.addView(label("IMPACT", 9.5f, muted, mono = true).apply { letterSpacing = 0.14f })
-        val impactRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(6), 0, dp(14)) }
-        impactRow.addView(label(severity.uppercase(), 10.5f, sevColor, Typeface.BOLD, mono = true).apply {
-            letterSpacing = 0.1f; background = rounded(tint(sevColor, 26), 12); setPadding(dp(8), dp(2), dp(8), dp(2))
+        // One meta line: severity dot + label, then risk (or impact) under it. No section eyebrows.
+        val sevRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(6), 0, 0) }
+        sevRow.addView(View(this).apply {
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(sevColor) }
+            layoutParams = LinearLayout.LayoutParams(dp(7), dp(7))
         })
-        impactRow.addView(label(impact.ifEmpty { "System state modified" }, 13f, ink).apply { setPadding(dp(8), 0, 0, 0) })
-        content.addView(impactRow)
+        sevRow.addView(label(severity.uppercase(), 10.5f, sevColor, Typeface.BOLD, mono = true).apply {
+            letterSpacing = 0.1f; setPadding(dp(8), 0, 0, 0)
+        })
+        val metaText = risk.ifEmpty { impact.ifEmpty { "Review before approving." } }
+        sevRow.addView(label(metaText, 12f, muted).apply { setPadding(dp(8), 0, 0, 0) }, 
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        box.addView(sevRow)
+    }
 
-        content.addView(label("RISK", 9.5f, muted, mono = true).apply { letterSpacing = 0.14f })
-        val riskRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.TOP; setPadding(0, dp(6), 0, dp(14)) }
-        val rIcon = if (severity == "high" || severity == "critical") badge("⚠", warn, 16, 10f) else badge("•", muted, 16, 12f)
-        riskRow.addView(rIcon.apply { (layoutParams as LinearLayout.LayoutParams).topMargin = dp(2) })
-        riskRow.addView(label(risk.ifEmpty { "Please review carefully." }, 13f, muted).apply { setLineSpacing(0f, 1.2f); setPadding(dp(8), 0, 0, 0) })
-        content.addView(riskRow)
-
-        if (severity == "critical") {
-            content.addView(View(this).apply { background = GradientDrawable().apply { setColor(tint(danger, 70)) }; layoutParams = LinearLayout.LayoutParams(-1, dp(2)).apply { topMargin = dp(4); bottomMargin = dp(10) } })
-        }
-
+    /** Pinned footer for approvals: Deny / Approve row + extras + paused note. */
+    private fun renderApprovalFooter(g: JSONObject, box: LinearLayout) {
+        val severity = g.optString("severity", "moderate")
         val choices = g.optJSONArray("choices") ?: JSONArray().put("once").put("deny")
         val labels = mapOf("once" to "Approve", "session" to "Allow for this chat", "always" to "Always allow", "deny" to "Deny")
         val list = (0 until choices.length()).map { choices.getString(it) }
         val extras = list.filter { it != "once" && it != "deny" }
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val gap = dp(10)
-        
+
         if ("deny" in list) {
             var b: TextView? = null
             b = action(labels["deny"]!!, "deny") { post(JSONObject().put("choice", "deny"), b, denied = true) }
@@ -557,46 +547,31 @@ class GateActivity : Activity() {
             b = action(labels["once"]!!, "primary") { post(JSONObject().put("choice", "once"), b) }
             row.addView(b, LinearLayout.LayoutParams(0, dp(52), 1.5f).apply { if (row.childCount > 0) marginStart = gap })
         }
-        for (c in extras) {
+        for (e in extras) {
             var b: TextView? = null
-            b = action(labels[c] ?: c, "choice") { post(JSONObject().put("choice", c), b) }
-            content.addView(b, LinearLayout.LayoutParams(-1, dp(52)).apply { topMargin = dp(10) })
+            b = action(labels[e] ?: e, "choice") { post(JSONObject().put("choice", e), b) }
+            box.addView(b, LinearLayout.LayoutParams(-1, dp(52)).apply { topMargin = dp(10) })
         }
-        content.addView(row, LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
-        content.addView(label("Astra is paused until you decide.", 12f, muted).apply { gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0) },
+        if (row.childCount > 0) box.addView(row, LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT))
+        box.addView(label("Astra is paused until you decide.", 12f, muted).apply { gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0) },
             LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
 
-    private fun renderClarify(g: JSONObject) {
+    /** Question body: choices + free text per question (scrolls when long). */
+    private fun renderClarifyBody(g: JSONObject, box: LinearLayout) {
         val qs = g.optJSONArray("questions") ?: JSONArray()
-        val picks = HashMap<String, MutableList<String>>()
-        val freeTexts = HashMap<String, EditText>()
-        val keys = ArrayList<String>()
-        lateinit var send: TextView
-        fun answerOf(k: String): String {
-            val p = (picks[k] ?: mutableListOf()).joinToString(", ")
-            val x = freeTexts[k]?.text?.toString()?.trim() ?: ""
-            return if (p.isNotEmpty() && x.isNotEmpty()) "$p - $x" else p.ifEmpty { x }
-        }
-        // Send stays quiet until every question has an answer, then lifts.
-        fun refreshSend() {
-            val ready = keys.isNotEmpty() && keys.all { answerOf(it).isNotEmpty() }
-            send.isEnabled = ready
-            (send.background as GradientDrawable).setColor(if (ready) brand else surfaceHi)
-            send.setTextColor(if (ready) onBrand else muted)
-            send.text = if (ready) "Send answer" else "Choose or type an answer"
-        }
+        clarifyPicks.clear(); clarifyTexts.clear(); clarifyKeys.clear()
         for (i in 0 until qs.length()) {
             val q = qs.getJSONObject(i)
             val question = q.optString("question")
             val key = q.optString("qid").ifEmpty { question }
-            keys.add(key)
-            content.addView(label((if (qs.length() > 1) "${i + 1}. " else "") + question, 18f, ink, Typeface.BOLD)
+            clarifyKeys.add(key)
+            box.addView(label((if (qs.length() > 1) "${i + 1}. " else "") + question, 18f, ink, Typeface.BOLD)
                 .apply { setLineSpacing(0f, 1.12f); setPadding(0, dp(if (i == 0) 16 else 22), 0, 0) })
             val multi = q.optBoolean("multi_select")
-            if (multi) content.addView(label("Select all that apply", 12f, muted).apply { setPadding(0, dp(6), 0, 0) })
+            if (multi) box.addView(label("Select all that apply", 12f, muted).apply { setPadding(0, dp(6), 0, 0) })
             val choices = q.optJSONArray("choices") ?: JSONArray()
-            val list = picks.getOrPut(key) { mutableListOf() }
+            val list = clarifyPicks.getOrPut(key) { mutableListOf() }
             val rows = ArrayList<Triple<String, LinearLayout, TextView>>()
             fun paint() = rows.forEach { (c, r, mark) ->
                 val on = list.contains(c)
@@ -631,7 +606,7 @@ class GateActivity : Activity() {
                 r.addView(mark, LinearLayout.LayoutParams(dp(22), dp(22)).apply { marginEnd = dp(12) })
                 r.addView(label(c, 15f, ink, Typeface.BOLD).apply { setLineSpacing(0f, 1.1f) }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                 rows.add(Triple(c, r, mark))
-                content.addView(r, LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(if (j == 0) 14 else 8) })
+                box.addView(r, LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(if (j == 0) 14 else 8) })
             }
             paint()
             val et = EditText(this).apply {
@@ -647,16 +622,43 @@ class GateActivity : Activity() {
                 })
                 setOnFocusChangeListener { v, f -> v.background = rounded(well, 14, if (f) brand else tint(muted, 110), if (f) 2 else 1) }
             }
-            freeTexts[key] = et
-            content.addView(et, LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
+            clarifyTexts[key] = et
+            box.addView(et, LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
         }
-        send = action("Send answer", "primary") {
+    }
+
+    // clarify answer state lives between body (inputs) and footer (send button)
+    private val clarifyPicks = HashMap<String, MutableList<String>>()
+    private val clarifyTexts = HashMap<String, EditText>()
+    private val clarifyKeys = ArrayList<String>()
+    private var sendBtn: TextView? = null
+
+    private fun answerOf(k: String): String {
+        val p = (clarifyPicks[k] ?: mutableListOf()).joinToString(", ")
+        val x = clarifyTexts[k]?.text?.toString()?.trim() ?: ""
+        return if (p.isNotEmpty() && x.isNotEmpty()) "$p - $x" else p.ifEmpty { x }
+    }
+
+    /** Send stays quiet until every question has an answer, then lifts. */
+    private fun refreshSend() {
+        val send = sendBtn ?: return
+        val ready = clarifyKeys.isNotEmpty() && clarifyKeys.all { answerOf(it).isNotEmpty() }
+        send.isEnabled = ready
+        (send.background as GradientDrawable).setColor(if (ready) brand else surfaceHi)
+        send.setTextColor(if (ready) onBrand else muted)
+        send.text = if (ready) "Send answer" else "Choose or type an answer"
+    }
+
+    private fun renderClarifyFooter(g: JSONObject, box: LinearLayout) {
+        val qs = g.optJSONArray("questions") ?: JSONArray()
+        val send = action("Send answer", "primary") {
             val single = qs.length() == 1 && qs.getJSONObject(0).optString("qid").isEmpty()
-            val body = if (single) JSONObject().put("answer", answerOf(keys[0]))
-            else JSONObject().put("answers", JSONObject().also { a -> keys.forEach { k -> a.put(k, answerOf(k)) } })
-            post(body, send)
+            val body = if (single) JSONObject().put("answer", answerOf(clarifyKeys[0]))
+            else JSONObject().put("answers", JSONObject().also { a -> clarifyKeys.forEach { k -> a.put(k, answerOf(k)) } })
+            post(body, sendBtn)
         }
-        content.addView(send, LinearLayout.LayoutParams(-1, dp(52)).apply { topMargin = dp(16) })
+        sendBtn = send
+        box.addView(send, LinearLayout.LayoutParams(-1, dp(52)).apply { topMargin = dp(6) })
         refreshSend()
     }
 
