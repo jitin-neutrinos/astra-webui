@@ -400,14 +400,23 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
         </div>
       </div>
 
-      <div className="px-2.5 pt-2.5 pb-1.5 flex flex-wrap gap-1" role="tablist" aria-label="Filter by source">
+      <div
+        className="ast-filter-scroller flex gap-1 pl-2.5 pr-2.5 pt-2.5 pb-1.5"
+        role="tablist"
+        aria-label="Filter by source"
+        onWheel={(e) => {
+          if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+            e.currentTarget.scrollLeft += e.deltaY;
+          }
+        }}
+      >
         {FILTERS.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
             role="tab"
             aria-selected={filter === key}
             onClick={() => setFilter(key)}
-            className={"ast-filter-chip " + (filter === key ? "ast-filter-chip-on" : "")}
+            className={"ast-filter-chip shrink-0 " + (filter === key ? "ast-filter-chip-on" : "")}
           >
             <Icon className="w-3 h-3" aria-hidden />
             {label}

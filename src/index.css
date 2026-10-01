@@ -1719,7 +1719,8 @@ html.theme-fading body * {
 /* filter chips */
 .ast-filter-chip {
   display: inline-flex; align-items: center; gap: 4px;
-  padding: 3px 7px;
+  flex: 0 0 auto;
+  padding: 2px 6px;
   border-radius: 7px;
   border: 1px solid rgba(255,255,255,.10);
   background: rgba(255,255,255,.04);
@@ -1736,6 +1737,19 @@ html.theme-fading body * {
   border-color: color-mix(in oklab, var(--color-cyanx) 55%, transparent);
   color: var(--color-cyanx);
 }
+
+/* filter pill scroller — single row, slides to the sidebar edge, no wrap */
+.ast-filter-scroller {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  scroll-padding-inline: 10px;
+}
+.ast-filter-scroller::-webkit-scrollbar { display: none; }
+/* keep the shrink on touch devices too (global coarse rule forces 44px buttons) */
+@media (pointer:coarse) { .ast-filter-chip { min-height: 0; } }
 
 /* light theme */
 [data-theme="light"] .ast-chat-row:hover { background: rgba(15,23,42,.05); }

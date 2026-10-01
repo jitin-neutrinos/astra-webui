@@ -172,6 +172,36 @@ export async function clearChat(storedKey: string) {
   await markRead(storedKey);
 }
 
+/** Another device read this chat (session.read frame) — clear the pill HERE too. */
+export function handleRemoteRead(storedKey: string) {
+  ensure();
+  let changed = false;
+  if (overlay[storedKey]) {
+    delete overlay[storedKey];
+    save();
+    updateTitle();
+    changed = true;
+  }
+  if (changed) notifyChanged();
+}
+
+/** Focused chat changed: tell the proxy (presence) so other devices know. */
+export function reportFocus(storedKey: string | null) {
+  const send = () => {
+    try {
+      const eng = (globalThis as any).__astraWsSend;
+      if (typeof eng === "function") eng(JSON.stringify({ method: "client.info", params: { device: "webui", focus: storedKey } }));
+    } catch { /* socket may be down; presence self-heals on next focus change */ }
+  };
+  if (typeof document !== "undefined" && document.visibilityState === "visible") send();
+  else if (typeof document !== "undefined") {
+    const once = () => { document.removeEventListener("visibilitychange", once); send(); };
+    document.addEventListener("visibilitychange", once);
+  }
+}
+
+export const _focusSender = () => (globalThis as any).__astraWsSend;
+
 async function markRead(storedKey: string) {
   try {
     await fetch(`/api/hx/sessions/${encodeURIComponent(storedKey)}`, {
@@ -187,7 +217,8 @@ export function getTotalUnread(): number {
 }
 
 /** Server rows carry `unread` (bool) + `last_read_at`; seed the overlay for rows we
- *  have no local count for so devices that never saw the live event still show a pill. */
+ *  have no local count for so devices that never saw the live event still show a pill.
+ *  Read rows RECONCILE the overlay away — a read on another device clears ours. */
 export function seedFromServer(rows: { id: string; unread?: boolean; last_read_at?: number | null }[], since: number | null | undefined): void {
   ensure();
   let changed = false;
@@ -195,6 +226,10 @@ export function seedFromServer(rows: { id: string; unread?: boolean; last_read_a
     if (r.unread && overlay[r.id] == null && r.id !== currentStoredSid) {
       // 1 stands for "has unread responses" — countUnreadResponses refines when history loads
       overlay[r.id] = 1;
+      changed = true;
+    } else if (!r.unread && overlay[r.id] != null) {
+      // server says read (another device stamped the watermark) — drop our overlay
+      delete overlay[r.id];
       changed = true;
     }
   }

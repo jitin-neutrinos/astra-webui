@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
-import { ArrowUp, Square, TriangleAlert, RotateCcw, Pencil, ChevronDown, Plus, WifiOff, Loader2, CheckCircle2, Check } from "lucide-react";
+import { ArrowUp, Square, TriangleAlert, RotateCcw, Pencil, ChevronDown, Plus, WifiOff, Loader2, CheckCircle2, Check, LogOut } from "lucide-react";
+import TrainingStatus from "./training-status";
 import * as notify from "@/lib/notify";
 import { AnimatedCopyButton } from "@/lib/animated-copy";
 import { cn } from "@/lib/utils";
@@ -877,6 +878,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   useEffect(() => {
     setChatTitle("");
     refreshTitle(storedSessionId);
+    notify.reportFocus(storedSessionId); // presence: which chat THIS tab is on
   }, [storedSessionId, refreshTitle]);
 
   // Back online after a drop: an auto-name / rename may have landed while we were away.
@@ -1094,6 +1096,44 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     }, NC_HOLD_MS);
   }, [ncFlow, onNewChat]);
   useEffect(() => () => { if (ncTimerRef.current != null) window.clearTimeout(ncTimerRef.current); }, []);
+
+  // ---- End session (owner 2026-10-01) ---------------------------------------
+  // arm → confirm within 4s → POST /api/training/end-session → straight back to
+  // the landing welcome (R7). The dump/review/delete continue server-side; the
+  // TrainingStatus chip tracks the job live via `training.updated` WS events.
+  const [endArm, setEndArm] = useState(false);
+  const [endBusy, setEndBusy] = useState(false);
+  const [trainingOpen, setTrainingOpen] = useState(false);
+  // Set when End session lands the user on the welcome page: the reset effect
+  // consumes it to suppress the auto-greeting (end ≠ new chat).
+  const endWelcomeRef = useRef(false);
+  useEffect(() => {
+    if (!endArm) return;
+    const t = window.setTimeout(() => setEndArm(false), 4000);
+    return () => window.clearTimeout(t);
+  }, [endArm]);
+  const doEndSession = useCallback(async () => {
+    const sid = storedSessionId;
+    if (endBusy || !sid) return;
+    setEndBusy(true);
+    try {
+      const res = await fetch("/api/training/end-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sid, title: chatTitle || null, source: "webui" }),
+      });
+      // 409 = already processing — still leave the chat; server owns the job.
+      // Land on the welcome page, NOT a new chat: skip the new-chat animation
+      // and suppress the auto-greeting (owner 2026-10-01 — end must not mint
+      // a fresh session).
+      if (res.ok || res.status === 409) {
+        setEndArm(false);
+        endWelcomeRef.current = true;
+        onNewChat?.();
+      }
+    } catch { /* network error — leave chat open, banner via global handlers */ }
+    finally { setEndBusy(false); }
+  }, [endBusy, storedSessionId, chatTitle, onNewChat]);
 
   // Selector handlers. Every pick is optimistic, then the gateway's session.info
   // (authoritative) overwrites it; a rejected call rolls back to the exact prior
@@ -1416,7 +1456,14 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       setErrorBanner("");
       activeIdRef.current = null;
       pendingOpsRef.current = [];
-      greetPendingRef.current = true;
+      // End session path: land on the welcome page with NO auto-greeting and
+      // no new-chat mint. Clear the flag so a later New chat still greets.
+      if (endWelcomeRef.current) {
+        endWelcomeRef.current = false;
+        greetPendingRef.current = false;
+      } else {
+        greetPendingRef.current = true;
+      }
     }
   }, [resetSignal, resetSession]);
 
@@ -1555,6 +1602,16 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
           )}
         </span>
         <span className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.25em] text-slate-500">
+          {storedSessionId && !empty && (
+            <button type="button" onClick={() => (endArm ? void doEndSession() : setEndArm(true))}
+              aria-label="End session" title={endArm ? "Click again to end this session" : "End session — saves the transcript for training, then closes the chat"}
+              disabled={isStreaming || endBusy}
+              className={`flex h-10 items-center gap-2 rounded-lg px-3 text-sm transition-[background-color,box-shadow,opacity] duration-150 active:scale-[0.97] motion-reduce:transition-none max-lg:h-10 max-lg:w-10 max-lg:justify-center max-lg:p-0 disabled:opacity-40 ${endArm ? "bg-redx/20 text-red-300 shadow-[0_0_16px_rgba(248,113,113,0.2)] hover:bg-redx/30" : "text-slate-300 hover:bg-white/5 hover:text-white"}`}>
+              {endBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4 max-lg:h-5 max-lg:w-5" strokeWidth={2} />}
+              <span className="max-lg:hidden">{endArm ? "End it?" : endBusy ? "Ending…" : "End session"}</span>
+            </button>
+          )}
+          <TrainingStatus open={trainingOpen} onToggle={() => setTrainingOpen((v) => !v)} />
           <button type="button" onClick={onNewChatClick}
             aria-label="New chat" title="New chat" data-ncflow={ncFlow} disabled={ncFlow !== "idle"}
             className="nc-btn flex h-10 items-center gap-2 rounded-lg px-4 text-sm shadow-[0_0_16px_rgba(34,211,238,0.12)] transition-[border-color,background-color,box-shadow,opacity] duration-150 hover:shadow-[0_0_22px_rgba(34,211,238,0.25)] active:scale-[0.97] motion-reduce:transition-none max-lg:h-10 max-lg:w-10 max-lg:justify-center max-lg:p-0">

@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { generateAcceptKey, encodeFrame, FrameDecoder } from "./ws-codec.mjs";
 
 import { notifyGateRequest, noteWebChatAnswer } from "./ntfy-notify.mjs";
+import { markRead, getMark, enrichSessions } from "./read-state.mjs";
 
 const HERMES_URL = "http://127.0.0.1:9119";
 const PASSWORD = process.env.ASTRA_HERMES_PASSWORD;
@@ -105,59 +106,244 @@ export { clearHermesCookie };
 // REST Proxy
 export async function handleHxProxy(req, res) {
   // path prefix is /api/hx. Map to /api/...
-  const targetPath = req.url.replace(/^\/api\/hx/, "/api");
-  
-  let cookie;
-  try {
-    cookie = await getHermesCookie();
-  } catch (err) {
-    res.writeHead(503, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ error: err.message }));
-  }
+  let targetPath = req.url.replace(/^\/api\/hx/, "/api");
 
-  const contentLength = parseInt(req.headers["content-length"] || "0", 10);
-  const hasBody = contentLength > 0;
-
-  const makeReq = (pipeBody) => new Promise((resolve, reject) => {
-    const headers = { "Cookie": cookie };
-    if (req.headers["content-type"]) headers["content-type"] = req.headers["content-type"];
-    if (req.headers["content-length"]) headers["content-length"] = req.headers["content-length"];
-    // media streaming: forward Range so Hermes can answer 206 (video seeking needs it)
-    if (req.headers["range"]) headers["range"] = req.headers["range"];
-
-    const proxyReq = httpRequest(`${HERMES_URL}${targetPath}`, {
-      method: req.method,
-      headers
-    }, resolve);
-    proxyReq.on("error", reject);
-    if (hasBody && pipeBody) {
-      req.pipe(proxyReq);
-    } else {
-      proxyReq.end();
-    }
-  });
-
-  try {
-    let proxyRes = await makeReq(true);
-    if (proxyRes.statusCode === 401) {
-      clearHermesCookie();
-      if (hasBody) {
-        res.writeHead(503, { "Content-Type": "application/json" });
-        return res.end(JSON.stringify({ error: "reauth" }));
-      } else {
-        cookie = await getHermesCookie();
-        proxyRes = await makeReq(false);
+  // ---- read-marker intercepts (cross-device unread, 2026-10-01) ----
+  // PATCH /api/hx/sessions/<storedKey> {unread:false} → stamp watermark locally
+  // (gateway ignores the field), broadcast session.read, never forward upstream.
+  const readPatch = req.method === "PATCH" && /^\/api\/hx\/sessions\/[^/]+$/.test(req.url);
+  if (readPatch) {
+    let body = "";
+    for await (const c of req) body += c;
+    let parsed = null;
+    try { parsed = JSON.parse(body); } catch { /* empty body: still a no-op read */ }
+    if (parsed && parsed.unread === false) {
+      // /api/hx/sessions/<storedKey> → ["", "api", "hx", "sessions", "<key>"]
+      const storedKey = decodeURIComponent(new URL(req.url, "http://x").pathname.split("/")[4] || "");
+      const rec = markRead(storedKey);
+      if (rec) {
+        broadcastSessionRead(storedKey, rec.last_read_at, deviceFromUrl(req));
       }
+      // ALSO keep the gateway's own native watermark fresh (it tracks unread too;
+      // other consumers may read it) — response discarded, never touches res.
+      void forwardRestOnly(targetPath, Buffer.from(body)).catch(() => {});
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, last_read_at: rec ? rec.last_read_at : (getMark(storedKey)?.last_read_at ?? null) }));
+      return;
     }
-    res.writeHead(proxyRes.statusCode, proxyRes.headers);
-    proxyRes.pipe(res);
-  } catch (err) {
-    res.writeHead(503, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "proxy connect error" }));
+    // other PATCH bodies (pin/rename): replay upstream with the buffered body
+    return proxyRest(req, res, targetPath, Buffer.from(body));
   }
+  await proxyRest(req, res, targetPath, null, true);
 }
 
-// WS Relay
+function deviceFromUrl(req) {
+  // ?device=<surface> from the client (webui tab / android / ipad) — advisory only.
+  try {
+    return new URL(req.url, "http://x").searchParams.get("device") || null;
+  } catch { return null; }
+}
+
+/** Fire-and-forget upstream REST call whose response is discarded (keeps the
+ *  gateway's native read watermark in sync without touching our response). */
+async function forwardRestOnly(targetPath, bodyBuf) {
+  const cookie = await getHermesCookie();
+  await new Promise((resolve, reject) => {
+    const req = httpRequest(`${HERMES_URL}${targetPath}`, {
+      method: "PATCH",
+      headers: { "Cookie": cookie, "content-type": "application/json", "content-length": String(bodyBuf.length) }
+    }, (res) => { res.resume(); resolve(); });
+    req.on("error", reject);
+    req.end(bodyBuf);
+  });
+}
+
+function proxyRest(req, res, targetPath, replayBody, enrich = false) {
+  return new Promise(async (resolve) => {
+    let cookie;
+    try {
+      cookie = await getHermesCookie();
+    } catch (err) {
+      res.writeHead(503, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: err.message }));
+      return resolve();
+    }
+
+    // targetPath carries the query string — match routes on pathname only.
+    let pathOnly = targetPath;
+    try { pathOnly = new URL(targetPath, "http://x").pathname; } catch { /* keep raw */ }
+    const isSessionsList = enrich && req.method === "GET" && /^\/api\/sessions\/?$/.test(pathOnly);
+    const isSearch = enrich && req.method === "GET" && /^\/api\/sessions\/search/.test(pathOnly);
+
+    const doReq = (pipeBody, bodyBuf) => new Promise((resolve2, reject) => {
+      const headers = { "Cookie": cookie };
+      if (req.headers["content-type"]) headers["content-type"] = req.headers["content-type"];
+      if (bodyBuf) {
+        headers["content-length"] = String(bodyBuf.length);
+      } else if (req.headers["content-length"]) {
+        headers["content-length"] = req.headers["content-length"];
+      }
+      if (req.headers["range"]) headers["range"] = req.headers["range"];
+      const proxyReq = httpRequest(`${HERMES_URL}${targetPath}`, {
+        method: req.method,
+        headers
+      }, resolve2);
+      proxyReq.on("error", reject);
+      if (bodyBuf) {
+        proxyReq.end(bodyBuf);
+      } else if (pipeBody) {
+        req.pipe(proxyReq);
+      } else {
+        proxyReq.end();
+      }
+    });
+
+    try {
+      let proxyRes = await doReq(false, replayBody);
+      if (proxyRes.statusCode === 401) {
+        clearHermesCookie();
+        if (replayBody) {
+          res.writeHead(503, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "reauth" }));
+          return resolve();
+        }
+        cookie = await getHermesCookie();
+        proxyRes = await doReq(true, null);
+      }
+
+      // Sessions list/search: buffer, enrich with read markers, re-serialize.
+      if ((isSessionsList || isSearch) && proxyRes.statusCode === 200) {
+        const chunks = [];
+        for await (const c of proxyRes) chunks.push(c);
+        try {
+          const data = JSON.parse(Buffer.concat(chunks).toString());
+          const rows = data.sessions || data.results || null;
+          if (Array.isArray(rows)) {
+            enrichSessions(rows);
+            const out = JSON.stringify(data);
+            res.writeHead(200, { "content-type": "application/json" });
+            res.end(out);
+            return resolve();
+          }
+        } catch { /* fall through raw */ }
+        const raw = Buffer.concat(chunks);
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(raw);
+        return resolve();
+      }
+
+      res.writeHead(proxyRes.statusCode, proxyRes.headers);
+      proxyRes.pipe(res);
+      resolve();
+    } catch (err) {
+      res.writeHead(503, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "proxy connect error" }));
+      resolve();
+    }
+  });
+}
+
+/** Broadcast a session.read event to every connected client (all legs). */
+function broadcastSessionRead(storedKey, lastReadAt, device = null) {
+  const msg = JSON.stringify({
+    method: "event",
+    params: {
+      type: "session.read",
+      session_id: storedKey,
+      payload: { stored_session_id: storedKey, last_read_at: lastReadAt, ...(device ? { device } : {}) }
+    }
+  });
+  const frame = encodeFrame(msg, { opcode: 0x1, masked: false });
+  for (const s of browserSockets.keys()) {
+    try { s.write(frame); } catch { /* error handler destroys */ }
+  }
+  // recovery ring: remember so late/reconnecting clients catch up (no history gap)
+  pushReadEvent(storedKey, lastReadAt, device);
+}
+
+// ---------------------------------------------------------------------------
+// Centrifugo-style extras (ported, self-hosted, zero new services):
+//   presence  — who's connected (surface + focused chat), join/leave events
+//   recovery  — bounded ring buffer of session.read + presence events; a socket
+//               reconnecting with ?since=<version> gets ONLY what it missed
+//               (Centrifugo's history/recovery model, one buffer, no Redis).
+// ---------------------------------------------------------------------------
+const presence = new Map(); // socket -> { device, focus, since, joinedAt }
+const READ_RING_CAP = 200;
+const readRing = []; // { v: readStateVersion, ...event }
+let presenceSeq = 0;
+
+function pushReadEvent(storedKey, lastReadAt, device) {
+  readRing.push({ v: ++ringVersion, storedKey, lastReadAt, device, at: Date.now() });
+  if (readRing.length > READ_RING_CAP) readRing.shift();
+}
+let ringVersion = 0;
+
+function presenceSnapshot() {
+  const byDevice = new Map();
+  for (const info of presence.values()) {
+    if (!info.device) continue;
+    const cur = byDevice.get(info.device) || { device: info.device, focus: null, connections: 0 };
+    if (info.focus) cur.focus = info.focus;
+    cur.connections++;
+    byDevice.set(info.device, cur);
+  }
+  return { devices: [...byDevice.values()], count: presence.size, v: ++presenceSeq };
+}
+
+function broadcastPresence() {
+  const snap = presenceSnapshot();
+  const msg = JSON.stringify({
+    method: "event",
+    params: { type: "presence.snapshot", payload: snap }
+  });
+  const frame = encodeFrame(msg, { opcode: 0x1, masked: false });
+  for (const s of browserSockets.keys()) {
+    try { s.write(frame); } catch { /* ignore */ }
+  }
+  return snap;
+}
+
+function pushPresenceEvent(kind, device, focus) {
+  readRing.push({ v: ++ringVersion, presence: { kind, device, focus }, at: Date.now() });
+  if (readRing.length > READ_RING_CAP) readRing.shift();
+}
+
+function handleClientInfo(payload, socket) {
+  // browser → proxy "client.info" JSON (not an RPC upstream): device + focused chat.
+  try {
+    const j = typeof payload === "string" ? JSON.parse(payload) : payload;
+    const prev = presence.get(socket) || {};
+    const entry = {
+      device: j?.device || prev.device || null,
+      focus: j?.focus !== undefined ? j.focus : prev.focus,
+      since: j?.since ?? prev.since ?? null,
+      joinedAt: prev.joinedAt || Date.now()
+    };
+    presence.set(socket, entry);
+    // recovery replay: only events with v > since
+    if (entry.since != null) {
+      const missed = readRing.filter(e => e.v > entry.since);
+      for (const e of missed) {
+        const msg = e.storedKey
+          ? { method: "event", params: { type: "session.read", session_id: e.storedKey, payload: { stored_session_id: e.storedKey, last_read_at: e.lastReadAt } } }
+          : { method: "event", params: { type: "presence.update", payload: e.presence } };
+        try { socket.write(encodeFrame(JSON.stringify(msg), { opcode: 0x1, masked: false })); } catch { /* gone */ }
+      }
+    }
+    broadcastPresence();
+  } catch { /* malformed client.info: ignore */ }
+}
+
+export function presenceInfo() {
+  return presenceSnapshot();
+}
+
+export function readRingVersion() {
+  return ringVersion;
+}
+
+// ---------------------------------------------------------------------------
 // CONTRACT (multi-client, plan R6b): the proxy never evicts, dedupes or caps
 // concurrent sockets per session — every connection is an independent
 // broadcast client. The page renders ONLY from frames on its own socket; the
@@ -470,6 +656,8 @@ export function handleWsUpgrade(req, socket, head) {
   const sid = url.searchParams.get("sid") || null; // ?sid= → filtered background leg
   const filterComplete = url.searchParams.get("filter") === "complete";
   const info = { sid, filter: filterComplete, lastPong: Date.now() };
+  const since = url.searchParams.get("since");
+  const device = url.searchParams.get("device") || null;
   
   const key = req.headers["sec-websocket-key"];
   const accept = generateAcceptKey(key);
@@ -481,10 +669,27 @@ export function handleWsUpgrade(req, socket, head) {
   );
   
   browserSockets.set(socket, info);
+  // presence + recovery registration (join)
+  presence.set(socket, { device, focus: sid, since: since ? Number(since) : null, joinedAt: Date.now() });
+  if (device) pushPresenceEvent("join", device, sid);
   console.log(`ws-open peers=${browserSockets.size}${sid ? ` sid=${sid}` : ""} at=${new Date().toISOString()}`);
   connectUpstream();
   startTick(); // R2: global 25s liveness broadcast
   startSharedPingLoop(); // R1: shared pings + zombie reap, keeps CF tunnel alive on every leg
+  
+  // recovery replay on (re)connect: everything newer than ?since=
+  if (since != null && !Number.isNaN(Number(since))) {
+    const missed = readRing.filter(e => e.v > Number(since));
+    for (const e of missed) {
+      const msg = e.storedKey
+        ? { method: "event", params: { type: "session.read", session_id: e.storedKey, payload: { stored_session_id: e.storedKey, last_read_at: e.lastReadAt } } }
+        : { method: "event", params: { type: "presence.update", payload: e.presence } };
+      try { socket.write(encodeFrame(JSON.stringify(msg), { opcode: 0x1, masked: false })); } catch { /* gone */ }
+    }
+    // catch-up snapshot so the joiner also sees who's here now
+    try { socket.write(encodeFrame(JSON.stringify({ method: "event", params: { type: "presence.snapshot", payload: presenceSnapshot() } }), { opcode: 0x1, masked: false })); } catch { /* gone */ }
+  }
+  if (device) broadcastPresence();
   
   if (reconnecting) {
     // let them know right away
@@ -507,6 +712,15 @@ export function handleWsUpgrade(req, socket, head) {
     } else if (frame.opcode === 0x9) {
       try { socket.write(encodeFrame(frame.payload, { opcode: 0xA, masked: false })); } catch {}
     } else if (frame.opcode === 0x1) {
+      // client.info is proxy-local (presence focus updates); never forwarded.
+      let handledLocally = false;
+      if (frame.payload.length < 512 && frame.payload.includes("client.info")) {
+        try {
+          const j = JSON.parse(frame.payload.toString());
+          if (j && j.method === "client.info") { handleClientInfo(j.params || {}, socket); handledLocally = true; }
+        } catch { /* fall through to upstream */ }
+      }
+      if (handledLocally) return;
       // forward to upstream if connected, else buffer until it is
       // Chat-card gate answers ride this same path as JSON-RPC results —
       // feed the gate ledger before forwarding (fire-and-forget, never throws).
@@ -525,6 +739,12 @@ export function handleWsUpgrade(req, socket, head) {
 
   socket.on("close", () => {
     browserSockets.delete(socket);
+    const p = presence.get(socket);
+    presence.delete(socket);
+    if (p && p.device) {
+      pushPresenceEvent("leave", p.device, p.focus);
+      broadcastPresence();
+    }
     console.log(`ws-close peers=${browserSockets.size}${sid ? ` sid=${sid}` : ""} at=${new Date().toISOString()}`);
   });
   

@@ -1,13 +1,19 @@
 // astra-webui server: static dist + password-only auth API. ponytail: one file, zero deps.
 import { createServer, request } from "node:http";
-import { handleHxProxy, handleWsUpgrade, forwardToUpstream, broadcastFrame } from "./hermes-proxy.mjs";
+import { handleHxProxy, handleWsUpgrade, forwardToUpstream, broadcastFrame, hermesCookieOrNull } from "./hermes-proxy.mjs";
 import { getPendingGate, markGateAnswered, listGates, gateStats, answerGateHelper } from "./ntfy-notify.mjs";
 import { handleTranscode } from "./transcode.mjs";
 import { listVault, vaultValues, vaultDevices, VAULT_TTL, vaultSign, vaultVerify } from "./vault.mjs";
+import { allMarks, readStateVersion } from "./read-state.mjs";
+import {
+  startEndSession, startTrainingSweeper, setGatewayCookieProvider,
+  listTrainingSessions, getTrainingSession, listReviewJobs,
+} from "./training.mjs";
 
 import { createHmac, timingSafeEqual, randomBytes } from "node:crypto";
 import { readFile, stat, appendFile, mkdir } from "node:fs/promises";
 import { join, extname, resolve, sep, normalize } from "node:path";
+import { clearHermesCookie } from "./hermes-proxy.mjs";
 
 const HERMES_PASSWORD = process.env.ASTRA_HERMES_PASSWORD;
 if (!HERMES_PASSWORD) {
@@ -343,6 +349,87 @@ const server = createServer(async (req, res) => {
     return res.end(JSON.stringify({ enabled: true, url: nurl, topic: ntopic, auth: nauth.replace(/^Basic\s+/i, "") }));
   }
 
+  if (path === "/api/training/end-session" && req.method === "POST") {
+    const cookies = {};
+    (req.headers.cookie || "").split(";").forEach((c) => {
+      const i = c.indexOf("=");
+      if (i > 0) cookies[c.slice(0, i).trim()] = c.slice(i + 1).trim();
+    });
+    if (!validToken(cookies[COOKIE])) {
+      res.writeHead(401, { "content-type": "application/json" });
+      return res.end('{"error":"unauthenticated"}');
+    }
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { /* treated as empty */ }
+    const sid = typeof body.sid === "string" ? body.sid : "";
+    if (!/^[A-Za-z0-9_-]+$/.test(sid)) {
+      res.writeHead(400, { "content-type": "application/json" });
+      return res.end('{"error":"sid required"}');
+    }
+    try {
+      const { job, conflict } = startEndSession(sid, body.title ?? null, body.source ?? null);
+      if (conflict) {
+        res.writeHead(409, { "content-type": "application/json" });
+        return res.end(JSON.stringify({ error: "already active", job }));
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      return res.end(JSON.stringify({ ok: true, job }));
+    } catch (e) {
+      res.writeHead(500, { "content-type": "application/json" });
+      return res.end(JSON.stringify({ error: e.message }));
+    }
+  }
+
+  // Retrieval contract (R6): transcripts live forever in the training DB.
+  if (path === "/api/training/sessions" && req.method === "GET") {
+    const cookies = {};
+    (req.headers.cookie || "").split(";").forEach((c) => {
+      const i = c.indexOf("=");
+      if (i > 0) cookies[c.slice(0, i).trim()] = c.slice(i + 1).trim();
+    });
+    if (!validToken(cookies[COOKIE])) {
+      res.writeHead(401, { "content-type": "application/json" });
+      return res.end('{"error":"unauthenticated"}');
+    }
+    res.writeHead(200, { "content-type": "application/json" });
+    return res.end(JSON.stringify({ sessions: listTrainingSessions(), jobs: listReviewJobs() }));
+  }
+
+  if (path === "/api/training/jobs" && req.method === "GET") {
+    const cookies = {};
+    (req.headers.cookie || "").split(";").forEach((c) => {
+      const i = c.indexOf("=");
+      if (i > 0) cookies[c.slice(0, i).trim()] = c.slice(i + 1).trim();
+    });
+    if (!validToken(cookies[COOKIE])) {
+      res.writeHead(401, { "content-type": "application/json" });
+      return res.end('{"error":"unauthenticated"}');
+    }
+    const limit = Math.min(Number(new URL(req.url, "http://x").searchParams.get("limit")) || 20, 100);
+    res.writeHead(200, { "content-type": "application/json" });
+    return res.end(JSON.stringify({ jobs: listReviewJobs(limit) }));
+  }
+
+  const trainingDetail = path.match(/^\/api\/training\/sessions\/([A-Za-z0-9_-]+)$/);
+  if (trainingDetail && req.method === "GET") {
+    const cookies = {};
+    (req.headers.cookie || "").split(";").forEach((c) => {
+      const i = c.indexOf("=");
+      if (i > 0) cookies[c.slice(0, i).trim()] = c.slice(i + 1).trim();
+    });
+    if (!validToken(cookies[COOKIE])) {
+      res.writeHead(401, { "content-type": "application/json" });
+      return res.end('{"error":"unauthenticated"}');
+    }
+    const detail = getTrainingSession(trainingDetail[1]);
+    if (!detail) {
+      res.writeHead(404, { "content-type": "application/json" });
+      return res.end('{"error":"not found"}');
+    }
+    res.writeHead(200, { "content-type": "application/json" });
+    return res.end(JSON.stringify(detail));
+  }
+
   if (path.startsWith("/api/beacon/")) {
     const cookies = {};
     (req.headers.cookie || "").split(";").forEach((c) => {
@@ -377,6 +464,21 @@ const server = createServer(async (req, res) => {
       if (!res.headersSent) { res.writeHead(500, { "content-type": "application/json" }); res.end('{"error":"transcode failed"}'); }
       else res.destroy();
     });
+  }
+
+  if (path === "/api/read-state") {
+    if (req.method !== "GET" && req.method !== "HEAD") { res.writeHead(405, { allow: "GET, HEAD" }); return res.end(); }
+    const cookies = {};
+    (req.headers.cookie || "").split(";").forEach((c) => {
+      const i = c.indexOf("=");
+      if (i > 0) cookies[c.slice(0, i).trim()] = c.slice(i + 1).trim();
+    });
+    if (!validToken(cookies[COOKIE])) {
+      res.writeHead(401, { "content-type": "application/json" });
+      return res.end('{"error":"unauthenticated"}');
+    }
+    res.writeHead(200, { "content-type": "application/json" });
+    return res.end(JSON.stringify({ marks: allMarks(), v: readStateVersion() }));
   }
 
   if (path.startsWith("/api/hx/session-info/")) {
@@ -453,5 +555,10 @@ server.on("upgrade", (req, socket, head) => {
     socket.destroy();
   }
 });
+
+// Training pipeline: wire the gateway-cookie provider, then start the sweeper
+// (retries due jobs, resumes ones a restart interrupted). DB opens lazily.
+setGatewayCookieProvider(hermesCookieOrNull);
+startTrainingSweeper();
 
 server.listen(PORT, "127.0.0.1", () => console.log(`astra-webui listening on 127.0.0.1:${PORT}`));

@@ -25,6 +25,7 @@ import { pushLiveSession } from "./native-session-bridge";
 import type { ConnEvent } from "./connection-state";
 import { Capacitor } from "@capacitor/core";
 import * as notify from "./notify";
+import { setPresenceFocus as _setPresenceFocus, startTabSync, startServerSync } from "./read-sync";
 
 const APP_SOURCE = Capacitor.isNativePlatform() ? "android" : "webui";
 
@@ -545,6 +546,15 @@ export function startEngine() {
   eng.started = true;
   eng.disposed = false;
   connect();
+  // read-sync: TinyBase cross-tab CRDT + server watermark poll (2026-10-01)
+  void startTabSync();
+  startServerSync();
+  // presence writer used by notify.reportFocus (avoids a circular import)
+  (globalThis as any).__astraWsSend = (payload: string) => {
+    const s = eng.socket;
+    if (s && s.readyState === 1) { s.send(payload); return true; }
+    return false;
+  };
 
   // Chat switched from the sidebar / URL while a different session is bound.
   useWsStore.subscribe((st, prev) => {
@@ -738,6 +748,26 @@ function onMessage(e: MessageEvent) {
     const mapped = notify.storedKeyFor(liveSid);
     const fid = data.params.payload && data.params.payload.turn_id != null ? data.params.payload.turn_id : (data.id ?? liveSid + ":" + String(data.params.payload?.ts ?? 0));
     notify.handleComplete(liveSid, mapped, data.params.payload, fid);
+  }
+
+  // Cross-device read marker from the proxy (another device read this chat).
+  if (data.method === "event" && data.params && data.params.type === "session.read") {
+    const key = data.params.payload?.stored_session_id || data.params.session_id;
+    if (key) notify.handleRemoteRead(key);
+  }
+
+  // Presence (Centrifugo-style join/leave/focus broadcasts from the proxy).
+  if (data.method === "event" && data.params && (data.params.type === "presence.snapshot" || data.params.type === "presence.update")) {
+    emit({ type: data.params.type, payload: data.params.payload || {} });
+  }
+
+  // Server-origin events (no session_id — training pipeline etc.) reach the
+  // emit funnel below only if they carry no session filter; guard line 868
+  // drops session-tagged frames for other chats, but training.updated has no
+  // session_id so it falls through cleanly. Handled here to be explicit:
+  if (data.method === "event" && data.params && data.params.type === "training.updated") {
+    emit({ type: "training.updated", payload: data.params.payload });
+    return;
   }
 
   // watchdog probe reply
