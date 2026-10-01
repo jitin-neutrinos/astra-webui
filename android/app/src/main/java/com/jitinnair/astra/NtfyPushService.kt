@@ -19,6 +19,7 @@ import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.RemoteInput
+import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.IconCompat
 import okhttp3.*
 import org.json.JSONObject
@@ -68,12 +69,34 @@ class NtfyPushService : Service() {
     private val redStatus: Int get() = 0xFFEF4444.toInt()
     private var ntfyUp = false   // gate socket health → status dot
 
-    /** Full-color launcher logo bitmap — small-icon slot. Owner wants the real
-     *  logo in the panel group header; ROMs that allow color render it as-is. */
+    /** Full-color logo bitmap — small-icon slot. Owner wants the real
+     *  logo in the panel group header; ROMs that allow color render it as-is.
+     *  CRASH FIX (v1.11.7): R.mipmap.ic_launcher is adaptive-icon XML on API 26+
+     *  — BitmapFactory returns null for XML, and IconCompat.createWithBitmap(null)
+     *  NPEs at service start (killed the app at launch in v1.11.6). Decode the
+     *  PNG foreground instead, crop to the glyph, cache. */
     private var logoBmp: Bitmap? = null
     private fun fullLogo(): Bitmap {
         logoBmp?.let { return it }
-        val bmp = android.graphics.BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher)
+        val bmp = try {
+            val raw = android.graphics.BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher_foreground)
+            if (raw == null) throw IllegalStateException("foreground not a bitmap")
+            // glyph occupies ~[63..362]x[70..371] of the 432px art — crop + square
+            val size = minOf(raw.width, raw.height)
+            val x0 = (raw.width * 0.145f).toInt().coerceAtLeast(0)
+            val y0 = (raw.height * 0.160f).toInt().coerceAtLeast(0)
+            val side = (size * 0.70f).toInt().coerceAtMost(minOf(raw.width - x0, raw.height - y0))
+            Bitmap.createScaledBitmap(
+                Bitmap.createBitmap(raw, x0, y0, side, side), 96, 96, true
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "fullLogo decode failed — fallback stencil", e)
+            val d = ContextCompat.getDrawable(this, R.drawable.ic_astra_notify)!!
+            val b = Bitmap.createBitmap(d.intrinsicWidth, d.intrinsicHeight, Bitmap.Config.ARGB_8888)
+            val c = android.graphics.Canvas(b)
+            d.setBounds(0, 0, c.width, c.height); d.draw(c)
+            b
+        }
         logoBmp = bmp
         return bmp
     }
@@ -81,9 +104,7 @@ class NtfyPushService : Service() {
     private fun astraPersona(): androidx.core.app.Person = androidx.core.app.Person.Builder()
         .setName("Astra")
         // Real launcher art, as-is (full-color gradient star) — not a redrawn glyph.
-        .setIcon(IconCompat.createWithBitmap(
-            android.graphics.BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher_foreground)
-        ))
+        .setIcon(IconCompat.createWithBitmap(fullLogo()))
         .build()
 
     // ---- chat leg (R1): second socket, same service, shared client ----------
