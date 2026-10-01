@@ -156,7 +156,7 @@ function maskCommand(cmd) {
   return cmd;
 }
 
-export function notifyGateRequest(frame) {
+export function notifyGateRequest(frame, opts = {}) {
   if (!NTFY_ENABLED) return;
   try {
     const raw = frame && frame.payload !== undefined ? frame.payload : frame;
@@ -184,6 +184,10 @@ export function notifyGateRequest(frame) {
 
     const inner = data.params && typeof data.params === "object" ? data.params : {};
     const sid = String(inner.session_id || data.session_id || "");
+    // Deep links need the STORED session key; the live transport sid 404s in
+    // /api/hx. The proxy's sidMap (learned from session.create/resume replies)
+    // resolves it; unknown mappings fall back to the live sid.
+    const linkSid = (opts.resolveSid && opts.resolveSid(sid)) || sid;
     const q = String(
       inner.question ||
       (Array.isArray(inner.questions) && inner.questions.map(q => q?.question).filter(Boolean).join(" | ")) ||
@@ -192,8 +196,8 @@ export function notifyGateRequest(frame) {
       "Approval needed"
     ).slice(0, 180);
 
-    const click = (sid
-      ? `https://astra.jitinnair.com/c/${sid}`
+    const click = (linkSid
+      ? `https://astra.jitinnair.com/c/${linkSid}`
       : "https://astra.jitinnair.com/") + `?gate=${encodeURIComponent(id)}`;
     const isClarify = method === "clarify" || (method !== "approval" && !inner.command);
     

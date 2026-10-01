@@ -88,6 +88,20 @@ function clearWsTicket() {
   wsTicket = null;
 }
 
+// Cookie access for sibling modules (training worker): reuse the proxy's login
+// cache/reauth instead of a parallel login path that could race or diverge.
+// Errors are LOGGED, not swallowed — a silent null sent a training worker into
+// a 401 loop that took a full debug session to trace (2026-10-01).
+export async function hermesCookieOrNull() {
+  try { return await getHermesCookie(); } catch (e) {
+    console.error("[training] gateway cookie unavailable:", e && e.message);
+    return null;
+  }
+}
+
+// Public re-export of the internal clear (training's 401-retry path needs it).
+export { clearHermesCookie };
+
 // REST Proxy
 export async function handleHxProxy(req, res) {
   // path prefix is /api/hx. Map to /api/...
@@ -391,7 +405,10 @@ async function connectUpstream() {
             if (r && r.session_id && stored) recordSidMapping(r.session_id, stored);
           } catch { /* not an RPC reply */ }
         }
-        try { notifyGateRequest(frame.payload); } catch { /* never throws */ }
+        // Gate deep links must carry the STORED session key — the live transport
+        // sid 404s in /api/hx ("unable to load history"). Same fix class as the
+        // v1.8.0 sid-bridge: consult sidMap before the click URL is minted.
+        try { notifyGateRequest(frame.payload, { resolveSid: (live) => sidMap.get(String(live || "")) || null }); } catch { /* never throws */ }
         broadcastFrame(frame.payload, frame.opcode);
       }
     });
