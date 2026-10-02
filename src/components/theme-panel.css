@@ -33,3 +33,11 @@
 .tf-dim { display: flex; align-items: center; gap: 8px; margin-top: 0.6rem; font: 400 11px/1 var(--font-sans); color: var(--color-muted); }
 .tf-dim input[type="range"] { accent-color: var(--color-cyanx); width: 180px; }
 .hidden { display: none; }
+
+/* sections (dark vs light) */
+.tf-section { margin-top: 1rem; }
+.tf-section-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.tf-section-title { font: 600 11px/1 var(--font-sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-muted); }
+.tf-section-dot { width: 7px; height: 7px; border-radius: 3px; background: rgb(255 255 255 / 0.14); }
+.tf-section-dot-on { background: var(--color-cyanx); box-shadow: 0 0 6px rgb(var(--c-4) / 0.5); }
+.tf-variant { font: 400 10px/1 var(--font-mono); color: var(--color-muted); opacity: 0.7; margin-top: 2px; }

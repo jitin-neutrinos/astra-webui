@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { wipeClipFromRect } from "@/lib/theme-wipe";
-import { LottieIcon, useLottieAssets } from "./theme-lottie";
-import { ThemeArtwork } from "./theme-artwork";
+
+
 import { cn } from "@/lib/utils";
 
 const KEY = "astra-theme";
@@ -114,27 +114,39 @@ export function useTheme(): ["dark" | "light", (btn?: HTMLElement | null) => voi
 }
 
 /**
- * Theme icon: an ILLUSTRATED sun (light mode) or moon (dark mode), crossfaded
- * and scaled on switch. `id` is unique per instance so the gradient/mask defs
- * of two toggles on one page never collide.
+ * Theme icon — comindash sun↔moon morph (ported, GSAP → CSS transitions).
+ * The moon is the sun's core with a mask circle that slides diagonally out
+ * (waxing) or in (waning); rays recede/rotate. One continuous celestial
+ * object, not two icons swapping. Reduced motion snaps (CSS handles it).
  */
 function ThemeGlyph({ dark }: { dark: boolean }) {
-  // Owner-supplied illustrated Lottie assets, if present (see theme-lottie.tsx).
-  // Until they land, the owner's day↔night artwork is the fallback — the toggle
-  // must never render blank.
-  const assets = useLottieAssets();
-  const lottieUrl = dark ? (assets.moon ? "/lottie/theme-moon.json" : null)
-                         : (assets.sun ? "/lottie/theme-sun.json" : null);
-  /* ONE child, no AnimatePresence and no keyed remount.
-     The artwork carries both states and tweens on `dark`, so a keyed swap here
-     was pure liability: AnimatePresence kept the outgoing slot mounted, which
-     stacked the NIGHT artwork on top in light mode (label said "Light mode"
-     while the pill showed a cratered moon), and the remount reset the SMIL
-     playhead so the flip restarted from the wrong end. */
+  const id = useId().replace(/[:]/g, "");
+  const maskId = `tt-mask-${id}`;
   return (
     <span className="theme-glyph" data-mode={dark ? "dark" : "light"}>
-      <span className="theme-glyph-slot">
-        {lottieUrl ? <LottieIcon url={lottieUrl} /> : <ThemeArtwork dark={dark} />}
+      <span className="theme-glyph-slot tt-morph" data-dark={dark ? "1" : "0"}>
+        <svg width="22" height="22" viewBox="0 0 25 25" fill="none" aria-hidden="true">
+          <defs>
+            <mask id={maskId}>
+              <rect x="0" y="0" width="25" height="25" fill="white" />
+              {/* the sliding bite: dark => moon (bite in at 15.4,6.6), light => hidden (20,6) */}
+              <circle className="tt-morph-mask" cx={dark ? 15.4 : 20} cy={dark ? 6.6 : 6} r="7" fill="black" />
+            </mask>
+          </defs>
+          <g mask={`url(#${maskId})`}>
+            <circle className="tt-morph-core" cx="12.5" cy="12.5" r={dark ? 8.4 : 6.9} fill="currentColor" />
+          </g>
+          <g className="tt-morph-rays" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+            <line x1="12.5" y1="1.6" x2="12.5" y2="4.2" />
+            <line x1="12.5" y1="20.8" x2="12.5" y2="23.4" />
+            <line x1="1.6" y1="12.5" x2="4.2" y2="12.5" />
+            <line x1="20.8" y1="12.5" x2="23.4" y2="12.5" />
+            <line x1="4.8" y1="4.8" x2="6.6" y2="6.6" />
+            <line x1="18.4" y1="18.4" x2="20.2" y2="20.2" />
+            <line x1="4.8" y1="20.2" x2="6.6" y2="18.4" />
+            <line x1="18.4" y1="6.6" x2="20.2" y2="4.8" />
+          </g>
+        </svg>
       </span>
     </span>
   );

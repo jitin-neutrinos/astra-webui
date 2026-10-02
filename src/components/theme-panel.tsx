@@ -2,6 +2,7 @@
 // + chat backdrop picker (image URL / upload / video / YouTube). Compact, flat,
 // brand-locked (no new shapes; uses the page's existing card/chip vocabulary).
 import { useEffect, useMemo, useRef, useState } from "react";
+import { cn } from "../lib/utils";
 import {
   palettes, currentPaletteId, setPalette, resetToAstra, getMode,
   readCustom, clearCustom, setToken, mergeCustom, readChatBg, writeChatBg,
@@ -55,24 +56,33 @@ export function ThemePanel({ onUpload }: { onUpload?: (file: File) => Promise<st
         <span className="tf-sub">{palettes.length} palettes · colours & backgrounds only</span>
       </header>
 
-      {/* palette picker */}
-      <div className="tf-grid">
-        {palettes.map((p) => {
-          const v = mergeCustom(p).variants[mode];
-          const isActive = p.id === active;
-          return (
-            <button key={p.id} type="button"
-              className={isActive ? "tf-card tf-card-active" : "tf-card"}
-              onClick={() => pick(p.id)}
-              title={`${p.name} — ${p.source}`}>
-              <span className="tf-swatches">
-                {SWATCH_TOKENS.map((t) => <i key={t} style={{ background: v[t] || "#000" }} />)}
-              </span>
-              <span className="tf-name">{p.name}</span>
-            </button>
-          );
-        })}
-      </div>
+      {/* palette picker — dark section + light section (owner 10-02 revamp) */}
+      {(["dark", "light"] as const).map((section) => (
+        <div key={section} className="tf-section">
+          <div className="tf-section-head">
+            <span className="tf-section-title">{section === "dark" ? "Dark mode themes" : "Light mode themes"}</span>
+            <span className={cn("tf-section-dot", section === mode && "tf-section-dot-on")} title={section === mode ? "matches current mode" : ""} />
+          </div>
+          <div className="tf-grid">
+            {palettes.map((p) => {
+              const v = mergeCustom(p).variants[section];
+              const isActive = p.id === active;
+              return (
+                <button key={p.id} type="button"
+                  className={isActive ? "tf-card tf-card-active" : "tf-card"}
+                  onClick={() => pick(p.id)}
+                  title={`${p.name} — ${p.source}`}>
+                  <span className="tf-swatches">
+                    {SWATCH_TOKENS.map((t) => <i key={t} style={{ background: v[t] || "#000" }} />)}
+                  </span>
+                  <span className="tf-name">{p.name}</span>
+                  <span className="tf-variant">{section} · {isActive ? "active" : "tap to apply"}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
 
       {/* token editor for the active palette */}
       <div className="tf-edit">
