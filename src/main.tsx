@@ -9,7 +9,11 @@ import { initAndroidShell } from './native/android-resume'
 // Self-guards native-only; without this call the whole module is tree-shaken
 // and the app paints white bands above/below the viewport (drift-erase class).
 import { initShellTheme } from './native/shell-theme'
+// Theme engine: restore the saved palette (no-op when it is the default Astra UI)
+// before first paint so a non-default palette never flashes the stock colors.
+import { restorePalette } from './lib/theme-store'
 
+restorePalette()
 initAndroidShell().catch(() => { /* never block app boot on shell glue */ })
 initShellTheme().catch(() => { /* never block app boot on shell glue */ })
 

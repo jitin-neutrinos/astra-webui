@@ -1,0 +1,7 @@
+/* Theme: astra-ui-light | Source: MIT upstream (tinted-theming/schemes or owner) | Role mapping: HUE-based (not base16 slot index) | Default value = current theme token => zero visual change without edit. */
+/* Skeleton: palette transport values inserted by tokenize.mjs (P3, reason tier). Not edited by hand. */
+:root {
+  --theme-id: "astra-ui-light";
+  --theme-source: "upstream MIT";
+  --theme-default-dark: "Astra UI dark";
+}
