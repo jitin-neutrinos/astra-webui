@@ -1619,6 +1619,24 @@ html.theme-fading body * {
   border: 1px solid color-mix(in oklab, var(--color-cyanx) 45%, transparent);
   font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums;
 }
+/* Sidebar Chats aggregate: the SAME container treatment as the per-chat pill
+   (translucent cyan fill + cyan outline + rounded rectangle) plus the glow, so
+   the nav count and the row counts read as one system. Anchored to the icon
+   column (the button's first child is a w-12 icon well) so it holds position
+   whether the sidebar is expanded or collapsed to the rail. */
+.ast-unread-badge {
+  position: absolute; top: 5px; left: 33px; z-index: 1;
+  min-width: 1.15rem; height: 1.15rem; padding: 0 .32rem;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 5px;
+  background: color-mix(in oklab, var(--color-cyanx) 22%, transparent);
+  color: var(--color-cyanx);
+  border: 1px solid color-mix(in oklab, var(--color-cyanx) 45%, transparent);
+  box-shadow: 0 0 8px color-mix(in oklab, var(--color-cyanx) 30%, transparent);
+  font: 700 9px/1 var(--font-sans); font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+[data-theme="light"] .ast-unread-badge { background: rgba(3,105,161,.12); color: #0369a1; border-color: rgba(3,105,161,.4); box-shadow: none; }
 [data-theme="light"] .ast-unread-row { background: rgba(3,105,161,.08); }
 [data-theme="light"] .ast-unread-row:hover { background: rgba(3,105,161,.13); }
 [data-theme="light"] .ast-unread-pill { background: rgba(3,105,161,.12); color: #0369a1; border-color: rgba(3,105,161,.4); }

@@ -363,6 +363,26 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
     localStorage.setItem(GROUP_OPEN_KEY, JSON.stringify(groupOpen));
   }, [groupOpen]);
 
+  // Aggregate unread across every chat, for the sidebar Chats item. Same event
+  // the chat list listens on, so the two never disagree: a row clearing its pill
+  // (locally or from another device) drops the aggregate in the same tick.
+  const [unreadTotal, setUnreadTotal] = useState(() => notify.getTotalUnread());
+  useEffect(() => {
+    const sync = () => setUnreadTotal(notify.getTotalUnread());
+    window.addEventListener("astra:unread-changed", sync);
+    // sessions churn (new activity elsewhere) can seed pills without a local bump
+    const onWs = (e: Event) => {
+      const t = (e as CustomEvent<{ type?: string }>).detail?.type;
+      if (t === "sessions.changed" || t === "session.started") sync();
+    };
+    window.addEventListener("astra-ws-event", onWs);
+    sync();
+    return () => {
+      window.removeEventListener("astra:unread-changed", sync);
+      window.removeEventListener("astra-ws-event", onWs);
+    };
+  }, []);
+
   const groups: {
     label: string;
     icon: ReactNode;
@@ -518,6 +538,15 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
                 )}>
                 <span className="grid h-full w-12 shrink-0 place-content-center text-muted">{item.icon}</span>
                 {expanded && <span className="truncate text-sm font-medium">{item.name}</span>}
+                {item.name === "Chats" && unreadTotal > 0 && (
+                  <span
+                    className="ast-unread-badge"
+                    aria-label={`${unreadTotal} unread ${unreadTotal === 1 ? "message" : "messages"}`}
+                    title={`${unreadTotal} unread`}
+                  >
+                    {unreadTotal > 99 ? "99+" : unreadTotal}
+                  </span>
+                )}
                 {expanded && "badge" in item && item.badge ? (
                   <span className="ml-auto mr-3 font-mono text-[8px] uppercase tracking-widest text-cyanx/60">{item.badge}</span>
                 ) : null}
