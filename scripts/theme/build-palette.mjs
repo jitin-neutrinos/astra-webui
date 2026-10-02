@@ -60,6 +60,7 @@ function hueSat(hex) {
 }
 const satOf = (hex) => hueSat(hex).s;
 const lumOfHex = (h) => lumOf(rgbOf(h));
+const contrast = (a, b) => { const l1 = lumOf(a), l2 = lumOf(b); return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05); };
 // rotate hex hue by deg (used to split one accent into the pair family)
 function rotateHue(hex, deg) {
   const { h, s, l } = hueSat(hex);
@@ -160,9 +161,17 @@ function fromBase16(id, name, meta, pal) {
   const textHex = isLight ? pal.BASE01 : pal.BASE05;
   const muted = pal.BASE04;
   const deep = (c, dl) => adjustL(c, isLight ? -(0.32 + dl) : dl); // light mode: deepen accents for AA
+  // dark variant: if the scheme is light-origin, its "dark" surfaces are just inverted order —
+  // text must be the LIGHTEST slot (BASE05 family) and must actually contrast with void.
+  let darkVoid = pal.BASE00;
+  // light-origin schemes: BASE00 is paper, not a dark ground. Force a genuinely dark void.
+  let darkGuard = 0;
+  while (lumOf(rgbOf(darkVoid)) > 0.09 && darkGuard++ < 40) darkVoid = adjustL(darkVoid, -0.05);
+  const darkText = lumOf(rgbOf(textHex)) > lumOf(rgbOf(darkVoid)) && contrast(rgbOf(textHex), rgbOf(darkVoid)) >= 4.5 ? textHex : adjustL(darkVoid, 0.78);
+  const darkMuted = contrast(rgbOf(muted), rgbOf(darkVoid)) >= 4.5 ? muted : adjustL(darkVoid, 0.42);
   const dark = {
-    "--color-void": pal.BASE00, "--color-midnight": surfaces[1], "--color-depth": surfaces[2], "--color-surface": surfaces[3],
-    "--color-brandtext": textHex, "--color-muted": muted,
+    "--color-void": darkVoid, "--color-midnight": surfaces[1], "--color-depth": surfaces[2], "--color-surface": surfaces[3],
+    "--color-brandtext": darkText, "--color-muted": darkMuted,
     "--color-cyanx": primary, "--color-violetx": rotateHue(primary, 60), "--color-fuchsiax": rotateHue(primary, -50),
     "--color-redx": redx,
     "--color-emerald": emPick ? emPick.c : rotateHue(primary, 120),
@@ -170,9 +179,13 @@ function fromBase16(id, name, meta, pal) {
     "--glow-accent": `0 0 10px ${alpha(primary, 0.25)}`, "--glow-accent-strong": `0 0 16px ${alpha(primary, 0.4)}`,
     "--bg-url": "", "--bg-video": "",
   };
+  // light variant: paper surfaces from the LIGHTEST slots, dark ink text — they must differ!
+  const lightVoid = surfaces[0];
+  const lightText = isLight ? pal.BASE01 : ordered[0]; // ink: darkest slot (or scheme's own ink for light-origin)
   const light = {
-    "--color-void": pal.BASE01, "--color-midnight": adjustL(pal.BASE00, 0.04), "--color-depth": pal.BASE02, "--color-surface": pal.BASE03,
-    "--color-brandtext": pal.BASE01, "--color-muted": muted,
+    "--color-void": lightVoid, "--color-midnight": adjustL(lightVoid, 0.035), "--color-depth": adjustL(lightVoid, -0.045), "--color-surface": adjustL(lightVoid, -0.09),
+    "--color-brandtext": lumOf(rgbOf(lightText)) < lumOf(rgbOf(lightVoid)) ? lightText : adjustL(lightVoid, -0.72),
+    "--color-muted": lumOf(rgbOf(muted)) < lumOf(rgbOf(lightVoid)) && contrast(rgbOf(muted), rgbOf(lightVoid)) >= 4.5 ? muted : adjustL(lightVoid, -0.45),
     "--color-cyanx": deep(primary, 0), "--color-violetx": deep(rotateHue(primary, 60), 0.05), "--color-fuchsiax": deep(rotateHue(primary, -50), 0.05),
     "--color-redx": deep(redx, 0.05),
     "--color-emerald": emPick ? deep(emPick.c, 0.05) : deep(rotateHue(primary, 120), 0.05),

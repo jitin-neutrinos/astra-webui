@@ -15,6 +15,7 @@ import { readFile, stat, appendFile, mkdir } from "node:fs/promises";
 import { join, extname, resolve, sep, normalize } from "node:path";
 import { clearHermesCookie } from "./hermes-proxy.mjs";
 import { handleBgUpload, handleBgServe } from "./theme-assets.mjs";
+import { handleThemeState } from "./theme-sync.mjs";
 
 const HERMES_PASSWORD = process.env.ASTRA_HERMES_PASSWORD;
 if (!HERMES_PASSWORD) {
@@ -480,6 +481,14 @@ const server = createServer(async (req, res) => {
     }
     res.writeHead(200, { "content-type": "application/json" });
     return res.end(JSON.stringify({ marks: allMarks(), v: readStateVersion() }));
+  }
+
+  if (path === "/api/theme/state") {
+    try { return await handleThemeState(req, res, validToken); }
+    catch (err) {
+      console.error("[theme-sync]", err?.message || err);
+      if (!res.headersSent) { res.writeHead(500, { "content-type": "application/json" }); res.end('{"error":"theme state failed"}'); }
+    }
   }
 
   if (path === "/api/theme/bg" || path.startsWith("/api/theme/bg/")) {
