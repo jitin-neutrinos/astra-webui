@@ -32,10 +32,41 @@ function channels(variant: PaletteVariant, token: string): string {
 // Token -> generated channel var suffixes produced by tokenize.mjs.
 // We discover them from the live stylesheet instead of hardcoding: any
 // definition comment block carries them; simpler: we re-derive by scanning CSSOM once.
-let roleVars: { dark: Map<string, string[]>; light: Map<string, string[]> } | null = null;
-function discoverRoleVars() {
-  if (roleVars) return roleVars;
-  const dark = new Map(), light = new Map();
+/** Sync the browser-chrome color (theme-color meta) with the active palette's void. */
+function syncThemeColorMeta(mode: ThemeMode) {
+  const p = mergeCustom(palettes.find((x) => x.id === currentPaletteId()) || palettes[0]);
+  const voidHex = (p.variants[mode] || {})["--color-void"];
+  if (!/^#[0-9a-fA-F]{6}$/.test(voidHex || "")) return;
+  const meta = document.querySelector('meta[name="theme-color"]:not([media])');
+  meta?.setAttribute("content", voidHex);
+}
+
+// hex -> [r,g,b]
+const rgbOfHex = (h: string): [number, number, number] => {
+  const x = h.replace("#", "");
+  return [parseInt(x.slice(0, 2), 16), parseInt(x.slice(2, 4), 16), parseInt(x.slice(4, 6), 16)];
+};
+// Retarget a derived shade (gradient bottoms, dim glows): keep each channel's
+// ratio to the old accent, scaled onto the new accent.
+function deriveShade(oldChannels: string, oldAccent: [number, number, number], newAccent: [number, number, number]): string {
+  const ch = oldChannels.split(/\s+/).map(Number);
+  return [0, 1, 2].map((i) => Math.max(0, Math.min(255, Math.round(newAccent[i] * (ch[i] / (oldAccent[i] || 1)))))).join(" ");
+}
+
+export function applyPalette(p: Palette, mode: ThemeMode = getMode()) {
+  const source = mode === "light" ? p.variants.light : p.variants.dark;
+  const astraMode = (mode === "light" ? palettes[0].variants.light : palettes[0].variants.dark);
+  const root = document.documentElement;
+  let n = 0;
+  // Direct @theme overrides: tailwind utilities (text-brandtext, bg-void, …)
+  for (const [token, hex] of Object.entries(source)) {
+    if (token.startsWith("--color-") && /^#[0-9a-fA-F]{6}$/.test(hex)) root.style.setProperty(token, hex);
+  }
+  // role map from the --r-N annotations tokenize.mjs emits: chanProp -> role.
+  // ALSO collect every channel var prop+default (the triple-keyed table collapses
+  // props that share a triple — iterating the rule list directly hits each one).
+  const roleOf = new Map<string, string>();
+  const chans: [string, string][] = []; // [prop, defaultTriple]
   for (const sheet of document.styleSheets) {
     let rules: CSSRuleList; try { rules = sheet.cssRules; } catch { continue; }
     for (const rule of Array.from(rules)) {
@@ -43,43 +74,30 @@ function discoverRoleVars() {
       const txt = rule.style;
       for (let i = 0; i < txt.length; i++) {
         const prop = txt[i];
-        if (!prop.startsWith("--c-") && !prop.startsWith("--light-c-")) continue;
-        const val = txt.getPropertyValue(prop).trim(); // "r g b"
-        const m = val.match(/^(\d+)\s+(\d+)\s+(\d+)$/);
-        if (!m) continue;
-        (prop.startsWith("--light-c-") ? light : dark).set(m.slice(1, 4).join(","), [prop, val]);
+        if (prop.startsWith("--r-")) { roleOf.set(prop.replace("--r-", "--c-"), txt.getPropertyValue(prop).trim()); continue; }
+        if (/^--(light-)?c-\d+$/.test(prop)) {
+          const val = txt.getPropertyValue(prop).trim();
+          if (/^\d+\s+\d+\s+\d+$/.test(val)) chans.push([prop, val.split(/\s+/).join(",")]);
+        }
       }
     }
   }
-  roleVars = { dark, light };
-  return roleVars;
-}
-
-/** Apply palette `p` for the current (or given) mode: rewrites every generated
- *  channel var whose default equals one of Astra UI's current mode colors. */
-export function applyPalette(p: Palette, mode: ThemeMode = getMode()) {
-  const { dark, light } = discoverRoleVars();
-  const source = mode === "light" ? p.variants.light : p.variants.dark;
-  const astraMode = (mode === "light" ? palettes[0].variants.light : palettes[0].variants.dark);
-  const table = mode === "light" ? light : dark;
-  const root = document.documentElement;
-  let n = 0;
-  // Direct @theme overrides: tailwind utilities (text-brandtext, bg-void, …) reference
-  // var(--color-*) — set them straight from the palette for this mode.
-  for (const [token, hex] of Object.entries(source)) {
-    if (token.startsWith("--color-") && /^#[0-9a-fA-F]{6}$/.test(hex)) root.style.setProperty(token, hex);
-  }
-  for (const [token] of Object.entries(source)) {
-    const ch = channels(source, token);
-    if (!ch) continue;
-    // every generated var whose default triple == astra's canonical triple for this
-    // token in this mode gets retargeted
-    const canon = channels(astraMode, token);
-    if (!canon) continue;
-    for (const [rgbKey, [prop]] of table) {
-      if (rgbKey !== canon) continue;
-      root.style.setProperty(prop, ch);
-      n++;
+  // accent = the theme's brand color (cyanx slot)
+  const accentNew = rgbOfHex(source["--color-cyanx"]);
+  const accentAstra = rgbOfHex(astraMode["--color-cyanx"]);
+  const astraAccentCh = channels(astraMode, "--color-cyanx");
+  for (const [prop, rgbKey] of chans) {
+    const role = roleOf.get(prop);
+    if (role) {
+      const hex = source["--color-" + role];
+      if (hex && /^#[0-9a-fA-F]{6}$/.test(hex)) { root.style.setProperty(prop, rgbOfHex(hex).join(" ")); n++; continue; }
+    }
+    // derived accent-family shades (not the accent itself): keep the shade ratio
+    if (astraAccentCh && rgbKey !== astraAccentCh) {
+      const [r, g, b] = rgbKey.split(",").map(Number);
+      const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+      const inFamily = mx - mn > 30 && (Math.abs(r - accentAstra[0]) + Math.abs(g - accentAstra[1]) + Math.abs(b - accentAstra[2])) < 420;
+      if (inFamily) { root.style.setProperty(prop, deriveShade(rgbKey, accentAstra, accentNew)); n++; }
     }
   }
   return n;
@@ -94,6 +112,7 @@ export function setPalette(id: string): number {
   if (!p) return -1;
   try { localStorage.setItem(LS_KEY, id); } catch { /* private mode */ }
   const n = applyPalette(p);
+  syncThemeColorMeta(getMode());
   window.dispatchEvent(new CustomEvent("astra-palette-change", { detail: id }));
   return n;
 }
@@ -151,7 +170,14 @@ export function restorePalette() {
   const p = palettes.find((x) => x.id === id);
   if (!p) return;
   applyPalette(mergeCustom(p));
+  syncThemeColorMeta(getMode());
 }
+// default palette too: browser chrome should carry Astra's void per mode
+try {
+  const m = getMode();
+  syncThemeColorMeta(m);
+  window.addEventListener("astra-theme-change", () => syncThemeColorMeta(getMode()));
+} catch { /* pre-DOM safety */ }
 
 /** Chat backdrop preference (URL or uploaded path; empty = off). */
 export interface ChatBg { kind: "image" | "video" | "youtube"; src: string; blur?: number; dim?: number }

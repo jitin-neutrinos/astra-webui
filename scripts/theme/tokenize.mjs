@@ -133,7 +133,9 @@ css = css.replace(/([^{}]+)\{([^{}]*)\}/g, (whole, sel, body) => {
 // ---- emit definitions ----
 const defs = varSeq.map((v) => {
   const ch = v.role ? hexChannels(astra.variants[v.light ? "light" : "dark"]["--color-" + v.role]) : v.rgb;
-  return `  ${v.key}: ${ch.join(" ")};`;
+  // --r-N carries the role so the runtime engine can retarget every derived shade too
+  const roleTag = v.role ? `  --r-${v.key.replace(/--(light-)?c-/, "")}: ${v.role};` : "";
+  return roleTag ? `  ${v.key}: ${ch.join(" ")};\n${roleTag}` : `  ${v.key}: ${ch.join(" ")};`;
 });
 const GLOWS = [
   "  --glow-accent: 34 211 238;",
