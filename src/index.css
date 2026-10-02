@@ -17,11 +17,11 @@
      flips per theme (dark ink on light theme, light text on dark theme —
      owner 09-26: pale solid was too bright in dark mode, revert); user = light
      tint of brand accent green (accent-emerald). */
-  --bubble-ai-bg: transparent;
+  --bubble-ai-bg: rgba(34, 211, 238, 0.07);
   --bubble-ai-border: rgba(34, 211, 238, 0.18);
   --bubble-ai-code-bg: rgba(34, 211, 238, 0.08);
   --bubble-ai-inline-bg: rgba(34, 211, 238, 0.09);
-  --bubble-user-bg: transparent;
+  --bubble-user-bg: rgba(52, 211, 153, 0.08);
   --bubble-user-border: rgba(52, 211, 153, 0.25);
   --bubble-user-text: #d1fae5;
 }
@@ -510,7 +510,7 @@ html.theme-fading body * {
 .chat-suggest-label { font: 500 13.5px/1.4 var(--font-sans); color: var(--color-brandtext); }
 .chat-suggest-hint { font: 400 11.5px/1.4 var(--font-mono); color: var(--color-muted); }
 
-.chat-composer { position: relative; background: color-mix(in srgb, var(--color-depth) 88%, transparent); backdrop-filter: blur(14px) saturate(1.15); -webkit-backdrop-filter: blur(14px) saturate(1.15); /* idle: border transparent — the running trace is the outline; a static border under it read as a duplicate dim line */ border: 1px solid transparent; border-radius: 12px; padding: 10px 12px 8px; box-shadow: 0 1px 2px rgba(0,0,0,.18), 0 10px 32px -18px rgba(0,0,0,.55); transition: border-color 220ms cubic-bezier(0.23,1,0.32,1), box-shadow 220ms cubic-bezier(0.23,1,0.32,1); }
+.chat-composer { position: relative; background: color-mix(in srgb, var(--color-depth) 92%, transparent); backdrop-filter: blur(22px) saturate(1.25); /* idle: border transparent — the running trace is the outline; a static border under it read as a duplicate dim line */ border: 1px solid transparent; border-radius: 12px; padding: 10px 12px 8px; box-shadow: 0 1px 2px rgba(0,0,0,.18), 0 10px 32px -18px rgba(0,0,0,.55); transition: border-color 220ms cubic-bezier(0.23,1,0.32,1), box-shadow 220ms cubic-bezier(0.23,1,0.32,1); }
 /* running brand accent line: an SVG stroke on a rounded <rect> (composer-trace.tsx).
    The dash IS the rounded path, so the lit run bends through the corners exactly.
    A straight bar on an offset-path cannot: over an arc of radius r a bar of length
@@ -849,7 +849,7 @@ html.theme-fading body * {
 /* AI bubble fills the message column (2026-09-29): the avatar column is gone —
    the Astra logo lives INSIDE the bubble as a header row (logo at very top,
    timestamp beside it), and the turn content uses the full width below it. */
-.chat-turn { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--bubble-ai-border); border-radius: 14px; padding: 12px 14px; background: var(--bubble-ai-bg); animation: chat-turn-in 200ms cubic-bezier(0.23,1,0.32,1) both; min-width: 0; overflow-wrap: anywhere; box-shadow:0 0 18px -4px rgb(var(--c-8) / 0.35); }
+.chat-turn { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--bubble-ai-border); border-radius: 14px; padding: 12px 14px; background: var(--bubble-ai-bg); backdrop-filter: blur(18px) saturate(1.2); animation: chat-turn-in 200ms cubic-bezier(0.23,1,0.32,1) both; min-width: 0; overflow-wrap: anywhere; box-shadow:0 0 18px -4px rgb(var(--c-8) / 0.35); }
 .chat-turn-head { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
 .chat-turn-logo { height: 22px; width: 22px; object-fit: contain; flex: 0 0 auto; filter:drop-shadow(0 0 10px rgb(var(--c-109) / 0.39)); }
 .chat-turn-head .chat-turn-ts { margin: 0 0 0 auto; }
@@ -917,9 +917,9 @@ html.theme-fading body * {
   .tubes-glow-wash, .tubes-glow-wash::after, .tubes-glow-wash::before { animation: none; }
 }
 /* user bubble: brand-green tint (see :root tokens) */
-.chat-bubble-user { border: 1px solid var(--bubble-user-border); background: var(--bubble-user-bg); color: var(--bubble-user-text); box-shadow:0 0 18px -4px rgb(var(--c-121) / 0.35); }
+.chat-bubble-user { border: 1px solid var(--bubble-user-border); background: var(--bubble-user-bg); backdrop-filter: blur(18px) saturate(1.2); color: var(--bubble-user-text); box-shadow:0 0 18px -4px rgb(var(--c-121) / 0.35); }
 /* Astra streaming placeholder pill shares the Astra bubble skin */
-.chat-bubble-ai { border: 1px solid var(--bubble-ai-border); background: var(--bubble-ai-bg); box-shadow:0 0 18px -4px rgb(var(--c-8) / 0.35); }
+.chat-bubble-ai { border: 1px solid var(--bubble-ai-border); background: var(--bubble-ai-bg); backdrop-filter: blur(18px) saturate(1.2); box-shadow:0 0 18px -4px rgb(var(--c-8) / 0.35); }
 /* markdown inside the Astra bubble follows the bubble ground (bold was
    hardcoded #fff — invisible on the light theme tint) */
 .chat-turn .chat-md strong { color: var(--color-brandtext); }
@@ -1478,9 +1478,9 @@ html.theme-fading body * {
 /* bubbles on the warm light ground: Astra pale blue is defined in :root and
    shared by both themes; only the USER green tint is re-balanced per theme. */
 [data-theme="light"] {
-  --bubble-ai-bg: transparent;
+  --bubble-ai-bg: rgba(3, 105, 161, 0.06);
   --bubble-ai-border: rgba(3, 105, 161, 0.22);
-  --bubble-user-bg: transparent;
+  --bubble-user-bg: rgba(4, 120, 87, 0.07);
   --bubble-user-border: rgba(4, 120, 87, 0.28);
   --bubble-user-text: #064e3b;
 }

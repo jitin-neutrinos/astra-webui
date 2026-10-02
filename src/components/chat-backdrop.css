@@ -1,11 +1,9 @@
-/* Chat backdrop — cover-fit geometry without JS:
- *   .chat-backdrop-yt is a 16:9 stage sized to COVER the viewport at any
- *   aspect/orientation: width = max(100vw, 100vh * 16/9) via max() — the stage
- *   always covers, crops the overflow, and re-resolves on resize/orientation
- *   change automatically (pure CSS, container-relative units).
- *   zoom semantics: "dynamically zooming based on device, screen size, orientation".
- * Reduced motion: video/youtube stay (user chose the bg) but we drop nothing;
- * image is static anyway. The iframe stays muted per YouTube RMF. */
+/* Chat backdrop — cover-fit, exact-crop at every aspect/orientation:
+ *   the backdrop is a CSS size container; the 16:9 YouTube stage uses
+ *   max() over container units so BOTH dimensions always cover:
+ *   width  = max(100cqw, 100cqh * 16/9)   height = max(100cqh, 100cqw * 9/16)
+ *   Overflow crops (overflow:hidden), orientation/portrait just re-resolves.
+ *   The plain <img>/<video> uses object-fit: cover (same guarantee natively). */
 .chat-backdrop {
   position: absolute;
   inset: 0;
@@ -13,6 +11,7 @@
   overflow: hidden;
   pointer-events: none;
   border-radius: inherit;
+  container-type: size;
 }
 .chat-backdrop-media {
   position: absolute;
@@ -23,12 +22,11 @@
   object-position: center;
 }
 .chat-backdrop-yt {
-  /* 16:9 stage covering the pane at any aspect ratio */
   position: absolute;
   left: 50%;
   top: 50%;
-  width: max(100%, calc(100% * var(--cb-aspect, 1.7778)));
-  aspect-ratio: 16 / 9;
+  width: max(100cqw, calc(100cqh * 1.7778));
+  height: max(100cqh, calc(100cqw * 0.5625));
   transform: translate(-50%, -50%);
 }
 .chat-backdrop-yt iframe {
