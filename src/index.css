@@ -520,6 +520,20 @@ html.theme-fading body * {
 [data-theme="light"] .ast-file-row:hover { background: rgba(15,23,42,.04); }
 [data-theme="light"] .ast-file-dl:hover { background: rgba(3,105,161,.1); color: #0369a1; }
 
+/* ---- theme toggle icon (illustrated sun / moon) ---------------------------
+   The glow is on the ICON only (the owner's explicit ask) — the button keeps
+   its plain hover/press treatment. Sun gets a warm yellow bloom, moon a cool
+   silver one, so each reads instantly as "the other mode". */
+.theme-glyph { display: inline-grid; place-items: center; width: 22px; height: 22px; }
+.theme-glyph-slot { display: inline-grid; place-items: center; }
+.theme-glyph[data-mode="light"] { filter: drop-shadow(0 0 5px rgba(251, 191, 36, .75)) drop-shadow(0 0 11px rgba(245, 158, 11, .35)); }
+.theme-glyph[data-mode="dark"] { filter: drop-shadow(0 0 5px rgba(203, 213, 225, .55)) drop-shadow(0 0 12px rgba(148, 163, 184, .28)); }
+/* Light mode: no glows anywhere (owner mandate) — the sun keeps its colour. */
+[data-theme="light"] .theme-glyph { filter: none; }
+@media (prefers-reduced-motion: reduce) {
+  .theme-sun, .theme-moon { animation: none !important; }
+}
+
 /* ---- turn timeline: thinking / tool / text / approval segments ---- */
 /* AI bubble fills the message column (2026-09-29): the avatar column is gone —
    the Astra logo lives INSIDE the bubble as a header row (logo at very top,

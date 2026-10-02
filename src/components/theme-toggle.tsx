@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { wipeClipFromRect } from "@/lib/theme-wipe";
+import { LottieIcon, useLottieAssets } from "./theme-lottie";
 
 const KEY = "astra-theme";
 
@@ -111,51 +112,136 @@ export function useTheme(): ["dark" | "light", (btn?: HTMLElement | null) => voi
   return [theme, toggle];
 }
 
-const EASE = [0.65, 0, 0.35, 1] as const;   // power3.inOut / power2.inOut
-
 /**
- * Sun↔moon morph. Markup is comindash's, verbatim (same viewBox, mask, ray
- * set); the tween that moves it is motion/react rather than GSAP.
- * `id` must be unique per instance — two toggles on one page would otherwise
- * share the first mask definition.
+ * Illustrated sun — warm gradient core, eight tapered rays, slow rotation.
+ * Light-mode icon. Kept as inline SVG rather than a PNG/WebM: it stays crisp at
+ * any DPR, recolours with the theme, animates in CSS, and costs ~1KB.
  */
-function ThemeGlyph({ dark, maskId }: { dark: boolean; maskId: string }) {
+function SunIcon() {
   const reduce = useReducedMotion();
   return (
-    <svg width="20" height="20" viewBox="0 0 25 25" fill="none" aria-hidden="true">
+    <svg width="22" height="22" viewBox="0 0 32 32" fill="none" aria-hidden="true" className="theme-sun">
       <defs>
-        <mask id={maskId}>
-          <rect x="0" y="0" width="25" height="25" fill="white" />
-          <motion.circle
-            cx="20" cy="6" r="7" fill="black"
-            animate={{ cx: dark ? 15.4 : 20, cy: dark ? 6.6 : 6 }}
-            transition={{ duration: reduce ? 0 : 0.8, ease: EASE }}
-          />
-        </mask>
+        <radialGradient id="astra-sun-core" cx="0.4" cy="0.35" r="0.75">
+          <stop offset="0%" stopColor="#FEF3C7" />
+          <stop offset="45%" stopColor="#FCD34D" />
+          <stop offset="100%" stopColor="#F59E0B" />
+        </radialGradient>
+        <linearGradient id="astra-sun-ray" x1="16" y1="6" x2="16" y2="2" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#FBBF24" />
+          <stop offset="100%" stopColor="#F59E0B" />
+        </linearGradient>
       </defs>
-      <g mask={`url(#${maskId})`}>
-        <motion.circle
-          cx="12.5" cy="12.5" fill="currentColor"
-          animate={{ r: dark ? 8.4 : 6.9 }}
-          transition={{ duration: reduce ? 0 : 0.5, ease: EASE }}
+      {/* rays: a slow turn is what makes it read as animated rather than static */}
+      <motion.g
+        stroke="url(#astra-sun-ray)" strokeWidth="2.6" strokeLinecap="round"
+        style={{ transformOrigin: "16px 16px" }}
+        animate={{ rotate: reduce ? 0 : 360 }}
+        transition={{ duration: reduce ? 0 : 48, ease: "linear", repeat: Infinity }}
+      >
+        <line x1="16" y1="9.4" x2="16" y2="3.4" />
+        <line x1="16" y1="22.6" x2="16" y2="28.6" />
+        <line x1="9.4" y1="16" x2="3.4" y2="16" />
+        <line x1="22.6" y1="16" x2="28.6" y2="16" />
+        <line x1="11.4" y1="11.4" x2="7.2" y2="7.2" strokeWidth="2.1" />
+        <line x1="20.6" y1="20.6" x2="24.8" y2="24.8" strokeWidth="2.1" />
+        <line x1="20.6" y1="11.4" x2="24.8" y2="7.2" strokeWidth="2.1" />
+        <line x1="11.4" y1="20.6" x2="7.2" y2="24.8" strokeWidth="2.1" />
+      </motion.g>
+      {/* core with a soft inner highlight so it reads dimensional, not flat */}
+      <circle cx="16" cy="16" r="6.6" fill="url(#astra-sun-core)" />
+      <circle cx="13.8" cy="13.6" r="2.1" fill="#FFFBEB" opacity="0.55" />
+    </svg>
+  );
+}
+
+/**
+ * Illustrated moon — crescent carved by a masking circle, with three craters and
+ * a cool rim light. Dark-mode icon. The craters are the point: a plain crescent
+ * reads as a generic glyph, the pitting reads as "the moon".
+ */
+function MoonIcon() {
+  const reduce = useReducedMotion();
+  return (
+    <svg width="22" height="22" viewBox="0 0 32 32" fill="none" aria-hidden="true" className="theme-moon">
+      <defs>
+        <linearGradient id="astra-moon-body" x1="8" y1="6" x2="24" y2="27" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#F8FAFC" />
+          <stop offset="45%" stopColor="#CBD5E1" />
+          <stop offset="100%" stopColor="#94A3B8" />
+        </linearGradient>
+        <mask id="astra-moon-crescent">
+          <rect x="0" y="0" width="32" height="32" fill="black" />
+          <circle cx="15" cy="16" r="12" fill="white" />
+          {/* carve the crescent */}
+          <circle cx="23.5" cy="12.5" r="11" fill="black" />
+        </mask>
+        <clipPath id="astra-moon-clip">
+          <circle cx="15" cy="16" r="12" />
+        </clipPath>
+      </defs>
+      <g mask="url(#astra-moon-crescent)">
+        <circle cx="15" cy="16" r="12" fill="url(#astra-moon-body)" />
+        {/* craters — a lighter lip and a darker floor sell the depression */}
+        <g clipPath="url(#astra-moon-clip)">
+          <circle cx="11.4" cy="12.2" r="3.1" fill="#94A3B8" opacity="0.55" />
+          <circle cx="10.7" cy="11.2" r="2.4" fill="#E2E8F0" opacity="0.45" />
+          <circle cx="15.6" cy="20.4" r="2.4" fill="#64748B" opacity="0.5" />
+          <circle cx="15.1" cy="19.7" r="1.7" fill="#E2E8F0" opacity="0.35" />
+          <circle cx="9.6" cy="20.6" r="1.5" fill="#64748B" opacity="0.42" />
+          <circle cx="19.4" cy="16.2" r="1.2" fill="#64748B" opacity="0.35" />
+        </g>
+        {/* rim light along the lit edge */}
+        <path
+          d="M6.2 9.4a12 12 0 0 0 0 13.2"
+          stroke="#F1F5F9" strokeWidth="1.1" strokeLinecap="round" opacity="0.75"
         />
       </g>
+      {/* a slow drift so the moon breathes instead of sitting dead still */}
       <motion.g
-        stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"
-        style={{ transformOrigin: "12.5px 12.5px" }}
-        animate={{ scale: dark ? 0.3 : 1, opacity: dark ? 0 : 1, rotate: dark ? 90 : 0 }}
-        transition={{ duration: reduce ? 0 : 0.5, ease: EASE }}
+        style={{ transformOrigin: "15px 16px" }}
+        animate={{ rotate: reduce ? 0 : -6 }}
+        transition={{ duration: reduce ? 0 : 9, ease: "easeInOut", repeat: Infinity, repeatType: "reverse" }}
       >
-        <line x1="12.5" y1="1.6" x2="12.5" y2="4.2" />
-        <line x1="12.5" y1="20.8" x2="12.5" y2="23.4" />
-        <line x1="1.6" y1="12.5" x2="4.2" y2="12.5" />
-        <line x1="20.8" y1="12.5" x2="23.4" y2="12.5" />
-        <line x1="4.8" y1="4.8" x2="6.6" y2="6.6" />
-        <line x1="18.4" y1="18.4" x2="20.2" y2="20.2" />
-        <line x1="4.8" y1="20.2" x2="6.6" y2="18.4" />
-        <line x1="18.4" y1="6.6" x2="20.2" y2="4.8" />
+        <circle cx="26.4" cy="7.6" r="0.9" fill="#E2E8F0" opacity="0.8" />
+        <circle cx="5.4" cy="6.2" r="0.65" fill="#CBD5E1" opacity="0.7" />
+        <circle cx="28.2" cy="20.4" r="0.55" fill="#CBD5E1" opacity="0.55" />
       </motion.g>
     </svg>
+  );
+}
+
+/**
+ * Theme icon: an ILLUSTRATED sun (light mode) or moon (dark mode), crossfaded
+ * and scaled on switch. `id` is unique per instance so the gradient/mask defs
+ * of two toggles on one page never collide.
+ */
+function ThemeGlyph({ dark }: { dark: boolean }) {
+  const reduce = useReducedMotion();
+  // Owner-supplied illustrated Lottie assets, if present (see theme-lottie.tsx).
+  // Until they land, the inline SVG below is the fallback — the toggle must
+  // never render blank.
+  const assets = useLottieAssets();
+  const lottieUrl = dark ? (assets.moon ? "/lottie/theme-moon.json" : null)
+                         : (assets.sun ? "/lottie/theme-sun.json" : null);
+  const spring = reduce
+    ? { duration: 0 }
+    : { type: "spring" as const, stiffness: 260, damping: 26 };
+  return (
+    <span className="theme-glyph" data-mode={dark ? "dark" : "light"}>
+      <AnimatePresence initial={false} mode="popLayout">
+        <motion.span
+          key={dark ? "moon" : "sun"}
+          className="theme-glyph-slot"
+          initial={{ opacity: 0, scale: reduce ? 1 : 0.55, rotate: reduce ? 0 : dark ? -35 : 35 }}
+          animate={{ opacity: 1, scale: 1, rotate: 0 }}
+          exit={{ opacity: 0, scale: reduce ? 1 : 0.55, rotate: reduce ? 0 : dark ? 35 : -35 }}
+          transition={spring}
+        >
+          {lottieUrl ? <LottieIcon url={lottieUrl} /> : (dark ? <MoonIcon /> : <SunIcon />)}
+        </motion.span>
+      </AnimatePresence>
+    </span>
   );
 }
 
@@ -176,7 +262,7 @@ export function ThemeToggle({ expanded }: { expanded: boolean }) {
       className="group relative flex h-11 w-full items-center rounded-md text-slate-400 transition-colors duration-200 hover:bg-cyanx/10 hover:text-cyanx press-feedback"
     >
       <span className="grid h-full w-12 shrink-0 place-content-center">
-        <ThemeGlyph dark={light} maskId="astra-theme-mask-nav" />
+        <ThemeGlyph dark={!light} />
       </span>
       {expanded && (
         <span className="truncate text-sm font-medium">
@@ -201,7 +287,7 @@ export function ThemeIconButton() {
       title={light ? "Switch to dark mode" : "Switch to light mode"}
       className="absolute right-4 top-4 z-[60] grid h-9 w-9 place-content-center rounded-[10px] border border-white/10 bg-black/30 text-slate-300 transition-colors duration-200 hover:border-cyanx/50 hover:bg-cyanx/10 hover:text-cyanx press-feedback"
     >
-      <ThemeGlyph dark={light} maskId="astra-theme-mask-login" />
+      <ThemeGlyph dark={!light} />
     </button>
   );
 }
