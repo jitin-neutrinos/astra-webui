@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
-import { ArrowUp, Square, TriangleAlert, RotateCcw, Pencil, ChevronDown, Plus, WifiOff, Loader2, CheckCircle2, Check, LogOut } from "lucide-react";
+import { ArrowUp, Square, TriangleAlert, RotateCcw, Pencil, ChevronDown, Plus, WifiOff, Loader2, CheckCircle2, Check } from "lucide-react";
 import TrainingStatus from "./training-status";
 import * as notify from "@/lib/notify";
 import { AnimatedCopyButton } from "@/lib/animated-copy";
@@ -35,7 +35,7 @@ import { ComposerTrace, isLowSpec } from "./composer-trace";
 import { CommandPalette } from "./command-palette";
 import { CommandSurface, type CommandSurfaceItem } from "./command-surface";
 import { AllCommandsModal } from "./all-commands-modal";
-import { surfaceFor } from "@/lib/command-exec";
+import { surfaceFor, execSlashCommand } from "@/lib/command-exec";
 import { fetchCommandRegistry, knownCommandNames } from "@/lib/command-registry";
 import { newId, uniqueUploadName } from "@/lib/upload-names";
 import { loadDraft, saveDraft, clearDraft, moveDraft } from "@/lib/drafts";
@@ -314,8 +314,6 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   // the scroll position shifting because content grew underneath them.
   const lastScrollTopRef = useRef(0);
   useEffect(() => { atBottomRef.current = atBottom; }, [atBottom]);
-  const [slashOpen, setSlashOpen] = useState(false);
-  const [slashActive, setSlashActive] = useState(0);
   // Send-button sent-flash (morphs to a check briefly after send).
   const [sentFlash, setSentFlash] = useState(false);
 
@@ -1054,7 +1052,6 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     if (surf) {
       setInput("");
       setCmdPrefix(null);
-      setSlashOpen(false);
       const item: CommandSurfaceItem = {
         id: `cs-${nextId()}`,
         command: surf.name + (surf.arg ? ` ${surf.arg}` : ""),
@@ -1077,7 +1074,6 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     if (cmd.kind !== "plain" && attachments.length === 0 && !opts?.silent) {
       setInput("");
       setCmdPrefix(null);
-      setSlashOpen(false);
       // A steer interrupts the flow at THIS point: close the running bubble so the
       // corrected continuation streams into a fresh container BELOW the steer,
       // instead of continuing to paint in the bubble above it.
@@ -1126,7 +1122,6 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       setInput("");
       setCmdPrefix(null);   // the command was consumed by this send
     }
-    setSlashOpen(false);
     setAttachments([]);
 
     // A silent kickoff (the auto-greet on New chat) submits a prompt to Hermes without
@@ -1201,43 +1196,27 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   }, [ncFlow, onNewChat]);
   useEffect(() => () => { if (ncTimerRef.current != null) window.clearTimeout(ncTimerRef.current); }, []);
 
-  // ---- End session (owner 2026-10-01) ---------------------------------------
-  // arm → confirm within 4s → POST /api/training/end-session → straight back to
-  // the landing welcome (R7). The dump/review/delete continue server-side; the
-  // TrainingStatus chip tracks the job live via `training.updated` WS events.
-  const [endArm, setEndArm] = useState(false);
-  const [endBusy, setEndBusy] = useState(false);
+  // ---- End session (owner 2026-10-01; button moved to the sidebar row menu 10-02)
+// The arm/confirm state and the POST handler now live in ChatsPanel's row menu.
+// What stays here is the reset path: when the sidebar ends the OPEN session it
+// bumps resetSignal, and the welcome page must appear WITHOUT the auto-greeting
+// (end ≠ new chat, or the greeting reads as "here's your new session").
   const [trainingOpen, setTrainingOpen] = useState(false);
   // Set when End session lands the user on the welcome page: the reset effect
   // consumes it to suppress the auto-greeting (end ≠ new chat).
   const endWelcomeRef = useRef(false);
+  // The sidebar ends the session, so the chat learns about it by event.
   useEffect(() => {
-    if (!endArm) return;
-    const t = window.setTimeout(() => setEndArm(false), 4000);
-    return () => window.clearTimeout(t);
-  }, [endArm]);
-  const doEndSession = useCallback(async () => {
-    const sid = storedSessionId;
-    if (endBusy || !sid) return;
-    setEndBusy(true);
-    try {
-      const res = await fetch("/api/training/end-session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sid, title: chatTitle || null, source: "webui" }),
-      });
-      // 409 = already processing — still leave the chat; server owns the job.
-      // Land on the welcome page, NOT a new chat: skip the new-chat animation
-      // and suppress the auto-greeting (owner 2026-10-01 — end must not mint
-      // a fresh session).
-      if (res.ok || res.status === 409) {
-        setEndArm(false);
+    const onEnded = (e: Event) => {
+      const sid = (e as CustomEvent<{ sid?: string }>).detail?.sid;
+      if (!sid || sid === storedSessionId) {
         endWelcomeRef.current = true;
         onNewChat?.();
       }
-    } catch { /* network error — leave chat open, banner via global handlers */ }
-    finally { setEndBusy(false); }
-  }, [endBusy, storedSessionId, chatTitle, onNewChat]);
+    };
+    window.addEventListener("astra:end-session", onEnded);
+    return () => window.removeEventListener("astra:end-session", onEnded);
+  }, [storedSessionId, onNewChat]);
 
   // Selector handlers. Every pick is optimistic, then the gateway's session.info
   // (authoritative) overwrites it; a rejected call rolls back to the exact prior
@@ -1403,23 +1382,62 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       if (cmd) {
         setCmdPrefix(cmd);
         setInput(cmd.slice(1) + v.slice(cmd.length));   // "/steer fix" -> "steer fix"
-        setSlashOpen(false);
         return;
       }
-      // Still typing the command — show the picker.
-      if (!v.includes(" ")) { setSlashOpen(true); setSlashActive(0); }
-      else setSlashOpen(false);
+      // Still typing the command — the unified palette opens on this (see
+      // CommandPalette); there is no second menu to toggle here.
       setCmdPrefix(null);
       setInput(v);
       return;
     }
-    setSlashOpen(false);
     // Already recognised (slash stripped): keep the command, keep typing args.
     if (v === "") setCmdPrefix(null);
     setInput(v);
   };
 
-  const slashMatches = cmdPrefix ? [] : TUI_COMMANDS.filter((c) => c.startsWith(input));
+  /**
+   * Run a TUI command against the gateway's slash worker and paint the reply in
+   * the chat feed as a normal assistant message (owner 2026-10-02).
+   *
+   * This is the unified palette's second group: selecting one dispatches
+   * immediately rather than inserting composer text, so there is nothing to
+   * confirm with Enter. The output goes through the SAME renderer as an agent
+   * reply, so markdown, code blocks and folding behave identically.
+   */
+  const runTuiCommand = useCallback(async (name: string, arg = "") => {
+    const command = `/${name}${arg ? " " + arg : ""}`;
+    // Close a live turn here so the reply cannot paint into the bubble ABOVE it
+    // (same rule as a steer sent mid-stream).
+    if (activeIdRef.current) finalizeActive();
+    setInput("");
+    setCmdPrefix(null);
+    setMessages((m) => [...m, { id: nextId(), role: "user", content: command, ts: Date.now() }]);
+
+    const id = nextId();
+    setMessages((m) => [...m, {
+      id,
+      role: "assistant",
+      isStreaming: true,
+      ts: Date.now(),
+      segments: [{ id: nextId(), kind: "text", text: "", status: "done" }],
+    } as ChatMsg]);
+    taRef.current?.focus();
+
+    const res = await execSlashCommand(command);
+    setMessages((m) => m.map((x) => {
+      if (x.id !== id || x.role !== "assistant") return x;
+      return {
+        ...x,
+        isStreaming: false,
+        segments: x.segments.map((s) => (s.kind === "text" ? { ...s, text: res.text } : s)),
+      };
+    }));
+    if (res.warning) toast(res.warning);
+    requestAnimationFrame(() => {
+      const el = listRef.current;
+      if (el) el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
+    });
+  }, []);
 
   /**
    * Recognized command handling.
@@ -1440,26 +1458,11 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     [],
   );
 
-  const pickSlash = (cmd: string) => {
-    // Adopt the command immediately: strip its slash so it displays as "cmd".
-    setCmdPrefix(cmd);
-    setInput("");
-    setSlashOpen(false);
-    taRef.current?.focus();
-  };
-
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     // IME composing: Enter commits the composition — never send (R8).
     if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     const coarse = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
     const mod = e.ctrlKey || e.metaKey;
-    if (slashOpen && slashMatches.length) {
-      if (e.key === "ArrowDown") { e.preventDefault(); setSlashActive((i) => (i + 1) % slashMatches.length); return; }
-      if (e.key === "ArrowUp") { e.preventDefault(); setSlashActive((i) => (i - 1 + slashMatches.length) % slashMatches.length); return; }
-      if (e.key === "Escape") { setSlashOpen(false); return; }
-      if (e.key === "Enter" && !e.shiftKey && !coarse) { e.preventDefault(); pickSlash(slashMatches[slashActive] || slashMatches[0]); return; }
-      return;
-    }
     if (mod && e.key === "Enter") { e.preventDefault(); void send(); return; }
     // Touch keyboards: Enter = newline; sending is the button's job.
     if (e.key === "Enter" && !e.shiftKey && !coarse) { e.preventDefault(); void send(); }
@@ -1741,7 +1744,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       })()}
       <ConnectionBanner state={conn} onRetry={retryConnection} nextRetryIn={nextRetryIn} />
 
-      <header className={cn("mobile-accent-header relative z-10 flex items-center justify-between border-b border-white/[0.07] px-3 py-3 lg:px-6 lg:min-h-[77px] lg:py-0", errorBanner && "mt-7")}>
+      <header className={cn("mobile-accent-header relative z-10 flex items-center justify-between border-b border-white/[0.07] px-3 py-2.5 lg:px-6 lg:min-h-0 lg:py-2.5", errorBanner && "mt-7")}>
         <span className="flex min-w-0 items-center gap-2">
           <button type="button" onClick={() => onOpenNav?.()}
             aria-label="Open navigation" aria-expanded={false} aria-controls="astra-sidebar"
@@ -1755,15 +1758,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
           )}
         </span>
         <span className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.25em] text-slate-500">
-          {storedSessionId && !empty && (
-            <button type="button" onClick={() => (endArm ? void doEndSession() : setEndArm(true))}
-              aria-label="End session" title={endArm ? "Click again to end this session" : "End session — saves the transcript for training, then closes the chat"}
-              disabled={isStreaming || endBusy}
-              className={`flex h-10 items-center gap-2 rounded-lg px-3 text-sm transition-[background-color,box-shadow,opacity] duration-150 active:scale-[0.97] motion-reduce:transition-none max-lg:h-10 max-lg:w-10 max-lg:justify-center max-lg:p-0 disabled:opacity-40 ${endArm ? "bg-redx/20 text-red-300 shadow-[0_0_16px_rgba(248,113,113,0.2)] hover:bg-redx/30" : "text-slate-300 hover:bg-white/5 hover:text-white"}`}>
-              {endBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4 max-lg:h-5 max-lg:w-5" strokeWidth={2} />}
-              <span className="max-lg:hidden">{endArm ? "End it?" : endBusy ? "Ending…" : "End session"}</span>
-            </button>
-          )}
+
           <TrainingStatus open={trainingOpen} onToggle={() => setTrainingOpen((v) => !v)} />
           <button type="button" onClick={onNewChatClick}
             aria-label="New chat" title="New chat" data-ncflow={ncFlow} disabled={ncFlow !== "idle"}
@@ -1939,17 +1934,6 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
               {isStreaming && <span className="chat-jump-live" aria-hidden="true" />}
             </button>
           )}
-          {slashOpen && slashMatches.length > 0 && (
-            <div className="chat-menu chat-slash-menu" role="listbox" aria-label="Slash commands">
-              <p className="chat-menu-label">TUI commands — work here too</p>
-              {slashMatches.map((c, i) => (
-                <button key={c} type="button" className={cn("chat-menu-item", i === slashActive && "chat-menu-item-active")}
-                  aria-selected={i === slashActive} onMouseDown={(e) => { e.preventDefault(); pickSlash(c); }}>
-                  {c}
-                </button>
-              ))}
-            </div>
-          )}
           <AttachmentTray items={attachments} onRemove={removeAttachment} onRetry={retryAttachment} countLabel={sendHint || (attachments.length > 0 ? `${attachments.length} file${attachments.length === 1 ? "" : "s"}` : undefined)} />
           <CommandPalette
             value={input}
@@ -1965,6 +1949,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
                 ta.setSelectionRange(caret, caret);
               });
             }}
+            onRunTui={(cmd) => void runTuiCommand(cmd.name)}
           />
           <div className="composer-field">
             <textarea

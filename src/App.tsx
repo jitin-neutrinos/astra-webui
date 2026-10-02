@@ -327,7 +327,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
   return (
     <div className={cn("app-shell flex w-full flex-col overflow-hidden bg-void font-sans text-brandtext", LOW_SPEC && "astra-lowspec")}>
       {/* mobile top bar (non-chat views): logo opens navigation */}
-      <div className={cn("relative flex shrink-0 items-center border-b border-white/[0.07] bg-midnight/60 px-3 py-2 lg:hidden", view === "chat" && "hidden")}>
+      <div className={cn("sidebar-glass relative flex shrink-0 items-center border-b border-white/[0.07] px-3 py-2 lg:hidden", view === "chat" && "hidden")}>
         <button type="button" onClick={() => setDrawerOpen(true)}
           aria-label="Open navigation" aria-expanded={drawerOpen} aria-controls="astra-sidebar"
           className="flex h-11 w-11 items-center justify-center rounded-lg p-1 hover:bg-white/5">
@@ -355,6 +355,29 @@ function Shell({ onLogout }: { onLogout: () => void }) {
           onToggleCollapse={toggleSidebar}
           onLogout={() => { closeDrawer(); onLogout(); }}
           onSelectSession={(id) => { setSelectedSessionId(id); setView('chat'); }}
+          onEndSession={async (id) => {
+            // End session now lives in the sidebar row menu (owner 10-02, moved
+            // off the chat header). The API call lives here because only Shell
+            // owns the view state; Sidebar/ChatsPanel get a callback.
+            const res = await fetch("/api/training/end-session", {
+              method: "POST", credentials: "same-origin",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ sid: id, source: "webui" }),
+            });
+            // 409 = a job is already running; the server owns it either way.
+            if (res.ok || res.status === 409) {
+              // Tell the chat to land on the welcome page WITHOUT minting a new
+              // session (end ≠ new chat, or the auto-greeting announces a
+              // session that was just ended).
+              window.dispatchEvent(new CustomEvent("astra:end-session", { detail: { sid: id } }));
+              closeDrawer();
+              if (id === activeSessionId) {
+                setResetSignal((r) => r + 1);
+                setSelectedSessionId(null);
+                setView("chat");
+              }
+            }
+          }}
           onOpenTracker={() => { closeDrawer(); setView('tracker'); }}
           onOpenConfig={() => { closeDrawer(); setView('config'); }}
           onOpenApprovals={() => { closeDrawer(); setView('approvals'); }}
@@ -386,7 +409,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
   );
 }
 
-function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDrawer, onToggleCollapse, onLogout, onSelectSession, onOpenTracker, onOpenConfig, onOpenApprovals, onOpenVault }: { activeView: 'chat' | 'files' | 'tracker' | 'config' | 'approvals' | 'vault'; collapsed: boolean; drawerOpen: boolean; activeSessionId: string | null; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onSelectSession: (id: string) => void; onOpenTracker?: () => void; onOpenConfig?: () => void; onOpenApprovals?: () => void; onOpenVault?: () => void; }) {
+function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDrawer, onToggleCollapse, onLogout, onSelectSession, onEndSession, onOpenTracker, onOpenConfig, onOpenApprovals, onOpenVault }: { activeView: 'chat' | 'files' | 'tracker' | 'config' | 'approvals' | 'vault'; collapsed: boolean; drawerOpen: boolean; activeSessionId: string | null; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onSelectSession: (id: string) => void; onEndSession?: (id: string) => Promise<void>; onOpenTracker?: () => void; onOpenConfig?: () => void; onOpenApprovals?: () => void; onOpenVault?: () => void; }) {
   const [mode, setMode] = useState<'nav' | 'chats' | 'files'>('nav');
   
   const asideChatsRef = useRef<HTMLElement>(null);
@@ -499,7 +522,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
         aria-modal={drawerOpen && isMobile ? "true" : undefined}
         aria-label={drawerOpen && isMobile ? "Navigation" : undefined}
         className={cn(
-          "flex flex-col border-r border-white/[0.07] bg-midnight/60",
+          "sidebar-glass flex flex-col border-r border-white/[0.07]",
           "fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] transition-transform duration-200 ease-out motion-reduce:transition-none",
           drawerOpen ? "translate-x-0" : "-translate-x-full",
           "lg:static lg:z-auto lg:h-full lg:w-72 lg:max-w-none lg:shrink-0 lg:translate-x-0",
@@ -509,6 +532,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
         ) : (
         <ChatsPanel
           activeSessionId={activeSessionId}
+          onEndSession={onEndSession}
           onBack={() => setMode('nav')}
           onSelect={(id) => {
             onSelectSession(id);
@@ -534,7 +558,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
       aria-modal={drawerOpen && isMobile ? "true" : undefined}
       aria-label={drawerOpen && isMobile ? "Navigation" : undefined}
       className={cn(
-        "flex flex-col border-r border-white/[0.07] bg-midnight/60",
+        "sidebar-glass flex flex-col border-r border-white/[0.07]",
         // < lg: overlay drawer
         "fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] transition-transform duration-200 ease-out motion-reduce:transition-none",
         drawerOpen ? "translate-x-0" : "-translate-x-full",
@@ -543,7 +567,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
         collapsed && "lg:w-16",
       )}>
       <div className={cn("flex shrink-0 border-b border-white/[0.07] py-4",
-        expanded ? "items-center gap-3 px-4 h-[77px]" : "items-center justify-center px-2 h-[77px]")}>
+        expanded ? "items-center gap-3 px-4 h-16" : "items-center justify-center px-2 h-16")}>
         <button type="button" onClick={onToggleCollapse} disabled={drawerOpen}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           title={expanded ? "Collapse" : "Expand"}

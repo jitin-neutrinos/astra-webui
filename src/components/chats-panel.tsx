@@ -3,8 +3,7 @@ import { SessionsSkeleton } from "./ui/skeletons";
 import {
   ArrowLeft, Search, ChevronLeft, ChevronRight, AlertCircle,
   MoreHorizontal, Pin, PinOff, Pencil, Trash2, Check, X, Loader2,
-  Globe, TerminalSquare, MessagesSquare,
-} from "lucide-react";
+  Globe, TerminalSquare, MessagesSquare, LogOut } from "lucide-react";
 import { Zap } from "lucide-react";
 import { sourcesParam, type SourceModal } from "@/lib/source-filter";
 import { cleanTitle } from "@/lib/chat-title";
@@ -87,7 +86,7 @@ export function TokenCostChip({ row }: { row: any }) {
   );
 }
 
-export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () => void; onSelect: (id: string) => void; activeSessionId?: string | null }) {
+export function ChatsPanel({ onBack, onSelect, activeSessionId, onEndSession }: { onBack: () => void; onSelect: (id: string) => void; activeSessionId?: string | null; onEndSession?: (id: string) => Promise<void> }) {
   const [query, setQuery] = useState("");
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -99,6 +98,12 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameText, setRenameText] = useState("");
   const [busySid, setBusySid] = useState<string | null>(null);
+  // End session moved HERE from the chat header (owner 10-02). It is a real
+  // action, not a read-only command, so it keeps the header's two-step shape:
+  // first click arms (menu item becomes "Confirm end"), second click fires.
+  // Arming expires after 4s so a stray first click can't sit armed forever.
+  const [endArm, setEndArm] = useState<string | null>(null);
+  const [ending, setEnding] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const limit = 15;
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -215,6 +220,40 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
     window.addEventListener("astra:chat-title", on);
     return () => window.removeEventListener("astra:chat-title", on);
   }, []);
+
+  /**
+   * End session (owner 10-02: moved from the chat header to this row menu).
+   *
+   * Two-step, matching the header button it replaces: the first click arms, the
+   * second fires. 409 means the job is already running — the server owns it, so
+   * that is a success from the UI's point of view (same rule as the header).
+   */
+  const doEndSession = useCallback(async (sid: string) => {
+    if (!onEndSession) return;
+    setEnding(sid);
+    try {
+      await onEndSession(sid);
+      setEndArm(null);
+      setMenuFor(null);
+      setTick((t) => t + 1);
+    } finally {
+      setEnding(null);
+    }
+  }, [onEndSession]);
+
+  const onEndClick = useCallback((sid: string) => {
+    if (ending === sid) return;
+    if (endArm !== sid) { setEndArm(sid); return; }   // first click arms
+    void doEndSession(sid);                          // second click fires
+  }, [endArm, ending, doEndSession]);
+
+  // An armed row disarms itself after 4s, so a stray first click can't leave the
+  // menu sitting in a confirm state indefinitely.
+  useEffect(() => {
+    if (!endArm) return;
+    const t = window.setTimeout(() => setEndArm(null), 4000);
+    return () => window.clearTimeout(t);
+  }, [endArm]);
 
   const patchFlag = useCallback(async (sid: string, body: Record<string, unknown>) => {
     setBusySid(sid);
@@ -353,6 +392,17 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
                 <button className="ast-menu-item" role="menuitem" onClick={() => { setMenuFor(null); void patchFlag(sid, { pinned: !s.pinned }); }}>
                   {s.pinned ? <><PinOff className="w-3 h-3" /> Unpin</> : <><Pin className="w-3 h-3" /> Pin</>}
                 </button>
+                {onEndSession && (
+                  <button className="ast-menu-item" role="menuitem"
+                    onClick={() => onEndClick(sid)}
+                    disabled={ending === sid}
+                    aria-label={endArm === sid ? "Confirm end session" : "End session"}>
+                    {ending === sid ? <Loader2 className="w-3 h-3 animate-spin" />
+                      : endArm === sid ? <AlertCircle className="w-3 h-3" />
+                      : <LogOut className="w-3 h-3" />}
+                    {ending === sid ? "Ending…" : endArm === sid ? "Confirm end" : "End session"}
+                  </button>
+                )}
                 <button className="ast-menu-item ast-menu-danger" role="menuitem" onClick={() => {
                   setMenuFor(null);
                   if (window.confirm(`Delete "${title}"? This cannot be undone.`)) void doDelete(sid);

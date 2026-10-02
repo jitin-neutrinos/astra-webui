@@ -1529,8 +1529,10 @@ html.theme-fading body * {
 }
 
 /* ---- action row ---- */
-/* Header: brand accent ground + blur on ALL sizes (owner steer 10-02). */
-.mobile-accent-header { background: color-mix(in srgb, var(--color-depth) 92%, transparent); backdrop-filter: blur(35px) saturate(1.3); }
+/* Sidebar + header: same glass treatment as the chat bubbles (29px blur + saturate 1.25,
+   translucent midnight ground) — owner steer 10-02. */
+.sidebar-glass { background: color-mix(in oklab, var(--color-midnight) 45%, transparent); backdrop-filter: blur(29px) saturate(1.25); }
+.mobile-accent-header { background: color-mix(in oklab, var(--color-midnight) 45%, transparent); backdrop-filter: blur(29px) saturate(1.25); }
 
 /* actions docked INSIDE the bubble (owner 10-02, corrected): absolutely
    positioned bottom-right inside the bubble's own box — the row must be FULLY
