@@ -1764,18 +1764,36 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
           <div className="composer-beam" aria-hidden="true">
             <BorderBeam
               className="composer-beam-glow"
-              size={140}
-              duration={7}
-              borderWidth={1.5}
+              size={170}
+              duration={9}
+              borderWidth={1.25}
               colorFrom="#22d3ee"
               colorTo="#0891b2"
-              /* The vendor derives the offset-path corner radius from `size`
-                 (rect(... round ${size}px)) — with size=140 the beam path is a
-                 140px-radius shape that does not follow the composer's 12px
-                 border, so it detaches at the corners. `style` spreads AFTER
-                 offsetPath, so this overrides the path radius only and leaves
-                 the 140px beam length intact. */
-              style={{ offsetPath: "rect(0 auto auto 0 round 12px)" }}
+              /* Three vendor-shape overrides, all through the `style` escape
+                 hatch (it spreads AFTER the component's own style object), so
+                 border-beam.tsx stays byte-for-byte upstream:
+
+                 1. offsetPath radius — the vendor derives it from `size`
+                    (`rect(... round ${size}px)`). At size=170 that is a
+                    170px-radius path, which is NOT the input box's 12px
+                    radius, so the beam visibly left the rounded corners.
+                    Pin it to the real radius.
+                 2. width/height/aspectRatio — the vendor ships `aspect-square`,
+                    i.e. a 170x170 BLOCK whose gradient fills the whole square.
+                    On a box only ~100px tall that block cuts straight across
+                    the border ring and reads as "travelling around an invisible
+                    sharp rectangle". A thin bar is the fix: with the default
+                    `offset-rotate: auto` it stays tangent to the path, so it
+                    lies flat on the straights and BENDS through the corners.
+                 3. the bar is deliberately uniform-speed (the vendor's
+                    `ease: "linear"`): an eased lap pulses speed at the loop
+                    seam, which is the opposite of seamless. */
+              style={{
+                offsetPath: "rect(0 auto auto 0 round 12px)",
+                width: 170,
+                height: 2,
+                aspectRatio: "auto",
+              }}
             />
           </div>
           {dragOver && (
