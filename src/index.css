@@ -1644,11 +1644,20 @@ html.theme-fading body * {
    44px row, and it pushed the number out of view. The glyph keeps its natural
    h-4 w-4 (16px) inside the tile. */
 .ast-unread-badge-rail {
-  position: absolute; left: 33px; top: 2px; margin: 0;
-  min-width: 0; height: auto; padding: 0;
-  background: none; border: none; box-shadow: none;
+  /* left:22px keeps the chip inside the nav's 48px content box (8..56) even at
+     the widest "99+" (~25px) — at 28px it reached 61, overflowing the content
+     box and reading as clipped against the rail edge. */
+  position: absolute; left: 22px; top: 1px; margin: 0;
+  min-width: 15px; height: 13px; padding: 0 3px;
+  /* Opaque brand near-black chip: the point is to CUT the icon's glow away from
+     the digits so the number reads as its own object instead of dissolving into
+     the bloom. Sits over the tile's top-right corner. */
+  background: var(--color-void);
   color: var(--color-cyanx);
-  text-shadow: 0 0 6px rgba(34,211,238,.75), 0 1px 3px rgba(0,0,0,.9);
+  border: 1px solid color-mix(in oklab, var(--color-cyanx) 40%, transparent);
+  border-radius: 4px;
+  box-shadow: 0 0 6px color-mix(in oklab, var(--color-cyanx) 25%, transparent);
+  text-shadow: 0 0 5px rgba(34,211,238,.8);
   transform: none;
 }
 .ast-nav-unread-rail > span:first-child {
@@ -1674,7 +1683,9 @@ html.theme-fading body * {
 }
 [data-theme="light"] .ast-unread-badge { background: rgba(3,105,161,.12); color: #0369a1; border-color: rgba(3,105,161,.4); box-shadow: none; }
 [data-theme="light"] .ast-nav-unread { border-color: rgba(3,105,161,.35); box-shadow: none; }
-[data-theme="light"] .ast-unread-badge-rail { text-shadow: none; }
+/* Light mode: an opaque BLACK chip is wrong on paper — invert it to the
+   paper surface with an ink-toned border, same shape and placement. */
+[data-theme="light"] .ast-unread-badge-rail { background: var(--color-midnight); border-color: rgba(3,105,161,.35); box-shadow: none; text-shadow: none; }
 [data-theme="light"] .ast-nav-unread-rail > span:first-child { border-color: rgba(3,105,161,.45); background: rgba(3,105,161,.08); box-shadow: none; }
 [data-theme="light"] .ast-unread-row { background: rgba(3,105,161,.08); }
 [data-theme="light"] .ast-unread-row:hover { background: rgba(3,105,161,.13); }
