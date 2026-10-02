@@ -78,7 +78,7 @@ import { toItem, type MediaItem } from "@/lib/media-paths";
 import { createItem, onTurnComplete, reconcileWithServer, dismissItem } from "@/lib/bg-items";
 import { loadItems, saveItems } from "@/lib/bg-items";
 import type { BgItem } from "@/lib/bg-items";
-import { BgDock, SysNoteRow } from "./bg-dock";
+import { BgDock, BgNote, SteerNote } from "./bg-dock";
 import avatarUrl from "@/assets/avatar-jitin.webp";
 import type { CatalogPayload } from "./composer-controls";
 
@@ -1727,7 +1727,11 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
               {messages.map((m, idx) => {
                 if (m.isSysNote && m.bgId) {
                   const it = bgItems.find((x) => x.id === m.bgId);
-                  if (it && !it.dismissed) return <SysNoteRow key={m.id} item={it} onDismiss={dismissBgItem} />;
+                  if (it && !it.dismissed) {
+                    return it.kind === "steer"
+                      ? <SteerNote key={m.id} item={it} onDismiss={dismissBgItem} />
+                      : <BgNote key={m.id} item={it} onDismiss={dismissBgItem} />;
+                  }
                   if (it?.dismissed) return null;
                   return null;
                 }
@@ -1848,7 +1852,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
             />
             {recognizedCmd && (
               <div className="cmd-mirror" aria-hidden="true">
-                <span className="cmd-slash">/</span><span>{input.slice(recognizedCmd.length)}</span>
+                <span className="cmd-slash">/</span><span>{recognizedCmd.slice(1)}{input.slice(recognizedCmd.length)}</span>
               </div>
             )}
             <RotatingPlaceholder

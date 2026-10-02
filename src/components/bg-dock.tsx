@@ -1,6 +1,6 @@
-import { useState, useRef } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
-import { Check, Circle, Loader2, X } from "lucide-react";
+import { Check, ChevronRight, CornerDownRight, Loader2, Radio, X } from "lucide-react";
 import type { BgItem } from "@/lib/bg-items";
 import { dockVisible } from "@/lib/bg-items";
 
@@ -11,12 +11,32 @@ export interface BgDockProps {
   onOpenItem: (item: BgItem) => void;
 }
 
+// "2m" / "14s" — createdAt is the item id (Date.now() mint).
+function fmtElapsed(fromMs: number): string {
+  const s = Math.max(0, Math.round((Date.now() - fromMs) / 1000));
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s / 60)}m`;
+}
+
+/**
+ * BgDock — tracker for run-after (/bg) tasks only. Steer has its own surface
+ * (SteerNote): it modifies the live turn, it is not a background job.
+ * Rows show queue order, elapsed time for live work, and a reply-jump when done.
+ */
 export function BgDock({ items, onSubmitFollowUp, onDismiss, onOpenItem }: BgDockProps) {
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  // 1s tick so elapsed labels stay honest while anything is queued/running
+  const [, forceTick] = useReducer((x: number) => x + 1, 0);
+  const liveRows = items.some((it) => !it.dismissed && it.kind === "bg" && it.status !== "done");
+  useEffect(() => {
+    if (!liveRows) return;
+    const id = window.setInterval(forceTick, 1000);
+    return () => window.clearInterval(id);
+  }, [liveRows]);
 
-  const visible = items.filter((it) => !it.dismissed);
-  if (!dockVisible(items)) return null;
+  const visible = items.filter((it) => !it.dismissed && it.kind === "bg");
+  if (!dockVisible(visible)) return null;
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -29,25 +49,37 @@ export function BgDock({ items, onSubmitFollowUp, onDismiss, onOpenItem }: BgDoc
     }
   };
 
+  // queue order: queued rows numbered by age — #1 runs next
+  let queuePos = 0;
   const activeCount = visible.filter((it) => it.status !== "done").length;
 
   return (
     <div className="bgd-wrap mx-auto max-w-3xl" role="region" aria-label="Background tasks">
       <div className="bgd-bar">
+        {activeCount > 0 && <Loader2 className="bgd-bar-spin h-3 w-3 animate-spin" aria-hidden="true" />}
         <span className="bgd-bar-label">
           {activeCount > 0 ? `${activeCount} in background` : "Background history"}
         </span>
       </div>
-      <div className="bgd-card flex flex-col gap-1">
-        {visible.map((item) => (
-          <BgDockRow key={item.id} item={item} onDismiss={onDismiss} onOpenItem={onOpenItem} />
-        ))}
-        <div className="mt-2 px-2 pb-1">
+      <div className="bgd-card flex flex-col gap-0.5">
+        {visible.map((item) => {
+          if (item.status === "queued") queuePos += 1;
+          return (
+            <BgDockRow
+              key={item.id}
+              item={item}
+              queuePos={item.status === "queued" ? queuePos : 0}
+              onDismiss={onDismiss}
+              onOpenItem={onOpenItem}
+            />
+          );
+        })}
+        <div className="mt-1.5 px-2 pb-1">
           <input
             ref={inputRef}
             type="text"
             className="bgd-input w-full rounded p-1.5 outline-none"
-            placeholder="Queue a follow-up…"
+            placeholder="Queue another background task…"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -58,11 +90,11 @@ export function BgDock({ items, onSubmitFollowUp, onDismiss, onOpenItem }: BgDoc
   );
 }
 
-function BgDockRow({ item, onDismiss, onOpenItem }: { item: BgItem; onDismiss: (id: number) => void; onOpenItem: (item: BgItem) => void }) {
+function BgDockRow({ item, queuePos, onDismiss, onOpenItem }: { item: BgItem; queuePos: number; onDismiss: (id: number) => void; onOpenItem: (item: BgItem) => void }) {
   const openable = item.status === "done" && !!item.replyMsgId;
   return (
     <div className="bgd-row flex items-center gap-2 px-2 py-1" data-status={item.status}>
-      {item.status === "queued" && <Circle className="h-2.5 w-2.5 bgd-pulse shrink-0" aria-hidden="true" />}
+      {item.status === "queued" && <span className="bgd-qpos shrink-0" aria-hidden="true">{queuePos}</span>}
       {item.status === "running" && <Loader2 className="h-3 w-3 animate-spin bgd-spin shrink-0" aria-hidden="true" />}
       {item.status === "done" && <Check className="h-3 w-3 bgd-check shrink-0" aria-hidden="true" />}
 
@@ -73,8 +105,12 @@ function BgDockRow({ item, onDismiss, onOpenItem }: { item: BgItem; onDismiss: (
         onClick={() => openable && onOpenItem(item)}
         disabled={!openable}
       >
-        {item.status === "running" ? (item.kind === "steer" ? "steered — running in live turn" : "running now") : item.text}
+        {item.text}
       </button>
+
+      {item.status === "queued" && <span className="bgd-meta shrink-0">runs next</span>}
+      {item.status === "running" && <span className="bgd-meta bgd-meta-live shrink-0">{fmtElapsed(item.id)}</span>}
+      {openable && <ChevronRight className="bgd-go h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
 
       <button
         type="button"
@@ -89,17 +125,13 @@ function BgDockRow({ item, onDismiss, onOpenItem }: { item: BgItem; onDismiss: (
   );
 }
 
-// Timeline note — persistent now: states change in place, no auto-fade. The row is
-// removed only when the user dismisses the item (onDismiss flips dismissed → row unmounts).
-export function SysNoteRow({ item, onDismiss }: { item: BgItem; onDismiss: (id: number) => void }) {
-  let label = "";
-  if (item.status === "queued") label = "Queued — will run when the current reply finishes";
-  else if (item.status === "running") {
-    label = item.kind === "bg" ? "Running now" : "Steered — course correction sent into the live turn";
-  } else {
-    label = item.kind === "bg" ? "Done — click the background panel to jump to the response" : "Steered — applied";
-  }
-
+// In-flow receipt for a queued/running /bg task (timeline row, bg kind only).
+export function BgNote({ item, onDismiss }: { item: BgItem; onDismiss: (id: number) => void }) {
+  const label = item.status === "queued"
+    ? "Queued — runs when the current reply finishes"
+    : item.status === "running"
+      ? "Running in background"
+      : "Done — open the background panel to jump to the response";
   return (
     <div className="chat-sys-note" data-status={item.status}>
       <span>◈ {label}</span>
@@ -107,6 +139,34 @@ export function SysNoteRow({ item, onDismiss }: { item: BgItem; onDismiss: (id: 
         onClick={() => onDismiss(item.id)}>
         <X className="h-3 w-3" />
       </button>
+    </div>
+  );
+}
+
+/**
+ * SteerNote — dedicated surface for /steer. Unlike /bg (a queued job with a
+ * future reply), steer injects into the LIVE turn: the card quotes the
+ * correction, shows delivery state, and settles to "applied" when the turn
+ * completes. Lives inline where the steered turn is, never in the dock.
+ */
+export function SteerNote({ item, onDismiss }: { item: BgItem; onDismiss: (id: number) => void }) {
+  const applied = item.status === "done";
+  return (
+    <div className="steer-note" data-status={item.status}>
+      <div className="steer-note-head">
+        {applied
+          ? <Check className="steer-note-ico steer-note-ico-done h-3.5 w-3.5" aria-hidden="true" />
+          : <Radio className="steer-note-ico h-3.5 w-3.5 animate-pulse" aria-hidden="true" />}
+        <span className="steer-note-label">{applied ? "Course correction applied" : "Steering the live turn"}</span>
+        <button type="button" className="bgd-note-dismiss" aria-label="Dismiss" title="Dismiss"
+          onClick={() => onDismiss(item.id)}>
+          <X className="h-3 w-3" />
+        </button>
+      </div>
+      <div className="steer-note-body">
+        <CornerDownRight className="steer-note-branch h-3 w-3 shrink-0" aria-hidden="true" />
+        <span className="steer-note-text">{item.text}</span>
+      </div>
     </div>
   );
 }
