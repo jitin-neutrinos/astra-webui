@@ -223,13 +223,19 @@ function proxyRest(req, res, targetPath, replayBody, enrich = false) {
             enrichSessions(rows);
             // Sidebar wants the LATEST response, not the gateway's first-user-message
             // preview. Cached per session + invalidated by activity (see last-reply.mjs).
-            await enrichLastReplies(rows);
+            // Reuses the cookie this request already authenticated with.
+            await enrichLastReplies(rows, { cookie });
             const out = JSON.stringify(data);
             res.writeHead(200, { "content-type": "application/json" });
             res.end(out);
             return resolve();
           }
-        } catch { /* fall through raw */ }
+        } catch (err) {
+          // Never silent: a swallowed throw here ships a half-enriched row set
+          // (this exact bug — a bad import — looked like "feature just doesn't fire").
+          console.error("[hx] sessions enrich failed, serving raw rows:", err?.message || err);
+          /* fall through raw */
+        }
         const raw = Buffer.concat(chunks);
         res.writeHead(200, { "content-type": "application/json" });
         res.end(raw);

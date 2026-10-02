@@ -15,12 +15,21 @@
 // Only the rows the browser actually asked for are ever fetched.
 
 const HERMES_URL = process.env.HERMES_URL || "http://127.0.0.1:9119";
-import httpRequest from "node:http";
+import { request as httpRequest } from "node:http";
 
 // sessionId -> { at, text }
 const cache = new Map();
 const inflight = new Map();
 const CACHE_CAP = 400;
+
+// Window size for the "latest response" scan. A single tool-heavy turn can fill
+// 8 rows with tool-call/tool-result pairs (assistant rows there carry
+// tool_calls and EMPTY content), so a narrow window finds no prose at all and
+// the preview silently falls back. 40 rows clears realistic turns; the body cap
+// bounds the worst case, and "" (→ client falls back to `preview`) is a fine
+// answer for a chat that is 40 rows of pure tool output.
+const MSG_WINDOW = 40;
+const MAX_BODY = 4 * 1024 * 1024;
 
 const SCAFFOLD = /^\[(surface|system|runtime note|context compaction)\b/i;
 
@@ -57,22 +66,27 @@ export function lastResponseFrom(messages) {
   return "";
 }
 
-function fetchLatest(sid) {
-  const path = `/api/sessions/${encodeURIComponent(sid)}/messages?order=latest&limit=8`;
+function fetchLatest(sid, cookie) {
+  const path = `/api/sessions/${encodeURIComponent(sid)}/messages?order=latest&limit=${MSG_WINDOW}`;
   return new Promise((resolve) => {
-    getHermesCookie().then((cookie) => {
-      const req = httpRequest(`${HERMES_URL}${path}`, { headers: { Cookie: cookie } }, (res) => {
-        if (res.statusCode !== 200) { res.resume(); return resolve(""); }
-        let body = "";
-        res.on("data", (c) => { body += c; });
-        res.on("end", () => {
-          try { resolve(lastResponseFrom(JSON.parse(body).messages)); }
-          catch { resolve(""); }
-        });
+    const req = httpRequest(`${HERMES_URL}${path}`, { headers: { Cookie: cookie } }, (res) => {
+      if (res.statusCode !== 200) { res.resume(); return resolve(""); }
+      let body = "";
+      let overflow = false;
+      res.on("data", (c) => {
+        if (overflow) return;
+        body += c;
+        if (body.length > MAX_BODY) { overflow = true; res.destroy(); }
       });
-      req.on("error", () => resolve(""));
-      req.end();
-    }).catch(() => resolve(""));
+      res.on("error", () => resolve(""));
+      res.on("end", () => {
+        if (overflow) return resolve("");
+        try { resolve(lastResponseFrom(JSON.parse(body).messages)); }
+        catch { resolve(""); }
+      });
+    });
+    req.on("error", () => resolve(""));
+    req.end();
   });
 }
 
@@ -80,13 +94,13 @@ function fetchLatest(sid) {
  * Last response text for a session, or "" when unknown/unavailable.
  * `activityAt` is the row's last-activity stamp — a change invalidates the cache.
  */
-export async function lastResponse(sid, activityAt) {
-  if (!sid) return "";
+export async function lastResponse(sid, activityAt, cookie = "") {
+  if (!sid || !cookie) return "";
   const hit = cache.get(sid);
   if (hit && hit.at === activityAt) return hit.text;
   if (inflight.has(sid)) return inflight.get(sid);
 
-  const p = fetchLatest(sid).then((text) => {
+  const p = fetchLatest(sid, cookie).then((text) => {
     inflight.delete(sid);
     if (cache.size >= CACHE_CAP) {
       // drop the oldest insertion — Map preserves insertion order
@@ -104,9 +118,12 @@ export async function lastResponse(sid, activityAt) {
  * Fill `last_reply` on session rows, bounded to the first `max` rows so a
  * 100-row page never fans out into 100 upstream calls. Rows beyond the bound
  * keep whatever the gateway sent (client falls back to `preview`).
+ *
+ * `cookie` is the caller's existing upstream session cookie — reusing it avoids
+ * a second login and keeps this module free of an import cycle with the proxy.
  */
-export async function enrichLastReplies(rows, { max = 12, cookieFn } = {}) {
-  if (!Array.isArray(rows) || !rows.length) return rows;
+export async function enrichLastReplies(rows, { max = 12, cookie = "" } = {}) {
+  if (!Array.isArray(rows) || !rows.length || !cookie) return rows;
   const slice = rows.slice(0, max);
   await Promise.all(slice.map(async (r) => {
     if (!r || typeof r !== "object") return;
@@ -114,7 +131,7 @@ export async function enrichLastReplies(rows, { max = 12, cookieFn } = {}) {
     if (!key) return;
     const at = typeof r.last_activity_at === "number" ? r.last_activity_at
       : (typeof r.last_active === "number" ? r.last_active : null);
-    const text = await lastResponse(key, at);
+    const text = await lastResponse(key, at, cookie);
     if (text) r.last_reply = text;
   }));
   return rows;
