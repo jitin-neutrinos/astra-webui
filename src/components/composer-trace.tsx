@@ -27,26 +27,30 @@ import { useEffect, useRef, useState } from "react";
  * exactly one lap, so the loop is seamless.
  */
 const BANDS = 28;
-const TAIL = 3;    // comet length in path units of 100 (~54px ≈ 6.5% of the box
-                   // width). This is the lever that kills the "dim line": any
-                   // gradient has a tail, so the only way to stop the tail
-                   // reading as a separate line is to make the WHOLE comet
-                   // short — head and falloff end up comparable lengths, which
-                   // is what makes it read as one comet shape rather than a
-                   // bright dash with a dim line trailing it.
+const TAIL = 16;   // comet length in path units of 100 (~290px ≈ 35% of the box
+                   // width). The ramp is steep enough that the faint part dies
+                   // inside the comet rather than trailing off as a separate
+                   // dim line — lengthen the comet, not the visible tail.
 const STROKE = 1.25;
 
-/** Tile the comet into bands; each paints only [a, b) at its own falloff value. */
+/** Tile the comet into bands, brightest at the LEADING end.
+ *
+ * Orientation: a clockwise sweep paints band [a, b) at [a+t, b+t) as t grows, so
+ * the band's HIGHER path position (b) is the FRONT and its lower position (a) is
+ * the BACK. The falloff therefore rises with band index — peak on the last band.
+ * With the falloff the other way up the comet still travels clockwise but its
+ * glow trails at the back, which reads as the whole thing running backwards.
+ */
 function cometBands() {
   const out: { dash: string; op: number; w: number }[] = [];
   for (let i = 0; i < BANDS; i++) {
     const a = (TAIL * i) / BANDS;
     const b = (TAIL * (i + 1)) / BANDS;
-    const x = ((a + b) / 2) / TAIL;                 // 0 at the head → 1 at the tail
+    const x = ((a + b) / 2) / TAIL;                 // 0 at the tail end → 1 at the head
     out.push({
       dash: `0 ${a} ${b - a} ${100 - b}`,         // zero-dash forces the gap first
-      op: Math.pow(1 - x, 1.8),                      // bright front half, then gone
-      w: 1.8 - 0.8 * x,                              // tapers as it fades
+      op: Math.pow(x, 2.1),                          // faint tail → bright leading head
+      w: 1.0 + 0.8 * x,                              // thickens toward the head
     });
   }
   return out;
@@ -101,7 +105,7 @@ export function ComposerTrace() {
       {BANDS_DATA.map((band, i) => (
         <rect
           key={i}
-          className={`composer-trace-step${i === 0 ? " composer-trace-head" : ""}`}
+          className={`composer-trace-step${i === BANDS - 1 ? " composer-trace-head" : ""}`}
           {...geom}
           style={{ strokeDasharray: band.dash, opacity: band.op, strokeWidth: `${band.w}px` }}
         />
