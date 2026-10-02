@@ -113,4 +113,35 @@ mockStore["astra_unread_overlay_v1"] = JSON.stringify({ legacy: 3 });
 const notify2 = await import(/* @vite-ignore */ "./notify?legacy-shape" as string);
 assert.equal(notify2.getTotalUnread(), 3, "legacy overlay migrated");
 
+// 13) REMOTE FOCUS (2026-10-02 owner bug): a message completing in a chat that
+// is focused on ANOTHER surface (the phone, another tab) must NOT bump a pill
+// here — "focused anywhere ⇒ read everywhere". Previously the only read test
+// was "focused on THIS device", so a chat open on the phone still showed unread.
+notify._test.reset();
+notify.applyPresence({ devices: [{ device: "android", focus: "phone-chat" }] });
+assert.equal(notify.isRemotelyFocused("phone-chat"), true, "remote focus registered");
+notify.handleComplete("live-1", "phone-chat", { text: "answer on the phone" });
+// local pill must not exist (serverUnread is a separate input — assert the
+// LOCAL overlay, which is what remote focus is responsible for suppressing)
+assert.equal(notify.getUnreadCount("phone-chat"), 0, "remotely-focused chat gets no local pill");
+assert.equal(notify.getTotalUnread(), 0, "no pill, no tab-title bump");
+
+// a chat focused NOWHERE still counts normally
+notify.handleComplete("live-2", "some-other-chat", { text: "unseen answer" });
+assert.equal(notify.getTotalUnread(), 1, "unfocused chat still goes unread");
+
+// taking focus elsewhere clears a pill we were already showing
+notify._test.reset();
+notify.handleComplete("live-3", "later-focus", { text: "answer" });
+assert.equal(notify.getTotalUnread(), 1, "pill before remote focus arrives");
+const gained = notify.applyPresence({ devices: [{ device: "ios", focus: "later-focus" }] });
+notify.clearLocalPill(gained[0]);
+assert.equal(notify.getTotalUnread(), 0, "pill cleared when another surface takes focus");
+
+// seedFromServer must not re-pill a remotely-focused chat either
+notify._test.reset();
+notify.applyPresence({ devices: [{ device: "android", focus: "seeded" }] });
+notify.seedFromServer([{ id: "seeded", unread: true }], null);
+assert.equal(notify.getTotalUnread(), 0, "list refresh does not re-pill a remotely-focused chat");
+
 console.log("unread.check.ts passed");

@@ -758,7 +758,12 @@ function onMessage(e: MessageEvent) {
 
   // Presence (Centrifugo-style join/leave/focus broadcasts from the proxy).
   if (data.method === "event" && data.params && (data.params.type === "presence.snapshot" || data.params.type === "presence.update")) {
-    emit({ type: data.params.type, payload: data.params.payload || {} });
+    // Feed the focus set into the unread store: a chat focused on another
+    // surface is read here. Chats that just became remotely focused drop any
+    // pill we were still showing for them.
+    const payload = data.params.payload || {};
+    for (const key of notify.applyPresence(payload)) notify.clearLocalPill(key);
+    emit({ type: data.params.type, payload });
   }
 
   // Server-origin events (no session_id — training pipeline etc.) reach the

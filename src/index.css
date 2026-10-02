@@ -1644,10 +1644,14 @@ html.theme-fading body * {
    44px row, and it pushed the number out of view. The glyph keeps its natural
    h-4 w-4 (16px) inside the tile. */
 .ast-unread-badge-rail {
-  /* left:22px keeps the chip inside the nav's 48px content box (8..56) even at
-     the widest "99+" (~25px) — at 28px it reached 61, overflowing the content
-     box and reading as clipped against the rail edge. */
-  position: absolute; left: 22px; top: 1px; margin: 0;
+  /* Anchored by its RIGHT edge, not its left. With a left anchor the overhang
+     swung with the digit count (2px for "14", 9px for "99+"), so the offset never
+     read as deliberate. right:0px puts the chip's right edge past the 36px
+     tile's right edge for EVERY width. Worst case "99+" clears the rail edge. */
+  /* right:0px — a small step left from -3px. It keeps a clear overhang past the
+     tile (the offset look) while pulling the chip's glow fully inside the rail so
+     it stops reading as cropped. */
+  position: absolute; right: 0px; top: 1px; margin: 0;
   min-width: 15px; height: 13px; padding: 0 3px;
   /* Opaque brand near-black chip: the point is to CUT the icon's glow away from
      the digits so the number reads as its own object instead of dissolving into

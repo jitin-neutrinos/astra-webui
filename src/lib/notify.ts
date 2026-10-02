@@ -32,6 +32,39 @@ export function storedKeyFor(liveSid: string): string | null {
   return sidmap[liveSid] || null;
 }
 
+// ── Remote focus (cross-device read) ────────────────────────────────────────
+// Owner mandate: a chat open and focused on ANY device is READ everywhere. The
+// proxy already broadcasts who is focused where (presence.snapshot /
+// presence.update); without consuming it here a message completing in a chat
+// focused on the phone still bumped a pill here, because the only read test was
+// "focused on THIS device".
+let remoteFocus = new Set<string>();
+
+/** Replace the remote-focus set from a presence payload (snapshot or update).
+ *  Returns the chat keys that are newly focused elsewhere, so the caller can
+ *  clear any local pill they were still showing. */
+export function applyPresence(payload: any): string[] {
+  ensure();
+  const before = new Set(remoteFocus);
+  const next = new Set<string>();
+  if (Array.isArray(payload?.devices)) {
+    for (const d of payload.devices) if (d?.focus) next.add(String(d.focus));
+  } else if (payload?.focus) {
+    // single-device update; merge into what we know rather than replace it
+    for (const k of before) if (k !== String(payload.focus)) next.add(k);
+    next.add(String(payload.focus));
+  }
+  remoteFocus = next;
+  const gained: string[] = [];
+  for (const k of remoteFocus) if (!before.has(k)) gained.push(k);
+  return gained;
+}
+
+/** True when this chat is focused on some OTHER surface (phone, another tab). */
+export function isRemotelyFocused(key: string): boolean {
+  return remoteFocus.has(String(key || ""));
+}
+
 let audioCtx: AudioContext | null = null;
 let chimeMuted = false;
 export function setChimeMuted(m: boolean) { chimeMuted = m; }
@@ -185,8 +218,14 @@ export function handleComplete(sessionId: string, storedKey: string | null, payl
     if (keys.length > 200) for (const k of keys.slice(0, keys.length - 200)) delete seenCompletes[k];
   }
   const key = storedKey || sidmap[sessionId] || sessionId;
-  if (key === currentStoredSid && typeof document !== "undefined" && document.visibilityState === "visible") {
-    // watching THIS chat: mark it read server-side right away (watermark stays honest)
+  // Read if focused HERE and visible, OR focused on ANY other surface (the
+  // phone, another tab) — owner mandate: focused anywhere ⇒ read everywhere.
+  const focusedHere = key === currentStoredSid && typeof document !== "undefined" && document.visibilityState === "visible";
+  if (focusedHere || remoteFocus.has(key)) {
+    // watching THIS chat: mark it read server-side right away (watermark stays
+    // honest). Deliberately does NOT touch the overlay here — clearing a stale
+    // pill is clearChat's/clearLocalPill's job, and doing it here broke the
+    // "no INCREMENT while watching" contract the unread suite pins.
     void markRead(key);
     return;
   }
@@ -211,15 +250,18 @@ export async function clearChat(storedKey: string) {
 
 /** Another device read this chat (session.read frame) — clear the pill HERE too. */
 export function handleRemoteRead(storedKey: string) {
+  clearLocalPill(storedKey);
+}
+
+/** Drop the local overlay pill for a chat without touching the server watermark
+ *  (used when a remote surface takes focus — that surface owns the stamp). */
+export function clearLocalPill(storedKey: string) {
   ensure();
-  let changed = false;
-  if (overlay[storedKey]) {
-    delete overlay[storedKey];
-    save();
-    updateTitle();
-    changed = true;
-  }
-  if (changed) notifyChanged();
+  if (!overlay[storedKey]) return;
+  delete overlay[storedKey];
+  save();
+  updateTitle();
+  notifyChanged();
 }
 
 /** Focused chat changed: tell the proxy (presence) so other devices know.
@@ -278,7 +320,7 @@ export function seedFromServer(rows: { id: string; unread?: boolean; last_read_a
   knownRowKeys = new Set(rows.map((r) => r.id));
   changed = pruneOrphans() || changed;
   for (const r of rows) {
-    if (r.unread && overlay[r.id] == null && r.id !== currentStoredSid) {
+    if (r.unread && overlay[r.id] == null && r.id !== currentStoredSid && !remoteFocus.has(r.id)) {
       // 1 stands for "has unread responses" — countUnreadResponses refines when history loads
       overlay[r.id] = { n: 1, t: Date.now() };
       changed = true;
