@@ -481,6 +481,43 @@ html.theme-fading body * {
 @media (max-width: 640px) { .cmenu { min-width: min(88vw, 300px); } .cmenu-row { min-height: 44px; } .cmenu-foot { display: none; } }
 @media (prefers-reduced-motion: reduce) { .cmenu-row-picked, .cmenu-shimmer { animation: none; } .cmenu-switch, .cmenu-knob, .cmenu-chev, .cmenu-trigger-ico, .cmenu-back { transition: none; } }
 
+/* ---- sidebar Files panel (files-panel.tsx) -----------------------------------
+   Compact accordion navigator. Both groups start COLLAPSED (owner mandate), so
+   the sidebar opens as a file index rather than a wall of media. */
+.ast-file-group { border-radius: 8px; }
+.ast-file-group-head {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  padding: 7px 8px; border: none; border-radius: 8px; background: transparent;
+  color: var(--color-muted); cursor: pointer; text-align: left;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+.ast-file-group-head:hover { background: rgba(34,211,238,.06); color: var(--color-brandtext); }
+.ast-file-group-head:focus-visible { outline: 2px solid rgba(34,211,238,.5); outline-offset: -2px; }
+.ast-file-group-title { flex: 1; min-width: 0; font: 500 10.5px/1 var(--font-mono); letter-spacing: .09em; text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ast-file-group-count { font: 400 10px/1 var(--font-mono); color: var(--color-muted); opacity: .8; }
+.ast-file-group-chev { transition: transform 180ms cubic-bezier(0.23,1,0.32,1); }
+.ast-file-group[data-open="true"] .ast-file-group-chev { transform: rotate(90deg); }
+.ast-file-group[data-open="true"] .ast-file-group-head { color: var(--color-cyanx); }
+.ast-file-group-body { padding: 2px 0 6px 6px; }
+.ast-file-row { display: flex; align-items: center; gap: 2px; border-radius: 6px; transition: background-color 130ms ease; }
+.ast-file-row:hover { background: rgba(255,255,255,.04); }
+.ast-file-open { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0;
+  padding: 4px 6px; border: none; border-radius: 6px; background: transparent;
+  color: var(--color-brandtext); font: 400 11.5px/1.35 var(--font-sans); cursor: pointer; text-align: left; }
+.ast-file-open:disabled { color: var(--color-muted); cursor: default; }
+.ast-file-open:not(:disabled):hover { color: var(--color-cyanx); }
+.ast-file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ast-file-meta { font: 400 8.5px/1 var(--font-mono); letter-spacing: .06em; color: var(--color-muted); opacity: .7; }
+.ast-file-dl { display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border: none; border-radius: 5px; background: transparent;
+  color: var(--color-muted); cursor: pointer; opacity: 0; transition: opacity 120ms ease, color 120ms ease, background-color 120ms ease; }
+.ast-file-row:hover .ast-file-dl, .ast-file-dl:focus-visible { opacity: 1; }
+.ast-file-dl:hover { background: rgba(34,211,238,.1); color: var(--color-cyanx); }
+.ast-file-note { display: flex; align-items: center; gap: 5px; padding: 5px 8px;
+  font: 400 10.5px/1.3 var(--font-sans); color: var(--color-muted); }
+[data-theme="light"] .ast-file-row:hover { background: rgba(15,23,42,.04); }
+[data-theme="light"] .ast-file-dl:hover { background: rgba(3,105,161,.1); color: #0369a1; }
+
 /* ---- turn timeline: thinking / tool / text / approval segments ---- */
 /* AI bubble fills the message column (2026-09-29): the avatar column is gone —
    the Astra logo lives INSIDE the bubble as a header row (logo at very top,

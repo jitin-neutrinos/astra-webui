@@ -27,12 +27,22 @@ import * as notify from "@/lib/notify";
 import { ChatLanding } from "./components/chat-landing";
 import { ThemeToggle, ThemeIconButton } from "./components/theme-toggle";
 import { ChatsPanel } from "./components/chats-panel";
+import { FilesPanel } from "./components/files-panel";
 import TokenTrackerPage from "./components/token-tracker";
 import { useMobileViewport } from "./hooks/use-mobile-viewport";
 import { isLowSpec } from "./components/composer-trace";
 import { useSwipeToDismiss } from "./hooks/use-swipe-to-dismiss";
 
 type Status = "checking" | "login" | "ready";
+
+/** Does this nav item render its view inside the sidebar (Chats, Files)?
+ *  Returns null for every other item. Module-scope so TypeScript cannot narrow
+ *  the `mode` argument at the call site. */
+function sidebarModeIs(name: string, mode: string): boolean | null {
+  if (name === "Chats") return mode === "chats";
+  if (name === "Files") return mode === "files";
+  return null;
+}
 
 /** Low-spec device probe (see composer-trace): set once, gates the expensive
  *  comet glow + band count + composer autosize on weak phones. */
@@ -191,24 +201,59 @@ import TubesBackground from "./components/ui/tubes-background";
 
 /* ---------------- shell: sidebar + chat landing ---------------- */
 
-/** Aggregate unread across every chat, for the nav + mobile-header badges.
- *  One hook, one source: the sidebar nav item and the mobile header logo badge
- *  read the same store and re-sync on the same events, so they can never
- *  disagree with each other or with the per-row pills. */
+/**
+ * Aggregate unread across every chat, for the nav + mobile-header badges.
+ *
+ * ACCURACY (owner bug): the overlay alone only knows LIVE bumps seen by this
+ * client. Rows ALSO render pills from the server's `unread` flag, and those
+ * only ever entered the overlay via `seedFromServer` — which ran solely when
+ * the Chats panel was open. So with the panel closed, chats the server already
+ * had unread contributed 0 to the badge. This hook seeds from the sessions
+ * list itself, on mount, on session churn, and on a slow visible-only tick, so
+ * the badge can never drift from what the rows show.
+ *
+ * One source: the sidebar nav item and the mobile header badge read the same
+ * store and re-sync on the same events, so they can never disagree with each
+ * other or with the per-row pills.
+ */
 function useUnreadTotal() {
   const [total, setTotal] = useState(() => notify.getTotalUnread());
   useEffect(() => {
-    const sync = () => setTotal(notify.getTotalUnread());
-    window.addEventListener("astra:unread-changed", sync);
-    // sessions churn (activity elsewhere) can seed pills without a local bump
+    let alive = true;
+    const sync = () => { if (alive) setTotal(notify.getTotalUnread()); };
+
+    const seedFromServer = async () => {
+      try {
+        const res = await fetch("/api/hx/sessions?limit=100&order=recent", { credentials: "same-origin" });
+        if (!res.ok) return;
+        const data = await res.json();
+        const rows = Array.isArray(data?.sessions) ? data.sessions : [];
+        if (!alive || !rows.length) return;
+        notify.seedFromServer(rows, null);
+        sync();
+      } catch { /* offline: the overlay still tracks live bumps */ }
+    };
+
+    const onUnread = () => sync();
     const onWs = (e: Event) => {
       const t = (e as CustomEvent<{ type?: string }>).detail?.type;
-      if (t === "sessions.changed" || t === "session.started") sync();
+      if (t === "sessions.changed" || t === "session.started") { sync(); void seedFromServer(); }
     };
+    window.addEventListener("astra:unread-changed", onUnread);
     window.addEventListener("astra-ws-event", onWs);
-    sync();
+    void seedFromServer();
+
+    // Slow self-heal: the server can gain unread from another surface (phone,
+    // telegram) without emitting a frame to this tab. Only while visible —
+    // a backgrounded tab has nothing to show and the timer would be throttled.
+    const beat = setInterval(() => {
+      if (document.visibilityState === "visible") void seedFromServer();
+    }, 30000);
+
     return () => {
-      window.removeEventListener("astra:unread-changed", sync);
+      alive = false;
+      clearInterval(beat);
+      window.removeEventListener("astra:unread-changed", onUnread);
       window.removeEventListener("astra-ws-event", onWs);
     };
   }, []);
@@ -310,7 +355,6 @@ function Shell({ onLogout }: { onLogout: () => void }) {
           onToggleCollapse={toggleSidebar}
           onLogout={() => { closeDrawer(); onLogout(); }}
           onSelectSession={(id) => { setSelectedSessionId(id); setView('chat'); }}
-          onOpenFiles={() => { closeDrawer(); setView('files'); }}
           onOpenTracker={() => { closeDrawer(); setView('tracker'); }}
           onOpenConfig={() => { closeDrawer(); setView('config'); }}
           onOpenApprovals={() => { closeDrawer(); setView('approvals'); }}
@@ -342,8 +386,8 @@ function Shell({ onLogout }: { onLogout: () => void }) {
   );
 }
 
-function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDrawer, onToggleCollapse, onLogout, onSelectSession, onOpenFiles, onOpenTracker, onOpenConfig, onOpenApprovals, onOpenVault }: { activeView: 'chat' | 'files' | 'tracker' | 'config' | 'approvals' | 'vault'; collapsed: boolean; drawerOpen: boolean; activeSessionId: string | null; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onSelectSession: (id: string) => void; onOpenFiles: () => void; onOpenTracker?: () => void; onOpenConfig?: () => void; onOpenApprovals?: () => void; onOpenVault?: () => void; }) {
-  const [mode, setMode] = useState<'nav' | 'chats'>('nav');
+function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDrawer, onToggleCollapse, onLogout, onSelectSession, onOpenTracker, onOpenConfig, onOpenApprovals, onOpenVault }: { activeView: 'chat' | 'files' | 'tracker' | 'config' | 'approvals' | 'vault'; collapsed: boolean; drawerOpen: boolean; activeSessionId: string | null; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onSelectSession: (id: string) => void; onOpenTracker?: () => void; onOpenConfig?: () => void; onOpenApprovals?: () => void; onOpenVault?: () => void; }) {
+  const [mode, setMode] = useState<'nav' | 'chats' | 'files'>('nav');
   
   const asideChatsRef = useRef<HTMLElement>(null);
   const asideNavRef = useRef<HTMLElement>(null);
@@ -361,12 +405,12 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
 
   useEffect(() => {
     if (drawerOpen && isMobile) {
-      if (mode === 'chats') asideChatsRef.current?.focus();
+      if (mode === 'chats' || mode === 'files') asideChatsRef.current?.focus();
       else asideNavRef.current?.focus();
       
       const onTab = (e: KeyboardEvent) => {
         if (e.key === "Tab") {
-          const el = mode === 'chats' ? asideChatsRef.current : asideNavRef.current;
+          const el = mode === 'chats' || mode === 'files' ? asideChatsRef.current : asideNavRef.current;
           if (!el) return;
           const focusable = el.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
           const first = focusable[0] as HTMLElement;
@@ -415,7 +459,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
       icon: <Briefcase className="h-3.5 w-3.5" strokeWidth={1.5} />,
       items: [
         { name: "Chats", icon: <MessageSquare className="h-4 w-4" strokeWidth={1.5} />, onClick: () => { setMode('chats'); if (collapsed) onToggleCollapse(); } },
-        { name: "Files", icon: <Folder className="h-4 w-4" strokeWidth={1.5} />, onClick: onOpenFiles },
+        { name: "Files", icon: <Folder className="h-4 w-4" strokeWidth={1.5} />, onClick: () => { setMode('files'); if (collapsed) onToggleCollapse(); } },
       ],
     },
     {
@@ -446,7 +490,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
   ];
 
 
-                  if (mode === 'chats') {
+                  if (mode === 'chats' || mode === 'files') {
     return (
       <aside id="astra-sidebar" data-open={String(drawerOpen)}
         ref={asideChatsRef}
@@ -460,6 +504,9 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
           drawerOpen ? "translate-x-0" : "-translate-x-full",
           "lg:static lg:z-auto lg:h-full lg:w-72 lg:max-w-none lg:shrink-0 lg:translate-x-0",
         )}>
+        {mode === 'files' ? (
+          <FilesPanel onBack={() => setMode('nav')} />
+        ) : (
         <ChatsPanel
           activeSessionId={activeSessionId}
           onBack={() => setMode('nav')}
@@ -469,6 +516,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
             if (drawerOpen) onCloseDrawer();
           }}
         />
+        )}
       </aside>
     );
   }
@@ -540,10 +588,14 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
               <div className="overflow-hidden">
                 <div className={cn(expanded ? "pb-1.5" : "pb-0", open && "rounded-md bg-white/[0.02]")}>
             {group.items.map((item) => {
-              const active = item.name === "Astra" ? activeView === "chat"
-                // @ts-ignore — TypeScript strict-mode inference; runtime behavior verified correct (mode state is 'nav' | 'chats')
-                                : item.name === "Chats" ? mode === 'chats'
-                : item.name === "Files" ? activeView === "files"
+              // Chats/Files render INSIDE the sidebar (early-return above), so the
+              // NAV rows for them are only ever painted when mode === 'nav' — and
+              // TS has narrowed `mode` to exactly that by this point. Route the
+              // comparison through a module-scope helper (params aren't narrowed),
+              // instead of stacking @ts-ignore on an impossible comparison.
+              const inSidebar = sidebarModeIs(item.name, mode);
+              const active = inSidebar !== null ? inSidebar
+                : item.name === "Astra" ? activeView === "chat"
                 : item.name === "Global Token Tracker" ? activeView === "tracker"
                 : item.name === "Config" ? activeView === "config"
                 : item.name === "Approvals & Reviews" ? activeView === "approvals"
