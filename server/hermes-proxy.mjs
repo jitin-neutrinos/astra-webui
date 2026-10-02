@@ -200,7 +200,13 @@ function proxyRest(req, res, targetPath, replayBody, enrich = false) {
     });
 
     try {
-      let proxyRes = await doReq(false, replayBody);
+      // Pipe the body whenever the request can carry one. A multipart upload
+      // arrives CHUNKED (XHR/FormData sets no Content-Length), so if we forward
+      // headers without piping, the upstream waits forever for a body that never
+      // arrives — the request hangs until the client gives up. That was the
+      // upload failure on BOTH web and android (same JS path).
+      const mayHaveBody = req.method !== "GET" && req.method !== "HEAD";
+      let proxyRes = await doReq(mayHaveBody && !replayBody, replayBody);
       if (proxyRes.statusCode === 401) {
         clearHermesCookie();
         if (replayBody) {
