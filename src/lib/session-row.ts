@@ -5,6 +5,9 @@ export interface SessionRow {
   session_id?: string | null;
   title?: string | null;
   preview?: string | null;
+  /** Latest assistant RESPONSE text, derived proxy-side (last-reply.mjs).
+   *  Preferred over `preview`, which upstream pins to the FIRST user message. */
+  last_reply?: string | null;
   snippet?: string | null;
   role?: string | null;
   source?: string | null;

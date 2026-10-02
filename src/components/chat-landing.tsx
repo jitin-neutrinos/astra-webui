@@ -1769,6 +1769,13 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
               borderWidth={1.5}
               colorFrom="#22d3ee"
               colorTo="#0891b2"
+              /* The vendor derives the offset-path corner radius from `size`
+                 (rect(... round ${size}px)) — with size=140 the beam path is a
+                 140px-radius shape that does not follow the composer's 12px
+                 border, so it detaches at the corners. `style` spreads AFTER
+                 offsetPath, so this overrides the path radius only and leaves
+                 the 140px beam length intact. */
+              style={{ offsetPath: "rect(0 auto auto 0 round 12px)" }}
             />
           </div>
           {dragOver && (

@@ -4,6 +4,7 @@ import { generateAcceptKey, encodeFrame, FrameDecoder } from "./ws-codec.mjs";
 
 import { notifyGateRequest, noteWebChatAnswer } from "./ntfy-notify.mjs";
 import { markRead, getMark, enrichSessions } from "./read-state.mjs";
+import { enrichLastReplies } from "./last-reply.mjs";
 
 const HERMES_URL = "http://127.0.0.1:9119";
 const PASSWORD = process.env.ASTRA_HERMES_PASSWORD;
@@ -220,6 +221,9 @@ function proxyRest(req, res, targetPath, replayBody, enrich = false) {
           const rows = data.sessions || data.results || null;
           if (Array.isArray(rows)) {
             enrichSessions(rows);
+            // Sidebar wants the LATEST response, not the gateway's first-user-message
+            // preview. Cached per session + invalidated by activity (see last-reply.mjs).
+            await enrichLastReplies(rows);
             const out = JSON.stringify(data);
             res.writeHead(200, { "content-type": "application/json" });
             res.end(out);
@@ -321,6 +325,16 @@ function handleClientInfo(payload, socket) {
       joinedAt: prev.joinedAt || Date.now()
     };
     presence.set(socket, entry);
+    // Focus IS a read signal, device-wide (owner mandate): whoever has the chat
+    // open has read it, so stamp the shared watermark and let the normal
+    // session.read broadcast clear the pill on every other surface. This is the
+    // single point that makes "focused anywhere ⇒ read everywhere" true across
+    // web/android/tabs — and it survives restart (marks persist to disk).
+    // focus===null (switched away) stamps nothing.
+    if (j?.focus) {
+      const rec = markRead(String(j.focus), undefined, entry.device);
+      if (rec) broadcastSessionRead(String(j.focus), rec.last_read_at, entry.device);
+    }
     // recovery replay: only events with v > since
     if (entry.since != null) {
       const missed = readRing.filter(e => e.v > entry.since);

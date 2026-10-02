@@ -330,7 +330,7 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId }: { onBack: () =
             </div>
             <div className={"ast-row-title truncate " + (unread > 0 ? "ast-row-title-unread" : "")}>{title}</div>
             <div className="ast-row-sub truncate">
-              {query.trim() !== "" && s.snippet ? s.snippet : (s.preview || "")}
+              {query.trim() !== "" && s.snippet ? s.snippet : ((s as any).last_reply || s.preview || "")}
             </div>
           </button>
         )}
