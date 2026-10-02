@@ -212,7 +212,11 @@ html.theme-fading body * {
 /* running brand accent line: a short cyan arc sweeping the border while the
    composer is idle (unfocused), with a matching soft glow. On focus it fades
    out as the existing full outline+glow (::before) fades in. */
-.chat-composer::after { content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1px; background: conic-gradient(from var(--astra-trace), transparent 0deg, transparent 250deg, rgba(34,211,238,.0) 290deg, rgba(34,211,238,.9) 340deg, rgba(34,211,238,.0) 360deg); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; opacity: 1; pointer-events: none; animation: astra-trace-spin 3.6s linear infinite; transition: opacity 260ms cubic-bezier(0.23,1,0.32,1); filter: drop-shadow(0 0 6px rgba(34,211,238,.45)); }
+/* running brand accent line: a comet arc with a long soft tail sweeping the
+   border while the composer is idle (unfocused) — slow, steady, no visible
+   seam (alpha reaches zero exactly at the 360° wrap). On focus it fades out
+   as the full outline+glow (::before) fades in. */
+.chat-composer::after { content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1px; background: conic-gradient(from var(--astra-trace), transparent 0deg, transparent 200deg, rgba(34,211,238,.05) 260deg, rgba(34,211,238,.28) 305deg, rgba(34,211,238,.95) 335deg, rgba(34,211,238,.25) 352deg, transparent 360deg); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; opacity: 1; pointer-events: none; animation: astra-trace-spin 6s linear infinite; transition: opacity 260ms cubic-bezier(0.23,1,0.32,1); filter: drop-shadow(0 0 6px rgba(34,211,238,.45)); }
 .chat-composer:focus-within::after, .chat-composer.drag-over::after { opacity: 0; animation-play-state: paused; }
 @keyframes astra-trace-spin { to { --astra-trace: 360deg; } }
 .chat-composer::before { content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1px; background: linear-gradient(135deg, rgba(34,211,238,.35), rgba(139,92,246,.14) 40%, transparent 60%, transparent); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; opacity: 0; transition: opacity 260ms cubic-bezier(0.23,1,0.32,1); pointer-events: none; }
@@ -220,7 +224,7 @@ html.theme-fading body * {
 .chat-composer.drag-over { border-color: rgba(34,211,238,.6); }
 .chat-composer.drag-over::before { opacity: 1; }
 .chat-drop-overlay { position: absolute; inset: 12px; z-index: 5; display: flex; align-items: center; justify-content: center; border-radius: inherit; background: rgba(6,19,31,.85); border: 2px dashed rgba(34,211,238,.5); border-radius: 20px; color: var(--color-cyanx); font: 500 13px/1 var(--font-sans); pointer-events: none; }
-.chat-composer:focus-within { border-color: rgba(34,211,238,.32); box-shadow: 0 1px 2px rgba(0,0,0,.18), 0 0 0 3px rgba(34,211,238,.10), 0 14px 44px -16px rgba(34,211,238,.22); }
+.chat-composer:focus-within { border-color: rgba(34,211,238,.45); box-shadow: 0 1px 2px rgba(0,0,0,.18), 0 0 0 3px rgba(34,211,238,.16), 0 0 24px -4px rgba(34,211,238,.35), 0 14px 44px -12px rgba(34,211,238,.35); }
 /* field wrapper: textarea + rotating placeholder overlay */
 .composer-field { position: relative; }
 .composer-ph-rotor { z-index: 0; }
@@ -1657,8 +1661,10 @@ html.theme-fading body * {
   display: inline-block;
   padding: 1.5px 5px;
   border-radius: 5px;
-  background: color-mix(in oklab, var(--color-violetx) 8%, transparent);
-  color: color-mix(in oklab, var(--color-violetx) 70%, var(--color-brandtext));
+  background: color-mix(in oklab, var(--color-cyanx) 10%, transparent);
+  color: color-mix(in oklab, var(--color-cyanx) 80%, var(--color-brandtext));
+  border: 1px solid color-mix(in oklab, var(--color-cyanx) 30%, transparent);
+  box-shadow: 0 0 6px rgba(34,211,238,.22);
   font: 500 8.5px/1.2 var(--font-mono);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   max-width: 9rem; flex-shrink: 0;
@@ -1736,7 +1742,7 @@ html.theme-fading body * {
   white-space: nowrap;
   transition: color 130ms ease, border-color 130ms ease, background-color 130ms ease;
 }
-.ast-filter-chip svg { width: 11px; height: 11px; flex-shrink: 0; }
+.ast-filter-chip svg { width: 11px; height: 11px; flex-shrink: 0; filter: drop-shadow(0 0 3px rgba(34,211,238,.35)); }
 .ast-filter-chip:hover { color: var(--color-brandtext); border-color: rgba(255,255,255,.2); }
 .ast-filter-chip-on {
   background: color-mix(in oklab, var(--color-cyanx) 15%, transparent);
