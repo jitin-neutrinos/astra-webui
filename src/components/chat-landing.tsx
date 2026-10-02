@@ -36,6 +36,7 @@ import { CommandPalette } from "./command-palette";
 import { CommandSurface, type CommandSurfaceItem } from "./command-surface";
 import { AllCommandsModal } from "./all-commands-modal";
 import { surfaceFor } from "@/lib/command-exec";
+import { fetchCommandRegistry, knownCommandNames } from "@/lib/command-registry";
 import { newId, uniqueUploadName } from "@/lib/upload-names";
 import { loadDraft, saveDraft, clearDraft, moveDraft } from "@/lib/drafts";
 import { toast } from "@/lib/toast";
@@ -299,6 +300,9 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   // above the composer like the bg dock. See lib/command-exec.ts.
   const [cmdSurfaces, setCmdSurfaces] = useState<CommandSurfaceItem[]>([]);
   const [allCmdsOpen, setAllCmdsOpen] = useState(false);
+  // Warm the command registry once: the send path answers "is this a real
+  // command?" synchronously, so it can only trust an already-loaded cache.
+  useEffect(() => { void fetchCommandRegistry(); }, []);
   const [dragOver, setDragOver] = useState(false);
   const [errorBanner, setErrorBanner] = useState("");
   const [atBottom, setAtBottom] = useState(true);
@@ -1045,7 +1049,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     // A curated command (/status, /skills, /usage, …) opens a dismissable readout
     // surface and runs against the gateway's slash worker — the same call the TUI
     // makes. Checked BEFORE parseCommand's /bg|/steer gate, which only knows those two.
-    const surf = opts?.silent ? null : surfaceFor(finalText);
+    const surf = opts?.silent ? null : surfaceFor(finalText, knownCommandNames());
     if (surf) {
       setInput("");
       setCmdPrefix(null);

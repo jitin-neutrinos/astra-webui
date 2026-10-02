@@ -52,12 +52,20 @@ export async function execSlashCommand(command: string): Promise<ExecResult> {
 }
 
 /**
+ * Commands that must NEVER be auto-run from a typed slash token: they carry
+ * live-composer semantics (/bg and /steer have their own submit paths) or end
+ * the session.
+ */
+export const NOT_SURFACED = new Set(["bg", "steer", "quit", "exit"]);
+
+/**
  * Commands that get a dedicated dismissable surface instead of being sent to
  * the agent as prose. Keyed by the bare command name (no slash, lowercased).
  *
- * Deliberately NOT here: bg and steer (already have their own live UI), and
- * approvals / stop / new / reasoning / model — those mutate session or turn
- * state and belong on the options popover or as agent text, not a readout panel.
+ * This is a *presentation* table — titles and blurbs for the ones worth naming.
+ * It is NOT an allowlist: any command present in the live registry opens a
+ * surface too (see surfaceFor), so a new Hermes command works the moment it
+ * ships without an astra release.
  */
 export const SURFACE_COMMANDS: Record<string, { title: string; blurb: string }> = {
   compact: { title: "Context", blurb: "Compression report" },
@@ -71,15 +79,39 @@ export const SURFACE_COMMANDS: Record<string, { title: string; blurb: string }> 
   status: { title: "Status", blurb: "Session status" },
 };
 
-/** Does this typed command get a surface? Accepts "/skills", "/skills list", … */
-export function surfaceFor(input: string): { name: string; arg: string; title: string; blurb: string } | null {
+/** Split a typed message into (commandName, args) when it opens with a slash. */
+export function splitSlash(input: string): { name: string; arg: string } | null {
   const text = (input ?? "").trim();
   if (!text.startsWith("/")) return null;
   // filter(Boolean) so "/  status" doesn't yield an empty first token — the
   // leading slash is consumed, so any residual leading space is just padding.
   const parts = text.slice(1).trim().split(/\s+/).filter(Boolean);
   const name = (parts[0] ?? "").toLowerCase();
+  if (!name || !/^[a-z][a-z0-9-]*$/.test(name)) return null;
+  return { name, arg: parts.slice(1).join(" ") };
+}
+
+/**
+ * Should this typed message open a readout surface instead of going to the agent?
+ *
+ * `known` is the live registry (may be null when it hasn't loaded). When it is
+ * unknown we fall back to the presentation table alone, so the curated nine work
+ * even before the registry arrives.
+ */
+export function surfaceFor(
+  input: string,
+  known?: Set<string> | null,
+): { name: string; arg: string; title: string; blurb: string } | null {
+  const split = splitSlash(input);
+  if (!split) return null;
+  const { name, arg } = split;
+  if (NOT_SURFACED.has(name)) return null;
   const meta = SURFACE_COMMANDS[name];
-  if (!meta) return null;
-  return { name, arg: parts.slice(1).join(" "), title: meta.title, blurb: meta.blurb };
+  if (meta) return { name, arg, title: meta.title, blurb: meta.blurb };
+  // Unknown-to-the-table: run it only if the registry vouches for it, so an
+  // invented "/foo" still reaches the agent as prose instead of erroring out.
+  if (known && known.has(name)) {
+    return { name, arg, title: `/${name}`, blurb: "Command output" };
+  }
+  return null;
 }

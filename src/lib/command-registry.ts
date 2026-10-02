@@ -52,6 +52,23 @@ export function __setRegistryCache(list: CommandEntry[] | null): void {
 }
 
 /**
+ * Command NAMES from the cache, synchronously.
+ *
+ * The send path needs to answer "is this a real command?" the instant the user
+ * hits Enter, so it cannot await a fetch here. Returns null before the first
+ * load, which is safe: surfaceFor then trusts only the curated table.
+ */
+export function knownCommandNames(): Set<string> | null {
+  if (!cached) return null;
+  const names = new Set<string>();
+  for (const c of cached) {
+    names.add(c.name);
+    for (const a of c.aliases ?? []) names.add(a);
+  }
+  return names;
+}
+
+/**
  * Rank commands against a query typed after the slash.
  *
  * Subsequence match (so "bg" finds "background"), case-insensitive, ordered by
