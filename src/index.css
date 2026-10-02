@@ -224,7 +224,11 @@ html.theme-fading body * {
    `butt` caps keep the leading edge a clean sharp cut. */
 .composer-trace-step { fill: none; stroke: #22d3ee; stroke-linecap: butt; animation: composer-trace-run 9s linear infinite; }
 .composer-trace-head { stroke: #67e8f9; filter: drop-shadow(0 0 3px rgba(34,211,238,.5)); }
-@keyframes composer-trace-run { to { stroke-dashoffset: -100; } }
+/* Direction: SVG dashoffset DECREASING walks the dash forward along the path,
+   and a <rect>'s path runs clockwise (rightward along the top) — which is the
+   way round the owner did not want. A POSITIVE sweep walks it anticlockwise,
+   i.e. leftward across the top edge. One sign, the whole fix. */
+@keyframes composer-trace-run { to { stroke-dashoffset: 100; } }
 .chat-composer:focus-within .composer-trace, .chat-composer.drag-over .composer-trace { opacity: 0; }
 .chat-composer::before { content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1px; background: linear-gradient(135deg, rgba(34,211,238,.35), rgba(139,92,246,.14) 40%, transparent 60%, transparent); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; opacity: 0; transition: opacity 260ms cubic-bezier(0.23,1,0.32,1); pointer-events: none; }
 .chat-composer:focus-within::before { opacity: 1; }
