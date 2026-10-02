@@ -213,8 +213,8 @@ html.theme-fading body * {
    on straights and around corners (conic-gradient arcs stretch at corners).
    26% lit, 6s lap, seamless wrap, glow to match the focus outline. Focus/drag
    fade it out as the full outline (::before) fades in. */
-.composer-trace { position: absolute; inset: -1px; pointer-events: none; overflow: visible; z-index: 0; opacity: 1; transition: opacity 260ms cubic-bezier(0.23,1,0.32,1); filter: drop-shadow(0 0 5px rgba(34,211,238,.5)); }
-.composer-trace-line { stroke: #22d3ee; stroke-width: 2; stroke-linecap: round; stroke-dasharray: 26 74; animation: composer-trace-run 6s linear infinite; }
+.composer-trace { position: absolute; inset: -1px; pointer-events: none; overflow: visible; z-index: 0; opacity: 1; transition: opacity 260ms cubic-bezier(0.23,1,0.32,1); filter: drop-shadow(0 0 1.5px rgba(34,211,238,.45)); }
+.composer-trace-line { stroke: #22d3ee; stroke-width: 1.75; stroke-linecap: round; stroke-dasharray: 26 74; animation: composer-trace-run 6s linear infinite; }
 .chat-composer:focus-within .composer-trace, .chat-composer.drag-over .composer-trace { opacity: 0; }
 @keyframes composer-trace-run { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -100; } }
 .chat-composer::before { content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1px; background: linear-gradient(135deg, rgba(34,211,238,.35), rgba(139,92,246,.14) 40%, transparent 60%, transparent); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; opacity: 0; transition: opacity 260ms cubic-bezier(0.23,1,0.32,1); pointer-events: none; }
@@ -348,10 +348,12 @@ html.theme-fading body * {
 /* ---- composer controls: chips + popovers ---- */
 .chat-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 10px; border: 1px solid rgba(248,250,252,.10); background: transparent; color: var(--color-muted); font: 400 11.5px/1 var(--font-sans); cursor: pointer; white-space: nowrap; transition: border-color 150ms ease, color 150ms ease, background-color 150ms ease, transform 120ms cubic-bezier(0.23,1,0.32,1); }
 .chat-chip:hover { border-color: rgba(34,211,238,.35); color: var(--color-brandtext); background: rgba(255,255,255,.03); }
-/* composer options button: brand blue outline + glow on box and icon */
-.chat-chip-options { border-color: rgba(34,211,238,.4); color: var(--color-cyanx); box-shadow: 0 0 8px rgba(34,211,238,.22), inset 0 0 6px rgba(34,211,238,.06); }
-.chat-chip-options svg { filter: drop-shadow(0 0 4px rgba(34,211,238,.55)); }
-.chat-chip-options:hover { border-color: rgba(34,211,238,.7); box-shadow: 0 0 12px rgba(34,211,238,.35), inset 0 0 8px rgba(34,211,238,.1); }
+/* composer options button: square centered container, blue outline + glow on
+   box and icon; icon rendered solid brand blue */
+.chat-chip-options { padding: 0; width: 30px; height: 30px; justify-content: center; align-items: center; border-color: rgba(34,211,238,.5); color: var(--color-cyanx); box-shadow: 0 0 10px rgba(34,211,238,.28), inset 0 0 6px rgba(34,211,238,.07); }
+.chat-chip-options svg { filter: drop-shadow(0 0 4px rgba(34,211,238,.55)); fill: currentColor; }
+.chat-chip-options:hover { border-color: rgba(34,211,238,.75); box-shadow: 0 0 14px rgba(34,211,238,.4), inset 0 0 8px rgba(34,211,238,.1); }
+.chat-chip-options[aria-expanded="true"] { border-color: rgba(34,211,238,.75); color: var(--color-cyanx); }
 .chat-chip[aria-expanded="true"] { border-color: rgba(34,211,238,.4); color: var(--color-brandtext); }
 
 
