@@ -179,13 +179,35 @@ function fromBase16(id, name, meta, pal) {
     "--glow-accent": `0 0 10px ${alpha(primary, 0.25)}`, "--glow-accent-strong": `0 0 16px ${alpha(primary, 0.4)}`,
     "--bg-url": "", "--bg-video": "",
   };
-  // light variant: paper surfaces from the LIGHTEST slots, dark ink text — they must differ!
-  const lightVoid = surfaces[0];
-  const lightText = isLight ? pal.BASE01 : ordered[0]; // ink: darkest slot (or scheme's own ink for light-origin)
+  // light variant: paper = LIGHTEST of the six neutral slots (by measured luminance),
+  // ink = darkest usable. For dark-origin schemes the light counterpart is synthesized.
+  const byLum = [...ordered].sort((a, b) => lumOf(rgbOf(pal[a])) - lumOf(rgbOf(pal[b])));
+  // paper: the scheme's identity hue as a REAL tint (sat 10-20% by family, l 0.93-0.965 by
+  // warmth) so every light theme reads distinct, like its dark sibling does.
+  // identity hue: average hue of the scheme's accent slots (falls back to paper hue)
+  const accSlots = ["BASE0A","BASE0C","BASE0D","BASE0B","BASE0E","BASE09"].map(k=>hueSat(pal[k])).filter(x=>x.s>0.15);
+  const paperH = hueSat(byLum[5]).h;
+  let accH = paperH;
+  if (accSlots.length) {
+    // circular mean of accent hues
+    let sx=0, sy=0;
+    for (const a of accSlots) { sx += Math.cos(a.h*Math.PI/180); sy += Math.sin(a.h*Math.PI/180); }
+    accH = (Math.atan2(sy, sx) * 180/Math.PI + 360) % 360;
+  }
+  // blend paper hue 30% + identity hue 70% → unmistakably "that theme" while staying papery
+  let dh = Math.abs(accH - paperH); if (dh > 180) dh = 360 - dh;
+  const tintH = (paperH + dh * 0.7 * ((accH - paperH + 360) % 360 < 180 ? 1 : -1) + 360) % 360;
+  const tintS = 0.10 + Math.min(0.10, accSlots.reduce((m,a)=>Math.max(m,a.s),0) * 0.12);
+  const tintL = (tintH < 70 || tintH >= 300) ? 0.945 : tintH < 160 ? 0.955 : 0.935; // warm lighter, cool deeper
+  const lightVoid = hslToHex(tintH, tintS, tintL);
+  const lightMid  = hslToHex(tintH, tintS * 0.8, Math.min(0.985, tintL + 0.025));
+  const lightDepth = hslToHex(tintH, tintS * 1.15, tintL - 0.032);
+  const lightSurf = hslToHex(tintH, tintS * 1.3, tintL - 0.07);
+  const lightText = lumOf(rgbOf(pal.BASE01)) < lumOf(rgbOf(lightVoid)) && contrast(rgbOf(pal.BASE01), rgbOf(lightVoid)) >= 4.5 ? pal.BASE01 : adjustL(lightVoid, -0.74);
   const light = {
-    "--color-void": lightVoid, "--color-midnight": adjustL(lightVoid, 0.035), "--color-depth": adjustL(lightVoid, -0.045), "--color-surface": adjustL(lightVoid, -0.09),
+    "--color-void": lightVoid, "--color-midnight": lightMid, "--color-depth": lightDepth, "--color-surface": lightSurf,
     "--color-brandtext": lumOf(rgbOf(lightText)) < lumOf(rgbOf(lightVoid)) ? lightText : adjustL(lightVoid, -0.72),
-    "--color-muted": lumOf(rgbOf(muted)) < lumOf(rgbOf(lightVoid)) && contrast(rgbOf(muted), rgbOf(lightVoid)) >= 4.5 ? muted : adjustL(lightVoid, -0.45),
+    "--color-muted": contrast(rgbOf(muted), rgbOf(lightVoid)) >= 4.5 ? muted : adjustL(lightVoid, -0.45),
     "--color-cyanx": deep(primary, 0), "--color-violetx": deep(rotateHue(primary, 60), 0.05), "--color-fuchsiax": deep(rotateHue(primary, -50), 0.05),
     "--color-redx": deep(redx, 0.05),
     "--color-emerald": emPick ? deep(emPick.c, 0.05) : deep(rotateHue(primary, 120), 0.05),
@@ -210,6 +232,22 @@ const SOURCES = {
   "gruvbox-dark-medium": "gruvbox-dark-medium.yaml",
   "rose-pine-dawn": "rose-pine-dawn.yaml",
   "solarized-light": "solarized-light.yaml",
+  // funky/futuristic batch (owner 2026-10-02: 5 dark + 5 light counterparts)
+  "helios": "helios.yaml",
+  "horizon-dark": "horizon-dark.yaml",
+  "horizon-light": "horizon-light.yaml",
+  "nova": "nova.yaml",
+  "outrun-dark": "outrun-dark.yaml",
+  "unikitty-dark": "unikitty-dark.yaml",
+  "unikitty-light": "unikitty-light.yaml",
+  "vice": "vice.yaml",
+  "danqing": "danqing.yaml",
+  "danqing-light": "danqing-light.yaml",
+  "sagelight": "sagelight.yaml",
+  "solarflare": "solarflare.yaml",
+  "solarflare-light": "solarflare-light.yaml",
+  "shades-of-purple": "shades-of-purple.yaml",
+  "da-one-ocean": "da-one-ocean.yaml",
 };
 const palettes = [ASTRA_UI];
 for (const [id, file] of Object.entries(SOURCES)) {

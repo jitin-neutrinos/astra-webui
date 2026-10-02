@@ -95,7 +95,9 @@ export function ChatBackdrop() {
           loop
           playsInline
           disablePictureInPicture
+          disableRemotePlayback
           controls={false}
+          tabIndex={-1}
         />
       )}
       {bg.kind === "youtube" && ytId && (
