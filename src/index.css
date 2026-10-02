@@ -2601,3 +2601,71 @@ html.theme-fading body * {
 @media (prefers-reduced-motion: reduce) {
   .tt-morph-mask, .tt-morph-core, .tt-morph-rays { transition-duration: 1ms; }
 }
+
+/* ── Curated command surfaces (/status, /skills, /usage, …) ───────────────
+   One dismissable readout panel, table-driven (see lib/command-exec.ts). */
+.cmdsurf { background: var(--color-midnight); border: 1px solid rgb(var(--c-6) / 0.22); border-radius: 12px; overflow: hidden; animation: chat-pop 180ms cubic-bezier(0.23,1,0.32,1) both; }
+.cmdsurf-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 11px; background: transparent; border: none; cursor: pointer; text-align: left; }
+.cmdsurf-head:hover { background: rgb(var(--c-193) / 0.06); }
+.cmdsurf-caret { width: 13px; height: 13px; color: var(--color-muted); transition: transform 160ms cubic-bezier(0.23,1,0.32,1); flex-shrink: 0; }
+.cmdsurf-caret.is-open { transform: rotate(90deg); }
+.cmdsurf-title { font: 500 13px/1.2 var(--font-sans); color: var(--color-brandtext); }
+.cmdsurf-blurb { font: 400 11.5px/1.2 var(--font-sans); color: var(--color-muted); margin-left: auto; }
+.cmdsurf-chip { font: 400 10px/1 var(--font-sans); color: var(--color-cyanx); border: 1px solid rgb(var(--c-6) / 0.4); border-radius: 5px; padding: 3px 6px; }
+.cmdsurf-chip.is-error, .cmdsurf.is-error .cmdsurf-chip { color: #f87171; border-color: rgba(248,113,113,.42); }
+.cmdsurf-spin { width: 13px; height: 13px; color: var(--color-cyanx); animation: cmdsurf-spin 900ms linear infinite; margin-left: auto; }
+@keyframes cmdsurf-spin { to { transform: rotate(360deg); } }
+.cmdsurf-body { border-top: 1px solid rgb(var(--c-6) / 0.16); }
+.cmdsurf-warn { padding: 8px 11px 0; font: 400 11.5px/1.45 var(--font-sans); color: #fbbf24; }
+.cmdsurf-loading { padding: 12px 11px; font: 400 12px/1.4 var(--font-sans); color: var(--color-muted); }
+.cmdsurf-text { margin: 0; padding: 11px; max-height: 46vh; overflow: auto; font: 400 12px/1.55 var(--font-mono); color: var(--color-brandtext); white-space: pre-wrap; word-break: break-word; }
+.cmdsurf-foot { display: flex; align-items: center; justify-content: space-between; padding: 0 8px 8px; }
+.cmdsurf-cmd { font: 400 10.5px/1 var(--font-mono); color: var(--color-cyanx); opacity: .8; }
+.cmdsurf-x { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: none; border-radius: 7px; background: transparent; color: var(--color-muted); cursor: pointer; }
+.cmdsurf-x:hover { color: var(--color-brandtext); background: rgb(var(--c-193) / 0.08); }
+.cmdsurf-x svg { width: 14px; height: 14px; }
+
+/* ── All-commands sheet ─────────────────────────────────────────────────── */
+.cmdsheet { position: fixed; inset: 0; z-index: 90; display: flex; align-items: flex-end; justify-content: center; background: rgba(0,0,0,.62); backdrop-filter: blur(6px); }
+@media (min-width: 768px) { .cmdsheet { align-items: center; } }
+.cmdsheet-panel { width: min(640px, 100%); max-height: min(78vh, 620px); display: flex; flex-direction: column; background: var(--color-midnight); border: 1px solid rgb(var(--c-6) / 0.26); border-radius: 14px; overflow: hidden; box-shadow: 0 24px 70px rgba(0,0,0,.65); animation: chat-pop 200ms cubic-bezier(0.23,1,0.32,1) both; }
+@media (max-width: 767px) { .cmdsheet-panel { max-height: 88vh; border-radius: 14px 14px 0 0; } }
+.cmdsheet-head { display: flex; align-items: baseline; gap: 8px; padding: 12px 14px 8px; }
+.cmdsheet-title { font: 500 14px/1.2 var(--font-sans); color: var(--color-brandtext); }
+.cmdsheet-sub { font: 400 11px/1.2 var(--font-sans); color: var(--color-muted); }
+.cmdsheet-x { margin-left: auto; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border: none; border-radius: 7px; background: transparent; color: var(--color-muted); cursor: pointer; }
+.cmdsheet-x:hover { color: var(--color-brandtext); background: rgb(var(--c-193) / 0.08); }
+.cmdsheet-x svg { width: 15px; height: 15px; }
+.cmdsheet-search { display: flex; align-items: center; gap: 7px; margin: 0 12px 8px; padding: 7px 10px; border: 1px solid rgb(var(--c-6) / 0.2); border-radius: 9px; }
+.cmdsheet-search svg { width: 14px; height: 14px; color: var(--color-muted); flex-shrink: 0; }
+.cmdsheet-search input { flex: 1; background: transparent; border: none; outline: none; color: var(--color-brandtext); font: 400 13px/1.4 var(--font-sans); }
+.cmdsheet-out { margin: 0 12px 8px; border: 1px solid rgb(var(--c-6) / 0.2); border-radius: 9px; overflow: hidden; }
+.cmdsheet-out.is-error { border-color: rgba(248,113,113,.4); }
+.cmdsheet-out-head { padding: 6px 10px; font: 400 10.5px/1 var(--font-mono); color: var(--color-cyanx); border-bottom: 1px solid rgb(var(--c-6) / 0.16); }
+.cmdsheet-out pre { margin: 0; padding: 9px 10px; max-height: 200px; overflow: auto; font: 400 11.5px/1.5 var(--font-mono); color: var(--color-brandtext); white-space: pre-wrap; word-break: break-word; }
+.cmdsheet-list { overflow-y: auto; padding: 2px 8px 10px; display: flex; flex-direction: column; gap: 2px; }
+.cmdsheet-empty { padding: 20px 12px; text-align: center; font: 400 12px/1.5 var(--font-sans); color: var(--color-muted); }
+.cmdsheet-row { display: grid; grid-template-columns: minmax(0,auto) 1fr auto; align-items: baseline; gap: 9px; width: 100%; text-align: left; padding: 7px 9px; border: 1px solid transparent; border-radius: 9px; background: transparent; cursor: pointer; }
+.cmdsheet-row:hover:not(:disabled) { background: rgba(34,211,238,.11); border-color: rgba(34,211,238,.38); }
+.cmdsheet-row:disabled { opacity: .55; cursor: progress; }
+.cmdsheet-name { font: 500 13px/1.3 var(--font-sans); color: var(--color-brandtext); white-space: nowrap; }
+.cmdsheet-row:hover:not(:disabled) .cmdsheet-name { color: var(--color-cyanx); }
+.cmdsheet-slash { color: var(--color-cyanx); }
+.cmdsheet-desc { font: 400 11.5px/1.4 var(--font-sans); color: var(--color-muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmdsheet-badge { font: 400 9.5px/1 var(--font-sans); color: var(--color-cyanx); border: 1px solid rgb(var(--c-6) / 0.4); border-radius: 5px; padding: 3px 5px; white-space: nowrap; }
+
+/* Light mode: flat. No glows anywhere (owner mandate). */
+[data-theme="light"] .cmdsurf, [data-theme="light"] .cmdsheet-panel { border-color: rgba(3,105,161,.28); box-shadow: none; }
+[data-theme="light"] .cmdsheet { background: rgba(15,23,42,.34); }
+[data-theme="light"] .cmdsurf-cmd, [data-theme="light"] .cmdsheet-slash, [data-theme="light"] .cmdsheet-out-head, [data-theme="light"] .cmdsurf-chip { color: #0369a1; }
+[data-theme="light"] .cmdsheet-row:hover:not(:disabled) { background: rgba(3,105,161,.09); border-color: rgba(3,105,161,.32); }
+[data-theme="light"] .cmdsheet-row:hover:not(:disabled) .cmdsheet-name { color: #0369a1; }
+[data-theme="light"] .cmdsheet-badge { color: #0369a1; border-color: rgba(3,105,161,.3); }
+
+/* Stack + all-commands trigger */
+.chat-composer-stack { display: flex; flex-direction: column; gap: 6px; }
+.chat-allcmds { margin-left: auto; padding: 5px 9px; border: 1px solid rgb(var(--c-6) / 0.3); border-radius: 8px; background: transparent; color: var(--color-muted); font: 400 11.5px/1 var(--font-sans); cursor: pointer; white-space: nowrap; transition: color 140ms ease, border-color 140ms ease, background-color 140ms ease; }
+.chat-allcmds:hover { color: var(--color-cyanx); border-color: rgb(var(--c-6) / 0.55); background: rgba(34,211,238,.1); }
+[data-theme="light"] .chat-allcmds { border-color: rgba(3,105,161,.28); }
+[data-theme="light"] .chat-allcmds:hover { color: #0369a1; border-color: rgba(3,105,161,.45); background: rgba(3,105,161,.08); }
+@media (max-width: 640px) { .chat-composer-hint { display: none; } .chat-allcmds { margin-left: 0; } }

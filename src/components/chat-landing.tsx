@@ -33,6 +33,9 @@ import { AttachmentTray } from "./attachment-tray";
 import { RotatingPlaceholder } from "./composer-anim";
 import { ComposerTrace, isLowSpec } from "./composer-trace";
 import { CommandPalette } from "./command-palette";
+import { CommandSurface, type CommandSurfaceItem } from "./command-surface";
+import { AllCommandsModal } from "./all-commands-modal";
+import { surfaceFor } from "@/lib/command-exec";
 import { newId, uniqueUploadName } from "@/lib/upload-names";
 import { loadDraft, saveDraft, clearDraft, moveDraft } from "@/lib/drafts";
 import { toast } from "@/lib/toast";
@@ -292,6 +295,10 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   const [input, setInput] = useState("");
   /** Recognised slash command with its "/" stripped from `input` (see onInputChange). */
   const [cmdPrefix, setCmdPrefix] = useState<string | null>(null);
+  // Curated command readouts (/status, /skills, …) — dismissable, stacked
+  // above the composer like the bg dock. See lib/command-exec.ts.
+  const [cmdSurfaces, setCmdSurfaces] = useState<CommandSurfaceItem[]>([]);
+  const [allCmdsOpen, setAllCmdsOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [errorBanner, setErrorBanner] = useState("");
   const [atBottom, setAtBottom] = useState(true);
@@ -1035,6 +1042,25 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     //   /bg    → queue as a run-after envelope (never disturbs the live turn)
     //   /steer → live course-correction injected after the current action
     const parsed = parseCommand(finalText);
+    // A curated command (/status, /skills, /usage, …) opens a dismissable readout
+    // surface and runs against the gateway's slash worker — the same call the TUI
+    // makes. Checked BEFORE parseCommand's /bg|/steer gate, which only knows those two.
+    const surf = opts?.silent ? null : surfaceFor(finalText);
+    if (surf) {
+      setInput("");
+      setCmdPrefix(null);
+      setSlashOpen(false);
+      const item: CommandSurfaceItem = {
+        id: `cs-${nextId()}`,
+        command: surf.name + (surf.arg ? ` ${surf.arg}` : ""),
+        title: surf.title,
+        blurb: surf.blurb,
+        status: "running",
+      };
+      setCmdSurfaces((list) => [...list, item]);
+      taRef.current?.focus();
+      return;
+    }
     // A steer only EXISTS against a running turn: the gateway's busy handler
     // returns early when the session isn't running, and the text silently
     // becomes a brand-new message. Sending it as plain text is honest; showing
@@ -1848,9 +1874,26 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         )}
       </div>
 
-      <div className="relative z-10 px-3 pb-3 lg:px-6 lg:pb-6">
+      <AllCommandsModal
+          open={allCmdsOpen}
+          onClose={() => setAllCmdsOpen(false)}
+          onOpenSurface={(command, title, blurb) => {
+            const item: CommandSurfaceItem = {
+              id: `cs-${nextId()}`, command, title, blurb, status: "running",
+            };
+            setCmdSurfaces((list) => [...list, item]);
+          }}
+        />
+        <div className="relative z-10 px-3 pb-3 lg:px-6 lg:pb-6">
         <SubagentPanel subs={roster} open={suba.open} setOpen={suba.setOpen} now={suba.now} rpc={rpc} sessionId={liveSessionId || storedSessionId || null} />
         <BgDock items={bgItems} onSubmitFollowUp={handleFollowUpBg} onDismiss={dismissBgItem} onOpenItem={openBgItem} />
+        {cmdSurfaces.map((it) => (
+          <CommandSurface
+            key={it.id}
+            item={it}
+            onDismiss={(id) => setCmdSurfaces((list) => list.filter((x) => x.id !== id))}
+          />
+        ))}
         <div className={cn("chat-composer mx-auto w-full max-w-[52rem]", dragOver && "drag-over")}>
           {/* Fewer comet bands on low-memory/low-core devices (see composer-trace). */}
           <ComposerTrace bands={LOW_SPEC ? 10 : 28} />
@@ -1944,6 +1987,14 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
               onPickEffort={onPickEffort}
             />
             <span className="chat-composer-hint">{isStreaming ? "Sends queue after the reply · Shift+Enter newline" : "Enter to send · Shift+Enter for newline"}</span>
+            <button
+              type="button"
+              onClick={() => setAllCmdsOpen(true)}
+              className="chat-allcmds"
+              title="All commands — sent directly to the TUI"
+            >
+              All commands
+            </button>
             {isStreaming && (
               <button
                 type="button" onClick={stop}
