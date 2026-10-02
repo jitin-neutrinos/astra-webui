@@ -13,7 +13,7 @@ function BubbleSkeleton({ ai }: { ai?: boolean }) {
         {ai ? (
           <Skeleton className="h-[22px] w-[22px] rounded-md" />
         ) : (
-          <Skeleton className="h-[18px] w-[18px] rounded-full" />
+          <Skeleton className="h-[18px] w-[18px] rounded-[6px]" />
         )}
         <Skeleton className="ml-auto h-2.5 w-10" />
       </div>

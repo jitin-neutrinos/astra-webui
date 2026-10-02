@@ -49,9 +49,9 @@ export function ApprovalsPage({ onBack }: { onBack: () => void }) {
       </div>
 
       <div className="flex shrink-0 justify-center border-b border-white/[0.07] p-4 bg-midnight/30 md:sticky md:top-0 z-10">
-        <div className="flex rounded-full bg-white/[0.04] p-1 w-full max-w-sm">
-          <button onClick={() => { setTab("approval"); setLoading(true); }} className={cn("flex-1 rounded-full px-4 py-1.5 text-sm font-medium transition-colors", tab === "approval" ? "bg-cyanx text-void" : "text-slate-400 hover:text-slate-200")}>Approvals</button>
-          <button onClick={() => { setTab("clarify"); setLoading(true); }} className={cn("flex-1 rounded-full px-4 py-1.5 text-sm font-medium transition-colors", tab === "clarify" ? "bg-cyanx text-void" : "text-slate-400 hover:text-slate-200")}>Reviews</button>
+        <div className="flex rounded-[10px] bg-white/[0.04] p-1 w-full max-w-sm">
+          <button onClick={() => { setTab("approval"); setLoading(true); }} className={cn("flex-1 rounded-[8px] px-4 py-1.5 text-sm font-medium transition-colors", tab === "approval" ? "bg-cyanx text-void" : "text-slate-400 hover:text-slate-200")}>Approvals</button>
+          <button onClick={() => { setTab("clarify"); setLoading(true); }} className={cn("flex-1 rounded-[8px] px-4 py-1.5 text-sm font-medium transition-colors", tab === "clarify" ? "bg-cyanx text-void" : "text-slate-400 hover:text-slate-200")}>Reviews</button>
         </div>
       </div>
 

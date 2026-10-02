@@ -396,7 +396,7 @@ export default function VaultPage() {
                   <p className="truncate text-sm font-medium">{d.name}</p>
                   <p className="truncate text-xs text-muted">{d.projects.join(", ")}</p>
                 </div>
-                <span className="rounded-full bg-[rgba(34,211,238,0.1)] px-2 py-0.5 text-[11px] font-medium text-[color:var(--color-cyanx)]">
+                <span className="rounded-[6px] bg-[rgba(34,211,238,0.1)] px-2 py-0.5 text-[11px] font-medium text-[color:var(--color-cyanx)]">
                   {d.count} {d.count === 1 ? "var" : "vars"}
                 </span>
               </div>

@@ -249,8 +249,8 @@ export default function TokenTrackerPage({ onBack }: { onBack?: () => void }) {
                         <td className="py-2.5 px-3 text-right text-muted">{formatTokens(h.output)}</td>
                         <td className="py-2.5 px-3 text-right text-cyanx font-bold">{formatUSD(h.cost)}</td>
                         <td className="py-2.5 px-3">
-                          <div className="h-1.5 w-24 rounded-full bg-white/5 overflow-hidden">
-                            <div className="h-full rounded-full bg-cyanx/70" style={{ width: `${Math.round((h.cost / maxCost) * 100)}%` }} />
+                          <div className="h-1.5 w-24 rounded-[3px] bg-white/5 overflow-hidden">
+                            <div className="h-full rounded-[3px] bg-cyanx/70" style={{ width: `${Math.round((h.cost / maxCost) * 100)}%` }} />
                           </div>
                         </td>
                       </tr>

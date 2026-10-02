@@ -271,9 +271,9 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
           {type === "boolean" ? (
             <button
               onClick={() => updateVal(path, !val)}
-              className={cn("w-10 h-5 rounded-full transition-colors relative", val ? "bg-cyanx" : "bg-white/10")}
+              className={cn("w-10 h-5 rounded-[5px] transition-colors relative", val ? "bg-cyanx" : "bg-white/10")}
             >
-              <span className={cn("absolute top-0.5 left-0.5 bg-void w-4 h-4 rounded-full transition-transform", val && "translate-x-5")} />
+              <span className={cn("absolute top-0.5 left-0.5 bg-void w-4 h-4 rounded-[3px] transition-transform", val && "translate-x-5")} />
             </button>
           ) : type === "select" || (options && options.length > 0) ? (
             options.length > 0 ? (

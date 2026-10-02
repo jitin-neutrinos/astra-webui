@@ -5,6 +5,7 @@ import {
   MoreHorizontal, Pin, PinOff, Pencil, Trash2, Check, X, Loader2,
   Globe, TerminalSquare, MessagesSquare,
 } from "lucide-react";
+import { Zap } from "lucide-react";
 import { sourcesParam, type SourceModal } from "@/lib/source-filter";
 import { cleanTitle } from "@/lib/chat-title";
 import { getUnreadCount, seedFromServer } from "@/lib/notify";
@@ -14,26 +15,25 @@ import { CheckCheck } from "lucide-react";
 
 // Brand glyphs — single-color currentColor marks, no third-party assets.
 function TelegramGlyph({ className }: { className?: string }) {
+  // Outline ring + paper plane (stroke-native, matches lucide outline set).
   return (
-    <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden>
-      <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm4.9 6.9-1.7 8.1c-.13.57-.47.71-.95.44l-2.63-1.94-1.27 1.22c-.14.14-.26.26-.53.26l.19-2.68 4.88-4.41c.21-.19-.05-.29-.33-.1l-6.03 3.8-2.6-.81c-.56-.18-.57-.56.12-.83l10.15-3.92c.47-.17.88.11.73.86Z" />
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="12" r="9.2" />
+      <path d="M16 8.5l-7.2 2.9 2.3.8.8 2.3 1.2-1.4 2.1 1.5.8-6.1z" />
     </svg>
   );
 }
 
 function AndroidGlyph({ className }: { className?: string }) {
+  // Full Android robot — head dome + antennae + eyes + body + arms + legs, stroke outline.
   return (
-    <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden>
-      <path d="M6 9a6 6 0 0 1 12 0v5H6V9Zm-1.6 0a1.1 1.1 0 0 1 1.1 1.1v3.8a1.1 1.1 0 0 1-2.2 0v-3.8A1.1 1.1 0 0 1 4.4 9Zm15.2 0a1.1 1.1 0 0 1 1.1 1.1v3.8a1.1 1.1 0 0 1-2.2 0v-3.8a1.1 1.1 0 0 1 1.1-1.1ZM8.6 4.9l-.9-1.6a.35.35 0 0 1 .6-.35l.95 1.66A7.2 7.2 0 0 1 12 4.1c.94 0 1.84.16 2.66.46l.94-1.64a.35.35 0 0 1 .61.35l-.9 1.6A6 6 0 0 1 18 8.95H6a6 6 0 0 1 2.6-4.05Zm1.65 1.55a.55.55 0 1 0 0-1.1.55.55 0 0 0 0 1.1Zm3.5 0a.55.55 0 1 0 0-1.1.55.55 0 0 0 0 1.1Z" />
-    </svg>
-  );
-}
-
-function ZapGlyph({ className }: { className?: string }) {
-  // One-shot run: a single fired agent run.
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden>
-      <path d="M13 2 4.5 13.5H11L9.5 22 19 10h-6.8L13 2Z" />
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M5.9 10.6a6.1 6.1 0 0 1 12.2 0z" />
+      <path d="M7.2 4.9 6.2 3.2M16.8 4.9l1-1.7" />
+      <path d="M9.3 7.6h.01M14.7 7.6h.01" strokeWidth={2.2} />
+      <path d="M5.9 13.4h12.2v2.4a2.2 2.2 0 0 1-2.2 2.2H8.1a2.2 2.2 0 0 1-2.2-2.2z" />
+      <path d="M3.6 13.6v3M20.4 13.6v3" />
+      <path d="M9.2 18v2.6M14.8 18v2.6" />
     </svg>
   );
 }
@@ -46,11 +46,11 @@ const FILTERS: { key: SourceModal; label: string; icon: GlyphFC }[] = [
   { key: "android", label: "Android", icon: AndroidGlyph },
   { key: "telegram", label: "Telegram", icon: TelegramGlyph },
   { key: "terminal", label: "Terminal", icon: TerminalSquare },
-  { key: "oneshot", label: "One-shots", icon: ZapGlyph },
+  { key: "oneshot", label: "One-shots", icon: Zap },
 ];
 
 const SOURCE_ICON: Record<string, GlyphFC> = {
-  webui: Globe, android: AndroidGlyph, telegram: TelegramGlyph, cli: TerminalSquare, tui: TerminalSquare, oneshot: ZapGlyph,
+  webui: Globe, android: AndroidGlyph, telegram: TelegramGlyph, cli: TerminalSquare, tui: TerminalSquare, oneshot: Zap,
 };
 
 function SourceBadge({ source }: { source: string }) {

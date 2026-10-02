@@ -145,7 +145,7 @@ export function ThemeIconButton() {
       onClick={toggle}
       aria-label={light ? "Switch to dark mode" : "Switch to light mode"}
       title={light ? "Switch to dark mode" : "Switch to light mode"}
-      className="absolute right-4 top-4 z-[60] grid h-9 w-9 place-content-center rounded-full border border-white/10 bg-black/30 text-slate-300 transition-colors duration-200 hover:border-cyanx/50 hover:bg-cyanx/10 hover:text-cyanx press-feedback"
+      className="absolute right-4 top-4 z-[60] grid h-9 w-9 place-content-center rounded-[10px] border border-white/10 bg-black/30 text-slate-300 transition-colors duration-200 hover:border-cyanx/50 hover:bg-cyanx/10 hover:text-cyanx press-feedback"
     >
       {light
         ? <Sun className="h-4 w-4" strokeWidth={1.5} />
