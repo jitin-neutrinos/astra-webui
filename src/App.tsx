@@ -551,7 +551,10 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
                   "relative flex h-11 w-full items-center rounded-md transition-colors duration-200 press-feedback",
                   // Unread: the WHOLE button gets the brand-blue outline + glow,
                   // not just the number — the nav item itself reads as active.
-                  item.name === "Chats" && unreadTotal > 0 && "ast-nav-unread",
+                  // In the collapsed rail the treatment moves onto the ICON
+                  // (border + glow on the glyph and its box) and the number
+                  // drops its container, so a 48px rail isn't crowded.
+                  item.name === "Chats" && unreadTotal > 0 && (expanded ? "ast-nav-unread" : "ast-nav-unread-rail"),
                   active
                     ? "bg-cyanx/10 text-cyanx"
                     : "text-slate-300 hover:bg-white/5 hover:text-white",

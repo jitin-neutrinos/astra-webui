@@ -1637,13 +1637,28 @@ html.theme-fading body * {
   box-shadow: 0 0 8px color-mix(in oklab, var(--color-cyanx) 30%, transparent);
   font: 700 9px/1 var(--font-sans); font-variant-numeric: tabular-nums;
 }
-/* Collapsed rail (w-16 → a 48px button inside 8px nav padding): no label to sit
-   after, so the badge overlaps the icon well with a right-leaning bias. The
-   anchor is sized for the WIDEST case ("99+" ≈ 29px): 18 + 29 = 47 ≤ the 48px
-   button, so a 2-3 digit count can never reach the rail edge and get cropped. */
+/* Collapsed rail (w-16 → a 48px button inside 8px nav padding). Here the
+   treatment moves OFF the number and ONTO the icon: the number loses its
+   container entirely (bare cyan digits, no fill/border/rounded box) and sits at
+   the icon's top-right, while the glyph gets the brand-blue border, fill and
+   glow. An <svg> takes background/border/border-radius/padding directly, so the
+   bordered box lands exactly around the 16px icon without a wrapper element. */
 .ast-unread-badge-rail {
-  position: absolute; left: 18px; top: 50%; margin: 0;
-  transform: translateY(-50%);
+  position: absolute; left: 30px; top: 1px; margin: 0;
+  min-width: 0; height: auto; padding: 0;
+  background: none; border: none; box-shadow: none;
+  color: var(--color-cyanx);
+  text-shadow: 0 0 6px rgba(34,211,238,.75), 0 1px 3px rgba(0,0,0,.9);
+  transform: none;
+}
+.ast-nav-unread-rail > span:first-child svg {
+  width: 28px; height: 28px; padding: 5px; box-sizing: content-box;
+  border-radius: 9px;
+  color: var(--color-cyanx);
+  background: color-mix(in oklab, var(--color-cyanx) 12%, transparent);
+  border: 1px solid color-mix(in oklab, var(--color-cyanx) 50%, transparent);
+  box-shadow: 0 0 10px color-mix(in oklab, var(--color-cyanx) 30%, transparent),
+              inset 0 0 6px color-mix(in oklab, var(--color-cyanx) 6%, transparent);
 }
 /* Mobile: the badge sits under the header logo (the logo button is the only
    child, 44px wide starting at the bar's 12px padding). */
@@ -1659,6 +1674,8 @@ html.theme-fading body * {
 }
 [data-theme="light"] .ast-unread-badge { background: rgba(3,105,161,.12); color: #0369a1; border-color: rgba(3,105,161,.4); box-shadow: none; }
 [data-theme="light"] .ast-nav-unread { border-color: rgba(3,105,161,.35); box-shadow: none; }
+[data-theme="light"] .ast-unread-badge-rail { text-shadow: none; }
+[data-theme="light"] .ast-nav-unread-rail > span:first-child svg { border-color: rgba(3,105,161,.45); background: rgba(3,105,161,.08); box-shadow: none; }
 [data-theme="light"] .ast-unread-row { background: rgba(3,105,161,.08); }
 [data-theme="light"] .ast-unread-row:hover { background: rgba(3,105,161,.13); }
 [data-theme="light"] .ast-unread-pill { background: rgba(3,105,161,.12); color: #0369a1; border-color: rgba(3,105,161,.4); }
