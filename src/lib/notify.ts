@@ -222,8 +222,22 @@ export function handleRemoteRead(storedKey: string) {
   if (changed) notifyChanged();
 }
 
-/** Focused chat changed: tell the proxy (presence) so other devices know. */
+/** Focused chat changed: tell the proxy (presence) so other devices know.
+ *  Also updates currentStoredSid so handleComplete knows this chat is being
+ *  watched and marks it read instead of bumping the unread pill.
+ *  Clears any existing overlay pill and stamps the server watermark so the
+ *  focused chat never shows unread treatment. */
 export function reportFocus(storedKey: string | null) {
+  currentStoredSid = storedKey;
+  if (storedKey) {
+    if (overlay[storedKey]) {
+      delete overlay[storedKey];
+      save();
+      updateTitle();
+      notifyChanged();
+    }
+    void markRead(storedKey);
+  }
   const send = () => {
     try {
       const eng = (globalThis as any).__astraWsSend;

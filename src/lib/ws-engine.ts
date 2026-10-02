@@ -143,7 +143,7 @@ function rebindToStored(key: string) {
   for (const k of eng.resumeKeys.values()) if (k === key) return; // already in flight
   eng.liveKey = null;
   wsSet({ liveSessionId: null, sessionInfo: null, sessionInfoSid: null });
-  notify.setActiveSession(null);
+  notify.setActiveSession(key);
   sendResume(s, key);
 }
 
