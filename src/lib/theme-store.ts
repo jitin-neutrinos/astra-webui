@@ -142,6 +142,7 @@ export function setToken(paletteId: string, mode: ThemeMode, token: string, hex:
       applyPalette(merged, mode);
     }
   }
+  schedulePush({ custom: readCustom() });
   return true;
 }
 export function clearCustom(paletteId: string) {
@@ -166,10 +167,13 @@ export function mergeCustom(p: Palette): Palette {
 /** Boot-time restore: called once from main.tsx AFTER first paint prep, BEFORE app render. */
 export function restorePalette() {
   const id = currentPaletteId();
-  if (id === "astra-ui") return;
-  const p = palettes.find((x) => x.id === id);
-  if (!p) return;
-  applyPalette(mergeCustom(p));
+  if (id !== "astra-ui") {
+    const p = palettes.find((x) => x.id === id);
+    if (p) {
+      applyPalette(mergeCustom(p));
+      window.dispatchEvent(new CustomEvent("astra-palette-change", { detail: id })); // drives sync push
+    }
+  }
   syncThemeColorMeta(getMode());
 }
 // default palette too: browser chrome should carry Astra's void per mode
@@ -178,6 +182,69 @@ try {
   syncThemeColorMeta(m);
   window.addEventListener("astra-theme-change", () => syncThemeColorMeta(getMode()));
 } catch { /* pre-DOM safety */ }
+
+// ---- realtime cross-device sync (server is truth; local edits push) ----
+let syncRev = 0;
+let applyingRemote = false;
+let pushTimer: ReturnType<typeof setTimeout> | null = null;
+type SyncState = { palette?: string; mode?: ThemeMode; bg?: ChatBg | null; custom?: CustomEdits; rev?: number };
+
+async function pushSync(patch: Partial<SyncState>) {
+  try {
+    const res = await fetch("/api/theme/state", { method: "PUT", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify(patch) });
+    const data = await res.json().catch(() => ({}));
+    if (typeof data.rev === "number") syncRev = data.rev;
+  } catch { /* offline: local stands, next push retries */ }
+}
+function schedulePush(patch: Partial<SyncState>) {
+  if (applyingRemote) return;
+  if (pushTimer) clearTimeout(pushTimer);
+  pushTimer = setTimeout(() => { pushTimer = null; void pushSync(patch); }, 400);
+}
+function applyRemote(st: SyncState) {
+  applyingRemote = true;
+  try {
+    if (typeof st.rev === "number") syncRev = st.rev;
+    if (st.palette && st.palette !== currentPaletteId()) {
+      try { localStorage.setItem(LS_KEY, st.palette); } catch { /* noop */ }
+      const p = palettes.find((x) => x.id === st.palette);
+      if (p) applyPalette(mergeCustom(p), st.mode || getMode());
+      window.dispatchEvent(new CustomEvent("astra-palette-change", { detail: st.palette }));
+    }
+    if (st.custom) {
+      try { localStorage.setItem(LS_CUSTOM, JSON.stringify(st.custom)); } catch { /* noop */ }
+      const p = palettes.find((x) => x.id === currentPaletteId());
+      if (p) applyPalette(mergeCustom(p));
+    }
+    if (st.bg !== undefined) {
+      const cur = readChatBg();
+      if (JSON.stringify(cur) !== JSON.stringify(st.bg)) {
+        try { st.bg ? localStorage.setItem(LS_BG, JSON.stringify(st.bg)) : localStorage.removeItem(LS_BG); } catch { /* noop */ }
+        window.dispatchEvent(new CustomEvent("astra-chat-bg-change", { detail: st.bg }));
+      }
+    }
+  } finally { applyingRemote = false; }
+}
+/** Boot the sync loop: pull now, poll every 5s, push local changes. */
+export function startThemeSync() {
+  void (async () => {
+    try {
+      const res = await fetch("/api/theme/state", { credentials: "same-origin" });
+      if (res.ok) { const st = await res.json(); if (st.rev > 0) applyRemote(st); }
+    } catch { /* offline */ }
+  })();
+  window.setInterval(async () => {
+    if (document.hidden) return;
+    try {
+      const res = await fetch("/api/theme/state", { credentials: "same-origin" });
+      if (!res.ok) return;
+      const st = await res.json();
+      if (typeof st.rev === "number" && st.rev !== syncRev) applyRemote(st);
+    } catch { /* offline */ }
+  }, 5000);
+  window.addEventListener("astra-palette-change", (e) => schedulePush({ palette: (e as CustomEvent).detail }));
+  window.addEventListener("astra-chat-bg-change", (e) => schedulePush({ bg: (e as CustomEvent).detail }));
+}
 
 /** Chat backdrop preference (URL or uploaded path; empty = off). */
 export interface ChatBg { kind: "image" | "video" | "youtube"; src: string; blur?: number; dim?: number }

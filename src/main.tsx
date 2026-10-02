@@ -11,8 +11,9 @@ import { initAndroidShell } from './native/android-resume'
 import { initShellTheme } from './native/shell-theme'
 // Theme engine: restore the saved palette (no-op when it is the default Astra UI)
 // before first paint so a non-default palette never flashes the stock colors.
-import { restorePalette } from './lib/theme-store'
+import { restorePalette, startThemeSync } from './lib/theme-store'
 
+startThemeSync()   // listener first: restorePalette's broadcast must land on it
 restorePalette()
 initAndroidShell().catch(() => { /* never block app boot on shell glue */ })
 initShellTheme().catch(() => { /* never block app boot on shell glue */ })

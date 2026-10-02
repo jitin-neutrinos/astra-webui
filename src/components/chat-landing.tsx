@@ -1034,7 +1034,15 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     // Slash-command routing (always allowed — even mid-stream):
     //   /bg    → queue as a run-after envelope (never disturbs the live turn)
     //   /steer → live course-correction injected after the current action
-    const cmd = parseCommand(finalText);
+    const parsed = parseCommand(finalText);
+    // A steer only EXISTS against a running turn: the gateway's busy handler
+    // returns early when the session isn't running, and the text silently
+    // becomes a brand-new message. Sending it as plain text is honest; showing
+    // a steer receipt that quietly did nothing is not.
+    const turnIsLive = activeIdRef.current != null || isStreaming;
+    const cmd = parsed.kind === "steer" && !turnIsLive && attachments.length === 0 && !opts?.silent
+      ? ({ kind: "plain", text: finalText } as const)
+      : parsed;
     if (cmd.kind !== "plain" && attachments.length === 0 && !opts?.silent) {
       setInput("");
       setCmdPrefix(null);
