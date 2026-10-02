@@ -1308,14 +1308,16 @@ html.theme-fading body * {
 .bgd-bar-spin { color: var(--color-cyanx); }
 
 /* /steer receipt — its own surface, not a background job */
-.steer-note { border: 1px solid rgba(139,92,246,.25); border-left: 2px solid rgba(139,92,246,.55); border-radius: 8px; background: rgba(139,92,246,.06); padding: 6px 8px; display: flex; flex-direction: column; gap: 3px; transition: border-color 200ms ease, background-color 200ms ease, opacity 400ms ease, max-height 400ms ease; max-height: 120px; overflow: hidden; }
-.steer-note-head { display: flex; align-items: center; gap: 6px; }
-.steer-note-label { font: 500 10.5px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: color-mix(in oklab, var(--color-violetx) 85%, var(--color-brandtext)); flex: 1; }
-.steer-note-ico { color: var(--color-violetx); }
+.steer-note { border: 1px solid rgba(34,211,238,.25); border-left: 2px solid rgba(34,211,238,.55); border-radius: 8px; background: rgba(34,211,238,.06); padding: 6px 8px; display: flex; flex-direction: column; gap: 3px; transition: border-color 200ms ease, background-color 200ms ease, opacity 400ms ease, max-height 400ms ease; max-height: 120px; overflow: hidden; }
+.steer-note-head { display: flex; align-items: center; gap: 5px; }
+.steer-note-label { font: 500 10.5px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: color-mix(in oklab, var(--color-cyanx) 85%, var(--color-brandtext)); flex: 1; }
+.steer-note-ico { color: var(--color-cyanx); }
 .steer-note-ico-done { color: #34d399; }
 .steer-note-body { display: flex; align-items: flex-start; gap: 5px; min-width: 0; }
-.steer-note-branch { color: var(--color-violetx); opacity: .7; margin-top: 2px; }
-.steer-note-text { font: 400 12.5px/1.45 var(--font-sans); color: var(--color-brandtext); min-width: 0; }
+.steer-note-branch { color: var(--color-cyanx); opacity: .7; margin-top: 2px; }
+/* The steer CONTENT reads in brand blue (owner mandate) — it was inheriting the
+   violet the card used to be tinted with. */
+.steer-note-text { font: 400 12.5px/1.45 var(--font-sans); color: var(--color-cyanx); min-width: 0; }
 .steer-note[data-status="done"] { background: rgba(52,211,153,.05); border-color: rgba(52,211,153,.25); border-left-color: rgba(52,211,153,.55); }
 .steer-note[data-status="done"] .steer-note-label { color: color-mix(in oklab, #34d399 80%, var(--color-brandtext)); }
 .bgd-input{ font: 400 12px/1 var(--font-mono); border: 1px solid rgba(34,211,238,.25); background: transparent; color: var(--color-brandtext); transition: border-color 150ms; }
@@ -1342,10 +1344,11 @@ html.theme-fading body * {
 [data-theme="light"] .bgd-pulse { background: #0369a1; box-shadow: none }
 [data-theme="light"] .bgd-qpos { border-color: rgba(3,105,161,.4); color: #0369a1; }
 [data-theme="light"] .bgd-meta-live { color: #0369a1; text-shadow: none; }
-[data-theme="light"] .steer-note { border-color: rgba(124,58,237,.28); border-left-color: rgba(124,58,237,.6); background: rgba(124,58,237,.05); }
-[data-theme="light"] .steer-note-label { color: #6d28d9; }
-[data-theme="light"] .steer-note-ico { color: #7c3aed; }
+[data-theme="light"] .steer-note { border-color: rgba(3,105,161,.28); border-left-color: rgba(3,105,161,.6); background: rgba(3,105,161,.05); }
+[data-theme="light"] .steer-note-label { color: #0369a1; }
+[data-theme="light"] .steer-note-ico { color: #0369a1; }
 [data-theme="light"] .steer-note-ico-done { color: #059669; }
+[data-theme="light"] .steer-note-text { color: #0369a1; }
 [data-theme="light"] .steer-note[data-status="done"] { background: rgba(5,150,105,.05); border-color: rgba(5,150,105,.3); border-left-color: rgba(5,150,105,.6); }
 [data-theme="light"] .steer-note[data-status="done"] .steer-note-label { color: #047857; }
 [data-theme="light"] .bgd-pulse::after { border-color: rgba(3,105,161,.4); }

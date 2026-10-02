@@ -43,6 +43,7 @@ import { createItem, onTurnComplete, reconcileWithServer, dismissItem } from "@/
 import { loadItems, saveItems } from "@/lib/bg-items";
 import type { BgItem } from "@/lib/bg-items";
 import { BgDock, BgNote, SteerNote } from "./bg-dock";
+import { showsInFeed } from "@/lib/bg-routing";
 import avatarUrl from "@/assets/avatar-jitin.webp";
 import type { CatalogPayload } from "./composer-controls";
 
@@ -274,6 +275,9 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     setMessagesState(next);
   }, []);
   const [bgItems, setBgItems] = useState<BgItem[]>([]);
+  /** bg item whose turn is currently running — its assistant reply is routed
+   *  to the dock instead of the chat feed. */
+  const bgTurnRef = useRef<number | null>(null);
   const bgItemsRef = useRef(bgItems);
   useEffect(() => { bgItemsRef.current = bgItems; }, [bgItems]);
   const [openBgRef, setOpenBgRef] = useState<string | null>(null); // msg id to scroll to after "open" click
@@ -448,7 +452,11 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     if (activeIdRef.current) return;
     const id = nextId();
     activeIdRef.current = id;
-    setMessages((m) => [...m, { id, role: "assistant", segments: [], isStreaming: true, ts: Date.now() }]);
+    // A bg turn's reply belongs to the bg dock, not the chat feed (owner
+    // mandate): tag the bubble with the owning bg item so the feed can hide it
+    // while the dock's "jump to response" can still reveal it.
+    setMessages((m) => [...m, { id, role: "assistant", segments: [], isStreaming: true, ts: Date.now(),
+      ...(bgTurnRef.current != null ? { bgId: bgTurnRef.current } : {}) } as any]);
   }, []);
 
   const finalizeActive = useCallback(() => {
@@ -647,6 +655,9 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         )));
       }
       setBgItems(onTurnComplete);
+      // Turn is over: stop routing new assistant bubbles to the dock. A plain
+      // chat turn after a bg turn must paint into the feed normally again.
+      bgTurnRef.current = null;
       finalizeActive();
       return;
     }
@@ -1028,6 +1039,9 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         const isLive = activeIdRef.current != null || isStreaming;
         const item = createItem(cmd.kind, cmd.text, isLive);
         setBgItems((items) => [...items, item]);
+        // Route the reply to the dock: while this item's turn runs, the
+        // assistant bubble is tagged with its id and hidden from the feed.
+        if (cmd.kind === "bg") bgTurnRef.current = item.id;
         setMessages((m) => [...m, {
           id: nextId(), role: "assistant", segments: [], isStreaming: false, isSysNote: true, bgId: item.id
         } as any]);
@@ -1098,6 +1112,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       if (ok) {
         const item = createItem("bg", text, isLive);
         setBgItems((items) => [...items, item]);
+        bgTurnRef.current = item.id;   // this reply belongs to the dock too
         setMessages((m) => [...m, {
           id: nextId(), role: "assistant", segments: [], isStreaming: false, isSysNote: true, bgId: item.id
         } as any]);
@@ -1711,6 +1726,9 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
                   if (it?.dismissed) return null;
                   return null;
                 }
+                // A bg turn's REPLY lives in the dock, not the feed (owner
+                // mandate) — see bg-routing.ts for the two exceptions.
+                if (!showsInFeed(m as any, openBgRef)) return null;
                 return (
                 <div key={m.id} data-msg-id={m.id} className={m.isSysNote ? "chat-sys-note" : "flex w-full items-start"}>
                 {m.isSysNote ? (
