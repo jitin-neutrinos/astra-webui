@@ -692,7 +692,7 @@ html.theme-fading body * {
    LENGTH, OPACITY and WIDTH all come from the component's falloff curve —
    don't hardcode them here or the stack bands and reads as a dim second line.
    `butt` caps keep the leading edge a clean sharp cut. */
-.composer-trace-step { fill: none; stroke:rgb(var(--c-9)); stroke-linecap: round; animation: composer-trace-run 9s linear infinite; }
+.composer-trace-step { fill: none; stroke:rgb(var(--c-9)); stroke-linecap: butt; animation: composer-trace-run 9s linear infinite; }
 .composer-trace-head { stroke:rgb(var(--c-10)); filter:drop-shadow(0 0 3px rgb(var(--c-11) / 0.5)); }
 /* Direction: a <rect>'s stroke path runs clockwise (rightward along the top,
    then down the right edge). SVG dashoffset DECREASING walks the dash forward
