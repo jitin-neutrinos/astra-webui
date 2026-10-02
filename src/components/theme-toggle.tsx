@@ -166,9 +166,9 @@ function MoonIcon() {
     <svg width="22" height="22" viewBox="0 0 32 32" fill="none" aria-hidden="true" className="theme-moon">
       <defs>
         <linearGradient id="astra-moon-body" x1="8" y1="6" x2="24" y2="27" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#F8FAFC" />
-          <stop offset="45%" stopColor="#CBD5E1" />
-          <stop offset="100%" stopColor="#94A3B8" />
+          <stop offset="0%" stopColor="#E2E8F0" />
+          <stop offset="45%" stopColor="#94A3B8" />
+          <stop offset="100%" stopColor="#64748B" />
         </linearGradient>
         <mask id="astra-moon-crescent">
           <rect x="0" y="0" width="32" height="32" fill="black" />
@@ -180,8 +180,12 @@ function MoonIcon() {
           <circle cx="15" cy="16" r="12" />
         </clipPath>
       </defs>
+      {/* The crescent carries its own dark edge. Light mode has no glow (owner
+          rule), so on the paper theme a silver moon vanished — the silhouette
+          stroke is what keeps it legible there, in both themes. */}
       <g mask="url(#astra-moon-crescent)">
         <circle cx="15" cy="16" r="12" fill="url(#astra-moon-body)" />
+        <circle cx="15" cy="16" r="11.6" fill="none" stroke="#334155" strokeWidth="1.6" opacity="0.85" />
         {/* craters — a lighter lip and a darker floor sell the depression */}
         <g clipPath="url(#astra-moon-clip)">
           <circle cx="11.4" cy="12.2" r="3.1" fill="#94A3B8" opacity="0.55" />
@@ -262,7 +266,7 @@ export function ThemeToggle({ expanded }: { expanded: boolean }) {
       className="group relative flex h-11 w-full items-center rounded-md text-slate-400 transition-colors duration-200 hover:bg-cyanx/10 hover:text-cyanx press-feedback"
     >
       <span className="grid h-full w-12 shrink-0 place-content-center">
-        <ThemeGlyph dark={!light} />
+        <ThemeGlyph dark={light} />
       </span>
       {expanded && (
         <span className="truncate text-sm font-medium">
@@ -287,7 +291,7 @@ export function ThemeIconButton() {
       title={light ? "Switch to dark mode" : "Switch to light mode"}
       className="absolute right-4 top-4 z-[60] grid h-9 w-9 place-content-center rounded-[10px] border border-white/10 bg-black/30 text-slate-300 transition-colors duration-200 hover:border-cyanx/50 hover:bg-cyanx/10 hover:text-cyanx press-feedback"
     >
-      <ThemeGlyph dark={!light} />
+      <ThemeGlyph dark={light} />
     </button>
   );
 }
