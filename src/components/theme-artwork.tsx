@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { easeFlip } from "@/lib/theme-ease";
 // Vite ?raw: the artwork stays a single source file and is injected as-is so we
 // can hold a ref to its <svg> and drive SMIL ourselves.
 import artSvg from "@/assets/theme-cycle.svg?raw";
@@ -17,7 +18,7 @@ import artSvg from "@/assets/theme-cycle.svg?raw";
  */
 const LIGHT_T = 0;    // day
 const DARK_T = 4.0;   // night
-const FLIP_MS = 620;  // one flip, front to back
+const FLIP_MS = 1150; // one flip, front to back
 
 interface SmilSvg extends SVGSVGElement {}
 
@@ -35,10 +36,9 @@ export function ThemeArtwork({ dark }: { dark: boolean }) {
     if (from === to) return;
 
     const start = performance.now();
-    const ease = (p: number) => (p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2);
     const tick = (now: number) => {
       const p = Math.min(1, (now - start) / FLIP_MS);
-      const t = from + (to - from) * ease(p);
+      const t = from + (to - from) * easeFlip(p);
       svg.dataset.t = String(t);
       svg.setCurrentTime(t);
       if (p < 1) rafRef.current = requestAnimationFrame(tick);

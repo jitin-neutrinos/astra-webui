@@ -533,7 +533,9 @@ html.theme-fading body * {
 .theme-glyph:has(.theme-art) { width: 44px; height: 20px; }
 .theme-glyph-slot { display: inline-grid; place-items: center; }
 .theme-glyph[data-mode="light"] { filter: drop-shadow(0 0 5px rgba(251, 191, 36, .75)) drop-shadow(0 0 11px rgba(245, 158, 11, .35)); }
-.theme-glyph[data-mode="dark"] { filter: drop-shadow(0 0 5px rgba(203, 213, 225, .55)) drop-shadow(0 0 12px rgba(148, 163, 184, .28)); }
+/* Owner 2026-10-02: no background glow behind the dark-mode artwork. The night
+   pill already reads on its own; the silver bloom muddied it against the
+   sidebar ground. Light keeps its warm sun bloom (explicitly requested). */
 /* Light mode: no glows anywhere (owner mandate) — the sun keeps its colour. */
 [data-theme="light"] .theme-glyph { filter: none; }
 @media (prefers-reduced-motion: reduce) {

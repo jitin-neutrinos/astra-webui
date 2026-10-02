@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { wipeClipFromRect } from "@/lib/theme-wipe";
 import { LottieIcon, useLottieAssets } from "./theme-lottie";
 import { ThemeArtwork } from "./theme-artwork";
@@ -120,34 +119,23 @@ export function useTheme(): ["dark" | "light", (btn?: HTMLElement | null) => voi
  * of two toggles on one page never collide.
  */
 function ThemeGlyph({ dark }: { dark: boolean }) {
-  const reduce = useReducedMotion();
   // Owner-supplied illustrated Lottie assets, if present (see theme-lottie.tsx).
-  // Until they land, the inline SVG below is the fallback — the toggle must
-  // never render blank.
+  // Until they land, the owner's day↔night artwork is the fallback — the toggle
+  // must never render blank.
   const assets = useLottieAssets();
   const lottieUrl = dark ? (assets.moon ? "/lottie/theme-moon.json" : null)
                          : (assets.sun ? "/lottie/theme-sun.json" : null);
-  const spring = reduce
-    ? { duration: 0 }
-    : { type: "spring" as const, stiffness: 260, damping: 26 };
+  /* ONE child, no AnimatePresence and no keyed remount.
+     The artwork carries both states and tweens on `dark`, so a keyed swap here
+     was pure liability: AnimatePresence kept the outgoing slot mounted, which
+     stacked the NIGHT artwork on top in light mode (label said "Light mode"
+     while the pill showed a cratered moon), and the remount reset the SMIL
+     playhead so the flip restarted from the wrong end. */
   return (
     <span className="theme-glyph" data-mode={dark ? "dark" : "light"}>
-      <AnimatePresence initial={false} mode="popLayout">
-        <motion.span
-          key={dark ? "moon" : "sun"}
-          className="theme-glyph-slot"
-          initial={{ opacity: 0, scale: reduce ? 1 : 0.55, rotate: reduce ? 0 : dark ? -35 : 35 }}
-          animate={{ opacity: 1, scale: 1, rotate: 0 }}
-          exit={{ opacity: 0, scale: reduce ? 1 : 0.55, rotate: reduce ? 0 : dark ? 35 : -35 }}
-          transition={spring}
-        >
-          {/* Owner-supplied dark-mode artwork (public/icons/theme-dark.svg),
-              cropped to its own content box by the build step. */}
-          {/* The owner's piece is a day↔night cycle: it carries BOTH states, so
-              it renders for light and dark alike and flips only on interaction. */}
-          {lottieUrl ? <LottieIcon url={lottieUrl} /> : <ThemeArtwork dark={dark} />}
-        </motion.span>
-      </AnimatePresence>
+      <span className="theme-glyph-slot">
+        {lottieUrl ? <LottieIcon url={lottieUrl} /> : <ThemeArtwork dark={dark} />}
+      </span>
     </span>
   );
 }
