@@ -1532,6 +1532,14 @@ html.theme-fading body * {
 /* Sidebar + header: same glass treatment as the chat bubbles (29px blur + saturate 1.25,
    translucent midnight ground) — owner steer 10-02. */
 .sidebar-glass { background: color-mix(in oklab, var(--color-midnight) 45%, transparent); backdrop-filter: blur(29px) saturate(1.25); }
+/* ONE height for every top bar (owner 10-02: the sidebar logo section read
+   taller than the chat header). Three bars used to carry their own heights —
+   h-16 + py-4 on the logo row, py-2.5 on the header, py-2 on the mobile bar —
+   so they drifted apart and only a live-DOM measurement caught it. They all
+   read this token now, and the logo row drops its padding entirely so the
+   height is the token alone. */
+.ast-topbar, .mobile-accent-header { height: var(--astra-topbar-h, 56px); }
+.ast-topbar { display: flex; }
 .mobile-accent-header { background: color-mix(in oklab, var(--color-midnight) 45%, transparent); backdrop-filter: blur(29px) saturate(1.25); }
 
 /* actions docked INSIDE the bubble (owner 10-02, corrected): absolutely

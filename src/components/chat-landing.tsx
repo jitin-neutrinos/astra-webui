@@ -1744,7 +1744,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       })()}
       <ConnectionBanner state={conn} onRetry={retryConnection} nextRetryIn={nextRetryIn} />
 
-      <header className={cn("mobile-accent-header relative z-10 flex items-center justify-between border-b border-white/[0.07] px-3 py-2.5 lg:px-6 lg:min-h-0 lg:py-2.5", errorBanner && "mt-7")}>
+      <header className={cn("mobile-accent-header relative z-10 flex items-center justify-between border-b border-white/[0.07] px-3 lg:px-6", errorBanner && "mt-7")}>
         <span className="flex min-w-0 items-center gap-2">
           <button type="button" onClick={() => onOpenNav?.()}
             aria-label="Open navigation" aria-expanded={false} aria-controls="astra-sidebar"

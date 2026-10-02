@@ -327,7 +327,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
   return (
     <div className={cn("app-shell flex w-full flex-col overflow-hidden bg-void font-sans text-brandtext", LOW_SPEC && "astra-lowspec")}>
       {/* mobile top bar (non-chat views): logo opens navigation */}
-      <div className={cn("sidebar-glass relative flex shrink-0 items-center border-b border-white/[0.07] px-3 py-2 lg:hidden", view === "chat" && "hidden")}>
+      <div className={cn("sidebar-glass ast-topbar relative flex shrink-0 items-center border-b border-white/[0.07] px-3 lg:hidden", view === "chat" && "hidden")}>
         <button type="button" onClick={() => setDrawerOpen(true)}
           aria-label="Open navigation" aria-expanded={drawerOpen} aria-controls="astra-sidebar"
           className="flex h-11 w-11 items-center justify-center rounded-lg p-1 hover:bg-white/5">
@@ -566,14 +566,19 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
         "lg:static lg:z-auto lg:h-full lg:w-64 lg:max-w-none lg:shrink-0 lg:translate-x-0 lg:transition-[width] lg:duration-200 lg:ease-in-out",
         collapsed && "lg:w-16",
       )}>
-      <div className={cn("flex shrink-0 border-b border-white/[0.07] py-4",
-        expanded ? "items-center gap-3 px-4 h-16" : "items-center justify-center px-2 h-16")}>
+      {/* Logo row. Height is driven by the SAME --astra-topbar-h token the chat
+          header uses, so the two top bars can never drift apart (owner 10-02).
+          Note the old markup put `h-16` AND `py-4` on this element: padding on
+          top of a fixed height is redundant and made it read taller than the
+          header, so the padding is gone and the height is the token alone. */}
+      <div className={cn("ast-topbar flex shrink-0 border-b border-white/[0.07]",
+        expanded ? "items-center gap-3 px-4" : "items-center justify-center px-2")}>
         <button type="button" onClick={onToggleCollapse} disabled={drawerOpen}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           title={expanded ? "Collapse" : "Expand"}
           className="rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyanx/60">
           <img src="/astra-logo.png" alt="Astra"
-            className="h-9 w-9 shrink-0 rounded-lg object-cover" />
+            className="h-7 w-7 shrink-0 rounded-lg object-cover" />
         </button>
         {expanded && (
           <div className="min-w-0">

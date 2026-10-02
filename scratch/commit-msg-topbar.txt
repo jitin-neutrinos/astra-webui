@@ -1,0 +1,25 @@
+one shared top-bar height: sidebar logo row, chat header, mobile bar all match
+
+Owner 10-02: "sidebar logo section and header has to be the same height,
+currently sidebar logo section is slightly taller".
+
+Cause was two mistakes stacked on the logo row:
+  - it carried `h-16` (64px) AND `py-4` on the same element — padding on top
+    of a fixed height is redundant, and both together is what pushed it past
+    the header's 61px;
+  - the three top bars each declared their own height independently (h-16 on
+    the logo row, py-2.5 on the header, py-2 on the mobile bar), so any change
+    to one silently desynced the others.
+
+Fix: a single `--astra-topbar-h` token (56px) that `.ast-topbar` and
+`.mobile-accent-header` both read, with the per-element heights and padding
+removed. The logo also drops h-9 -> h-7 so it sits inside the shorter row
+without crowding it.
+
+Verified by measurement, not by eye:
+  expanded   header 56 / logo row 56 / delta 0
+  collapsed  header 56 / logo row 56 / delta 0 (rail is w-16)
+  mobile bar computed height 56px, padding 0
+  both rows: top y=0, same 1px bottom border, header.bottom == row.bottom
+Visually confirmed at desktop: the divider under the logo section and the one
+under the chat header form a single uninterrupted line across the screen.
