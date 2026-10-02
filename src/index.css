@@ -1532,15 +1532,20 @@ html.theme-fading body * {
 /* Header: brand accent ground + blur on ALL sizes (owner steer 10-02). */
 .mobile-accent-header { background: color-mix(in srgb, var(--color-depth) 92%, transparent); backdrop-filter: blur(35px) saturate(1.3); }
 
-/* actions docked INSIDE the bubble container (owner 10-02): bottom-right overlay,
-   translucent dark chips so the bubble ground shows through. */
-.chat-actions { display:flex; gap:4px; opacity:0; transition:opacity 140ms; justify-content:flex-end; margin-top:-30px; position:relative; z-index:2; pointer-events:none; }
+/* actions docked INSIDE the bubble (owner 10-02, corrected): absolutely
+   positioned bottom-right inside the bubble's own box — the row must be FULLY
+   inside the glass, never straddling the bottom border. */
+.chat-actions { display:flex; gap:4px; opacity:0; transition:opacity 140ms; justify-content:flex-end; position:absolute; right:10px; bottom:6px; z-index:2; pointer-events:none; }
 .chat-actions > * { pointer-events:auto; background:rgb(0 0 0 / 0.22); border-radius:8px; backdrop-filter: blur(8px); }
 [data-theme="light"] .chat-actions > * { background:rgb(255 255 255 / 0.4); }
-/* keep the last bubble line clear of the docked row */
-.chat-turn, .chat-bubble-user { padding-bottom: 34px; }
-.flex:hover > .min-w-0 > .chat-actions, .flex:focus-within > .min-w-0 > .chat-actions,
+/* reserve the docked row inside the bubble: 6px inset + 22px to the icon centre
+   clears the last text line without a slab of dead space. */
+.chat-turn, .chat-bubble-user { padding-bottom: 42px; }
+/* the bubbles own the actions now (owner 10-02: "entirely inside the bubble"),
+   so each bubble is its own positioning context for the docked row. */
+.chat-turn, .chat-bubble-user { position: relative; }
 .chat-turn:hover > .chat-actions, .chat-turn:focus-within > .chat-actions,
+.chat-bubble-user:hover > .chat-actions, .chat-bubble-user:focus-within > .chat-actions,
 .chat-actions:focus-within { opacity:1; }
 @media (hover:none) { .chat-actions { opacity:1; } }
 
