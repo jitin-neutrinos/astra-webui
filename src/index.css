@@ -2689,10 +2689,7 @@ html.theme-fading body * {
 [data-theme="light"] .cmdsheet-row:hover:not(:disabled) .cmdsheet-name { color: #0369a1; }
 [data-theme="light"] .cmdsheet-badge { color: #0369a1; border-color: rgba(3,105,161,.3); }
 
-/* Stack + all-commands trigger */
+/* Composer stack */
 .chat-composer-stack { display: flex; flex-direction: column; gap: 6px; }
-.chat-allcmds { margin-left: auto; padding: 5px 9px; border: 1px solid rgb(var(--c-6) / 0.3); border-radius: 8px; background: transparent; color: var(--color-muted); font: 400 11.5px/1 var(--font-sans); cursor: pointer; white-space: nowrap; transition: color 140ms ease, border-color 140ms ease, background-color 140ms ease; }
-.chat-allcmds:hover { color: var(--color-cyanx); border-color: rgb(var(--c-6) / 0.55); background: rgba(34,211,238,.1); }
-[data-theme="light"] .chat-allcmds { border-color: rgba(3,105,161,.28); }
-[data-theme="light"] .chat-allcmds:hover { color: #0369a1; border-color: rgba(3,105,161,.45); background: rgba(3,105,161,.08); }
-@media (max-width: 640px) { .chat-composer-hint { display: none; } .chat-allcmds { margin-left: 0; } }
+
+@media (max-width: 640px) { .chat-composer-hint { display: none; } }

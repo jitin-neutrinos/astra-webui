@@ -34,7 +34,6 @@ import { RotatingPlaceholder } from "./composer-anim";
 import { ComposerTrace, isLowSpec } from "./composer-trace";
 import { CommandPalette } from "./command-palette";
 import { CommandSurface, type CommandSurfaceItem } from "./command-surface";
-import { AllCommandsModal } from "./all-commands-modal";
 import { surfaceFor, execSlashCommand } from "@/lib/command-exec";
 import { fetchCommandRegistry, knownCommandNames } from "@/lib/command-registry";
 import { newId, uniqueUploadName } from "@/lib/upload-names";
@@ -300,7 +299,6 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   // Curated command readouts (/status, /skills, …) — dismissable, stacked
   // above the composer like the bg dock. See lib/command-exec.ts.
   const [cmdSurfaces, setCmdSurfaces] = useState<CommandSurfaceItem[]>([]);
-  const [allCmdsOpen, setAllCmdsOpen] = useState(false);
   // Warm the command registry once: the send path answers "is this a real
   // command?" synchronously, so it can only trust an already-loaded cache.
   useEffect(() => { void fetchCommandRegistry(); }, []);
@@ -1883,17 +1881,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         )}
       </div>
 
-      <AllCommandsModal
-          open={allCmdsOpen}
-          onClose={() => setAllCmdsOpen(false)}
-          onOpenSurface={(command, title, blurb) => {
-            const item: CommandSurfaceItem = {
-              id: `cs-${nextId()}`, command, title, blurb, status: "running",
-            };
-            setCmdSurfaces((list) => [...list, item]);
-          }}
-        />
-        <div className="relative z-10 px-3 pb-3 lg:px-6 lg:pb-6">
+      <div className="relative z-10 px-3 pb-3 lg:px-6 lg:pb-6">
         <SubagentPanel subs={roster} open={suba.open} setOpen={suba.setOpen} now={suba.now} rpc={rpc} sessionId={liveSessionId || storedSessionId || null} />
         <BgDock items={bgItems} onSubmitFollowUp={handleFollowUpBg} onDismiss={dismissBgItem} onOpenItem={openBgItem} />
         {cmdSurfaces.map((it) => (
@@ -1986,14 +1974,6 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
               onPickEffort={onPickEffort}
             />
             <span className="chat-composer-hint">{isStreaming ? "Sends queue after the reply · Shift+Enter newline" : "Enter to send · Shift+Enter for newline"}</span>
-            <button
-              type="button"
-              onClick={() => setAllCmdsOpen(true)}
-              className="chat-allcmds"
-              title="All commands — sent directly to the TUI"
-            >
-              All commands
-            </button>
             {isStreaming && (
               <button
                 type="button" onClick={stop}
