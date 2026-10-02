@@ -5,6 +5,7 @@ import { generateAcceptKey, encodeFrame, FrameDecoder } from "./ws-codec.mjs";
 import { notifyGateRequest, noteWebChatAnswer } from "./ntfy-notify.mjs";
 import { markRead, getMark, enrichSessions } from "./read-state.mjs";
 import { enrichLastReplies } from "./last-reply.mjs";
+import { getCommandRegistry } from "./command-registry.mjs";
 
 const HERMES_URL = "http://127.0.0.1:9119";
 const PASSWORD = process.env.ASTRA_HERMES_PASSWORD;
@@ -108,6 +109,17 @@ export { clearHermesCookie };
 export async function handleHxProxy(req, res) {
   // path prefix is /api/hx. Map to /api/...
   let targetPath = req.url.replace(/^\/api\/hx/, "/api");
+
+  // ---- live slash-command registry (dynamic command palette, 2026-10-02) ----
+  // Served from the upstream Hermes CLI registry, never forwarded: the gateway
+  // has no such route, so without this the palette would 404 and fall back to
+  // a hardcoded list that drifts on every `hermes update`.
+  if (req.method === "GET" && /^\/api\/hx\/commands\/?(\?|$)/.test(req.url)) {
+    const { commands, source } = await getCommandRegistry();
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ commands, source, count: commands.length }));
+    return;
+  }
 
   // ---- read-marker intercepts (cross-device unread, 2026-10-01) ----
   // PATCH /api/hx/sessions/<storedKey> {unread:false} → stamp watermark locally

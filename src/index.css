@@ -2339,7 +2339,6 @@ html.theme-fading body * {
    neutral black elevation parts, colored halo parts dropped. */
 [data-theme="light"] .chat-welcome-glyph { filter: none !important; }
 [data-theme="light"] .composer-trace-head { filter: none !important; }
-[data-theme="light"] .cmd-mirror { text-shadow: none !important; }
 [data-theme="light"] .chat-send[data-sent] { box-shadow: 0 1px 2px rgba(0,0,0,.25) !important; }
 [data-theme="light"] .nc-btn[data-ncflow="press"] { box-shadow: none !important; }
 [data-theme="light"] .chat-chip-options { box-shadow: none !important; }

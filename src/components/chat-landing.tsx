@@ -32,6 +32,7 @@ import { ComposerControls, filesToAttachments, type Attachment } from "./compose
 import { AttachmentTray } from "./attachment-tray";
 import { RotatingPlaceholder } from "./composer-anim";
 import { ComposerTrace, isLowSpec } from "./composer-trace";
+import { CommandPalette } from "./command-palette";
 import { newId, uniqueUploadName } from "@/lib/upload-names";
 import { loadDraft, saveDraft, clearDraft, moveDraft } from "@/lib/drafts";
 import { toast } from "@/lib/toast";
@@ -1882,6 +1883,21 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
             </div>
           )}
           <AttachmentTray items={attachments} onRemove={removeAttachment} onRetry={retryAttachment} countLabel={sendHint || (attachments.length > 0 ? `${attachments.length} file${attachments.length === 1 ? "" : "s"}` : undefined)} />
+          <CommandPalette
+            value={input}
+            caret={input.length}
+            onPick={(text, caret) => {
+              onInputChange(text);
+              // Put the caret where the inserted token ends so the user can
+              // keep typing straight into the argument.
+              requestAnimationFrame(() => {
+                const ta = taRef.current;
+                if (!ta) return;
+                ta.focus();
+                ta.setSelectionRange(caret, caret);
+              });
+            }}
+          />
           <div className="composer-field">
             <textarea
               ref={taRef}
