@@ -1340,7 +1340,10 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   const fitComposer = useCallback(() => {
     const ta = taRef.current;
     if (!ta) return;
-    if (LOW_SPEC && ta.clientHeight >= ta.scrollHeight - 1) return;  // fits already
+    // LOW_SPEC skip only helps while TYPING (box fits, content grew by a char).
+    // It must NOT skip when the box needs to SHRINK — the cleared-draft bug left
+    // the composer tall forever. Re-measure unless the box is at its 1-line rest.
+    if (LOW_SPEC && ta.clientHeight >= ta.scrollHeight - 1 && ta.clientHeight <= 30) return;
     ta.style.height = "auto";
     ta.style.height = `${ta.scrollHeight}px`;
   }, []);
@@ -1699,7 +1702,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       })()}
       <ConnectionBanner state={conn} onRetry={retryConnection} nextRetryIn={nextRetryIn} />
 
-      <header className={cn("relative z-10 flex items-center justify-between border-b border-white/[0.07] px-3 py-3 lg:px-6 lg:min-h-[77px] lg:py-0", errorBanner && "mt-7")}>
+      <header className={cn("mobile-accent-header relative z-10 flex items-center justify-between border-b border-white/[0.07] px-3 py-3 lg:px-6 lg:min-h-[77px] lg:py-0 lg:bg-transparent lg:backdrop-filter-none", errorBanner && "mt-7")}>
         <span className="flex min-w-0 items-center gap-2">
           <button type="button" onClick={() => onOpenNav?.()}
             aria-label="Open navigation" aria-expanded={false} aria-controls="astra-sidebar"
