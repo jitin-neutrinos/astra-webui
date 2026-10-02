@@ -80,7 +80,6 @@ class GateActivity : Activity() {
     private val onBrand get() = c("#0A0A0F", "#FFFFFF")
     private val danger get() = c("#F87171", "#B91C1C")
     private val okay = Color.parseColor("#10B981")
-    private val warn get() = c("#FBBF24", "#B45309")
 
     private fun tint(color: Int, a: Int) = Color.argb(a, Color.red(color), Color.green(color), Color.blue(color))
 
@@ -231,8 +230,6 @@ class GateActivity : Activity() {
         includeFontPadding = false
     }
 
-    private fun space(h: Int) = View(this).apply { layoutParams = LinearLayout.LayoutParams(-1, dp(h)) }
-
     /** Rounded icon badge with a glyph. */
     private fun badge(glyph: String, color: Int, sizeDp: Int = 34, glyphSp: Float = 16f) = TextView(this).apply {
         text = glyph; gravity = Gravity.CENTER; setTextColor(color); setTextSize(TypedValue.COMPLEX_UNIT_SP, glyphSp)
@@ -240,33 +237,6 @@ class GateActivity : Activity() {
         includeFontPadding = false
         background = rounded(tint(color, 34), 11, tint(color, 90))
         layoutParams = LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp))
-    }
-
-    /** "Waiting" pill with a pinging dot: communicates the agent is blocked on the user. */
-    private fun waitingPill(color: Int): View {
-        val dot = View(this).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(color) } }
-        val ring = View(this).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(color) }; alpha = 0f }
-        val holder = FrameLayout(this).apply {
-            addView(ring, FrameLayout.LayoutParams(dp(6), dp(6), Gravity.CENTER))
-            addView(dot, FrameLayout.LayoutParams(dp(6), dp(6), Gravity.CENTER))
-        }
-        ring.animate().cancel()
-        val ping = ObjectAnimator.ofFloat(0f, 1f).apply {
-            duration = 1600; repeatCount = ObjectAnimator.INFINITE
-            interpolator = PathInterpolator(0f, 0f, 0.2f, 1f)
-            addUpdateListener {
-                val t = it.animatedValue as Float
-                ring.scaleX = 0.7f + 1.6f * t; ring.scaleY = ring.scaleX; ring.alpha = 0.9f * (1f - t)
-            }
-        }
-        ping.start()
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(10), dp(5), dp(11), dp(5))
-            background = rounded(tint(color, 24), 20)
-            addView(holder, LinearLayout.LayoutParams(dp(10), dp(10)))
-            addView(label("Waiting", 11f, color, Typeface.BOLD).apply { setPadding(dp(6), 0, 0, 0); letterSpacing = 0.04f })
-        }
     }
 
     /** Press-scale + haptic. kind: primary | deny | quiet | choice */
@@ -293,14 +263,13 @@ class GateActivity : Activity() {
         }
     }
 
-    /** One-line header: badge + eyebrow + waiting pill. */
+    /** One-line header: badge + eyebrow. Owner 2026-10-02: the Waiting pill is
+     *  gone — the accent badge + "decide" footer line already say it's blocked. */
     private fun header(isApproval: Boolean, accent: Int): View {
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         row.addView(badge(if (isApproval) "!" else "?", accent))
         row.addView(label(if (isApproval) "APPROVAL NEEDED" else "QUESTION FOR YOU", 10.5f, accent, Typeface.BOLD, mono = true)
             .apply { letterSpacing = 0.14f; setPadding(dp(12), 0, 0, 0) })
-        row.addView(space(0).apply { layoutParams = LinearLayout.LayoutParams(0, 1, 1f) })
-        row.addView(waitingPill(accent))
         return row
     }
 
@@ -335,7 +304,49 @@ class GateActivity : Activity() {
         if (v.isClickable) v.animate().alpha(0.35f).setDuration(160).start()
     }
 
-    /** Result: mark pops in; tone 1 ok, -1 denied, 0 neutral. */
+    /** In-card sent receipt (owner 2026-10-02): the confirmation lives in the
+     *  SAME card — request content animates out, a compact receipt morphs in
+     *  with a spring-pop mark, then the whole card exits via the standard
+     *  dismiss animation. No second popup, ever. */
+    private fun showSent(msg: String, sub: String, tone: Int) = runOnUiThread {
+        busy = false
+        val col = when (tone) { 1 -> okay; -1 -> danger; else -> muted }
+        val glyph = when (tone) { 1 -> "✓"; -1 -> "✕"; else -> "•" }
+        // Phase 1: the request sinks away (fade + slight rise), actions fade with it.
+        content.animate().alpha(0f).translationY(dp(-8).toFloat()).setDuration(190)
+            .setInterpolator(ease).setListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(a: android.animation.Animator) {
+                    foot.visibility = View.GONE
+                    content.removeAllViews()
+                    content.translationY = dp(10).toFloat()
+                    // Phase 2: horizontal receipt morphs in, mark springs.
+                    val row = LinearLayout(this@GateActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                        setPadding(0, dp(4), 0, dp(2))
+                    }
+                    val mark = badge(glyph, col, 40, 17f).apply {
+                        background = rounded(tint(col, 34), 20, col, 2)
+                        scaleX = 0.4f; scaleY = 0.4f; alpha = 0f
+                        animate().scaleX(1f).scaleY(1f).alpha(1f).setStartDelay(40).setDuration(340)
+                            .setInterpolator(PathInterpolator(0.34f, 1.56f, 0.64f, 1f)).start()
+                    }
+                    row.addView(mark)
+                    val textCol = LinearLayout(this@GateActivity).apply { orientation = LinearLayout.VERTICAL }
+                    textCol.addView(label(msg, 15.5f, ink, Typeface.BOLD).apply { setPadding(dp(14), 0, 0, 0) })
+                    if (sub.isNotEmpty()) textCol.addView(label(sub, 12.5f, muted).apply { setPadding(dp(14), dp(3), 0, 0) })
+                    row.addView(textCol)
+                    content.addView(row)
+                    content.animate().alpha(1f).translationY(0f).setDuration(220)
+                        .setInterpolator(ease).setListener(null).start()
+                    sheet.performHapticFeedback(if (tone >= 0) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.REJECT)
+                    sheet.postDelayed({ dismiss() }, 1050)
+                }
+            })
+        foot.animate().alpha(0f).setDuration(150).start()
+    }
+
+    /** Result: mark pops in; tone 1 ok, -1 denied, 0 neutral. (Error/expiry states only —
+     *  the success path uses showSent, which stays inside the original card.) */
     private fun showResult(msg: String, sub: String, tone: Int, autoClose: Boolean) = runOnUiThread {
         busy = false
         val col = when (tone) { 1 -> okay; -1 -> danger; else -> muted }
@@ -394,7 +405,7 @@ class GateActivity : Activity() {
     private fun post(payload: JSONObject, picked: View?, denied: Boolean = false) {
         showSending(picked)
         if (debugJson != null) {
-            sheet.postDelayed({ showResult(if (denied) "Denied" else "Approved", "", if (denied) -1 else 1, true) }, 900)
+            sheet.postDelayed({ showSent(if (denied) "Denied" else "Approval sent", "", if (denied) -1 else 1) }, 900)
             return
         }
         val (base, auth) = creds() ?: run { busy = false; openChatFallback(); return }
@@ -406,8 +417,8 @@ class GateActivity : Activity() {
                     when {
                         r.isSuccessful -> {
                             cancelNotification()
-                            val ok = if (denied) "Denied" else if (payload.has("choice")) "Approved" else "Answer sent"
-                            showResult(ok, if (denied) "Astra will not run it." else "Astra is continuing.", if (denied) -1 else 1, true)
+                            val ok = if (denied) "Denied" else if (payload.has("choice")) "Approval sent" else "Answer sent"
+                            showSent(ok, if (denied) "Astra won't run it." else "Astra is continuing.", if (denied) -1 else 1)
                         }
                         r.code == 409 -> showResult("Already answered", "Answered on another device.", 0, false)
                         else -> runOnUiThread { failBack("Couldn't deliver (${r.code}). Try again or open the chat.") }
@@ -447,8 +458,9 @@ class GateActivity : Activity() {
     private fun render(g: JSONObject, errorLine: String? = null) {
         lastGate = g
         val isApproval = g.optString("kind") == "approval"
-        // A command about to run is the riskier gate: amber accent. Questions use brand cyan.
-        val accent = if (isApproval && g.optString("command").isNotEmpty()) warn else brand
+        // Owner order 2026-10-02: yellow is out — every gate wears the brand
+        // teal; severity still reads on the meta row next to the command.
+        val accent = brand
         swap(
             body = {
                 addView(header(isApproval, accent))
@@ -480,7 +492,7 @@ class GateActivity : Activity() {
             "low" -> muted
             "high" -> c("#FB923C", "#C2410C")
             "critical" -> danger
-            else -> warn
+            else -> brand   // moderate: brand teal (amber retired 2026-10-02)
         }
 
         val heading = whatItDoes.ifEmpty { desc.ifEmpty { if (cmd.isNotEmpty()) "Astra wants to run a command" else "Astra is asking permission to continue." } }
@@ -526,12 +538,15 @@ class GateActivity : Activity() {
         box.addView(sevRow)
     }
 
-    /** Pinned footer for approvals: Deny / Approve row + extras + paused note. */
+    /** Pinned footer for approvals. Owner order 2026-10-02: exactly three
+     *  choices — Allow once / Allow for this chat / Deny — "Always allow" is
+     *  removed even when the gateway offers it. Deny sits left (Material:
+     *  dismissive left of confirming), primary fills right. */
     private fun renderApprovalFooter(g: JSONObject, box: LinearLayout) {
         val severity = g.optString("severity", "moderate")
         val choices = g.optJSONArray("choices") ?: JSONArray().put("once").put("deny")
-        val labels = mapOf("once" to "Approve", "session" to "Allow for this chat", "always" to "Always allow", "deny" to "Deny")
-        val list = (0 until choices.length()).map { choices.getString(it) }
+        val labels = mapOf("once" to "Allow once", "session" to "Allow for this chat", "always" to "Always allow", "deny" to "Deny")
+        val list = (0 until choices.length()).map { choices.getString(it) }.filter { it != "always" }
         val extras = list.filter { it != "once" && it != "deny" }
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val gap = dp(10)

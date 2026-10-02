@@ -1241,7 +1241,6 @@ html.theme-fading body * {
 
 /* ===== GATE-UX: approval + question cards (states, motion, theme-aware) ===== */
 @keyframes ga-in { from { opacity: 0; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: none; } }
-@keyframes ga-ping { 0% { transform: scale(.7); opacity: .9; } 80%, 100% { transform: scale(2.3); opacity: 0; } }
 @keyframes ga-attn { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-cyanx) 0%, transparent), 0 8px 28px -18px rgba(0,0,0,.6); } 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-cyanx) 14%, transparent), 0 8px 28px -18px rgba(0,0,0,.6); } }
 @keyframes ga-spin { to { transform: rotate(360deg); } }
 @keyframes ga-pop { 0% { transform: scale(.6); } 60% { transform: scale(1.15); } 100% { transform: scale(1); } }
@@ -1263,10 +1262,6 @@ html.theme-fading body * {
 .ga-eyebrow { margin: 0 0 3px; font: 500 10.5px/1 var(--font-mono); text-transform: uppercase; letter-spacing: .16em; color: var(--ga-accent); opacity: .9; }
 .ga-title { margin: 0; font: 500 14.5px/1.4 var(--font-sans); color: var(--color-brandtext); word-break: break-word; }
 .ga-sub { margin: 8px 0 0; font: 400 12.5px/1.5 var(--font-sans); color: var(--color-muted); }
-.ga-live { flex: none; display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 9px; border-radius: 9999px; font: 500 10.5px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase;
-  color: var(--ga-accent); background: color-mix(in srgb, var(--ga-accent) 9%, transparent); }
-.ga-live i { position: relative; width: 6px; height: 6px; border-radius: 9999px; background: var(--ga-accent); }
-.ga-live i::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--ga-accent); animation: ga-ping 1.6s cubic-bezier(0,0,.2,1) infinite; }
 .ga-cmd { margin: 12px 0 0; padding: 10px 12px; max-height: 168px; overflow: auto; white-space: pre-wrap; word-break: break-word;
   font: 400 12.5px/1.55 var(--font-mono); color: var(--color-brandtext); border-radius: 10px;
   background: color-mix(in srgb, var(--color-void) 82%, var(--color-brandtext) 4%); border: 1px solid color-mix(in srgb, var(--color-brandtext) 9%, transparent); }
@@ -1316,11 +1311,10 @@ html.theme-fading body * {
 @media (max-width: 640px) {
   .gate-approval { padding: 14px 14px 12px 17px; }
   .ga-actions .ga-btn { flex: 1 1 calc(50% - 8px); justify-content: center; min-height: 46px; }
-  .ga-live { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .gate-approval, .chat-clarify { animation: none !important; }
-  .ga-live i::after, .ga-spin, .ga-icon { animation: none !important; }
+  .ga-spin, .ga-icon { animation: none !important; }
   .ga-collapse, .ga-btn { transition-duration: .01ms !important; }
 }
 

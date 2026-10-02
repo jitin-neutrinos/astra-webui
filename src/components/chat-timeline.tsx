@@ -351,7 +351,7 @@ function TextRow({ seg, reveal, onOpenMedia }: { seg: Segment; reveal?: boolean;
   );
 }
 
-const APPROVAL_LABELS: Record<string, string> = { once: "Approve once", session: "Allow this chat", always: "Always allow", deny: "Deny" };
+const APPROVAL_LABELS: Record<string, string> = { once: "Allow once", session: "Allow for this chat", deny: "Deny" };
 
 // Generative-UI clarify card: renders the agent's question(s) as an interactive
 // form. Design language: left-aligned document card (not an alert dialog) —
@@ -469,17 +469,20 @@ function ClarifyCard({ seg, onAnswer }: {
 }
 
 const APPROVAL_RECEIPT: Record<string, { label: string; tone: "ok" | "no" | "idle" }> = {
-  once: { label: "Approved once", tone: "ok" },
-  session: { label: "Allowed for this chat", tone: "ok" },
+  once: { label: "Approval sent", tone: "ok" },
+  session: { label: "Approval sent · allowed for this chat", tone: "ok" },
   always: { label: "Always allowed", tone: "ok" },
-  deny: { label: "Denied", tone: "no" },
+  deny: { label: "Denied — Astra won't run it", tone: "no" },
   answered: { label: "Answered on another device", tone: "ok" },
   cancelled: { label: "Request withdrawn", tone: "idle" },
 };
 
 function ApprovalRow({ seg, onRespond }: { seg: Segment; onRespond: (reqId: string, choice: string) => void }) {
   const p = seg.params || {};
-  const choices = p.choices?.length ? p.choices : ["once", "deny"];
+  // Owner order 2026-10-02: no "Always allow" anywhere — the scope ladder tops
+  // out at per-chat. Filter at render so a host that still sends "always" never
+  // surfaces it; a legacy already-resolved "always" keeps its receipt readable.
+  const choices = (p.choices?.length ? p.choices : ["once", "deny"]).filter((c: string) => c !== "always");
   const isCommandApproval = !!p.command;
   const eyebrow = isCommandApproval ? "Approval needed" : (p.description ? "Choice required" : "Clarify");
   const title = p.description || (isCommandApproval ? "Astra wants to run a command" : "Select an option to continue.");
@@ -519,7 +522,7 @@ function ApprovalRow({ seg, onRespond }: { seg: Segment; onRespond: (reqId: stri
           <p className="ga-eyebrow">{resolved ? "Approval" : eyebrow}</p>
           <p className="ga-title">{resolved ? receipt!.label : title}</p>
         </div>
-        {!resolved && <span className="ga-live" aria-hidden="true"><i />Waiting</span>}
+        {/* owner 2026-10-02: waiting pill removed — the command itself + eyebrow carry state */}
       </div>
 
       {!!p.command && (

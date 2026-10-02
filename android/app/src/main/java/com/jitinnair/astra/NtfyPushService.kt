@@ -766,7 +766,7 @@ class NtfyPushService : Service() {
                     putExtra(GateActivity.EXTRA_NOTIF_ID, notifId)
                     putExtra("choice", choice)
                 }, flags)
-            builder.addAction(R.drawable.ic_action_approve, "Approve", act("once", 2))
+            builder.addAction(R.drawable.ic_action_approve, "Allow once", act("once", 2))
             builder.addAction(R.drawable.ic_action_deny, "Deny", act("deny", 3))
         }
 
