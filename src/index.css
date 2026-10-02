@@ -238,6 +238,11 @@ html.theme-fading body * {
 /* field wrapper: textarea + rotating placeholder overlay */
 .composer-field { position: relative; }
 .composer-ph-rotor { z-index: 0; }
+/* Placeholder overlay MUST share the textarea's exact text metrics — the iOS
+   zoom guard below bumps every textarea to 16px on touch devices, so a
+   hardcoded 14.5px here left the placeholder and the real text (and therefore
+   the caret) on different metrics — the "typing line is not synced" report.
+   The zoom-guard media query bumps this one to match. */
 .composer-ph-text { font: 400 14.5px/1.5 var(--font-sans); color: var(--color-muted); max-width: 100%; }
 .chat-composer-input { display: block; width: 100%; position: relative; z-index: 1; background: transparent; border: none; color: var(--color-brandtext); font: 400 14.5px/1.5 var(--font-sans); resize: none; min-height: 24px; max-height: 200px; overflow-y: auto; padding: 2px 4px 8px; outline: none; }
 .chat-composer-input::placeholder { color: transparent; }
@@ -992,6 +997,10 @@ html.theme-fading body * {
   input[type="text"], input[type="password"], input[type="search"], input[type="email"], textarea {
     font-size: 16px !important;
   }
+  /* The composer placeholder is an overlay on that same textarea — it has to
+     track the same bump or the placeholder, the typed text and the caret all
+     disagree on touch devices. */
+  .composer-ph-text { font-size: 16px !important; line-height: 24px !important; }
 }
 
 /* 44px hit areas at coarse pointer, no visual bloat */
