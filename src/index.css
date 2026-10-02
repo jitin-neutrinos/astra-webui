@@ -208,20 +208,18 @@ html.theme-fading body * {
 .chat-suggest-hint { font: 400 11.5px/1.4 var(--font-mono); color: var(--color-muted); }
 
 .chat-composer { position: relative; background: color-mix(in srgb, var(--color-depth) 88%, transparent); backdrop-filter: blur(14px) saturate(1.15); -webkit-backdrop-filter: blur(14px) saturate(1.15); /* idle: border transparent — the running trace is the outline; a static border under it read as a duplicate dim line */ border: 1px solid transparent; border-radius: 12px; padding: 10px 12px 8px; box-shadow: 0 1px 2px rgba(0,0,0,.18), 0 10px 32px -18px rgba(0,0,0,.55); transition: border-color 220ms cubic-bezier(0.23,1,0.32,1), box-shadow 220ms cubic-bezier(0.23,1,0.32,1); }
-/* running brand accent line: Magic UI BorderBeam (ui/border-beam.tsx, verbatim).
-   The beam is masked INTO the border ring via mask-intersect, so it IS the
-   border — no second line beside it (the old SVG stroke + static border pair
-   was the "dual lines" bug). Idle border is transparent so the beam reads as
-   the outline; focus/drag fades the beam out as ::before fades in. */
-/* `border-radius: inherit` is LOAD-BEARING: the vendor's ring div is
-   `rounded-[inherit]`, so it inherits from ITS parent. This wrapper sits between
-   the ring and .chat-composer, so without the inherit here the ring resolves to
-   0px — the mask then clips the beam to a sharp-cornered rectangle and the beam
-   visibly "travels around an invisible sharp rectangle" instead of hugging the
-   input box's 12px corners. */
-.composer-beam { position: absolute; inset: 0; pointer-events: none; z-index: 0; border-radius: inherit; transition: opacity 260ms cubic-bezier(0.23,1,0.32,1); }
-.composer-beam-glow { filter: drop-shadow(0 0 3px rgba(34,211,238,.45)); }
-.chat-composer:focus-within .composer-beam, .chat-composer.drag-over .composer-beam { opacity: 0; }
+/* running brand accent line: an SVG stroke on a rounded <rect> (composer-trace.tsx).
+   The dash IS the rounded path, so the lit run bends through the corners exactly.
+   A straight bar on an offset-path cannot: over an arc of radius r a bar of length
+   L leaves the path by r(1-cos(L/2r)) — the "won't bend at the corners" artefact.
+   pathLength=100 makes the run a constant share of the perimeter and the -100
+   dashoffset sweep is exactly one lap, so the loop is seamless. The composer's idle
+   border is transparent, so this stroke IS the border — never a second line. */
+.composer-trace { position: absolute; inset: 0; pointer-events: none; overflow: visible; z-index: 0; opacity: 1; transition: opacity 260ms cubic-bezier(0.23,1,0.32,1); }
+.composer-trace-tail { stroke: #22d3ee; stroke-width: 1.25; stroke-linecap: round; stroke-dasharray: 42 58; opacity: .34; animation: composer-trace-run 9s linear infinite; }
+.composer-trace-head { stroke: #67e8f9; stroke-width: 1.7; stroke-linecap: round; stroke-dasharray: 11 89; filter: drop-shadow(0 0 3px rgba(34,211,238,.55)); animation: composer-trace-run 9s linear infinite; }
+@keyframes composer-trace-run { to { stroke-dashoffset: -100; } }
+.chat-composer:focus-within .composer-trace, .chat-composer.drag-over .composer-trace { opacity: 0; }
 .chat-composer::before { content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1px; background: linear-gradient(135deg, rgba(34,211,238,.35), rgba(139,92,246,.14) 40%, transparent 60%, transparent); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; opacity: 0; transition: opacity 260ms cubic-bezier(0.23,1,0.32,1); pointer-events: none; }
 .chat-composer:focus-within::before { opacity: 1; }
 .chat-composer.drag-over { border-color: rgba(34,211,238,.6); }
@@ -347,7 +345,7 @@ html.theme-fading body * {
   .chat-send[data-sent] svg { animation: none; }
   .composer-ph-text { animation: none !important; }
   /* the running trace is pure motion — reduced motion hides it entirely */
-  .composer-beam { display: none; }
+  .composer-trace { display: none; }
 }
 
 /* ---- composer controls: chips + popovers ---- */
@@ -1880,7 +1878,7 @@ html.theme-fading body * {
    generated: text-shadow/drop-shadow always dropped; box-shadow keeps only
    neutral black elevation parts, colored halo parts dropped. */
 [data-theme="light"] .chat-welcome-glyph { filter: none !important; }
-[data-theme="light"] .composer-beam-glow { filter: none !important; }
+[data-theme="light"] .composer-trace-head { filter: none !important; }
 [data-theme="light"] .cmd-mirror { text-shadow: none !important; }
 [data-theme="light"] .chat-send[data-sent] { box-shadow: 0 1px 2px rgba(0,0,0,.25) !important; }
 [data-theme="light"] .nc-btn[data-ncflow="press"] { box-shadow: none !important; }

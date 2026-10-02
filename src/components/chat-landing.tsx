@@ -29,7 +29,7 @@ usePrefersReducedMotion,
 import { ComposerControls, filesToAttachments, type Attachment } from "./composer-controls";
 import { AttachmentTray } from "./attachment-tray";
 import { RotatingPlaceholder } from "./composer-anim";
-import { BorderBeam } from "./ui/border-beam";
+import { ComposerTrace } from "./composer-trace";
 import { newId, uniqueUploadName } from "@/lib/upload-names";
 import { loadDraft, saveDraft, clearDraft, moveDraft } from "@/lib/drafts";
 import { toast } from "@/lib/toast";
@@ -1761,41 +1761,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         <SubagentPanel subs={roster} open={suba.open} setOpen={suba.setOpen} now={suba.now} rpc={rpc} sessionId={liveSessionId || storedSessionId || null} />
         <BgDock items={bgItems} onSubmitFollowUp={handleFollowUpBg} onDismiss={dismissBgItem} onOpenItem={openBgItem} />
         <div className={cn("chat-composer mx-auto w-full max-w-[52rem]", dragOver && "drag-over")}>
-          <div className="composer-beam" aria-hidden="true">
-            <BorderBeam
-              className="composer-beam-glow"
-              size={170}
-              duration={9}
-              borderWidth={1.25}
-              colorFrom="#22d3ee"
-              colorTo="#0891b2"
-              /* Three vendor-shape overrides, all through the `style` escape
-                 hatch (it spreads AFTER the component's own style object), so
-                 border-beam.tsx stays byte-for-byte upstream:
-
-                 1. offsetPath radius — the vendor derives it from `size`
-                    (`rect(... round ${size}px)`). At size=170 that is a
-                    170px-radius path, which is NOT the input box's 12px
-                    radius, so the beam visibly left the rounded corners.
-                    Pin it to the real radius.
-                 2. width/height/aspectRatio — the vendor ships `aspect-square`,
-                    i.e. a 170x170 BLOCK whose gradient fills the whole square.
-                    On a box only ~100px tall that block cuts straight across
-                    the border ring and reads as "travelling around an invisible
-                    sharp rectangle". A thin bar is the fix: with the default
-                    `offset-rotate: auto` it stays tangent to the path, so it
-                    lies flat on the straights and BENDS through the corners.
-                 3. the bar is deliberately uniform-speed (the vendor's
-                    `ease: "linear"`): an eased lap pulses speed at the loop
-                    seam, which is the opposite of seamless. */
-              style={{
-                offsetPath: "rect(0 auto auto 0 round 12px)",
-                width: 170,
-                height: 2,
-                aspectRatio: "auto",
-              }}
-            />
-          </div>
+          <ComposerTrace />
           {dragOver && (
             <div className="chat-drop-overlay" aria-hidden="true">Drop to attach</div>
           )}
