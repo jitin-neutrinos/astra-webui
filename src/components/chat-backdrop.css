@@ -41,8 +41,11 @@
   position: absolute;
   inset: 0;
 }
-/* keep pane content above the backdrop (chat uses z-10 already) */
+/* keep ALL shell content above the fixed backdrop: the chat pane (z-10 already)
+   AND the sidebar, which is a shell sibling outside this pane. The backdrop is
+   pointer-events:none, but paint order still buries static-positioned siblings. */
 .chat-backdrop ~ * { position: relative; z-index: 1; }
+.app-shell > aside#astra-sidebar { z-index: 2; }
 @media (prefers-reduced-motion: reduce) {
   .chat-backdrop-media[autoplay], .chat-backdrop-yt iframe { /* autoplay attribute can't be styled; JS pause handled in component */ }
 }
