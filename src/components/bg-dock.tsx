@@ -143,6 +143,10 @@ export function BgNote({ item, onDismiss }: { item: BgItem; onDismiss: (id: numb
   );
 }
 
+/** How long the steer receipt stays on screen before auto-dismissing. Long
+ *  enough to read "steering…", short enough that it never becomes clutter. */
+const STEER_NOTE_MS = 2600;
+
 /**
  * SteerNote — dedicated surface for /steer. Unlike /bg (a queued job with a
  * future reply), steer injects into the LIVE turn: the card quotes the
@@ -151,6 +155,15 @@ export function BgNote({ item, onDismiss }: { item: BgItem; onDismiss: (id: numb
  */
 export function SteerNote({ item, onDismiss }: { item: BgItem; onDismiss: (id: number) => void }) {
   const applied = item.status === "done";
+  // The steer is DELIVERED the moment it is submitted, so the on-screen item has
+  // served its purpose — owner mandate: it disappears once accepted instead of
+  // lingering as a blue card the user must dismiss. Dismissal only hides the row;
+  // the steer itself is already applied on the agent side.
+  useEffect(() => {
+    const t = setTimeout(() => onDismiss(item.id), STEER_NOTE_MS);
+    return () => clearTimeout(t);
+  }, [item.id, onDismiss]);
+
   return (
     <div className="steer-note" data-status={item.status}>
       <div className="steer-note-head">

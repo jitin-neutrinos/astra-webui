@@ -287,6 +287,8 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   const [viewer, setViewer] = useState<{ items: MediaItem[]; index: number } | null>(null);
   const openMedia = useCallback((items: MediaItem[], index: number) => setViewer({ items, index }), []);
   const [input, setInput] = useState("");
+  /** Recognised slash command with its "/" stripped from `input` (see onInputChange). */
+  const [cmdPrefix, setCmdPrefix] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [errorBanner, setErrorBanner] = useState("");
   const [atBottom, setAtBottom] = useState(true);
@@ -1017,7 +1019,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   }, [storedSessionId, histReloadTick]);
 
   const send = async (raw?: string, opts?: { silent?: boolean }) => {
-    let finalText = (raw ?? input).trim();
+    let finalText = composeInput(raw ?? input).trim();
     if (!finalText && doneCount === 0) return;
     // Send rule (R8d): disabled with a visible reason, never auto-sent.
     if (uploading || failedUp) { toast(sendHint); return; }
@@ -1032,7 +1034,12 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     const cmd = parseCommand(finalText);
     if (cmd.kind !== "plain" && attachments.length === 0 && !opts?.silent) {
       setInput("");
+      setCmdPrefix(null);
       setSlashOpen(false);
+      // A steer interrupts the flow at THIS point: close the running bubble so the
+      // corrected continuation streams into a fresh container BELOW the steer,
+      // instead of continuing to paint in the bubble above it.
+      if (cmd.kind === "steer" && activeIdRef.current) finalizeActive();
       setMessages((m) => [...m, { id: nextId(), role: "user", content: finalText, ts: Date.now() }]);
       const okSent = cmd.kind === "bg" ? await submitBg(cmd.text) : await submitSteer(cmd.text);
       if (okSent) {
@@ -1075,6 +1082,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     if (!opts?.silent) {
       clearDraft(localStorage, draftSidRef.current);
       setInput("");
+      setCmdPrefix(null);   // the command was consumed by this send
     }
     setSlashOpen(false);
     setAttachments([]);
@@ -1086,8 +1094,13 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       setMessages((m) => [...m, { id: nextId(), role: "user", content: extracted.text, ts: Date.now(), files: extracted.files }]);
     }
 
-    // Mid-turn plain sends stay visible and queue server-side (queued:true from
-    // the hook). A fresh assistant bubble is only opened when no turn is live.
+    // Mid-turn sends: CLOSE the running bubble at the point the user spoke, so the
+    // continuation streams into a NEW container BELOW their message. Previously
+    // the active bubble was left open, so everything after a mid-stream send or a
+    // steer kept painting ABOVE the message — the reply appeared to arrive before
+    // the user had spoken. Matches history: rowsToTurns breaks the turn on a user
+    // row, so reload rendered the same order the live view now does.
+    if (activeIdRef.current) finalizeActive();
     if (!activeIdRef.current && !isStreaming) {
       const id = nextId();
       activeIdRef.current = id;
@@ -1339,20 +1352,53 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   }, []);
 
   const onInputChange = (v: string) => {
+    if (v.startsWith("/")) {
+      // A recognised command: strip the slash for real (see the note below).
+      const cmd = v.includes(" ") ? TUI_COMMANDS.find((c) => v === c || v.startsWith(c + " ")) : null;
+      if (cmd) {
+        setCmdPrefix(cmd);
+        setInput(cmd.slice(1) + v.slice(cmd.length));   // "/steer fix" -> "steer fix"
+        setSlashOpen(false);
+        return;
+      }
+      // Still typing the command — show the picker.
+      if (!v.includes(" ")) { setSlashOpen(true); setSlashActive(0); }
+      else setSlashOpen(false);
+      setCmdPrefix(null);
+      setInput(v);
+      return;
+    }
+    setSlashOpen(false);
+    // Already recognised (slash stripped): keep the command, keep typing args.
+    if (v === "") setCmdPrefix(null);
     setInput(v);
-    if (v.startsWith("/") && !v.includes(" ")) { setSlashOpen(true); setSlashActive(0); }
-    else setSlashOpen(false);
   };
 
-  const slashMatches = TUI_COMMANDS.filter((c) => c.startsWith(input));
+  const slashMatches = cmdPrefix ? [] : TUI_COMMANDS.filter((c) => c.startsWith(input));
 
-  // Recognized command: exact match, or command + args ("/model x"). Purely
-  // visual — the mirror hides the raw "/" and recolors the text; send() still
-  // uses the raw input.
-  const recognizedCmd = TUI_COMMANDS.find((c) => input === c || input.startsWith(c + " ")) || null;
+  /**
+   * Recognized command handling.
+   *
+   * The "/" is stripped from the TEXTAREA'S OWN VALUE the moment the command is
+   * recognised, and kept in `cmdPrefix` for the send. The previous mirror overlay
+   * hid the slash with `visibility:hidden`, which keeps its width — so "/steer"
+   * rendered as " steer", and the native caret (living in the textarea, which
+   * still had the slash) sat one character right of the visible text. With the
+   * slash genuinely removed there is no gap and the caret is correct for free.
+   */
+  const cmdPrefixRef = useRef<string | null>(null);
+  cmdPrefixRef.current = cmdPrefix;
+
+  /** Full command text for sending: "/steer" + " fix the bug". */
+  const composeInput = useCallback(
+    (raw: string) => (cmdPrefixRef.current ? cmdPrefixRef.current + " " + raw : raw),
+    [],
+  );
 
   const pickSlash = (cmd: string) => {
-    setInput(cmd + " ");
+    // Adopt the command immediately: strip its slash so it displays as "cmd".
+    setCmdPrefix(cmd);
+    setInput("");
     setSlashOpen(false);
     taRef.current?.focus();
   };
@@ -1843,13 +1889,8 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
               onPaste={onPaste}
               placeholder=""
               aria-label="Message Astra"
-              className={"chat-composer-input" + (recognizedCmd ? " cmd-active" : "")}
+              className={"chat-composer-input" + (cmdPrefix ? " cmd-active" : "")}
             />
-            {recognizedCmd && (
-              <div className="cmd-mirror" aria-hidden="true">
-                <span className="cmd-slash">/</span><span>{recognizedCmd.slice(1)}{input.slice(recognizedCmd.length)}</span>
-              </div>
-            )}
             <RotatingPlaceholder
               phrases={
                 isStreaming
