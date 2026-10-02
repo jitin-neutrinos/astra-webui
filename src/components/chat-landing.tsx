@@ -1900,7 +1900,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         ))}
         <div className={cn("chat-composer mx-auto w-full max-w-[52rem]", dragOver && "drag-over")}>
           {/* Fewer comet bands on low-memory/low-core devices (see composer-trace). */}
-          <ComposerTrace bands={LOW_SPEC ? 10 : 28} />
+          <ComposerTrace bands={LOW_SPEC ? 24 : 32} />
           {dragOver && (
             <div className="chat-drop-overlay" aria-hidden="true">Drop to attach</div>
           )}

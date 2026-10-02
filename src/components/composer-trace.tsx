@@ -72,7 +72,7 @@ function cometBands(count: number) {
     const x = ((a + b) / 2) / TRACE_TAIL;         // 0 at the tail end → 1 at the head
     out.push({
       dash: `0 ${a} ${b - a} ${100 - b}`,       // zero-dash forces the gap first
-      op: Math.pow(x, 2.1),                        // faint tail → bright leading head
+      op: Math.pow(x, 2.0),                        // faint tail → bright leading head
       w: 1.0 + 0.8 * x,                             // thickens toward the head
     });
   }

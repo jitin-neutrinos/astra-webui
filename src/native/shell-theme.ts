@@ -115,7 +115,16 @@ export async function initShellTheme() {
   let lastStyle = '', lastTheme = '';
   const updateColors = () => {
     const isLight = root.getAttribute('data-theme') === 'light';
-    const base: [number, number, number] = isLight ? [245, 242, 236] : [10, 10, 15];
+    const rootStyle = getComputedStyle(root);
+    // THEME colors in the bars: read the ACTIVE palette's void (the engine writes it on :root
+    // per mode) instead of hardcoded astra black/paper — bars follow every theme.
+    const voidRaw = rootStyle.getPropertyValue('--color-void').trim();
+    const voidM = voidRaw.match(/^(\d+)\s+(\d+)\s+(\d+)$/);
+    const rgbStr = voidRaw.match(/^#([0-9a-fA-F]{6})$/);
+    let voidRgb: [number, number, number] | null = null;
+    if (voidM) voidRgb = [+voidM[1], +voidM[2], +voidM[3]];
+    else if (rgbStr) voidRgb = [1, 3, 5].map((i) => parseInt(voidRaw.slice(i, i + 2), 16)) as [number, number, number];
+    const base: [number, number, number] = voidRgb ?? (isLight ? [245, 242, 236] : [10, 10, 15]);
     const w = window.innerWidth, h = window.innerHeight;
     const top = sampleAt(w / 2, 1, base);
     // Bottom = document end (what the bar overlays at full scroll), blended
