@@ -525,6 +525,12 @@ html.theme-fading body * {
    its plain hover/press treatment. Sun gets a warm yellow bloom, moon a cool
    silver one, so each reads instantly as "the other mode". */
 .theme-glyph { display: inline-grid; place-items: center; width: 22px; height: 22px; }
+/* Owner-supplied artwork: fills the glyph box, letterboxed by its own
+   preserveAspectRatio so the pill keeps its 2.31:1 shape at any slot size. */
+.theme-art { width: 100%; height: 100%; object-fit: contain; display: block; }
+/* The artwork is a wide pill; in the expanded row give it room to read as the
+   artwork it is instead of shrinking to a 22px sliver. */
+.theme-glyph:has(.theme-art) { width: 44px; height: 20px; }
 .theme-glyph-slot { display: inline-grid; place-items: center; }
 .theme-glyph[data-mode="light"] { filter: drop-shadow(0 0 5px rgba(251, 191, 36, .75)) drop-shadow(0 0 11px rgba(245, 158, 11, .35)); }
 .theme-glyph[data-mode="dark"] { filter: drop-shadow(0 0 5px rgba(203, 213, 225, .55)) drop-shadow(0 0 12px rgba(148, 163, 184, .28)); }

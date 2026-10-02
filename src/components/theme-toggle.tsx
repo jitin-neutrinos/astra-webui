@@ -157,66 +157,6 @@ function SunIcon() {
 }
 
 /**
- * Illustrated moon — crescent carved by a masking circle, with three craters and
- * a cool rim light. Dark-mode icon. The craters are the point: a plain crescent
- * reads as a generic glyph, the pitting reads as "the moon".
- */
-function MoonIcon() {
-  const reduce = useReducedMotion();
-  return (
-    <svg width="22" height="22" viewBox="0 0 32 32" fill="none" aria-hidden="true" className="theme-moon">
-      <defs>
-        <linearGradient id="astra-moon-body" x1="8" y1="6" x2="24" y2="27" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#E2E8F0" />
-          <stop offset="45%" stopColor="#94A3B8" />
-          <stop offset="100%" stopColor="#64748B" />
-        </linearGradient>
-        <mask id="astra-moon-crescent">
-          <rect x="0" y="0" width="32" height="32" fill="black" />
-          <circle cx="15" cy="16" r="12" fill="white" />
-          {/* carve the crescent */}
-          <circle cx="23.5" cy="12.5" r="11" fill="black" />
-        </mask>
-        <clipPath id="astra-moon-clip">
-          <circle cx="15" cy="16" r="12" />
-        </clipPath>
-      </defs>
-      {/* The crescent carries its own dark edge. Light mode has no glow (owner
-          rule), so on the paper theme a silver moon vanished — the silhouette
-          stroke is what keeps it legible there, in both themes. */}
-      <g mask="url(#astra-moon-crescent)">
-        <circle cx="15" cy="16" r="12" fill="url(#astra-moon-body)" />
-        <circle cx="15" cy="16" r="11.6" fill="none" stroke="#334155" strokeWidth="1.6" opacity="0.85" />
-        {/* craters — a lighter lip and a darker floor sell the depression */}
-        <g clipPath="url(#astra-moon-clip)">
-          <circle cx="11.4" cy="12.2" r="3.1" fill="#94A3B8" opacity="0.55" />
-          <circle cx="10.7" cy="11.2" r="2.4" fill="#E2E8F0" opacity="0.45" />
-          <circle cx="15.6" cy="20.4" r="2.4" fill="#64748B" opacity="0.5" />
-          <circle cx="15.1" cy="19.7" r="1.7" fill="#E2E8F0" opacity="0.35" />
-          <circle cx="9.6" cy="20.6" r="1.5" fill="#64748B" opacity="0.42" />
-          <circle cx="19.4" cy="16.2" r="1.2" fill="#64748B" opacity="0.35" />
-        </g>
-        {/* rim light along the lit edge */}
-        <path
-          d="M6.2 9.4a12 12 0 0 0 0 13.2"
-          stroke="#F1F5F9" strokeWidth="1.1" strokeLinecap="round" opacity="0.75"
-        />
-      </g>
-      {/* a slow drift so the moon breathes instead of sitting dead still */}
-      <motion.g
-        style={{ transformOrigin: "15px 16px" }}
-        animate={{ rotate: reduce ? 0 : -6 }}
-        transition={{ duration: reduce ? 0 : 9, ease: "easeInOut", repeat: Infinity, repeatType: "reverse" }}
-      >
-        <circle cx="26.4" cy="7.6" r="0.9" fill="#E2E8F0" opacity="0.8" />
-        <circle cx="5.4" cy="6.2" r="0.65" fill="#CBD5E1" opacity="0.7" />
-        <circle cx="28.2" cy="20.4" r="0.55" fill="#CBD5E1" opacity="0.55" />
-      </motion.g>
-    </svg>
-  );
-}
-
-/**
  * Theme icon: an ILLUSTRATED sun (light mode) or moon (dark mode), crossfaded
  * and scaled on switch. `id` is unique per instance so the gradient/mask defs
  * of two toggles on one page never collide.
@@ -243,7 +183,11 @@ function ThemeGlyph({ dark }: { dark: boolean }) {
           exit={{ opacity: 0, scale: reduce ? 1 : 0.55, rotate: reduce ? 0 : dark ? 35 : -35 }}
           transition={spring}
         >
-          {lottieUrl ? <LottieIcon url={lottieUrl} /> : (dark ? <MoonIcon /> : <SunIcon />)}
+          {/* Owner-supplied dark-mode artwork (public/icons/theme-dark.svg),
+              cropped to its own content box by the build step. */}
+          {lottieUrl ? <LottieIcon url={lottieUrl} />
+            : dark ? <img className="theme-art" src="/icons/theme-dark.svg" alt="" aria-hidden="true" />
+            : <SunIcon />}
         </motion.span>
       </AnimatePresence>
     </span>
@@ -263,7 +207,7 @@ export function ThemeToggle({ expanded }: { expanded: boolean }) {
       role="switch"
       aria-checked={light}
       aria-label={light ? "Switch to dark mode" : "Switch to light mode"}
-      title={expanded ? (light ? "Dark mode" : "Light mode") : undefined}
+      title={expanded ? (light ? "Light mode" : "Dark mode") : undefined}
       className={cn(
         "group relative flex h-11 w-full items-center rounded-md text-slate-400 transition-colors duration-200 hover:bg-cyanx/10 hover:text-cyanx press-feedback",
         // Collapsed rail: the glyph IS the button — centred square with padding
@@ -277,7 +221,7 @@ export function ThemeToggle({ expanded }: { expanded: boolean }) {
       </span>
       {expanded && (
         <span className="truncate text-sm font-medium">
-          {light ? "Dark mode" : "Light mode"}
+          {light ? "Light mode" : "Dark mode"}
         </span>
       )}
     </button>
