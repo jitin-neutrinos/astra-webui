@@ -29,9 +29,14 @@ import { ThemeToggle, ThemeIconButton } from "./components/theme-toggle";
 import { ChatsPanel } from "./components/chats-panel";
 import TokenTrackerPage from "./components/token-tracker";
 import { useMobileViewport } from "./hooks/use-mobile-viewport";
+import { isLowSpec } from "./components/composer-trace";
 import { useSwipeToDismiss } from "./hooks/use-swipe-to-dismiss";
 
 type Status = "checking" | "login" | "ready";
+
+/** Low-spec device probe (see composer-trace): set once, gates the expensive
+ *  comet glow + band count + composer autosize on weak phones. */
+const LOW_SPEC = isLowSpec();
 
 export default function App() {
   const [status, setStatus] = useState<Status>("checking");
@@ -275,7 +280,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
   }, [drawerOpen]);
 
   return (
-    <div className="app-shell flex w-full flex-col overflow-hidden bg-void font-sans text-brandtext">
+    <div className={cn("app-shell flex w-full flex-col overflow-hidden bg-void font-sans text-brandtext", LOW_SPEC && "astra-lowspec")}>
       {/* mobile top bar (non-chat views): logo opens navigation */}
       <div className={cn("relative flex shrink-0 items-center border-b border-white/[0.07] bg-midnight/60 px-3 py-2 lg:hidden", view === "chat" && "hidden")}>
         <button type="button" onClick={() => setDrawerOpen(true)}

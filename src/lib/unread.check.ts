@@ -144,4 +144,25 @@ notify.applyPresence({ devices: [{ device: "android", focus: "seeded" }] });
 notify.seedFromServer([{ id: "seeded", unread: true }], null);
 assert.equal(notify.getTotalUnread(), 0, "list refresh does not re-pill a remotely-focused chat");
 
+// 14) MULTI-TAB / MULTI-DEVICE focus (owner bug: a chat open on the phone went
+// unread on the web). presenceSnapshot used to collapse every socket sharing a
+// device name into ONE `focus` (last writer wins), so a second tab erased the
+// first tab's focus. The snapshot now carries a focus SET per device.
+notify._test.reset();
+notify.applyPresence({ devices: [
+  { device: "webui-a", focus: null, focuses: ["tab-one-chat", "tab-two-chat"] },
+  { device: "android-x", focus: null, focuses: ["phone-chat"] },
+] });
+assert.equal(notify.isRemotelyFocused("tab-one-chat"), true, "tab one focus kept");
+assert.equal(notify.isRemotelyFocused("tab-two-chat"), true, "tab two focus NOT erased by its sibling");
+assert.equal(notify.isRemotelyFocused("phone-chat"), true, "phone focus kept");
+
+// a single-device focus update must move ONLY that device's focus, leaving
+// every other device's chats focused
+notify.applyPresence({ device: "webui-a", focus: "tab-three-chat" });
+assert.equal(notify.isRemotelyFocused("tab-one-chat"), false, "tab one's stale focus dropped");
+assert.equal(notify.isRemotelyFocused("tab-two-chat"), false, "tab two released");
+assert.equal(notify.isRemotelyFocused("tab-three-chat"), true, "tab three focused");
+assert.equal(notify.isRemotelyFocused("phone-chat"), true, "phone focus survives another device's move");
+
 console.log("unread.check.ts passed");

@@ -361,6 +361,17 @@ html.theme-fading body * {
   .composer-trace { display: none; }
 }
 
+/* Low-spec devices (deviceMemory<=4 or cores<=4, incl. weak android WebViews):
+   the comet's drop-shadow is a separate GPU render pass and is the single most
+   expensive thing in the composer — drop it and let the brighter head colour
+   carry the accent. JS also cuts the band count 28→10 for these devices. */
+.astra-lowspec .composer-trace-head { filter: none; }
+/* Belt-and-braces for weak devices that report no hints at all: coarse-pointer
+   phones get the cheap path too (a stylus/tablet keeps the glow). */
+@media (pointer: coarse) and (max-width: 820px) {
+  .composer-trace-head { filter: none; }
+}
+
 /* ---- composer controls: chips + popovers ---- */
 .chat-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 10px; border: 1px solid rgba(248,250,252,.10); background: transparent; color: var(--color-muted); font: 400 11.5px/1 var(--font-sans); cursor: pointer; white-space: nowrap; transition: border-color 150ms ease, color 150ms ease, background-color 150ms ease, transform 120ms cubic-bezier(0.23,1,0.32,1); }
 .chat-chip:hover { border-color: rgba(34,211,238,.35); color: var(--color-brandtext); background: rgba(255,255,255,.03); }

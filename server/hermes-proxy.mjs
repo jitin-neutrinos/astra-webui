@@ -293,12 +293,20 @@ function presenceSnapshot() {
   const byDevice = new Map();
   for (const info of presence.values()) {
     if (!info.device) continue;
-    const cur = byDevice.get(info.device) || { device: info.device, focus: null, connections: 0 };
-    if (info.focus) cur.focus = info.focus;
+    const cur = byDevice.get(info.device) || { device: info.device, focus: null, focuses: new Set(), connections: 0 };
+    // A device name covers MANY sockets (every browser tab reports "webui"), and
+    // each can be on a different chat. `focus` (last-writer-wins) collapsed them,
+    // so a second tab silently erased the first tab's focus and its chat went
+    // unread. Collect the full set; `focus` stays for back-compat.
+    if (info.focus) { cur.focus = info.focus; cur.focuses.add(info.focus); }
     cur.connections++;
     byDevice.set(info.device, cur);
   }
-  return { devices: [...byDevice.values()], count: presence.size, v: ++presenceSeq };
+  return {
+    devices: [...byDevice.values()].map((d) => ({ ...d, focuses: [...d.focuses] })),
+    count: presence.size,
+    v: ++presenceSeq,
+  };
 }
 
 function broadcastPresence() {

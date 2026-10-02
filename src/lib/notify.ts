@@ -38,25 +38,38 @@ export function storedKeyFor(liveSid: string): string | null {
 // presence.update); without consuming it here a message completing in a chat
 // focused on the phone still bumped a pill here, because the only read test was
 // "focused on THIS device".
-let remoteFocus = new Set<string>();
+let remoteFocus = new Map<string, string>();   // chatKey -> device that owns the focus
 
 /** Replace the remote-focus set from a presence payload (snapshot or update).
  *  Returns the chat keys that are newly focused elsewhere, so the caller can
- *  clear any local pill they were still showing. */
+ *  clear any local pill they were still showing.
+ *
+ *  Accepts both shapes: a snapshot's `devices[].focuses[]` (the authoritative
+ *  full set — one device name covers many sockets) and a single-device
+ *  `presence.update` carrying one `focus`. */
 export function applyPresence(payload: any): string[] {
   ensure();
-  const before = new Set(remoteFocus);
-  const next = new Set<string>();
+  const before = new Set(remoteFocus.keys());
+  const next = new Map<string, string>();
   if (Array.isArray(payload?.devices)) {
-    for (const d of payload.devices) if (d?.focus) next.add(String(d.focus));
+    for (const d of payload.devices) {
+      const dev = String(d?.device ?? "");
+      if (Array.isArray(d?.focuses)) { for (const f of d.focuses) if (f) next.set(String(f), dev); }
+      else if (d?.focus) next.set(String(d.focus), dev);   // older proxy shape
+    }
   } else if (payload?.focus) {
-    // single-device update; merge into what we know rather than replace it
-    for (const k of before) if (k !== String(payload.focus)) next.add(k);
-    next.add(String(payload.focus));
+    // Single-device update: THIS device's focus moved. Drop only the keys it
+    // owned; every other device's focus survives (that was the multi-tab bug).
+    const dev = String(payload.device ?? "");
+    const moved = String(payload.focus);
+    for (const [k, owner] of remoteFocus) if (owner !== dev) next.set(k, owner);
+    next.set(moved, dev);
+  } else {
+    for (const [k, owner] of remoteFocus) next.set(k, owner);   // nothing authoritative
   }
   remoteFocus = next;
   const gained: string[] = [];
-  for (const k of remoteFocus) if (!before.has(k)) gained.push(k);
+  for (const k of remoteFocus.keys()) if (!before.has(k)) gained.push(k);
   return gained;
 }
 
@@ -283,14 +296,45 @@ export function reportFocus(storedKey: string | null) {
   const send = () => {
     try {
       const eng = (globalThis as any).__astraWsSend;
-      if (typeof eng === "function") eng(JSON.stringify({ method: "client.info", params: { device: "webui", focus: storedKey } }));
-    } catch { /* socket may be down; presence self-heals on next focus change */ }
+      if (typeof eng === "function") eng(JSON.stringify({ method: "client.info", params: { device: DEVICE_ID, focus: storedKey } }));
+    } catch { /* socket may be down; the heartbeat below retries */ }
   };
   if (typeof document !== "undefined" && document.visibilityState === "visible") send();
   else if (typeof document !== "undefined") {
     const once = () => { document.removeEventListener("visibilitychange", once); send(); };
     document.addEventListener("visibilitychange", once);
   }
+  // Heartbeat: focus was a ONE-SHOT report, so any dropped frame (mobile
+  // suspension, WS blip, WebView throttle) left the chat looking unread
+  // everywhere else indefinitely. Re-state it periodically while focused so
+  // presence self-heals instead of needing the user to switch chats.
+  armFocusHeartbeat(storedKey, send);
+}
+
+// Stable per-TAB device id, from sessionStorage: two tabs on different chats
+// must report as two devices or one silently overwrites the other's focus.
+const DEVICE_ID = (() => {
+  try {
+    const k = "astra_device_id";
+    let id = sessionStorage.getItem(k);
+    if (!id) {
+      id = "webui-" + Math.random().toString(36).slice(2, 7);
+      sessionStorage.setItem(k, id);
+    }
+    return id;
+  } catch { return "webui"; }
+})();
+
+let focusBeat: ReturnType<typeof setInterval> | null = null;
+function armFocusHeartbeat(key: string | null, send: () => void) {
+  if (focusBeat) { clearInterval(focusBeat); focusBeat = null; }
+  if (!key) return;
+  focusBeat = setInterval(() => {
+    // Only while actually visible: a hidden tab is not "focused" for read
+    // purposes, and a backgrounded WebView timer would be throttled anyway.
+    if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+    send();
+  }, 20000);
 }
 
 export const _focusSender = () => (globalThis as any).__astraWsSend;

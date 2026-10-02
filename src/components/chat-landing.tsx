@@ -29,7 +29,7 @@ usePrefersReducedMotion,
 import { ComposerControls, filesToAttachments, type Attachment } from "./composer-controls";
 import { AttachmentTray } from "./attachment-tray";
 import { RotatingPlaceholder } from "./composer-anim";
-import { ComposerTrace } from "./composer-trace";
+import { ComposerTrace, isLowSpec } from "./composer-trace";
 import { newId, uniqueUploadName } from "@/lib/upload-names";
 import { loadDraft, saveDraft, clearDraft, moveDraft } from "@/lib/drafts";
 import { toast } from "@/lib/toast";
@@ -49,6 +49,11 @@ import type { CatalogPayload } from "./composer-controls";
 // Source: ~/.hermes/plugins/astra-brand/dashboard/dist/astra-core.js CHAT_TUI_COMMANDS
 // (the TUI's registered slash commands — submitted as plain prompt text, same as the terminal).
 // /bg and /steer are CLIENT-side (parsed in send()): queue-after and live steer.
+// Low-spec device probe, once per session: drives the reduced comet band count
+// (composer-trace) and the cheap composer autosize below. Both are pure wins on
+// a weak phone and invisible on a desktop.
+const LOW_SPEC = isLowSpec();
+
 const TUI_COMMANDS = [
   "/bg", "/steer",
   "/model", "/reasoning", "/new", "/sessions", "/compact", "/usage",
@@ -1295,9 +1300,16 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   // on EVERY value change — user typing, send-clear, slash-pick, draft restore —
   // so it grows AND shrinks (the old code only fit inside onInputChange, so a
   // programmatic setInput("") left the box tall).
+  //
+  // LOW-SPEC: this is a forced synchronous layout (write height:auto, read
+  // scrollHeight, write height) on every keystroke, and it was measured as the
+  // typing lag on android. Skip it while the box is ALREADY tall enough for the
+  // text — the common case while typing inside a grown box — and only run the
+  // full measure when the content might have outgrown (or shrunk within) it.
   const fitComposer = useCallback(() => {
     const ta = taRef.current;
     if (!ta) return;
+    if (LOW_SPEC && ta.clientHeight >= ta.scrollHeight - 1) return;  // fits already
     ta.style.height = "auto";
     ta.style.height = `${ta.scrollHeight}px`;
   }, []);
@@ -1761,7 +1773,8 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         <SubagentPanel subs={roster} open={suba.open} setOpen={suba.setOpen} now={suba.now} rpc={rpc} sessionId={liveSessionId || storedSessionId || null} />
         <BgDock items={bgItems} onSubmitFollowUp={handleFollowUpBg} onDismiss={dismissBgItem} onOpenItem={openBgItem} />
         <div className={cn("chat-composer mx-auto w-full max-w-[52rem]", dragOver && "drag-over")}>
-          <ComposerTrace />
+          {/* Fewer comet bands on low-memory/low-core devices (see composer-trace). */}
+          <ComposerTrace bands={LOW_SPEC ? 10 : 28} />
           {dragOver && (
             <div className="chat-drop-overlay" aria-hidden="true">Drop to attach</div>
           )}
