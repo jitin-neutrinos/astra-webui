@@ -29,43 +29,7 @@ usePrefersReducedMotion,
 import { ComposerControls, filesToAttachments, type Attachment } from "./composer-controls";
 import { AttachmentTray } from "./attachment-tray";
 import { RotatingPlaceholder } from "./composer-anim";
-
-/**
- * ComposerTrace — the running accent line on the composer border.
- * SVG rect stroke with pathLength=100: the lit dash is a CONSTANT fraction of
- * the real perimeter — no corner stretching (the old conic-gradient arc
- * physically lengthened around corners). ResizeObserver feeds exact pixel
- * units so the 12px corner radius matches the composer's real border-radius
- * (a stretched viewBox would distort corners). Purely decorative —
- * focus/drag/reduced-motion behavior lives in CSS.
- */
-export function ComposerTrace() {
-  const ref = useRef<SVGSVGElement>(null);
-  const [box, setBox] = useState<{ w: number; h: number } | null>(null);
-  useEffect(() => {
-    const svg = ref.current;
-    const parent = svg?.parentElement;
-    if (!parent) return;
-    const measure = () => setBox({ w: parent.offsetWidth, h: parent.offsetHeight });
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(parent);
-    return () => ro.disconnect();
-  }, []);
-  const { w, h } = box ?? { w: 0, h: 0 };
-  const inset = 1;
-  return (
-    <svg ref={ref} className="composer-trace" aria-hidden="true" width={w + 2} height={h + 2} viewBox={`0 0 ${w + 2} ${h + 2}`} style={!box || w < 8 || h < 8 ? { display: "none" } : undefined}>
-      <rect
-        className="composer-trace-line"
-        x={inset} y={inset}
-        width={Math.max(0, w - inset * 2)} height={Math.max(0, h - inset * 2)}
-        rx={Math.min(12, w / 2, h / 2)}
-        pathLength={100} fill="none"
-      />
-    </svg>
-  );
-}
+import { BorderBeam } from "./ui/border-beam";
 import { newId, uniqueUploadName } from "@/lib/upload-names";
 import { loadDraft, saveDraft, clearDraft, moveDraft } from "@/lib/drafts";
 import { toast } from "@/lib/toast";
@@ -1797,7 +1761,16 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         <SubagentPanel subs={roster} open={suba.open} setOpen={suba.setOpen} now={suba.now} rpc={rpc} sessionId={liveSessionId || storedSessionId || null} />
         <BgDock items={bgItems} onSubmitFollowUp={handleFollowUpBg} onDismiss={dismissBgItem} onOpenItem={openBgItem} />
         <div className={cn("chat-composer mx-auto w-full max-w-[52rem]", dragOver && "drag-over")}>
-          <ComposerTrace />
+          <div className="composer-beam" aria-hidden="true">
+            <BorderBeam
+              className="composer-beam-glow"
+              size={140}
+              duration={7}
+              borderWidth={1.5}
+              colorFrom="#22d3ee"
+              colorTo="#0891b2"
+            />
+          </div>
           {dragOver && (
             <div className="chat-drop-overlay" aria-hidden="true">Drop to attach</div>
           )}

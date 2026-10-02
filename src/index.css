@@ -208,15 +208,14 @@ html.theme-fading body * {
 .chat-suggest-hint { font: 400 11.5px/1.4 var(--font-mono); color: var(--color-muted); }
 
 .chat-composer { position: relative; background: color-mix(in srgb, var(--color-depth) 88%, transparent); backdrop-filter: blur(14px) saturate(1.15); -webkit-backdrop-filter: blur(14px) saturate(1.15); /* idle: border transparent — the running trace is the outline; a static border under it read as a duplicate dim line */ border: 1px solid transparent; border-radius: 12px; padding: 10px 12px 8px; box-shadow: 0 1px 2px rgba(0,0,0,.18), 0 10px 32px -18px rgba(0,0,0,.55); transition: border-color 220ms cubic-bezier(0.23,1,0.32,1), box-shadow 220ms cubic-bezier(0.23,1,0.32,1); }
-/* running brand accent line: SVG dash on a pathLength-normalized rect — the
-   lit run is a CONSTANT fraction of the perimeter, so its length is identical
-   on straights and around corners (conic-gradient arcs stretch at corners).
-   26% lit, 6s lap, seamless wrap, glow to match the focus outline. Focus/drag
-   fade it out as the full outline (::before) fades in. */
-.composer-trace { position: absolute; inset: -1px; pointer-events: none; overflow: visible; z-index: 0; opacity: 1; transition: opacity 260ms cubic-bezier(0.23,1,0.32,1); filter: drop-shadow(0 0 1.5px rgba(34,211,238,.45)); }
-.composer-trace-line { display: none; }
-.chat-composer:focus-within .composer-trace, .chat-composer.drag-over .composer-trace { opacity: 0; }
-@keyframes composer-trace-run { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -100; } }
+/* running brand accent line: Magic UI BorderBeam (ui/border-beam.tsx, verbatim).
+   The beam is masked INTO the border ring via mask-intersect, so it IS the
+   border — no second line beside it (the old SVG stroke + static border pair
+   was the "dual lines" bug). Idle border is transparent so the beam reads as
+   the outline; focus/drag fades the beam out as ::before fades in. */
+.composer-beam { position: absolute; inset: 0; pointer-events: none; z-index: 0; transition: opacity 260ms cubic-bezier(0.23,1,0.32,1); }
+.composer-beam-glow { filter: drop-shadow(0 0 4px rgba(34,211,238,.5)); }
+.chat-composer:focus-within .composer-beam, .chat-composer.drag-over .composer-beam { opacity: 0; }
 .chat-composer::before { content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1px; background: linear-gradient(135deg, rgba(34,211,238,.35), rgba(139,92,246,.14) 40%, transparent 60%, transparent); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; opacity: 0; transition: opacity 260ms cubic-bezier(0.23,1,0.32,1); pointer-events: none; }
 .chat-composer:focus-within::before { opacity: 1; }
 .chat-composer.drag-over { border-color: rgba(34,211,238,.6); }
@@ -342,7 +341,7 @@ html.theme-fading body * {
   .chat-send[data-sent] svg { animation: none; }
   .composer-ph-text { animation: none !important; }
   /* the running trace is pure motion — reduced motion hides it entirely */
-  .composer-trace { display: none; }
+  .composer-beam { display: none; }
 }
 
 /* ---- composer controls: chips + popovers ---- */
@@ -1875,7 +1874,7 @@ html.theme-fading body * {
    generated: text-shadow/drop-shadow always dropped; box-shadow keeps only
    neutral black elevation parts, colored halo parts dropped. */
 [data-theme="light"] .chat-welcome-glyph { filter: none !important; }
-[data-theme="light"] .composer-trace { filter: none !important; }
+[data-theme="light"] .composer-beam-glow { filter: none !important; }
 [data-theme="light"] .cmd-mirror { text-shadow: none !important; }
 [data-theme="light"] .chat-send[data-sent] { box-shadow: 0 1px 2px rgba(0,0,0,.25) !important; }
 [data-theme="light"] .nc-btn[data-ncflow="press"] { box-shadow: none !important; }
