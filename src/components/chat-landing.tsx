@@ -20,9 +20,10 @@ import { modelSwitchValue } from "@/lib/model-switch";
 import AITextLoading from "@/components/ui/ai-text-loading";
 import { ChatFeedSkeleton, NewChatGreetSkeleton } from "@/components/ui/skeletons";
 import { getHermesHome, getCatalog } from "@/lib/session-files";
+import { histBackoffMs, histFailureTransient, HIST_MAX_ATTEMPTS } from "@/lib/history-retry";
 import {
-  applySegmentOps, finalizeSegments, findNewestCollapsedToolSeg, expandKeyBlocked, TurnTimeline,
-  usePrefersReducedMotion,
+applySegmentOps, finalizeSegments, findNewestCollapsedToolSeg, expandKeyBlocked, TurnTimeline,
+usePrefersReducedMotion,
   type Segment, type SegOp,
 } from "./chat-timeline";
 import { ComposerControls, filesToAttachments, type Attachment } from "./composer-controls";
@@ -249,7 +250,11 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   // Owner standing rule (2026-10-01): skeleton until EVERYTHING is loaded —
   // start true whenever a chat is (or may be) selected so first paint, reload,
   // and deep links never flash the welcome screen.
+  // [histLoading, histReloadTick] — tick re-fires the load-history effect when a
+  // failed first load needs a nudge (e.g. connection restored after exhausting
+  // retries); the effect itself only keys on storedSessionId for the fetch key.
   const [histLoading, setHistLoading] = useState(true);
+  const [histReloadTick, setHistReloadTick] = useState(0);
   // which chat's history the rendered messages belong to — navigating to a
   // DIFFERENT chat clears the screen so its skeleton shows while fetching
   const loadedSidRef = useRef<string | null>(null);
@@ -882,8 +887,13 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   }, [storedSessionId, refreshTitle]);
 
   // Back online after a drop: an auto-name / rename may have landed while we were away.
+  // If history never landed for THIS chat (the retry chain exhausted while the
+  // wire was down), a reconnect is the moment to try again — no user action needed.
   useEffect(() => {
-    if (conn === "restored") refreshTitle(storedSessionId);
+    if (conn === "restored") {
+      refreshTitle(storedSessionId);
+      if (storedSessionId && loadedSidRef.current !== storedSessionId) setHistReloadTick((t) => t + 1);
+    }
   }, [conn, storedSessionId, refreshTitle]);
 
   useEffect(() => {
@@ -928,7 +938,9 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   }, [storedSessionId]);
 
   useEffect(() => {
+    let gen = 0; // invalidate in-flight retry chains when the chat switches
     async function loadHistory() {
+      const myGen = ++gen;
       if (!storedSessionId) { setMessages([]); setHistLoading(false); loadedSidRef.current = null; rawRowsRef.current = []; histDoneRef.current = false; return; }
       setHistLoading(true);
       // switching to another chat: drop the previous chat's rows immediately so
@@ -939,37 +951,53 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       // feed froze empty on the welcome screen until reload. A real switch has
       // no live turn (the session-switch effect nulls activeIdRef); a mint does.
       if (loadedSidRef.current !== storedSessionId && activeIdRef.current == null) { setMessages([]); rawRowsRef.current = []; histDoneRef.current = false; }
-      try {
-        // Industry-standard first page only (owner 2026-10-01): the rest pages
-        // in as the user scrolls up (loadOlder). order=latest + reverse gives
-        // the oldest-first tail page.
-        const res = await fetch(`/api/hx/sessions/${encodeURIComponent(storedSessionId)}/messages?order=latest&limit=${HIST_PAGE}`);
-        if (!res.ok) {
-          if (res.status === 401) setErrorBanner("Unauthorized. Please log in.");
-          else if (res.status === 503) setErrorBanner("Agent backend busy (503).");
-          else setErrorBanner("Failed to load history.");
+      // Reload / app resume / post-approval deep link all land here while the
+      // tunnel or proxy relogin is still settling — a single transient failure
+      // must not stick. Retry transient failures with backoff; only a
+      // definitive answer (404/401/5xx-except-transient) or a chat switch ends
+      // the chain. This is the root fix for "unable to get chat history until I
+      // re-enter the chat": the remount re-fired this effect, so a retry HERE
+      // covers every trigger at once.
+      for (let attempt = 1; ; attempt++) {
+        let status: number | null = null;
+        try {
+          // Industry-standard first page only (owner 2026-10-01): the rest pages
+          // in as the user scrolls up (loadOlder). order=latest + reverse gives
+          // the oldest-first tail page.
+          const res = await fetch(`/api/hx/sessions/${encodeURIComponent(storedSessionId)}/messages?order=latest&limit=${HIST_PAGE}`);
+          if (!res.ok) {
+            status = res.status;
+            if (status === 401) setErrorBanner("Unauthorized. Please log in.");
+            else if (status === 503) setErrorBanner("Agent backend busy (503).");
+            else setErrorBanner("Failed to load history.");
+            if (liveSidRef.current !== storedSessionId) setMessages([]);
+          } else {
+            const data = await res.json();
+            // rowsToTurns reconstructs thinking/tool segments from the persisted
+            // reasoning/tool_calls/tool-result rows — approval/clarify segments
+            // are the only kind never persisted, so restored turns never have them.
+            // order=latest already returns rows oldest-first ascending — NO reverse
+            // (reversing rotates the feed: newest work on top, first message last).
+            const rows = data.messages || [];
+            rawRowsRef.current = rows;
+            histDoneRef.current = rows.length < HIST_PAGE;
+            await applyHistoryRows(rows, storedSessionId);
+            break;
+          }
+        } catch {
+          status = null; // network-level failure → transient
+          setErrorBanner("Failed to load history.");
           if (liveSidRef.current !== storedSessionId) setMessages([]);
-          return;
         }
-        const data = await res.json();
-        // rowsToTurns reconstructs thinking/tool segments from the persisted
-        // reasoning/tool_calls/tool-result rows — approval/clarify segments
-        // are the only kind never persisted, so restored turns never have them.
-        // order=latest already returns rows oldest-first ascending — NO reverse
-        // (reversing rotates the feed: newest work on top, first message last).
-        const rows = data.messages || [];
-        rawRowsRef.current = rows;
-        histDoneRef.current = rows.length < HIST_PAGE;
-        await applyHistoryRows(rows, storedSessionId);
-      } catch {
-        setErrorBanner("Failed to load history.");
-        if (liveSidRef.current !== storedSessionId) setMessages([]);
-      } finally {
-        setHistLoading(false);
+        if (!histFailureTransient(status) || attempt >= HIST_MAX_ATTEMPTS || myGen !== gen) break;
+        await new Promise((r) => setTimeout(r, histBackoffMs(attempt)));
+        if (myGen !== gen) break; // user switched chats during the wait
       }
+      if (myGen === gen) setHistLoading(false);
     }
     loadHistory();
-  }, [storedSessionId]);
+    return () => { gen++; };
+  }, [storedSessionId, histReloadTick]);
 
   const send = async (raw?: string, opts?: { silent?: boolean }) => {
     let finalText = (raw ?? input).trim();
