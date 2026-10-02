@@ -1,30 +1,30 @@
-# Graph Report - astra-webui  (2026-09-30)
+# Graph Report - astra-webui  (2026-10-02)
 
 ## Corpus Check
 - cluster-only mode — file stats not available
 
 ## Summary
-- 1405 nodes · 2425 edges · 106 communities (64 shown, 42 thin omitted)
-- Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 40 edges (avg confidence: 0.89)
+- 2943 nodes · 7439 edges · 159 communities (113 shown, 46 thin omitted)
+- Extraction: 87% EXTRACTED · 13% INFERRED · 0% AMBIGUOUS · INFERRED: 931 edges (avg confidence: 0.86)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `f2cf1a73`
+- Built from commit: `a241f432`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
-- TextRow
+- safe-tail.ts
 - hermes-proxy.mjs
 - package.json
 - chat-timeline.tsx
 - tauri.conf.json
 - AppDelegate
-- ws-engine.ts
+- hermes-ws.ts
 - gate-envelope.ts
-- react
+- media-viewer.tsx
 - transcode.mjs
-- main.tsx
+- bundle.js
 - compilerOptions
 - gateway-flow.tsx
 - tubes-background.tsx
@@ -34,34 +34,34 @@
 - Astra Web UI — Light Mode Style Documentation
 - 2. Content sketches
 - verify-chat-timeline.ts
-- chat-landing.tsx
+- components/chat-landing.tsx
 - dependencies
 - rename-existing-chats.py
 - streaming-text.tsx
 - chat-segments.ts
-- media-viewer.tsx
+- backup-pre/package.json
 - harness-agents.ts
-- ai-tool-call.tsx
-- patch_chat_landing.cjs
+- ref_react
+- ref_fs
 - Voice conversation mode for Astra — research findings
-- normalize-messages.ts
+- ol
 - Tab
 - astra-remote.json
-- pdf-view.tsx
-- GateActivity.kt
+- MANIFEST.json
+- GateActivity
 - .oxlintrc.json
 - App.tsx
 - token-tracker.tsx
 - BundleToolRow
 - source-filter.ts
-- no-dup.check.ts
-- subagent-panel.tsx
+- E
+- training-pipeline.check.mjs
 - neon-flow.tsx
 - Decision: Hybrid Voice Architecture
 - re
-- model-switch.check.ts
+- notify.ts
 - scroll-intent.check.ts
-- NtfyPushService
+- NtfyPushService.kt
 - e2e-gate-frames.mjs
 - selfcheck.sh
 - media-grid.tsx
@@ -90,50 +90,102 @@
 - CookieEncryptPlugin.java
 - NativeNtfy.kt
 - MainActivity
-- wake-probe.check.ts
+- ref_node_assert
 - Findings, ranked by impact/effort
 - devDependencies
-- tool-io.ts
+- doc-preview.tsx
 - outbox.ts
 - tool-io.check.ts
-- ref_components
-- slash-commands.ts
+- backup-pre/chat-landing.tsx
+- Verified facts about the current code — do not re-derive
 - replay-dedup.check.ts
 - scripts
-- chat-dedup.check.ts
+- training.mjs
 - verify-media.check.ts
-- tool-identity.ts
+- n
 - gradlew
 - capacitor.config.ts
 - ref_capawesome_capacitor_android_edge_to_edge_support
 - ref_capawesome_capacitor_navigation_bar
-- ntfy.ts
-- ref_node_path
-- ref_lib
+- t
+- ref_node_fs
+- server.mjs
+- dependencies
+- chats-panel.tsx
+- registry/shadcn__command__command.tsx
+- ntfy-notify.mjs
+- vault-seed.mjs
+- NtfyPushService
+- WebSocket
+- i
+- backup-pre/components.json
+- session-row.check.ts
+- .addEventListener
+- files-page.tsx
+- vault-page.tsx
+- wake-probe.check.ts
+- concurrent-queue.check.ts
+- verify-history-pagination.ts
+- 2. Battery optimization recommendations (no background drop, no connectivity loss)
+- devDependencies
+- zd
+- composer-menu.ts
+- mount
+- o
+- start
+- build-prompt.md
+- main.tsx
+- scripts
+- delete
+- BUILD — Phase A (server only): zombie reap + ?sid= filter + transcode cap
+- chats-sidebar.md
+- onMessage
+- transcode-route.check.mjs
+- CHECK THIS, IN ORDER
+- end-session-training-pipeline.md
+- End-session training pipeline
+- review-prompt.md
+- ws-engine.ts
+- ws-store.ts
+- GateActionReceiver.kt
+- bg-items.ts
+- read-sync.ts
+- tool-identity.ts
+- Plan — Android background chat-WS persistence + memory/storage cleanup
+- Fr
+- model-switch.check.ts
+- wsGet
+- parseMarkdown
+- Wb
+- fy
+- table
+- Kn
+- progressbar
+- velocitytracker
 
 ## God Nodes (most connected - your core abstractions)
-1. `GateActivity` - 36 edges
-2. `react` - 36 edges
-3. `NtfyPushService` - 25 edges
-4. `cn()` - 22 edges
-5. `wsGet()` - 21 edges
-6. `lucide-react` - 20 edges
-7. `compilerOptions` - 19 edges
-8. `applySegmentOps()` - 18 edges
-9. `onMessage()` - 18 edges
-10. `ChatLanding()` - 17 edges
+1. `t()` - 174 edges
+2. `n()` - 163 edges
+3. `i()` - 159 edges
+4. `r()` - 123 edges
+5. `a()` - 95 edges
+6. `E()` - 80 edges
+7. `e()` - 78 edges
+8. `o()` - 74 edges
+9. `s()` - 67 edges
+10. `c()` - 48 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `What astra already does right` --references--> `RichText()`  [INFERRED]
-  docs/research-webui-perf-2026-09-29.md → src/components/chat-timeline.tsx
-- `5. Per-requirement test checklist (R1–R10)` --references--> `applyReplyTruth()`  [INFERRED]
-  docs/plans/android-bg-chat-ws-plan.md → src/lib/ws-engine.ts
-- `Product context (verified facts, do not re-derive)` --references--> `pokeResumeCheck()`  [INFERRED]
-  docs/plans/bg-persistence-prompt.md → src/lib/ws-engine.ts
+- `2.7 Pause WebView timers when backgrounded (high impact, already planned)` --references--> `NtfyPushService`  [INFERRED]
+  BATTERY_AUDIT_20260930.md → android/app/src/main/java/com/jitinnair/astra/NtfyPushService.kt
 - `Phase A — server (deploy-safe, no client change needed)` --references--> `handleWsUpgrade()`  [INFERRED]
   docs/plans/android-bg-chat-ws-plan.md → server/hermes-proxy.mjs
 - `Changes` --references--> `handleWsUpgrade()`  [INFERRED]
   docs/plans/bg-persist-build-a.md → server/hermes-proxy.mjs
+- `Constraints (ponytail — non-negotiable)` --references--> `fs()`  [INFERRED]
+  docs/plans/end-session-training-pipeline.md → scratch/bundle.js
+- `Gate deep links: stored sid, not live sid (commit 4740735)` --references--> `notifyGateRequest()`  [INFERRED]
+  docs/gate-popup-v1.10.md → server/ntfy-notify.mjs
 
 ## Import Cycles
 - 3-file cycle: `src/components/audio-player.tsx -> src/components/chat-timeline.tsx -> src/components/media-grid.tsx -> src/components/audio-player.tsx`
@@ -141,23 +193,19 @@
 ## Hyperedges (group relationships)
 - **Voice Mode Implementation Options** — option_a_chained_voice, option_b_full_duplex, decision_hybrid_voice [EXTRACTED 1.00]
 
-## Communities (106 total, 42 thin omitted)
-
-### Community 0 - "TextRow"
-Cohesion: 0.18
-Nodes (7): TextRow(), useReveal(), stripMediaLines(), newCps, revealCps(), PAIRS, safeTail()
+## Communities (159 total, 46 thin omitted)
 
 ### Community 1 - "hermes-proxy.mjs"
-Cohesion: 0.06
-Nodes (59): 0. Recon corrections (facts that change the design), 1. Architecture — who holds which socket, 2. File-by-file change map, 3. Auth/ticket flow — native chat socket, 4. Notification dedupe rules (vs ntfy gates), 5. Per-requirement test checklist (R1–R10), 6. Top-3 risks + mitigations, 7. Build order (agy) (+51 more)
+Cohesion: 0.08
+Nodes (49): Components, ref_node_url, BACKOFF_TABLE, broadcastFrame(), broadcastPresence(), broadcastSessionRead(), broadcastStatus(), browserSockets (+41 more)
 
 ### Community 2 - "package.json"
-Cohesion: 0.09
-Nodes (22): name, private, type, version, @capacitor/android, @capacitor/assets, @capacitor/ios, @capacitor/status-bar (+14 more)
+Cohesion: 0.05
+Nodes (39): @capacitor/android, @capacitor/assets, @capacitor/cli, @capacitor/core, @capacitor/ios, @capacitor/preferences, @capacitor/status-bar, @capgo/capacitor-native-biometric (+31 more)
 
 ### Community 3 - "chat-timeline.tsx"
-Cohesion: 0.14
-Nodes (22): dompurify, clsx, tailwind-merge, APPROVAL_LABELS, APPROVAL_RECEIPT, ApprovalRow(), ClarifyCard(), md (+14 more)
+Cohesion: 0.07
+Nodes (48): ref_clsx, ref_dompurify, ref_marked, ref_radix_ui_react_collapsible, ref_tailwind_merge, APPROVAL_LABELS, APPROVAL_RECEIPT, ApprovalRow() (+40 more)
 
 ### Community 4 - "tauri.conf.json"
 Cohesion: 0.06
@@ -167,25 +215,25 @@ Nodes (33): app, security, windows, withGlobalTauri, build, frontendDist, bundle
 Cohesion: 0.09
 Nodes (20): Any, Bool, Capacitor, AppDelegate, UIScene, UISceneSession, UIWindow, SceneDelegate (+12 more)
 
-### Community 6 - "ws-engine.ts"
-Cohesion: 0.07
-Nodes (79): Phase B — web (src/), BUILD — Phase B (web only): wake probes + native session bridge + storage prune, Changes, Done condition, ConnEvent, ConnState, fmtSeconds(), nextConnState() (+71 more)
+### Community 6 - "hermes-ws.ts"
+Cohesion: 0.15
+Nodes (13): lastSessionInfo, pokeResumeCheck(), applyTurnTruth(), EventPayload, nextReconnectDelay(), RECONNECT_BASE_MS, RECONNECT_MAX_MS, SESSION_INDEX_KEY (+5 more)
 
 ### Community 7 - "gate-envelope.ts"
-Cohesion: 0.17
-Nodes (15): runTests(), FinalReportCard(), draftKey(), FixBody, GATE_OPEN, GateAction, GateKind, GateReply (+7 more)
+Cohesion: 0.14
+Nodes (18): runTests(), FinalReportCard(), GateCard(), draftKey(), FixBody, GATE_OPEN, GATE_RE, GateAction (+10 more)
 
-### Community 8 - "react"
+### Community 8 - "media-viewer.tsx"
 Cohesion: 0.12
-Nodes (12): docx-preview, react, xlsx, DocPreview(), DocPreviewProps, DocxViewer, PptxViewer, XlsxViewer (+4 more)
+Nodes (9): ref_yet_another_react_lightbox, AudioPlayer(), MediaViewer, usePrefersReducedMotion(), MediaViewer(), SlideAstra, SlideTypes, yet-another-react-lightbox (+1 more)
 
 ### Community 9 - "transcode.mjs"
-Cohesion: 0.05
-Nodes (37): ref_node_fs, ref_node_os, blob, bmp, fake1, fake2, files, inputPath (+29 more)
+Cohesion: 0.15
+Nodes (21): ref_node_crypto, ref_node_os, cachePath(), a, CACHE_DIR, kindOf(), cleanupCb(), cookieOk() (+13 more)
 
-### Community 10 - "main.tsx"
-Cohesion: 0.31
-Nodes (7): @capacitor/core, react-dom, src_index, initAndroidShell(), initShellTheme(), plugin(), reportLayout()
+### Community 10 - "bundle.js"
+Cohesion: 0.02
+Nodes (144): home_notjitin_work_projects_astra_webui_scratch_rolldown_runtime_c0fnf6b9_js, ref_rolldown_runtime_c0fnf6b9_js, addListener(), addWindowListener(), ae(), Av(), build(), bw() (+136 more)
 
 ### Community 11 - "compilerOptions"
 Cohesion: 0.10
@@ -220,64 +268,64 @@ Cohesion: 0.12
 Nodes (15): 0. Architecture decisions (fixed — do not deviate), 1. File-by-file map (all new), 2.1 tauri.conf.json, 2.2 capabilities/astra-remote.json, 2.3 Cargo.toml (deps section), 2.4 src/main.rs, 2.5 src/lib.rs — wiring skeleton (order matters), 2.6 scripts/ntfy-init.js — template (+7 more)
 
 ### Community 19 - "verify-chat-timeline.ts"
-Cohesion: 0.13
-Nodes (14): answered, bigOutput, cl, cl1, clLocked, g, multi, openAppr (+6 more)
+Cohesion: 0.12
+Nodes (15): answered, apply(), bigOutput, cl, cl1, clLocked, g, multi (+7 more)
 
-### Community 20 - "chat-landing.tsx"
-Cohesion: 0.10
-Nodes (24): AttachmentTray(), BgDock(), BgDockProps, SysNoteRow(), ChatLanding(), loadHistory(), ChatMsg, hermesHomeRef (+16 more)
+### Community 20 - "components/chat-landing.tsx"
+Cohesion: 0.07
+Nodes (32): AttachmentTray(), BgDock(), BgDockProps, SysNoteRow(), ChatLanding(), ChatMsg, hermesHomeRef, homeP() (+24 more)
 
 ### Community 21 - "dependencies"
-Cohesion: 0.08
-Nodes (26): dependencies, @capacitor/android, @capacitor/assets, @capacitor/cli, @capacitor/core, @capacitor/ios, @capacitor/preferences, @capacitor/status-bar (+18 more)
+Cohesion: 0.06
+Nodes (35): dependencies, @capacitor/android, @capacitor/assets, @capacitor/cli, @capacitor/core, @capacitor/ios, @capacitor/preferences, @capacitor/status-bar (+27 more)
 
 ### Community 22 - "rename-existing-chats.py"
 Cohesion: 0.19
 Nodes (12): json, os, candidates(), load_rewriter(), main(), One-time contextual rename of existing webui chats. Skips titles that are…, Resolve the rewriter's Gemini key: env first, then the systemd user environment…, title_with_gemini() (+4 more)
 
 ### Community 23 - "streaming-text.tsx"
-Cohesion: 0.18
-Nodes (10): motion, AITextLoadingProps, CROSSFADE, StreamingText(), StreamingTextProps, StreamingTextStatus, StreamingToken, tokenize() (+2 more)
+Cohesion: 0.28
+Nodes (8): CROSSFADE, StreamingText(), StreamingTextProps, StreamingTextStatus, StreamingToken, tokenize(), useStreamingText(), UseStreamingTextOptions
 
 ### Community 24 - "chat-segments.ts"
-Cohesion: 0.16
-Nodes (17): apply(), GateEnvelope, applySegmentOps(), ClarifyQuestion, closeRunningThink(), hasRenderedReq(), isReqSeg(), lastAssistantHasText() (+9 more)
+Cohesion: 0.07
+Nodes (33): apply(), doneA, fin, kinds, segs, segTimingProbe(), texts, thinks (+25 more)
 
-### Community 25 - "media-viewer.tsx"
-Cohesion: 0.12
-Nodes (9): yet-another-react-lightbox, AudioPlayer(), MediaViewer, usePrefersReducedMotion(), MediaViewer(), SlideAstra, SlideTypes, yet-another-react-lightbox (+1 more)
+### Community 25 - "backup-pre/package.json"
+Cohesion: 0.05
+Nodes (39): @capacitor/android, @capacitor/assets, @capacitor/cli, @capacitor/core, @capacitor/ios, @capacitor/preferences, @capacitor/status-bar, @capgo/capacitor-native-biometric (+31 more)
 
 ### Community 26 - "harness-agents.ts"
 Cohesion: 0.23
 Nodes (8): AGENT_FLAGS, merged, detectHarness(), HARNESS_BINARIES, HarnessRow, harnessRowFromToolStart(), mergeRoster(), WHY: `subagent.list` (gateway RPC) only knows Hermes `delegate_task` children.
 
-### Community 27 - "ai-tool-call.tsx"
-Cohesion: 0.15
-Nodes (16): react, @radix-ui/react-collapsible, AiToolCallContentProps, AiToolCallContext, AiToolCallContextValue, AiToolCallErrorProps, AiToolCallHeader(), AiToolCallHeaderProps (+8 more)
+### Community 27 - "ref_react"
+Cohesion: 0.07
+Nodes (24): ref_lib, @radix-ui/react-popover, @radix-ui/react-scroll-area, @radix-ui/react-separator, @radix-ui/react-switch, @radix-ui/react-tooltip, ref_react, ShineBorderProps (+16 more)
 
-### Community 28 - "patch_chat_landing.cjs"
-Cohesion: 0.20
-Nodes (7): content, fs, content, fs, content, fs, ref_fs
+### Community 28 - "ref_fs"
+Cohesion: 0.04
+Nodes (32): content, fs, content, fs, content, fs, ref_fs, cmd (+24 more)
 
 ### Community 29 - "Voice conversation mode for Astra — research findings"
 Cohesion: 0.22
 Nodes (8): DECISION 2026-09-26 (Jitin): chatterbox is the voice of Hermes/Astra, Option A — Chained voice (RECOMMENDED v1), Option B — Full-duplex realtime (the actual Gemini Live feel) — VERIFIED FEASIBLE 2026-09-26, Option C — In-browser STT (private, offline), Platforms NOT recommended, Recommendation (superseded by DECISION above), TL;DR, Voice conversation mode for Astra — research findings
 
-### Community 30 - "normalize-messages.ts"
-Cohesion: 0.27
-Nodes (9): ref_assert, rows10, runTests(), turns10, GATE_RE, extractAttachments(), HistoryRow, rowsToTurns() (+1 more)
+### Community 30 - "ol"
+Cohesion: 0.05
+Nodes (102): aa(), ac(), add(), al(), Ao(), ba(), bc(), be() (+94 more)
 
 ### Community 32 - "astra-remote.json"
 Cohesion: 0.22
 Nodes (8): description, identifier, permissions, platforms, remote, urls, $schema, windows
 
-### Community 33 - "pdf-view.tsx"
-Cohesion: 0.24
-Nodes (10): pdfjs-dist, PdfViewer, cachedThumb(), limit(), pdfThumb(), PdfView(), Props, running (+2 more)
-
-### Community 34 - "GateActivity.kt"
+### Community 33 - "MANIFEST.json"
 Cohesion: 0.06
-Nodes (44): Activity, android, GateActionReceiver, BroadcastReceiver, Context, Intent, GateActivity, AnimatorListenerAdapter (+36 more)
+Nodes (32): magicui/border-beam, deps, files, regdeps, magicui/shine-border, deps, files, regdeps (+24 more)
+
+### Community 34 - "GateActivity"
+Cohesion: 0.07
+Nodes (37): Activity, android, GateActivity, AnimatorListenerAdapter, TextWatcher, Bundle, Intent, JSONObject (+29 more)
 
 ### Community 35 - ".oxlintrc.json"
 Cohesion: 0.33
@@ -285,7 +333,7 @@ Nodes (5): plugins, rules, react/only-export-components, react/rules-of-hooks, $
 
 ### Community 36 - "App.tsx"
 Cohesion: 0.14
-Nodes (17): lucide-react, App(), Shell(), Sidebar(), Status, ConfigPage(), Schema, SchemaField (+9 more)
+Nodes (19): ref_lucide_react, Shell(), Sidebar(), Status, ApprovalsPage(), formatRelative(), GateCard(), ConfigPage() (+11 more)
 
 ### Community 37 - "token-tracker.tsx"
 Cohesion: 0.25
@@ -296,16 +344,16 @@ Cohesion: 0.35
 Nodes (10): BundleToolRow(), formatDur(), stepPrefKey(), ThoughtRow(), hashKey(), load(), newestClosedStepKey(), persist() (+2 more)
 
 ### Community 39 - "source-filter.ts"
-Cohesion: 0.53
-Nodes (3): HUMAN_SOURCES, sourceLabel(), sourcesParam()
+Cohesion: 0.43
+Nodes (4): HUMAN_SOURCES, sourceLabel(), SourceModal, sourcesParam()
 
-### Community 40 - "no-dup.check.ts"
-Cohesion: 0.29
-Nodes (4): B, C, E, s
+### Community 40 - "E"
+Cohesion: 0.10
+Nodes (70): A(), ap(), Au(), b(), bt(), C(), cD(), Ch() (+62 more)
 
-### Community 41 - "subagent-panel.tsx"
-Cohesion: 0.60
-Nodes (4): fmtElapsed(), SubagentPanel(), SubagentRow, tailLines()
+### Community 41 - "training-pipeline.check.mjs"
+Cohesion: 0.06
+Nodes (29): ref_node_child_process, ref_node_http, ref_node_net, buf, key, sock, timer, cfg (+21 more)
 
 ### Community 42 - "neon-flow.tsx"
 Cohesion: 0.50
@@ -315,33 +363,33 @@ Nodes (4): COLORS, makeTube(), NeonFlow(), Tube
 Cohesion: 0.50
 Nodes (4): Chatterbox TTS, Decision: Hybrid Voice Architecture, Gemini Live API, Hermes Gateway
 
-### Community 45 - "model-switch.check.ts"
-Cohesion: 0.29
-Nodes (5): full, m1, m2, m3, modelSwitchValue()
+### Community 45 - "notify.ts"
+Cohesion: 0.06
+Nodes (41): 1. What Astra actually needs (gap analysis), 2. The recommended architecture (layered, minimal-first), 3. Why the famous names don't fit, 4. Sequenced plan, Astra multi-device / multi-session chat — framework research (2026-10-01), Layer 1 — server-authoritative read state (finish what's started), Layer 2 — TinyBase for multi-tab + client-state sync, Layer 3 — per-tab concurrent sessions (small protocol change, no framework) (+33 more)
 
-### Community 47 - "NtfyPushService"
-Cohesion: 0.07
-Nodes (24): Intent, JSONObject, NtfyPushService, WebSocketListener, WebSocketListener, Runnable, handler, IBinder (+16 more)
+### Community 47 - "NtfyPushService.kt"
+Cohesion: 0.09
+Nodes (22): BootReceiver, BroadcastReceiver, Context, Intent, Intent, bitmapfactory, build, contextcompat (+14 more)
 
 ### Community 50 - "media-grid.tsx"
-Cohesion: 0.27
-Nodes (8): docIcon(), DocTile(), fmtSize(), MediaGrid(), PdfThumb(), transcodeFallback, useInView(), VideoTile()
+Cohesion: 0.14
+Nodes (18): ref_pdfjs_dist, cachedThumb(), ensurePdfWorker(), limit(), pdfThumb(), PdfView(), Props, running (+10 more)
 
 ### Community 76 - "CookieEncryptPlugin.java"
 Cohesion: 0.13
 Nodes (17): ExampleInstrumentedTest, CookieEncryptPlugin, ExampleUnitTest, android.content.SharedPreferences, androidx.test.ext.junit.runners.AndroidJUnit4, assert, com.getcapacitor.annotation.CapacitorPlugin, com.getcapacitor.Plugin (+9 more)
 
 ### Community 77 - "NativeNtfy.kt"
-Cohesion: 0.10
-Nodes (17): BootReceiver, BroadcastReceiver, Context, Intent, Plugin, PluginCall, NativeNtfy, build (+9 more)
+Cohesion: 0.13
+Nodes (13): Plugin, PluginCall, NativeNtfy, CapacitorPlugin, Phase B — web (src/), intent, jsobject, manifest (+5 more)
 
 ### Community 78 - "MainActivity"
-Cohesion: 0.10
-Nodes (17): Bundle, Intent, MainActivity, OnBackPressedCallback, BridgeActivity, Phase C — Android (Kotlin), Non-goals, Output format (plan doc) (+9 more)
+Cohesion: 0.09
+Nodes (18): Bundle, Intent, MainActivity, OnBackPressedCallback, 1B. WebView timer / rendering while backgrounded (medium impact), BridgeActivity, Phase C — Android (Kotlin), Non-goals (+10 more)
 
-### Community 79 - "wake-probe.check.ts"
-Cohesion: 0.06
-Nodes (32): ref_node_assert, ref_node_child_process, ref_node_test, apply(), doneA, fin, kinds, segs (+24 more)
+### Community 79 - "ref_node_assert"
+Cohesion: 0.11
+Nodes (14): ref_node_assert, b, kt, src, ctx, msgCompleteS1, msgDeltaS1, msgErrorS2 (+6 more)
 
 ### Community 81 - "Findings, ranked by impact/effort"
 Cohesion: 0.17
@@ -351,73 +399,273 @@ Nodes (11): 1. Block-level memoized markdown (Streamdown pattern) — HIGH impac
 Cohesion: 0.20
 Nodes (10): devDependencies, oxlint, tailwindcss, @tailwindcss/vite, @types/node, @types/react, @types/react-dom, typescript (+2 more)
 
-### Community 83 - "tool-io.ts"
-Cohesion: 0.28
-Nodes (12): describeInput(), describeOutput(), excerpt(), firstStrOf(), humanKey(), KEY_LABELS, LONG_KEYS, MONO_KEYS (+4 more)
+### Community 83 - "doc-preview.tsx"
+Cohesion: 0.10
+Nodes (12): ref_docx_preview, ref_pptx_preview, ref_xlsx, DocPreview(), DocPreviewProps, DocxViewer, PdfViewer, PptxViewer (+4 more)
 
 ### Community 84 - "outbox.ts"
 Cohesion: 0.39
 Nodes (7): outboxClear(), OutboxItem, outboxList(), outboxPush(), outboxRemove(), readAll(), writeAll()
 
 ### Community 85 - "tool-io.check.ts"
+Cohesion: 0.07
+Nodes (36): in1, in2, in3, in4, in5, in6, keys, o1 (+28 more)
+
+### Community 86 - "backup-pre/chat-landing.tsx"
 Cohesion: 0.08
-Nodes (22): in1, in2, in3, in4, in5, in6, keys, o1 (+14 more)
+Nodes (27): ref_assets, ref_bg_dock, ref_chat_timeline, ref_components, ref_gates_gate_envelope, ref_media_grid, ref_subagent_panel, ref_toast_host (+19 more)
+
+### Community 87 - "Verified facts about the current code — do not re-derive"
+Cohesion: 0.24
+Nodes (7): NON-GOALS — out of scope, do not touch, REPO, Verified facts about the current code — do not re-derive, 4. Behaviour preservation — the real risk, parseCommand(), ParsedCommand, send()
 
 ### Community 88 - "replay-dedup.check.ts"
-Cohesion: 0.18
-Nodes (9): asst, NOTE: rowsToTurns merges consecutive assistant rows into ONE turn; separate, rows, rows2, rows3, turns, turns2, turns3 (+1 more)
+Cohesion: 0.13
+Nodes (17): rows10, runTests(), turns10, Segment, extractAttachments(), HistoryRow, rowsToTurns(), Turn (+9 more)
 
 ### Community 89 - "scripts"
 Cohesion: 0.40
 Nodes (5): scripts, build, dev, lint, preview
 
-### Community 90 - "chat-dedup.check.ts"
-Cohesion: 0.20
-Nodes (8): messages, msgText, ops, opsNew, replayed, replayNew, req1, seg
+### Community 90 - "training.mjs"
+Cohesion: 0.17
+Nodes (28): buildReviewPrompt(), deleteSessionViaGateway(), __dirname, docInventory(), dumpAndReview(), finishReview(), gatewayCookie(), gatewayReq() (+20 more)
 
 ### Community 91 - "verify-media.check.ts"
 Cohesion: 0.07
-Nodes (46): clses, drift, ok(), overflows, server, AREAS, Bento, bentoLayout() (+38 more)
+Nodes (49): clses, drift, ok(), overflows, server, AREAS, Bento, bentoLayout() (+41 more)
 
-### Community 92 - "tool-identity.ts"
-Cohesion: 0.42
-Nodes (8): browserStep(), describeTool(), excerptOf(), firstStr(), parseArgs(), parseMcp(), prettyName(), ToolInfo
+### Community 92 - "n"
+Cohesion: 0.09
+Nodes (63): attachTimeline(), bl(), Bp(), bu(), checkbox(), codespan(), componentDidMount(), componentDidUpdate() (+55 more)
 
 ### Community 93 - "gradlew"
 Cohesion: 0.83
 Nodes (3): gradlew script, die(), warn()
 
-### Community 103 - "ntfy.ts"
-Cohesion: 0.29
-Nodes (3): @capacitor/preferences, NativeNtfy, NativeNtfyPlugin
+### Community 103 - "t"
+Cohesion: 0.07
+Nodes (61): an(), as(), ay(), blockTokens(), bs(), cn(), cs(), ds() (+53 more)
 
-### Community 104 - "ref_node_path"
-Cohesion: 0.40
-Nodes (4): ref_node_path, @tailwindcss/vite, vite, @vitejs/plugin-react
+### Community 104 - "ref_node_fs"
+Cohesion: 0.06
+Nodes (30): ref_node_fs, ref_node_path, ref_node_sqlite, ref_tailwindcss_vite, ref_vite, ref_vitejs_plugin_react, db, dir (+22 more)
 
-### Community 107 - "ref_lib"
+### Community 105 - "server.mjs"
+Cohesion: 0.14
+Nodes (29): gateStats(), listGates(), allMarks(), readStateVersion(), attempts, checkPassword(), DIST, makeToken() (+21 more)
+
+### Community 106 - "dependencies"
+Cohesion: 0.07
+Nodes (27): dependencies, @capacitor/android, @capacitor/assets, @capacitor/cli, @capacitor/core, @capacitor/ios, @capacitor/preferences, @capacitor/status-bar (+19 more)
+
+### Community 107 - "chats-panel.tsx"
+Cohesion: 0.09
+Nodes (14): ref_motion, BorderBeamProps, BorderBeamProps, ChatsPanel(), FILTERS, fmtTok(), fmtUsd(), GlyphFC (+6 more)
+
+### Community 108 - "registry/shadcn__command__command.tsx"
+Cohesion: 0.09
+Nodes (17): cmdk, @radix-ui/react-dialog, ref_registry, Command, CommandEmpty, CommandGroup, CommandInput, CommandItem (+9 more)
+
+### Community 109 - "ntfy-notify.mjs"
+Cohesion: 0.16
+Nodes (16): ref_node_https, res, enrichGate(), SEVERITY_KEYWORDS, SEVERITY_ORDER, answerGateHelper(), appendToLedger(), gatherQuestions() (+8 more)
+
+### Community 110 - "vault-seed.mjs"
+Cohesion: 0.17
+Nodes (16): acceptable(), bareKey(), collect(), describe(), DRY, HOME, KEY_PURPOSE, KEY_SERVICE (+8 more)
+
+### Community 111 - "NtfyPushService"
+Cohesion: 0.11
+Nodes (14): ChatState, JSONObject, NtfyPushService, Runnable, SessionInfo, androidx, 1. Confirmed battery drain sources (evidence-backed), 1A. NtfyPushService — TWO persistent sockets, ONE service (high impact) (+6 more)
+
+### Community 112 - "WebSocket"
+Cohesion: 0.26
+Nodes (5): WebSocketListener, WebSocketListener, Response, WebSocket, WebSocketListener
+
+### Community 113 - "i"
+Cohesion: 0.10
+Nodes (50): home_notjitin_work_projects_astra_webui_scratch_prune_usi4ib8o_js, ah(), am(), bg(), Bm(), s(), Dc(), ee() (+42 more)
+
+### Community 114 - "backup-pre/components.json"
 Cohesion: 0.12
-Nodes (12): ref_lib, ChatsPanel(), SessionMeta, FileEntry, FileRow(), FilesPage(), fmtSize(), MediaViewer (+4 more)
+Nodes (16): aliases, components, hooks, lib, ui, utils, iconLibrary, rsc (+8 more)
+
+### Community 115 - "session-row.check.ts"
+Cohesion: 0.20
+Nodes (11): merged, p1, p2, rows, yearsAgo, mergeRows(), rowKey(), rowTime() (+3 more)
+
+### Community 116 - ".addEventListener"
+Cohesion: 0.08
+Nodes (41): at(), Aw(), blockquote(), cb(), Cv(), Cw(), db(), dt() (+33 more)
+
+### Community 117 - "files-page.tsx"
+Cohesion: 0.11
+Nodes (15): FileEntry, FilesPage(), FilterId, fmtSize(), GalleryCard(), GallerySection(), isDoc(), KIND_FILTERS (+7 more)
+
+### Community 118 - "vault-page.tsx"
+Cohesion: 0.23
+Nodes (10): api(), CATEGORY_TAB, fmtUpdated(), Tab, TABS, VaultEntry, VaultPage(), loadData() (+2 more)
+
+### Community 119 - "wake-probe.check.ts"
+Cohesion: 0.17
+Nodes (7): { __eng }, fakeSock, kept, sent, sock2, Timer, timers
+
+### Community 120 - "concurrent-queue.check.ts"
+Cohesion: 0.21
+Nodes (9): loadQueue(), localKV, makeKV(), now, Prompt, saveQueue(), sessionOf(), sharedLocal (+1 more)
+
+### Community 121 - "verify-history-pagination.ts"
+Cohesion: 0.17
+Nodes (10): ref_assert, all, badPage, deduped, held, page1, page2, page3 (+2 more)
+
+### Community 122 - "2. Battery optimization recommendations (no background drop, no connectivity loss)"
+Cohesion: 0.12
+Nodes (14): 2.2 Coalesce reconnect attempts between sockets (high impact, low risk), 2.3 Delay / suppress chat notifications for brief disconnects (medium impact, low risk), 2.4 Batch notification updates (medium impact, low risk), 2.5 Reduce ping frequency for idle sockets (medium impact, low risk), 2.6 Cache `resolveSessionInfo()` results (high impact, low risk), 2.7 Pause WebView timers when backgrounded (high impact, already planned), 2.8 Batch cookie reads (low risk), 2. Battery optimization recommendations (no background drop, no connectivity loss) (+6 more)
+
+### Community 123 - "devDependencies"
+Cohesion: 0.20
+Nodes (10): devDependencies, oxlint, tailwindcss, @tailwindcss/vite, @types/node, @types/react, @types/react-dom, typescript (+2 more)
+
+### Community 124 - "zd"
+Cohesion: 0.09
+Nodes (38): addValue(), Ai(), Bd(), bi(), bindToMotionValue(), Di(), ep(), ff() (+30 more)
+
+### Community 125 - "composer-menu.ts"
+Cohesion: 0.22
+Nodes (4): Catalog, EFFORTS, ModelGroup, TUI_COMMANDS
+
+### Community 126 - "mount"
+Cohesion: 0.08
+Nodes (31): Ag(), createPanHandlers(), getSize(), getSnapshotBeforeUpdate(), handleChildMotionValue(), hide(), iv(), kg() (+23 more)
+
+### Community 127 - "o"
+Cohesion: 0.13
+Nodes (28): af(), br(), cf(), Cr(), De(), df(), fp(), getDefaultTransition() (+20 more)
+
+### Community 128 - "start"
+Cohesion: 0.18
+Nodes (26): addListeners(), cancel(), clear(), clearAnimation(), clearListeners(), commitStyles(), destroy(), endPanSession() (+18 more)
+
+### Community 129 - "build-prompt.md"
+Cohesion: 0.18
+Nodes (10): COMPONENTS TO INSTALL — verbatim registry code, do not handroll, do not rewrite, FORCED OUTPUT / DELIVERABLES, R1 — One menu system, not two, R2 — Two levels maximum, never three, R3 — Composer layout rebuild, R4 — Surfaces, colour, type, R5 — Motion. Use exactly this set., R6 — Interaction & accessibility (all of it, not a subset) (+2 more)
+
+### Community 130 - "main.tsx"
+Cohesion: 0.10
+Nodes (16): BUILD — Phase B (web only): wake probes + native session bridge + storage prune, Changes, Done condition, ref_capacitor_core, ref_capacitor_preferences, ref_react_dom, App(), src_index (+8 more)
+
+### Community 131 - "scripts"
+Cohesion: 0.40
+Nodes (5): scripts, build, dev, lint, preview
+
+### Community 132 - "delete"
+Cohesion: 0.12
+Nodes (23): Ad(), addVariantChild(), bh(), Ci(), delete(), ef(), getClosestVariantNode(), gh() (+15 more)
+
+### Community 133 - "BUILD — Phase A (server only): zombie reap + ?sid= filter + transcode cap"
+Cohesion: 0.50
+Nodes (3): BUILD — Phase A (server only): zombie reap + ?sid= filter + transcode cap, Changes, Done condition
+
+### Community 136 - "onMessage"
+Cohesion: 0.21
+Nodes (22): applyReplyTruth(), armQueuedCap(), armWatchdog(), attachHandlers(), bumpConn(), emit(), flushPendingPreTurnRpcs(), flushQueueForSession() (+14 more)
+
+### Community 137 - "transcode-route.check.mjs"
+Cohesion: 0.10
+Nodes (7): branch(), child, fakeRes(), r, HERE, HOME, validToken()
+
+### Community 138 - "CHECK THIS, IN ORDER"
+Cohesion: 0.20
+Nodes (10): 10. Code quality, 1. Build gate, 2. Regression: the check files, 3. Dead code, 5. AnimatePresence correctness, 6. Reduced motion, 7. Accessibility — check the code, name the line, 8. Theme + responsive (+2 more)
+
+### Community 139 - "end-session-training-pipeline.md"
+Cohesion: 0.29
+Nodes (6): Constraints (ponytail — non-negotiable), Non-goals, Output format (exact), Requirements, Role, Verified product context (frozen facts — do not re-verify, do not guess
+
+### Community 140 - "End-session training pipeline"
+Cohesion: 0.22
+Nodes (8): Deploy verification trap, End ≠ new chat (owner 2026-10-01, fixed + deployed), End-session training pipeline, Flow, Live audit (2026-10-01, all clean), Pitfalls proven the hard way (2026-10-01), Verify, close()
+
+### Community 141 - "review-prompt.md"
+Cohesion: 0.33
+Nodes (5): OUTPUT, REPO, ROLE, RULES, WHAT WAS BUILT
+
+### Community 142 - "ws-engine.ts"
+Cohesion: 0.17
+Nodes (19): pushLiveSession(), setActiveSession(), addListener(), clearQueuedCap(), clearWatchdog(), connect(), __eng, Engine (+11 more)
+
+### Community 143 - "ws-store.ts"
+Cohesion: 0.16
+Nodes (16): ref_zustand, BANNER_AFTER_MS, bannerVisible(), ConnEvent, ConnState, fmtSeconds(), nextConnState(), RESTORED_MS (+8 more)
+
+### Community 144 - "GateActionReceiver.kt"
+Cohesion: 0.13
+Nodes (15): GateActionReceiver, BroadcastReceiver, Context, Intent, Android notifications v1.11 (2026-10-01), Traps, What changed (versionCode 15, commits 49cab25 + b289a32), jsonobject (+7 more)
+
+### Community 145 - "bg-items.ts"
+Cohesion: 0.22
+Nodes (13): ref_node_test, BgItem, BgItemKind, BgItemStatus, createItem(), dismissItem(), dockVisible(), key() (+5 more)
+
+### Community 146 - "read-sync.ts"
+Cohesion: 0.21
+Nodes (8): tinybase, deviceId(), pullServerMarks(), readStore, setPresenceFocus(), startServerSync(), startTabSync(), store
+
+### Community 147 - "tool-identity.ts"
+Cohesion: 0.32
+Nodes (11): browserStep(), describeTool(), excerptOf(), fileTail(), firstStr(), hostOf(), parseArgs(), parseMcp() (+3 more)
+
+### Community 148 - "Plan — Android background chat-WS persistence + memory/storage cleanup"
+Cohesion: 0.18
+Nodes (10): 0. Recon corrections (facts that change the design), 1. Architecture — who holds which socket, 2. File-by-file change map, 3. Auth/ticket flow — native chat socket, 4. Notification dedupe rules (vs ntfy gates), 5. Per-requirement test checklist (R1–R10), 6. Top-3 risks + mitigations, 7. Build order (agy) (+2 more)
+
+### Community 149 - "Fr"
+Cohesion: 0.22
+Nodes (10): bn(), Dr(), Fr(), Ir(), Lr(), Or(), Pr(), Rr() (+2 more)
+
+### Community 150 - "model-switch.check.ts"
+Cohesion: 0.22
+Nodes (7): full, m1, m2, m3, modelSwitchValue(), applySessionInfo(), mergeSessionInfo()
+
+### Community 151 - "wsGet"
+Cohesion: 0.47
+Nodes (9): useHermesWS(), interrupt(), readStoredSid(), retryConnection(), rpc(), sendApprovalResponse(), submitBg(), submitSteer() (+1 more)
+
+### Community 152 - "parseMarkdown"
+Cohesion: 0.25
+Nodes (8): onError(), parseMarkdown(), postprocess(), preprocess(), processAllTokens(), provideLexer(), provideParser(), walkTokens()
+
+### Community 153 - "Wb"
+Cohesion: 0.40
+Nodes (6): Bb(), Hb(), jb(), qb(), Vb(), Wb()
+
+### Community 154 - "fy"
+Cohesion: 0.67
+Nodes (3): dy(), fy(), py()
+
+### Community 155 - "table"
+Cohesion: 0.67
+Nodes (3): table(), tablecell(), tablerow()
 
 ## Knowledge Gaps
-- **420 isolated node(s):** `SessionMeta`, `FileEntry`, `BakeKnobs`, `EffectDefinition`, `FocusTarget` (+415 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 624 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **42 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **789 isolated node(s):** `BorderBeamProps`, `BorderBeamProps`, `GlyphFC`, `FileEntry`, `FilterId` (+784 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 1143 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **46 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `react` connect `react` to `pdf-view.tsx`, `package.json`, `chat-timeline.tsx`, `App.tsx`, `token-tracker.tsx`, `ws-engine.ts`, `gate-envelope.ts`, `subagent-panel.tsx`, `neon-flow.tsx`, `ref_lib`, `gateway-flow.tsx`, `tubes-background.tsx`, `main.tsx`, `media-grid.tsx`, `chat-landing.tsx`, `streaming-text.tsx`, `media-viewer.tsx`, `ai-tool-call.tsx`?**
-  _High betweenness centrality (0.159) - this node is a cross-community bridge._
-- **Why does `Phase B — web (src/)` connect `ws-engine.ts` to `hermes-proxy.mjs`, `App.tsx`, `NativeNtfy.kt`?**
-  _High betweenness centrality (0.090) - this node is a cross-community bridge._
-- **Why does `2. File-by-file change map` connect `hermes-proxy.mjs` to `MainActivity`, `ws-engine.ts`?**
-  _High betweenness centrality (0.069) - this node is a cross-community bridge._
-- **What connects `SessionMeta`, `FileEntry`, `BakeKnobs` to the rest of the system?**
-  _420 weakly-connected nodes found - possible documentation gaps or missing edges._
-- **Should `hermes-proxy.mjs` be split into smaller, more focused modules?**
-  _Cohesion score 0.056265984654731455 - nodes in this community are weakly interconnected._
-- **Should `package.json` be split into smaller, more focused modules?**
-  _Cohesion score 0.08695652173913043 - nodes in this community are weakly interconnected._
-- **Should `chat-timeline.tsx` be split into smaller, more focused modules?**
-  _Cohesion score 0.14153846153846153 - nodes in this community are weakly interconnected._
+- **Why does `g` connect `verify-chat-timeline.ts` to `start`?**
+  _High betweenness centrality (0.148) - this node is a cross-community bridge._
+- **Why does `addListeners()` connect `start` to `t`, `E`, `bundle.js`, `i`, `verify-chat-timeline.ts`, `.addEventListener`, `n`, `o`?**
+  _High betweenness centrality (0.148) - this node is a cross-community bridge._
+- **Why does `d()` connect `E` to `delete`, `t`, `training-pipeline.check.mjs`, `bundle.js`, `i`, `.addEventListener`, `zd`, `o`?**
+  _High betweenness centrality (0.083) - this node is a cross-community bridge._
+- **Are the 113 inferred relationships involving `t()` (e.g. with `Ai()` and `al()`) actually correct?**
+  _`t()` has 113 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 109 inferred relationships involving `n()` (e.g. with `A()` and `al()`) actually correct?**
+  _`n()` has 109 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 57 inferred relationships involving `i()` (e.g. with `ac()` and `am()`) actually correct?**
+  _`i()` has 57 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 97 inferred relationships involving `r()` (e.g. with `A()` and `am()`) actually correct?**
+  _`r()` has 97 INFERRED edges - model-reasoned connections that need verification._

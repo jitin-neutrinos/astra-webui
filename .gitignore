@@ -42,3 +42,5 @@ arxiv_cache/
 # vault registry — encrypted values, but never in git
 data/vault-registry.json
 data/vault-registry.check.json
+data/astra-training.db*
+data/training-exports/

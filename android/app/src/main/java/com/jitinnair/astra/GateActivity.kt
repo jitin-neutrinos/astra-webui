@@ -567,7 +567,11 @@ class GateActivity : Activity() {
             b = action(labels[e] ?: e, "choice") { post(JSONObject().put("choice", e), b) }
             box.addView(b, LinearLayout.LayoutParams(-1, dp(52)).apply { topMargin = dp(10) })
         }
-        if (row.childCount > 0) box.addView(row, LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT))
+        if (row.childCount > 0) box.addView(row, LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            // gap between the full-width "Allow for this chat" (extras) and the
+            // Deny / Allow once row — was touching (owner 2026-10-02)
+            if (box.childCount > 0) topMargin = dp(10)
+        })
         box.addView(label("Astra is paused until you decide.", 12f, muted).apply { gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0) },
             LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT))
     }

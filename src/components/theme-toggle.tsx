@@ -3,6 +3,7 @@ import { flushSync } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { wipeClipFromRect } from "@/lib/theme-wipe";
 import { LottieIcon, useLottieAssets } from "./theme-lottie";
+import { ThemeArtwork } from "./theme-artwork";
 import { cn } from "@/lib/utils";
 
 const KEY = "astra-theme";
@@ -114,49 +115,6 @@ export function useTheme(): ["dark" | "light", (btn?: HTMLElement | null) => voi
 }
 
 /**
- * Illustrated sun — warm gradient core, eight tapered rays, slow rotation.
- * Light-mode icon. Kept as inline SVG rather than a PNG/WebM: it stays crisp at
- * any DPR, recolours with the theme, animates in CSS, and costs ~1KB.
- */
-function SunIcon() {
-  const reduce = useReducedMotion();
-  return (
-    <svg width="22" height="22" viewBox="0 0 32 32" fill="none" aria-hidden="true" className="theme-sun">
-      <defs>
-        <radialGradient id="astra-sun-core" cx="0.4" cy="0.35" r="0.75">
-          <stop offset="0%" stopColor="#FEF3C7" />
-          <stop offset="45%" stopColor="#FCD34D" />
-          <stop offset="100%" stopColor="#F59E0B" />
-        </radialGradient>
-        <linearGradient id="astra-sun-ray" x1="16" y1="6" x2="16" y2="2" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#FBBF24" />
-          <stop offset="100%" stopColor="#F59E0B" />
-        </linearGradient>
-      </defs>
-      {/* rays: a slow turn is what makes it read as animated rather than static */}
-      <motion.g
-        stroke="url(#astra-sun-ray)" strokeWidth="2.6" strokeLinecap="round"
-        style={{ transformOrigin: "16px 16px" }}
-        animate={{ rotate: reduce ? 0 : 360 }}
-        transition={{ duration: reduce ? 0 : 48, ease: "linear", repeat: Infinity }}
-      >
-        <line x1="16" y1="9.4" x2="16" y2="3.4" />
-        <line x1="16" y1="22.6" x2="16" y2="28.6" />
-        <line x1="9.4" y1="16" x2="3.4" y2="16" />
-        <line x1="22.6" y1="16" x2="28.6" y2="16" />
-        <line x1="11.4" y1="11.4" x2="7.2" y2="7.2" strokeWidth="2.1" />
-        <line x1="20.6" y1="20.6" x2="24.8" y2="24.8" strokeWidth="2.1" />
-        <line x1="20.6" y1="11.4" x2="24.8" y2="7.2" strokeWidth="2.1" />
-        <line x1="11.4" y1="20.6" x2="7.2" y2="24.8" strokeWidth="2.1" />
-      </motion.g>
-      {/* core with a soft inner highlight so it reads dimensional, not flat */}
-      <circle cx="16" cy="16" r="6.6" fill="url(#astra-sun-core)" />
-      <circle cx="13.8" cy="13.6" r="2.1" fill="#FFFBEB" opacity="0.55" />
-    </svg>
-  );
-}
-
-/**
  * Theme icon: an ILLUSTRATED sun (light mode) or moon (dark mode), crossfaded
  * and scaled on switch. `id` is unique per instance so the gradient/mask defs
  * of two toggles on one page never collide.
@@ -185,9 +143,9 @@ function ThemeGlyph({ dark }: { dark: boolean }) {
         >
           {/* Owner-supplied dark-mode artwork (public/icons/theme-dark.svg),
               cropped to its own content box by the build step. */}
-          {lottieUrl ? <LottieIcon url={lottieUrl} />
-            : dark ? <img className="theme-art" src="/icons/theme-dark.svg" alt="" aria-hidden="true" />
-            : <SunIcon />}
+          {/* The owner's piece is a day↔night cycle: it carries BOTH states, so
+              it renders for light and dark alike and flips only on interaction. */}
+          {lottieUrl ? <LottieIcon url={lottieUrl} /> : <ThemeArtwork dark={dark} />}
         </motion.span>
       </AnimatePresence>
     </span>
