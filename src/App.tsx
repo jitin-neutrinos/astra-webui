@@ -186,8 +186,33 @@ import TubesBackground from "./components/ui/tubes-background";
 
 /* ---------------- shell: sidebar + chat landing ---------------- */
 
+/** Aggregate unread across every chat, for the nav + mobile-header badges.
+ *  One hook, one source: the sidebar nav item and the mobile header logo badge
+ *  read the same store and re-sync on the same events, so they can never
+ *  disagree with each other or with the per-row pills. */
+function useUnreadTotal() {
+  const [total, setTotal] = useState(() => notify.getTotalUnread());
+  useEffect(() => {
+    const sync = () => setTotal(notify.getTotalUnread());
+    window.addEventListener("astra:unread-changed", sync);
+    // sessions churn (activity elsewhere) can seed pills without a local bump
+    const onWs = (e: Event) => {
+      const t = (e as CustomEvent<{ type?: string }>).detail?.type;
+      if (t === "sessions.changed" || t === "session.started") sync();
+    };
+    window.addEventListener("astra-ws-event", onWs);
+    sync();
+    return () => {
+      window.removeEventListener("astra:unread-changed", sync);
+      window.removeEventListener("astra-ws-event", onWs);
+    };
+  }, []);
+  return total;
+}
+
 function Shell({ onLogout }: { onLogout: () => void }) {
   useMobileViewport();
+  const unreadTotal = useUnreadTotal();
   const [resetSignal, setResetSignal] = useState(0);
   // Each view now owns a real path (/files, /tracker, /config, /c/<id> or /) so the
   // address bar, browser back/forward, and reload all land on the right page —
@@ -252,12 +277,19 @@ function Shell({ onLogout }: { onLogout: () => void }) {
   return (
     <div className="app-shell flex w-full flex-col overflow-hidden bg-void font-sans text-brandtext">
       {/* mobile top bar (non-chat views): logo opens navigation */}
-      <div className={cn("flex shrink-0 items-center border-b border-white/[0.07] bg-midnight/60 px-3 py-2 lg:hidden", view === "chat" && "hidden")}>
+      <div className={cn("relative flex shrink-0 items-center border-b border-white/[0.07] bg-midnight/60 px-3 py-2 lg:hidden", view === "chat" && "hidden")}>
         <button type="button" onClick={() => setDrawerOpen(true)}
           aria-label="Open navigation" aria-expanded={drawerOpen} aria-controls="astra-sidebar"
           className="flex h-11 w-11 items-center justify-center rounded-lg p-1 hover:bg-white/5">
           <img src="/astra-logo.png" alt="" aria-hidden="true" className="h-8 w-8 object-contain" />
         </button>
+        {unreadTotal > 0 && (
+          <span className="ast-unread-badge ast-unread-badge-mobile"
+            aria-label={`${unreadTotal} unread ${unreadTotal === 1 ? "message" : "messages"}`}
+            title={`${unreadTotal} unread`}>
+            {unreadTotal > 99 ? "99+" : unreadTotal}
+          </span>
+        )}
       </div>
 
       <div onClick={closeDrawer} aria-hidden="true" data-open={String(drawerOpen)}
@@ -366,22 +398,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
   // Aggregate unread across every chat, for the sidebar Chats item. Same event
   // the chat list listens on, so the two never disagree: a row clearing its pill
   // (locally or from another device) drops the aggregate in the same tick.
-  const [unreadTotal, setUnreadTotal] = useState(() => notify.getTotalUnread());
-  useEffect(() => {
-    const sync = () => setUnreadTotal(notify.getTotalUnread());
-    window.addEventListener("astra:unread-changed", sync);
-    // sessions churn (new activity elsewhere) can seed pills without a local bump
-    const onWs = (e: Event) => {
-      const t = (e as CustomEvent<{ type?: string }>).detail?.type;
-      if (t === "sessions.changed" || t === "session.started") sync();
-    };
-    window.addEventListener("astra-ws-event", onWs);
-    sync();
-    return () => {
-      window.removeEventListener("astra:unread-changed", sync);
-      window.removeEventListener("astra-ws-event", onWs);
-    };
-  }, []);
+  const unreadTotal = useUnreadTotal();
 
   const groups: {
     label: string;
@@ -532,6 +549,9 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
                 title={!expanded ? item.name : undefined}
                 className={cn(
                   "relative flex h-11 w-full items-center rounded-md transition-colors duration-200 press-feedback",
+                  // Unread: the WHOLE button gets the brand-blue outline + glow,
+                  // not just the number — the nav item itself reads as active.
+                  item.name === "Chats" && unreadTotal > 0 && "ast-nav-unread",
                   active
                     ? "bg-cyanx/10 text-cyanx"
                     : "text-slate-300 hover:bg-white/5 hover:text-white",
@@ -540,7 +560,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
                 {expanded && <span className="truncate text-sm font-medium">{item.name}</span>}
                 {item.name === "Chats" && unreadTotal > 0 && (
                   <span
-                    className="ast-unread-badge"
+                    className={cn("ast-unread-badge", !expanded && "ast-unread-badge-rail")}
                     aria-label={`${unreadTotal} unread ${unreadTotal === 1 ? "message" : "messages"}`}
                     title={`${unreadTotal} unread`}
                   >

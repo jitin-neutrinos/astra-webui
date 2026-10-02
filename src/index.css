@@ -268,6 +268,10 @@ html.theme-fading body * {
 .chat-send[data-sent] svg { animation: send-pop 300ms cubic-bezier(0.23,1,0.32,1); }
 @keyframes send-pop { 0% { transform: scale(0.5); opacity: 0; filter: blur(2px); } 100% { transform: scale(1); opacity: 1; filter: blur(0); } }
 /* light theme: cyan reads washed on paper — deepen it, soften glow */
+[data-theme="light"] .chat-bubble-ai,
+[data-theme="light"] .chat-bubble-user,
+[data-theme="light"] .chat-turn { box-shadow: none; }
+[data-theme="light"] .chat-bubble-ai { color: var(--color-brandtext); text-shadow: none; }
 [data-theme="light"] .chat-send { background: linear-gradient(180deg, #06b6d4, #0e7490); color: #f8fafc; box-shadow: none }
 [data-theme="light"] .chat-send:hover { filter: brightness(1.08); box-shadow: none }
 [data-theme="light"] .chat-composer { background: color-mix(in srgb, #faf7f0 90%, transparent); border-color: rgba(15,23,42,.12); box-shadow: none }
@@ -470,7 +474,7 @@ html.theme-fading body * {
 /* AI bubble fills the message column (2026-09-29): the avatar column is gone —
    the Astra logo lives INSIDE the bubble as a header row (logo at very top,
    timestamp beside it), and the turn content uses the full width below it. */
-.chat-turn { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--bubble-ai-border); border-radius: 14px; padding: 12px 14px; background: var(--bubble-ai-bg); animation: chat-turn-in 200ms cubic-bezier(0.23,1,0.32,1) both; min-width: 0; overflow-wrap: anywhere; }
+.chat-turn { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--bubble-ai-border); border-radius: 14px; padding: 12px 14px; background: var(--bubble-ai-bg); animation: chat-turn-in 200ms cubic-bezier(0.23,1,0.32,1) both; min-width: 0; overflow-wrap: anywhere; box-shadow: 0 0 18px -4px rgba(34, 211, 238, 0.35); }
 .chat-turn-head { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
 .chat-turn-logo { height: 22px; width: 22px; object-fit: contain; flex: 0 0 auto; filter: drop-shadow(0 0 10px rgba(34,211,238,0.39)); }
 .chat-turn-head .chat-turn-ts { margin: 0 0 0 auto; }
@@ -541,9 +545,9 @@ html.theme-fading body * {
   .tubes-glow-wash, .tubes-glow-wash::after, .tubes-glow-wash::before { animation: none; }
 }
 /* user bubble: brand-green tint (see :root tokens) */
-.chat-bubble-user { border: 1px solid var(--bubble-user-border); background: var(--bubble-user-bg); color: var(--bubble-user-text); }
+.chat-bubble-user { border: 1px solid var(--bubble-user-border); background: var(--bubble-user-bg); color: var(--bubble-user-text); box-shadow: 0 0 18px -4px rgba(52, 211, 153, 0.35); }
 /* Astra streaming placeholder pill shares the Astra bubble skin */
-.chat-bubble-ai { border: 1px solid var(--bubble-ai-border); background: var(--bubble-ai-bg); }
+.chat-bubble-ai { border: 1px solid var(--bubble-ai-border); background: var(--bubble-ai-bg); box-shadow: 0 0 18px -4px rgba(34, 211, 238, 0.35); }
 /* markdown inside the Astra bubble follows the bubble ground (bold was
    hardcoded #fff — invisible on the light theme tint) */
 .chat-turn .chat-md strong { color: var(--color-brandtext); }
@@ -1177,7 +1181,7 @@ html.theme-fading body * {
 .chat-turn .chat-code-copy { background: transparent; border-color: rgba(248,250,252,.1); color: var(--color-muted); }
 .chat-turn .chat-code-copy:hover { color: var(--color-cyanx); }
 [data-theme="light"] .chat-turn .chat-code-copy { border-color: rgba(15,23,42,.14); }
-.chat-bubble-ai { color: var(--color-brandtext); }
+.chat-bubble-ai { color: var(--color-cyanx); text-shadow: 0 0 8px rgba(34, 211, 238, 0.25); }
 
 /* ── Sub-agent live status panel (dark base; light overrides pinned below) ── */
 .suba-wrap { margin-bottom: 10px; }
@@ -1621,11 +1625,9 @@ html.theme-fading body * {
 }
 /* Sidebar Chats aggregate: the SAME container treatment as the per-chat pill
    (translucent cyan fill + cyan outline + rounded rectangle) plus the glow, so
-   the nav count and the row counts read as one system. Anchored to the icon
-   column (the button's first child is a w-12 icon well) so it holds position
-   whether the sidebar is expanded or collapsed to the rail. */
+   the nav count and the row counts read as one system. */
 .ast-unread-badge {
-  position: absolute; top: 5px; left: 33px; z-index: 1;
+  margin-left: auto; margin-right: 12px; flex: none;
   min-width: 1.15rem; height: 1.15rem; padding: 0 .32rem;
   display: inline-flex; align-items: center; justify-content: center;
   border-radius: 5px;
@@ -1634,9 +1636,29 @@ html.theme-fading body * {
   border: 1px solid color-mix(in oklab, var(--color-cyanx) 45%, transparent);
   box-shadow: 0 0 8px color-mix(in oklab, var(--color-cyanx) 30%, transparent);
   font: 700 9px/1 var(--font-sans); font-variant-numeric: tabular-nums;
-  pointer-events: none;
+}
+/* Collapsed rail (w-16 → a 48px button inside 8px nav padding): no label to sit
+   after, so the badge overlaps the icon well with a right-leaning bias. The
+   anchor is sized for the WIDEST case ("99+" ≈ 29px): 18 + 29 = 47 ≤ the 48px
+   button, so a 2-3 digit count can never reach the rail edge and get cropped. */
+.ast-unread-badge-rail {
+  position: absolute; left: 18px; top: 50%; margin: 0;
+  transform: translateY(-50%);
+}
+/* Mobile: the badge sits under the header logo (the logo button is the only
+   child, 44px wide starting at the bar's 12px padding). */
+.ast-unread-badge-mobile {
+  position: absolute; left: 30px; bottom: 6px; margin: 0;
+  transform: none;
+}
+/* The whole Chats button gets the brand-blue outline + subtle glow when unread. */
+.ast-nav-unread {
+  border: 1px solid color-mix(in oklab, var(--color-cyanx) 45%, transparent);
+  box-shadow: 0 0 10px color-mix(in oklab, var(--color-cyanx) 18%, transparent),
+              inset 0 0 8px color-mix(in oklab, var(--color-cyanx) 5%, transparent);
 }
 [data-theme="light"] .ast-unread-badge { background: rgba(3,105,161,.12); color: #0369a1; border-color: rgba(3,105,161,.4); box-shadow: none; }
+[data-theme="light"] .ast-nav-unread { border-color: rgba(3,105,161,.35); box-shadow: none; }
 [data-theme="light"] .ast-unread-row { background: rgba(3,105,161,.08); }
 [data-theme="light"] .ast-unread-row:hover { background: rgba(3,105,161,.13); }
 [data-theme="light"] .ast-unread-pill { background: rgba(3,105,161,.12); color: #0369a1; border-color: rgba(3,105,161,.4); }
