@@ -216,8 +216,14 @@ html.theme-fading body * {
    dashoffset sweep is exactly one lap, so the loop is seamless. The composer's idle
    border is transparent, so this stroke IS the border — never a second line. */
 .composer-trace { position: absolute; inset: 0; pointer-events: none; overflow: visible; z-index: 0; opacity: 1; transition: opacity 260ms cubic-bezier(0.23,1,0.32,1); }
-.composer-trace-tail { stroke: #22d3ee; stroke-width: 1.25; stroke-linecap: round; stroke-dasharray: 42 58; opacity: .34; animation: composer-trace-run 9s linear infinite; }
-.composer-trace-head { stroke: #67e8f9; stroke-width: 1.7; stroke-linecap: round; stroke-dasharray: 11 89; filter: drop-shadow(0 0 3px rgba(34,211,238,.55)); animation: composer-trace-run 9s linear infinite; }
+/* comet = a fine stack of strokes on ONE path. Every step shares the leading
+   edge and extends back a little further as it fades, approximating a gradient
+   along a curve (a linearGradient can't follow a rounded path). The step
+   LENGTH, OPACITY and WIDTH all come from the component's falloff curve —
+   don't hardcode them here or the stack bands and reads as a dim second line.
+   `butt` caps keep the leading edge a clean sharp cut. */
+.composer-trace-step { fill: none; stroke: #22d3ee; stroke-linecap: butt; animation: composer-trace-run 9s linear infinite; }
+.composer-trace-head { stroke: #67e8f9; filter: drop-shadow(0 0 3px rgba(34,211,238,.5)); }
 @keyframes composer-trace-run { to { stroke-dashoffset: -100; } }
 .chat-composer:focus-within .composer-trace, .chat-composer.drag-over .composer-trace { opacity: 0; }
 .chat-composer::before { content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1px; background: linear-gradient(135deg, rgba(34,211,238,.35), rgba(139,92,246,.14) 40%, transparent 60%, transparent); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; opacity: 0; transition: opacity 260ms cubic-bezier(0.23,1,0.32,1); pointer-events: none; }
