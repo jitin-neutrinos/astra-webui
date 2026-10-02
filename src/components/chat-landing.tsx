@@ -1355,6 +1355,11 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
 
   const slashMatches = TUI_COMMANDS.filter((c) => c.startsWith(input));
 
+  // Recognized command: exact match, or command + args ("/model x"). Purely
+  // visual — the mirror hides the raw "/" and recolors the text; send() still
+  // uses the raw input.
+  const recognizedCmd = TUI_COMMANDS.find((c) => input === c || input.startsWith(c + " ")) || null;
+
   const pickSlash = (cmd: string) => {
     setInput(cmd + " ");
     setSlashOpen(false);
@@ -1839,8 +1844,13 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
               onPaste={onPaste}
               placeholder=""
               aria-label="Message Astra"
-              className="chat-composer-input"
+              className={"chat-composer-input" + (recognizedCmd ? " cmd-active" : "")}
             />
+            {recognizedCmd && (
+              <div className="cmd-mirror" aria-hidden="true">
+                <span className="cmd-slash">/</span><span>{input.slice(recognizedCmd.length)}</span>
+              </div>
+            )}
             <RotatingPlaceholder
               phrases={
                 isStreaming

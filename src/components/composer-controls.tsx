@@ -198,7 +198,7 @@ export function ComposerControls({ setAttachments, disabled, sessionInfo, catalo
       <input ref={fileRef} type="file" multiple className="hidden" onChange={onFiles}
         aria-hidden="true" tabIndex={-1} />
 
-      <button type="button" className="chat-chip" disabled={disabled}
+      <button type="button" className="chat-chip chat-chip-options" disabled={disabled}
         aria-haspopup="dialog" aria-expanded={open} aria-controls="composer-options"
         aria-label="Composer options" title="Session settings"
         onClick={() => { if (!open) onOpen?.(); setOpen(!open); setPanel(null); setMenuProvider(null); }}>
