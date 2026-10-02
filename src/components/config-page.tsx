@@ -13,6 +13,9 @@ type Schema = {
   fields: Record<string, SchemaField>;
 };
 
+import { ThemePanel } from "./theme-panel";
+import "./theme-panel.css";
+
 export function ConfigPage({ onBack }: { onBack: () => void }) {
   const [config, setConfig] = useState<any>(null);
   const [schema, setSchema] = useState<Schema | null>(null);
@@ -49,7 +52,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
   // Group schema fields for the advanced view.
   const categories = useMemo(() => {
     const cats: Record<string, string[]> = {};
-    if (!schema) return cats;
+    if (!schema?.fields) return cats;
     for (const [path, f] of Object.entries(schema.fields)) {
       if (search && !path.toLowerCase().includes(search.toLowerCase()) && !f.description?.toLowerCase().includes(search.toLowerCase())) {
         continue;
@@ -242,7 +245,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
   }
 
   const renderField = (path: string, label?: string, typeOverride?: string, optionsOverride?: string[]) => {
-    const fieldSchema = schema.fields[path];
+    const fieldSchema = schema?.fields?.[path];
     if (!fieldSchema && !label) return null; // Wait, some curated fields might not be in schema, like agent.reasoning_effort. R2 says to render it anyway.
     
     const type = typeOverride || fieldSchema?.type || "string";
@@ -322,9 +325,9 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
 
   const ttsProvider = getVal("tts.provider") || "openai";
   // Ponytail: keep only real voice keys — piper has voice but no speed; guard by schema presence.
-  const ttsVoiceKey = schema.fields[`tts.${ttsProvider}.voice`] ? `tts.${ttsProvider}.voice`
-    : schema.fields[`tts.${ttsProvider}.voice_id`] ? `tts.${ttsProvider}.voice_id` : null;
-  const ttsSpeedKey = schema.fields[`tts.${ttsProvider}.speed`] ? `tts.${ttsProvider}.speed` : null;
+  const ttsVoiceKey = schema?.fields?.[`tts.${ttsProvider}.voice`] ? `tts.${ttsProvider}.voice`
+    : schema?.fields?.[`tts.${ttsProvider}.voice_id`] ? `tts.${ttsProvider}.voice_id` : null;
+  const ttsSpeedKey = schema?.fields?.[`tts.${ttsProvider}.speed`] ? `tts.${ttsProvider}.speed` : null;
 
   return (
     <div className="flex-1 overflow-auto bg-void text-brandtext font-sans p-4 lg:p-10 relative">
@@ -385,6 +388,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
             {renderField("display.skin", "Theme Skin")}
             {renderField("streaming.enabled", "Stream Responses", "boolean")}
           </div>
+          <ThemePanel />
         </section>
 
         <section className="rounded-2xl border border-redx/20 bg-redx/5 p-6 backdrop-blur-md">

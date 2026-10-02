@@ -1,0 +1,35 @@
+/* Theme panel — flat brand-locked styles (no gradients, rounded rects, no pills).
+ * Every class is tf-* and scoped; the panel is marked data-theme-engine-new so the
+ * parity harness skips it (it is new UI by definition, not a regression surface). */
+.tf-panel { margin-top: 1.25rem; border-top: 1px solid rgb(255 255 255 / 0.06); padding-top: 1rem; }
+.tf-head { display: flex; align-items: baseline; gap: 0.75rem; margin-bottom: 0.75rem; }
+.tf-title { font: 600 15px/1.2 var(--font-sans); color: var(--color-brandtext); }
+.tf-sub { font: 400 11px/1.4 var(--font-mono); color: var(--color-muted); }
+.tf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.tf-card { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid rgb(255 255 255 / 0.08); border-radius: 10px; background: transparent; cursor: pointer; text-align: left; transition: border-color 150ms ease, background-color 150ms ease; }
+.tf-card:hover { border-color: rgb(var(--c-4) / 0.45); background: rgb(255 255 255 / 0.03); }
+.tf-card-active { border-color: rgb(var(--c-4) / 0.7); background: rgb(var(--c-4) / 0.08); }
+.tf-swatches { display: flex; gap: 3px; }
+.tf-swatches i { width: 14px; height: 14px; border-radius: 4px; border: 1px solid rgb(255 255 255 / 0.12); }
+.tf-name { font: 500 12px/1.3 var(--font-sans); color: var(--color-brandtext); }
+.tf-edit { margin-top: 1rem; }
+.tf-edit-head { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; }
+.tf-edit-title { font: 500 12.5px/1.3 var(--font-sans); color: var(--color-brandtext); }
+.tf-mini { font: 500 11px/1 var(--font-sans); color: var(--color-muted); border: 1px solid rgb(255 255 255 / 0.1); border-radius: 8px; padding: 4px 8px; cursor: pointer; background: transparent; transition: color 120ms ease, border-color 120ms ease; }
+.tf-mini:hover { color: var(--color-cyanx); border-color: rgb(var(--c-4) / 0.4); }
+.tf-mini:disabled { opacity: 0.5; cursor: default; }
+.tf-tokens { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px 12px; }
+.tf-token { display: flex; align-items: center; gap: 8px; padding: 3px 4px; border-radius: 8px; }
+.tf-token:hover { background: rgb(255 255 255 / 0.03); }
+.tf-token input[type="color"] { width: 22px; height: 22px; padding: 0; border: 1px solid rgb(255 255 255 / 0.15); border-radius: 6px; background: none; cursor: pointer; }
+.tf-token-name { font: 400 11px/1 var(--font-sans); color: var(--color-muted); min-width: 72px; }
+.tf-token-hex { font: 400 10px/1 var(--font-mono); color: var(--color-muted); opacity: 0.75; }
+.tf-note { margin-top: 0.5rem; font: 400 10.5px/1.5 var(--font-sans); color: var(--color-muted); opacity: 0.8; }
+.tf-bg { margin-top: 1.25rem; }
+.tf-bg-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.tf-input { flex: 1 1 240px; font: 400 12px/1 var(--font-sans); color: var(--color-brandtext); background: rgb(0 0 0 / 0.25); border: 1px solid rgb(255 255 255 / 0.12); border-radius: 8px; padding: 7px 10px; outline: none; }
+.tf-input:focus { border-color: rgb(var(--c-4) / 0.5); }
+.tf-input::placeholder { color: var(--color-muted); }
+.tf-dim { display: flex; align-items: center; gap: 8px; margin-top: 0.6rem; font: 400 11px/1 var(--font-sans); color: var(--color-muted); }
+.tf-dim input[type="range"] { accent-color: var(--color-cyanx); width: 180px; }
+.hidden { display: none; }

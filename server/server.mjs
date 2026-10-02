@@ -14,6 +14,7 @@ import { createHmac, timingSafeEqual, randomBytes } from "node:crypto";
 import { readFile, stat, appendFile, mkdir } from "node:fs/promises";
 import { join, extname, resolve, sep, normalize } from "node:path";
 import { clearHermesCookie } from "./hermes-proxy.mjs";
+import { handleBgUpload, handleBgServe } from "./theme-assets.mjs";
 
 const HERMES_PASSWORD = process.env.ASTRA_HERMES_PASSWORD;
 if (!HERMES_PASSWORD) {
@@ -479,6 +480,16 @@ const server = createServer(async (req, res) => {
     }
     res.writeHead(200, { "content-type": "application/json" });
     return res.end(JSON.stringify({ marks: allMarks(), v: readStateVersion() }));
+  }
+
+  if (path === "/api/theme/bg" || path.startsWith("/api/theme/bg/")) {
+    if (path === "/api/theme/bg") return handleBgUpload(req, res, validToken);
+    const name = path.slice("/api/theme/bg/".length);
+    try { return await handleBgServe(req, res, validToken, name); }
+    catch (err) {
+      console.error("[theme-bg]", err?.message || err);
+      if (!res.headersSent) { res.writeHead(500, { "content-type": "application/json" }); res.end('{"error":"bg serve failed"}'); }
+    }
   }
 
   if (path.startsWith("/api/hx/session-info/")) {

@@ -9,6 +9,8 @@ import { useHermesWS } from "@/lib/hermes-ws";
 import type { EventPayload } from "@/lib/hermes-ws";
 import { RESTORED_MS, fmtSeconds, bannerVisible, type ConnState } from "@/lib/connection-state";
 import { parseCommand } from "@/lib/slash-commands";
+import { ChatBackdrop } from "./chat-backdrop";
+import "./chat-backdrop.css";
 import { rowsToTurns, type Turn } from "@/lib/normalize-messages";
 import { extractAttachments, mediaKind } from "@/lib/media-paths";
 
@@ -1612,6 +1614,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         if (files.length) setAttachments((a) => [...a, ...filesToAttachments(files)]);
       }}className="relative flex h-full min-w-0 flex-1 flex-col">
       <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">{liveAnnouncement}</p>
+      <ChatBackdrop />
       {errorBanner && (() => {
         // Transport states are the ConnectionBanner's job; the red banner keeps
         // only actionable non-transport errors (auth, model backend, failures).

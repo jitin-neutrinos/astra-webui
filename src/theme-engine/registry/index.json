@@ -1,0 +1,22 @@
+{
+  "engine_version": "0.0.1",
+  "registry_dir": "src/theme-engine/registry",
+  "generated_at_iso": "2026-10-02",
+  "source_licenses": {
+    "tinted-theming/schemes": "MIT (verified 2026-10-02, 299 stars, upstream live)",
+    "tokyonight": "Apache-2.0 (folke/tokyonight.nvim)"
+  },
+  "files": [
+    "catppuccin-mocha.yaml",
+    "dracula.yaml",
+    "gruvbox-dark-medium.yaml",
+    "rose-pine-dawn.yaml",
+    "solarized-light.yaml",
+    "tokyo-night-dark.yaml",
+    "tokyo-night-light.yaml",
+    "tokyo-night-storm.yaml"
+  ],
+  "notes": [
+    "Skeleton files only (not full themes). Full token migration in P3 (tokenize.mjs). Registry references upstream by HUE mapping, not base16 slot index (slot semantics vary: tokyo-night-dark base08=#C0CAF5 is a highlight, but base0A=#0DB9D7 cyan; gruvbox-dark uses orange family). Theme-editor (P4) consumes this index."
+  ]
+}
