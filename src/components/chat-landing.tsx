@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import type { CSSProperties, KeyboardEvent } from "react";
+import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
 import { ArrowUp, Square, TriangleAlert, RotateCcw, Pencil, ChevronDown, Plus, WifiOff, Loader2, CheckCircle2, Check, LogOut } from "lucide-react";
 import TrainingStatus from "./training-status";
 import * as notify from "@/lib/notify";
@@ -225,7 +225,7 @@ function thinkingOf(payload: any): string {
 // WRAPPED lines, not just newlines) with an inline toggle. Overflow is measured
 // after paint via scrollHeight, so the toggle only appears when the clamp
 // actually cut something.
-function UserBubble({ msg, avatarUrl, onOpenMedia }: { msg: ChatMsg; avatarUrl: string; onOpenMedia: (items: MediaItem[], index: number) => void }) {
+function UserBubble({ msg, avatarUrl, onOpenMedia, actions }: { msg: ChatMsg; avatarUrl: string; onOpenMedia: (items: MediaItem[], index: number) => void; actions?: ReactNode }) {
   const [expanded, setExpanded] = useState(false);
   const [overflows, setOverflows] = useState(false);
   const clampRef = useRef<HTMLDivElement | null>(null);
@@ -253,6 +253,7 @@ function UserBubble({ msg, avatarUrl, onOpenMedia }: { msg: ChatMsg; avatarUrl: 
           {expanded ? "Show less" : "Read more"}
         </button>
       )}
+      {actions}
     </div>
   );
 }
@@ -1820,6 +1821,46 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
                 // A bg turn's REPLY lives in the dock, not the feed (owner
                 // mandate) — see bg-routing.ts for the two exceptions.
                 if (!showsInFeed(m as any, openBgRef)) return null;
+                // Owner 10-02: the action row (copy / edit / regenerate) must sit
+                // ENTIRELY inside the bubble. It used to be a sibling of the
+                // bubble with margin-top:-30px, so it straddled the bottom
+                // border — and absolute positioning would resolve against the
+                // scroll pane, not the bubble. So it is BUILT INSIDE the bubble
+                // element now (see UserBubble `actions` slot + TurnTimeline).
+                const canRegen = !isStreaming && idx === messages.length - 1
+                  && m.role !== "user" && m.segments.length > 0
+                  && !m.segments.some((s) => s.kind === "approval" && s.resolved == null);
+                const actions = !m.isSysNote && (m.role === "user" || !m.isStreaming) ? (
+                  <div className="chat-actions">
+                    {m.role === "user" ? (
+                      <>
+                        <AnimatedCopyButton text={m.content} />
+                        {!isStreaming && (
+                          <button type="button" aria-label="Edit message" title="Edit"
+                            onClick={() => {
+                              setInput(m.content.replace(/\n\nAttached file: .*/g, ""));
+                              setAttachments((m.files ?? []).map((f) => ({ id: newId(), name: f.name, size: 0, status: "done" as const, progress: 100, serverPath: f.path })));
+                              setMessages(p => p.slice(0, idx));
+                              setTimeout(() => taRef.current?.focus(), 0);
+                            }}>
+                            <Pencil />
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <AnimatedCopyButton
+                          text={m.segments.filter((s) => s.kind === "text").map((s) => s.text ?? "").join("\n\n")} />
+                        {canRegen && (
+                          <button type="button" aria-label="Regenerate message" title="Regenerate"
+                            onClick={() => retry()}>
+                            <RotateCcw />
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                ) : null;
                 return (
                 <div key={m.id} data-msg-id={m.id} className={m.isSysNote ? "chat-sys-note" : "flex w-full items-start"}>
                 {m.isSysNote ? (
@@ -1829,46 +1870,15 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
                 <div className="min-w-0 w-full">
                   {m.role === "user" ? (
                     <div>
-                      <UserBubble msg={m} avatarUrl={avatarUrl} onOpenMedia={openMedia} />
+                      <UserBubble msg={m} avatarUrl={avatarUrl} onOpenMedia={openMedia} actions={actions} />
                     </div>
                   ) : m.segments.length ? (
-                    <TurnTimeline segments={m.segments} streaming={m.isStreaming} sessionId={storedSessionId || ""} ts={m.ts} onToggleTool={toggleToolCollapse} onApprovalRespond={respondApproval} onGateRespond={respondGate} onClarifyAnswer={respondClarify} onOpenMedia={openMedia} />
+                    <TurnTimeline segments={m.segments} streaming={m.isStreaming} sessionId={storedSessionId || ""} ts={m.ts} onToggleTool={toggleToolCollapse} onApprovalRespond={respondApproval} onGateRespond={respondGate} onClarifyAnswer={respondClarify} onOpenMedia={openMedia} actions={actions} />
                   ) : m.isStreaming ? (
                     <span className="chat-bubble-ai flex w-full items-center rounded-2xl px-3 py-2.5">
                       <AITextLoading texts={["Thinking...", "Working on it...", "Almost there..."]} />
                     </span>
                   ) : null}
-                  {!m.isSysNote && (m.role === "user" || !m.isStreaming) && (
-                    <div className="chat-actions">
-                      {m.role === "user" ? (
-                        <>
-                          <AnimatedCopyButton text={m.content} />
-                          {!isStreaming && (
-                            <button type="button" aria-label="Edit message" title="Edit"
-                              onClick={() => {
-                                setInput(m.content.replace(/\n\nAttached file: .*/g, ""));
-                                setAttachments((m.files ?? []).map((f) => ({ id: newId(), name: f.name, size: 0, status: "done" as const, progress: 100, serverPath: f.path })));
-                                setMessages(p => p.slice(0, idx));
-                                setTimeout(() => taRef.current?.focus(), 0);
-                              }}>
-                              <Pencil />
-                            </button>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <AnimatedCopyButton
-                            text={m.segments.filter((s) => s.kind === "text").map((s) => s.text ?? "").join("\n\n")} />
-                          {!isStreaming && idx === messages.length - 1 && m.segments.length > 0 && !m.segments.some((s) => s.kind === "approval" && s.resolved == null) && (
-                            <button type="button" aria-label="Regenerate message" title="Regenerate"
-                              onClick={() => retry()}>
-                              <RotateCcw />
-                            </button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  )}
                 </div>
                 )}
               </div>

@@ -5,12 +5,14 @@
  *   Overflow crops (overflow:hidden), orientation/portrait just re-resolves.
  *   The plain <img>/<video> uses object-fit: cover (same guarantee natively). */
 .chat-backdrop {
-  position: absolute;
+  /* FIXED, not absolute: the media fills the PHYSICAL screen (under the status bar and
+     navbar on edge-to-edge Android) while the app chrome stays inset. Without a backdrop
+     the shell/body theme color takes that role. */
+  position: fixed;
   inset: 0;
   z-index: 0;
   overflow: hidden;
   pointer-events: none;
-  border-radius: inherit;
   container-type: size;
 }
 .chat-backdrop-media {

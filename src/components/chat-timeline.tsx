@@ -5,6 +5,7 @@
 // via step-prefs; opened-state updates LIVE through controlled `open` state.
 
 import { useEffect, useRef, useState, useMemo } from "react";
+import type { ReactNode } from "react";
 import { Check, Loader2, ShieldAlert, X, Clock } from "lucide-react";
 import { cn } from "../lib/utils";
 import { GateCard } from "./gates/gate-card";
@@ -557,7 +558,7 @@ function ApprovalRow({ seg, onRespond }: { seg: Segment; onRespond: (reqId: stri
 // emitted them. Interactions (approval / clarify / gate) land in their slot too,
 // never displaced. Each thought is its own collapsible (streams open, collapses
 // when done); tool rows keep the persisted per-tool collapse.
-export function TurnTimeline({ segments, streaming, sessionId, ts, onToggleTool, onApprovalRespond, onClarifyAnswer, onGateRespond, onOpenMedia }: {
+export function TurnTimeline({ segments, streaming, sessionId, ts, onToggleTool, onApprovalRespond, onClarifyAnswer, onGateRespond, onOpenMedia, actions }: {
   segments: Segment[];
   streaming: boolean;
   sessionId: string | null;
@@ -567,6 +568,8 @@ export function TurnTimeline({ segments, streaming, sessionId, ts, onToggleTool,
   onClarifyAnswer: (reqId: string, result: { answer?: string; answers?: Record<string, string> }) => void;
   onGateRespond: (reqId: string, reply: any) => void;
   onOpenMedia?: (items: MediaItem[], index: number) => void;
+  /** Action row docked INSIDE the bubble's bottom-right (owner 10-02). */
+  actions?: ReactNode;
 }) {
   if (!segments.length) return null;
 
@@ -595,6 +598,7 @@ export function TurnTimeline({ segments, streaming, sessionId, ts, onToggleTool,
         if (seg.kind === "gate") return <GateCard key={seg.id} seg={seg} sessionId={sessionId} onRespond={onGateRespond} onOpenMedia={onOpenMedia} />;
         return <TextRow key={seg.id} seg={seg} reveal={reveal} onOpenMedia={onOpenMedia} />;
       })}
+      {actions}
     </div>
   );
 }
