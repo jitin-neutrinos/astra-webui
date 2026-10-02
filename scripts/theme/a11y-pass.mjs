@@ -37,6 +37,14 @@ for (const p of data.palettes) {
     const mutedC=contrast(hexRgb(v["--color-muted"]),voidC);
     if (mutedC<4.5) { const before=v["--color-muted"]; v["--color-muted"]=fixContrast(v["--color-muted"], v["--color-void"], 4.5); fixed++;
       report.push(`${p.id}/${mode}: muted ${mutedC.toFixed(2)}->${contrast(hexRgb(v["--color-muted"]),voidC).toFixed(2)} (${before}->${v["--color-muted"]})`); }
+    // light mode: worst-case slate utility (slate-500 = ink@55% over void) must stay >= 4.5
+    if (mode==="light") {
+      const inkRgb=hexRgb(v["--color-brandtext"]);
+      const slate500=inkRgb.map((c,i)=>Math.round(c*0.55+hexRgb(v["--color-void"])[i]*0.45));
+      const sc=contrast(slate500,voidC);
+      if (sc<4.5) { v["--color-brandtext"]=fixContrast(v["--color-brandtext"], v["--color-void"], 5.2); fixed++;
+        report.push(`${p.id}/${mode}: slate-ramp would fail (${sc.toFixed(2)}) -> brandtext deepened to ${v["--color-brandtext"]}`); }
+    }
     // accents need 3:1 on void (UI) — deepen/lighten until pass
     for (const t of ["--color-cyanx","--color-violetx","--color-fuchsiax","--color-redx","--color-emerald","--color-amber"]) {
       if (!v[t]) continue;

@@ -32,13 +32,28 @@ function channels(variant: PaletteVariant, token: string): string {
 // Token -> generated channel var suffixes produced by tokenize.mjs.
 // We discover them from the live stylesheet instead of hardcoding: any
 // definition comment block carries them; simpler: we re-derive by scanning CSSOM once.
-/** Sync the browser-chrome color (theme-color meta) with the active palette's void. */
+/** Sync the browser-chrome color (theme-color meta) with the active palette's void, and in light
+ *  mode re-derive the slate ramp from the palette's ink so utility text stays AA on tinted paper. */
 function syncThemeColorMeta(mode: ThemeMode) {
   const p = mergeCustom(palettes.find((x) => x.id === currentPaletteId()) || palettes[0]);
-  const voidHex = (p.variants[mode] || {})["--color-void"];
-  if (!/^#[0-9a-fA-F]{6}$/.test(voidHex || "")) return;
-  const meta = document.querySelector('meta[name="theme-color"]:not([media])');
-  meta?.setAttribute("content", voidHex);
+  const v = p.variants[mode] || {};
+  const voidHex = v["--color-void"];
+  if (/^#[0-9a-fA-F]{6}$/.test(voidHex || "")) {
+    const meta = document.querySelector('meta[name="theme-color"]:not([media])');
+    meta?.setAttribute("content", voidHex);
+  }
+  const root = document.documentElement;
+  if (mode === "light") {
+    const ink = v["--color-brandtext"] || "#0f172a";
+    // slate-N ≈ ink washed toward paper; steps chosen so each stays >= 4.5:1 on the paper
+    const ramp: Array<[string, number]> = [["--color-slate-200", 82], ["--color-slate-300", 68], ["--color-slate-400", 55], ["--color-slate-500", 45], ["--color-slate-600", 40], ["--color-slate-700", 30]];
+    for (const [name, keep] of ramp) {
+      root.style.setProperty(name, `color-mix(in oklab, ${ink} ${100 - keep}%, ${v["--color-void"]})`);
+    }
+  } else {
+    // dark: restore the @theme defaults (no inline overrides)
+    for (const name of ["--color-slate-200", "--color-slate-300", "--color-slate-400", "--color-slate-500", "--color-slate-600", "--color-slate-700"]) root.style.removeProperty(name);
+  }
 }
 
 // hex -> [r,g,b]
@@ -180,7 +195,14 @@ export function restorePalette() {
 try {
   const m = getMode();
   syncThemeColorMeta(m);
-  window.addEventListener("astra-theme-change", () => syncThemeColorMeta(getMode()));
+  window.addEventListener("astra-theme-change", () => {
+    // sidebar dark/light flip: re-apply the ACTIVE palette for the NEW mode (channel vars +
+    // @theme overrides + chrome meta) so the switch is instant — no reload (owner 10-02 bug).
+    const id = currentPaletteId();
+    const p = palettes.find((x) => x.id === id);
+    if (p) applyPalette(mergeCustom(p), getMode());
+    syncThemeColorMeta(getMode());
+  });
 } catch { /* pre-DOM safety */ }
 
 // ---- realtime cross-device sync (server is truth; local edits push) ----
@@ -244,6 +266,10 @@ export function startThemeSync() {
   }, 5000);
   window.addEventListener("astra-palette-change", (e) => schedulePush({ palette: (e as CustomEvent).detail }));
   window.addEventListener("astra-chat-bg-change", (e) => schedulePush({ bg: (e as CustomEvent).detail }));
+  window.addEventListener("astra-theme-change", (e) => {
+    const m = (e as CustomEvent).detail;
+    if (m === "light" || m === "dark") schedulePush({ mode: m });
+  });
 }
 
 /** Chat backdrop preference (URL or uploaded path; empty = off). */

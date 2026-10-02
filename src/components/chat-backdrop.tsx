@@ -59,6 +59,12 @@ export function ChatBackdrop() {
     loadYtApi().then((YT) => {
       if (disposed || !ytRef.current || !YT?.Player) return;
       player = new YT.Player(YT_FRAME_ID, {
+        videoId: ytId,
+        playerVars: {
+          autoplay: 1, mute: 1, controls: 0, loop: 1, playlist: ytId,
+          playsinline: 1, rel: 0, iv_load_policy: 3, disablekb: 1, fs: 0,
+          origin: window.location.origin,
+        },
         events: {
           onReady: (e: any) => { e.target.mute(); e.target.playVideo(); },
           onStateChange: (e: any) => {
@@ -102,15 +108,9 @@ export function ChatBackdrop() {
       )}
       {bg.kind === "youtube" && ytId && (
         <div className="chat-backdrop-yt">
-          <iframe
-            ref={ytRef}
-            id={YT_FRAME_ID}
-            src={`https://www.youtube.com/embed/${ytId}?autoplay=1&mute=1&controls=0&loop=1&playlist=${ytId}&playsinline=1&modestbranding=1&rel=0&iv_load_policy=3&disablekb=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`}
-            title="Chat background video"
-            allow="autoplay; encrypted-media"
-            referrerPolicy="strict-origin-when-cross-origin"
-            tabIndex={-1}
-          />
+          {/* API-created player (no src iframe): zero unstarted chrome, instant muted autoplay,
+              seekTo(0) looping. host params let YT style its own embed legally. */}
+          <div ref={ytRef} id={YT_FRAME_ID} />
         </div>
       )}
       <div className="chat-backdrop-dim" style={{ backgroundColor: `rgba(0,0,0,${dim})` }} />
