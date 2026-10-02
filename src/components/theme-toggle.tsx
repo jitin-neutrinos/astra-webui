@@ -3,6 +3,7 @@ import { flushSync } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { wipeClipFromRect } from "@/lib/theme-wipe";
 import { LottieIcon, useLottieAssets } from "./theme-lottie";
+import { cn } from "@/lib/utils";
 
 const KEY = "astra-theme";
 
@@ -263,10 +264,16 @@ export function ThemeToggle({ expanded }: { expanded: boolean }) {
       aria-checked={light}
       aria-label={light ? "Switch to dark mode" : "Switch to light mode"}
       title={expanded ? (light ? "Dark mode" : "Light mode") : undefined}
-      className="group relative flex h-11 w-full items-center rounded-md text-slate-400 transition-colors duration-200 hover:bg-cyanx/10 hover:text-cyanx press-feedback"
+      className={cn(
+        "group relative flex h-11 w-full items-center rounded-md text-slate-400 transition-colors duration-200 hover:bg-cyanx/10 hover:text-cyanx press-feedback",
+        // Collapsed rail: the glyph IS the button — centred square with padding
+        // instead of the 48px edge-to-edge icon well, so the artwork sits inset
+        // in the 64px rail rather than filling it.
+        !expanded && "justify-center px-1.5",
+      )}
     >
-      <span className="grid h-full w-12 shrink-0 place-content-center">
-        <ThemeGlyph dark={light} />
+      <span className={cn("grid h-full shrink-0 place-content-center", expanded ? "w-12" : "w-full")}>
+        <ThemeGlyph dark={!light} />
       </span>
       {expanded && (
         <span className="truncate text-sm font-medium">
@@ -291,7 +298,7 @@ export function ThemeIconButton() {
       title={light ? "Switch to dark mode" : "Switch to light mode"}
       className="absolute right-4 top-4 z-[60] grid h-9 w-9 place-content-center rounded-[10px] border border-white/10 bg-black/30 text-slate-300 transition-colors duration-200 hover:border-cyanx/50 hover:bg-cyanx/10 hover:text-cyanx press-feedback"
     >
-      <ThemeGlyph dark={light} />
+      <ThemeGlyph dark={!light} />
     </button>
   );
 }
