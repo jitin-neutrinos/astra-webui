@@ -52,7 +52,14 @@
    Also `.chat-backdrop ~ *` is a SIBLING selector: the backdrop is mounted inside <main>,
    so it only lifts <main>'s children — it can never reach the sidebar. */
 .chat-backdrop ~ * { position: relative; z-index: 1; }
-aside#astra-sidebar { position: relative; z-index: 2; }
+/* Paint-order lift is DESKTOP-ONLY: below lg the aside is position:fixed (drawer);
+   an unconditional relative here overrides the fixed class (ID specificity) and
+   makes the translated drawer KEEP its 288px slot — the chat pane collapses to a
+   124px sliver on phones. On <lg the aside is fixed z-50 and cannot be buried by
+   the z-0 backdrop, so the lift is never needed there. */
+@media (min-width: 1024px) {
+  aside#astra-sidebar { position: relative; z-index: 2; }
+}
 @media (prefers-reduced-motion: reduce) {
   .chat-backdrop-media[autoplay], .chat-backdrop-yt iframe { /* autoplay attribute can't be styled; JS pause handled in component */ }
 }

@@ -1,3 +1,4 @@
+import { handleSysinfo } from "./sysinfo.mjs";
 // astra-webui server: static dist + password-only auth API. ponytail: one file, zero deps.
 import { createServer, request } from "node:http";
 import { handleHxProxy, handleWsUpgrade, forwardToUpstream, broadcastFrame, hermesCookieOrNull } from "./hermes-proxy.mjs";
@@ -456,6 +457,14 @@ const server = createServer(async (req, res) => {
     });
     req.pipe(proxyReq);
     return;
+  }
+
+  if (path.startsWith("/api/sysinfo/")) {
+    const cookies = {};
+    (req.headers.cookie || "").split(";").forEach((c) => { const i = c.indexOf("="); if (i > 0) cookies[c.slice(0, i).trim()] = c.slice(i + 1).trim(); });
+    if (!validToken(cookies[COOKIE])) { res.writeHead(401, { "content-type": "application/json" }); return res.end('{"error":"unauthenticated"}'); }
+    try { return await handleSysinfo(req, res, path); }
+    catch (err) { console.error("[sysinfo]", err?.message || err); if (!res.headersSent) { res.writeHead(500, { "content-type": "application/json" }); res.end('{"error":"sysinfo failed"}'); } }
   }
 
   if (path === "/api/media/transcode") {

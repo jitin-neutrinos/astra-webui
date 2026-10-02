@@ -59,16 +59,31 @@ export function ChatBackdrop() {
 
   const ytId = bg?.kind === "youtube" ? youtubeId(bg.src) : null;
 
-  // uploaded video: never stall — replay on end, resume when the tab returns
+  // uploaded video: never stall — replay on end, resume when the tab returns,
+  // and RESUME POSITION across reloads (global tracker keyed by source).
   useEffect(() => {
     if (bg?.kind !== "video") return;
     const v = videoRef.current;
     if (!v) return;
-    const replay = () => { v.currentTime = 0; void v.play().catch(() => {}); };
+    const key = `astra-bg-video-pos:${bg.src}`;
+    const saved = Number(localStorage.getItem(key) || "0");
+    if (saved > 1) { try { v.currentTime = saved; } catch { /* not seekable yet */ } }
+    let lastSave = 0;
+    const save = () => { try { localStorage.setItem(key, String(v.currentTime)); } catch { /* noop */ } };
+    const throttled = () => { if (Date.now() - lastSave > 3000) { lastSave = Date.now(); save(); } };
+    const replay = () => { v.currentTime = 0; try { localStorage.setItem(key, "0"); } catch {} void v.play().catch(() => {}); };
     const onVis = () => { if (!document.hidden && v.paused && !v.ended) void v.play().catch(() => {}); };
+    v.addEventListener("timeupdate", throttled);
+    v.addEventListener("pause", save);
     v.addEventListener("ended", replay);
     document.addEventListener("visibilitychange", onVis);
-    return () => { v.removeEventListener("ended", replay); document.removeEventListener("visibilitychange", onVis); };
+    return () => {
+      save();
+      v.removeEventListener("timeupdate", throttled);
+      v.removeEventListener("pause", save);
+      v.removeEventListener("ended", replay);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [bg?.kind, bg?.src]);
 
   // youtube: cut the loop gap via the IFrame API + resume after tab-hide
@@ -79,23 +94,32 @@ export function ChatBackdrop() {
     let lastState = -1;
     loadYtApi().then((YT) => {
       if (disposed || !ytRef.current || !YT?.Player) return;
+      const ytKey = `astra-bg-video-pos:yt:${ytId}`;
+      const startAt = Number(localStorage.getItem(ytKey) || "0");
       player = new YT.Player(YT_FRAME_ID, {
         videoId: ytId,
         playerVars: {
           autoplay: 1, mute: 1, controls: 0, loop: 1, playlist: ytId,
           playsinline: 1, rel: 0, iv_load_policy: 3, disablekb: 1, fs: 0,
+          start: Math.floor(startAt),
           origin: window.location.origin,
         },
         events: {
-          onReady: (e: any) => { e.target.mute(); e.target.playVideo(); },
+          onReady: (e: any) => { e.target.mute(); if (startAt > 1) e.target.seekTo(startAt, true); e.target.playVideo(); },
           onStateChange: (e: any) => {
             if (e.data === YT.PlayerState.ENDED && lastState === YT.PlayerState.PLAYING) {
               e.target.seekTo(0, true); e.target.playVideo();     // tight loop, no reload
+              try { localStorage.setItem(ytKey, "0"); } catch {}
             }
             lastState = e.data;
           },
         },
       });
+      // persist position every 5s so a reload resumes where it left off
+      const ytSave = window.setInterval(() => {
+        try { const t = player?.getCurrentTime?.(); if (typeof t === "number" && t > 0) localStorage.setItem(ytKey, String(Math.floor(t))); } catch { /* not ready */ }
+      }, 5000);
+      window.addEventListener("beforeunload", () => clearInterval(ytSave));
     });
     const onVis = () => {
       if (!document.hidden && player?.getPlayerState?.() === window.YT.PlayerState.PAUSED) player.playVideo();

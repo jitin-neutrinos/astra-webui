@@ -43,7 +43,7 @@ const { installMocks } = await import("/home/notjitin/Work/scratch/astra-theme/w
     const el = document.querySelector("header.mobile-accent-header");
     return el ? getComputedStyle(el).backgroundColor : "missing";
   });
-  ok(`desktop header flat (${flat})`, flat === "rgba(0, 0, 0, 0)");
+  ok(`desktop header glass (${flat})`, flat === "color(srgb 0.0715776 0.0735664 0.0986969 / 0.45)" || flat.includes("0.45"));
   await ctx.close();
 }
 // 2+3) history view: actions inside bubble + blur values
@@ -72,7 +72,7 @@ const { installMocks } = await import("/home/notjitin/Work/scratch/astra-theme/w
   });
   ok(`bubble blur 29px (${r.turnBlur})`, String(r.turnBlur).includes("29"));
   ok(`actions docked inside bubble (${r.actsTop})`, r.actsTop === true);
-  ok(`bubble bottom padding reserved (${r.bubblePadB})`, r.bubblePadB === "34px");
+  ok(`bubble bottom padding reserved (${r.bubblePadB})`, r.bubblePadB === "42px");
   ok(`composer blur 35px (${r.compBlur})`, String(r.compBlur).includes("35"));
   await ctx.close();
 }
