@@ -11,6 +11,27 @@ import { readChatBg, youtubeId, type ChatBg } from "../lib/theme-store";
 // (seekTo(0,false)+playVideo) cuts that to a fraction. Uploads loop natively.
 const YT_FRAME_ID = "chat-backdrop-yt-frame";
 declare global { interface Window { YT?: any; onYouTubeIframeAPIReady?: () => void } }
+
+/**
+ * A backdrop `src` may be (a) a URL, (b) a blob/object URL, or (c) the HOST
+ * FILESYSTEM PATH that the upload route returns. A <video>/<img> cannot load (c):
+ * the browser resolves `/home/notjitin/x.mp4` against the origin to
+ * `https://host/home/notjitin/x.mp4`, which hits the SPA fallback and returns
+ * index.html — so the element fails with MEDIA_ERR_SRC_NOT_SUPPORTED (code 4),
+ * videoWidth 0, and a black backdrop. ThemePanel.upload stores exactly that raw
+ * path (`applyBg({kind:'video', src: path})`), so every uploaded video died here.
+ * Rewrite an absolute host path into the streaming route that serves it.
+ */
+function bgSrc(src: string): string {
+  if (!src) return src;
+  if (/^(https?:|blob:|data:|media:)/i.test(src)) return src;
+  if (src.startsWith("/api/")) return src;
+  // absolute filesystem path -> the gateway's streaming route (Range-capable,
+  // which <video> needs for seeking)
+  if (src.startsWith("/")) return `/api/hx/files/stream?path=${encodeURIComponent(src)}`;
+  return src;
+}
+
 let ytApiPromise: Promise<any> | null = null;
 function loadYtApi(): Promise<any> {
   if (window.YT?.Player) return Promise.resolve(window.YT);
@@ -89,13 +110,13 @@ export function ChatBackdrop() {
   return (
     <div aria-hidden="true" className="chat-backdrop" data-kind={bg.kind} data-theme-engine-new>
       {bg.kind === "image" && (
-        <img src={bg.src} alt="" className="chat-backdrop-media" draggable={false} />
+        <img src={bgSrc(bg.src)} alt="" className="chat-backdrop-media" draggable={false} />
       )}
       {bg.kind === "video" && (
         <video
           ref={videoRef}
           className="chat-backdrop-media"
-          src={bg.src}
+          src={bgSrc(bg.src)}
           autoPlay
           muted
           loop

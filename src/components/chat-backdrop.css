@@ -42,10 +42,17 @@
   inset: 0;
 }
 /* keep ALL shell content above the fixed backdrop: the chat pane (z-10 already)
-   AND the sidebar, which is a shell sibling outside this pane. The backdrop is
-   pointer-events:none, but paint order still buries static-positioned siblings. */
+   AND the sidebar, which lives OUTSIDE this pane. The backdrop is pointer-events:none,
+   but paint order still buries static-positioned siblings.
+   Trap: `.app-shell > aside#astra-sidebar` (the previous guard) matched ZERO elements —
+   the aside is nested one level deeper, inside `div.flex.min-h-0.flex-1`, so the child
+   combinator never fired and the fixed z-0 backdrop painted straight over the whole
+   sidebar. A descendant selector is what this needs; never assume a direct-child path
+   you have not verified in the live DOM (assert `document.querySelectorAll(sel).length`).
+   Also `.chat-backdrop ~ *` is a SIBLING selector: the backdrop is mounted inside <main>,
+   so it only lifts <main>'s children — it can never reach the sidebar. */
 .chat-backdrop ~ * { position: relative; z-index: 1; }
-.app-shell > aside#astra-sidebar { z-index: 2; }
+aside#astra-sidebar { position: relative; z-index: 2; }
 @media (prefers-reduced-motion: reduce) {
   .chat-backdrop-media[autoplay], .chat-backdrop-yt iframe { /* autoplay attribute can't be styled; JS pause handled in component */ }
 }
