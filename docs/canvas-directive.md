@@ -36,7 +36,7 @@ answer. 2–4 cards in one reply is normal. The anti-slop rule is about
 *fragmenting a single idea* across five blocks, never about *using enough
 cards*.
 
-### Block types (closed set — 22)
+### Block types (closed set — 26)
 
 | type | shape | use for |
 |---|---|---|
@@ -62,10 +62,35 @@ cards*.
 | `terminal` | `{title?, command?, lines:[{text, tone?:"stdout"\|"stderr"\|"info"\|"success"\|"dim"}], exitCode?}` | command + output evidence card; also accepts plain-string `lines` |
 | `badges` | `{items:[{label, tone?:"info"\|"warn"\|"success"\|"danger"\|"neutral"}]}` | status chip row: service health, entity tags, quick triage |
 | `divider` | `{label?}` | labeled section separator inside a long card |
+| `spreadsheet` | `{title?, filename?, sheets?, columns?, rows:(string\|number)[][], header?}` | **editable** tabular data; Download → `.xlsx`. Aliases: `sheet`, `grid`, `excel`, `workbook` |
+| `slides` | `{title?, filename?, slides:[{heading, bullets?, note?, layout?}]}` | **editable** deck/outline; Download → `.pptx`. Aliases: `deck`, `presentation` |
+| `document` | `{title?, filename?, content:[{kind?:"p"\|"h2"\|"h3"\|"li"\|"quote", text}]}` | **editable** structured prose; Download → `.docx`. Aliases: `doc`, `word` |
+| `text` | `{title?, filename?, content, language?}` | **editable** plain text/markdown; Download → `.md`/`.txt`. Aliases: `plain-text`, `textarea` |
 
 Run consecutive `kpi` blocks together (up to 4) and they render as a single
 KPI row; `progress` blocks group the same way. Anything invalid degrades to a
 plain code block — never silently drop data to make a block work.
+
+### Editable blocks — reach for these when the user may want to CHANGE or EXPORT
+
+The last four are not decoration. Each renders **embedded**, expands to
+**fullscreen** via a maximize button, and has a working **Download** — and that
+Download writes the file on the host first, so it works on web *and* the Android
+app (an in-memory `blob:` download is silently refused by the APK).
+
+Choose on the ARTIFACT, not on size:
+
+| instead of | use | when |
+|---|---|---|
+| `table` | **`spreadsheet`** | the numbers may be adjusted, or taken away as `.xlsx` |
+| `steps` / `compare` walkthrough | **`slides`** | you are delivering a deck, not explaining one |
+| prose in your reply | **`document`** | it is a real doc they should be able to revise |
+| read-only `code` | **`text`** | it is an editable note, script or config |
+
+A 3-row budget the user will adjust is a `spreadsheet`, not a `table`. But do NOT
+reach for these for read-only reference material — `table`/`keyvalue` render
+lighter and copy cleaner. Emit plain JSON (cells are scalars `"12"` / `12` / `""`),
+never an engine-specific object.
 
 ### Fence discipline (read this before emitting a `code` block)
 
@@ -117,7 +142,60 @@ Here is where the time went last week.
 ```
 ````
 
-**3. Workflow or architecture → diagram**
+**3. Editable data the user may adjust or export → spreadsheet / slides / document / text**
+
+These carry a maximize button (fullscreen) and a Download button, so they are the
+right answer whenever the artifact is meant to be *changed or taken away*.
+
+````
+Here are the numbers — edit any cell, or hit Download for the .xlsx.
+
+```astra-canvas
+{ "v": 1, "title": "Q3 regional revenue", "blocks": [
+  { "type": "spreadsheet", "filename": "q3-revenue.xlsx",
+    "rows": [
+      ["Region", "Q1", "Q2", "Q3", "Growth"],
+      ["EMEA", 120, 138, 171, "+24%"],
+      ["APAC", 95, 104, 128, "+35%"],
+      ["AMER", 210, 219, 244, "+16%"]
+    ] }
+] }
+```
+````
+
+````
+A deck for Friday — walk it with Prev/Next, download the .pptx.
+
+```astra-canvas
+{ "v": 1, "title": "Canvas v4 walkthrough", "blocks": [
+  { "type": "slides", "filename": "walkthrough.pptx", "slides": [
+    { "heading": "Why blocks, not prose", "layout": "title" },
+    { "heading": "What shipped", "bullets": ["Four editable surfaces", "Fullscreen on every block", "Server-side download"] },
+    { "heading": "The Android catch", "bullets": ["blob: URLs are refused", "Bytes go to disk first"] }
+  ] }
+] }
+```
+````
+
+````
+The brief as a document you can revise and export as .docx.
+
+```astra-canvas
+{ "v": 1, "blocks": [
+  { "type": "document", "title": "Release brief", "filename": "release-brief.docx", "content": [
+    { "kind": "h2", "text": "Canvas v4" },
+    { "kind": "p",  "text": "Four editable, downloadable blocks with fullscreen expansion." },
+    { "kind": "li", "text": "Spreadsheet — edit cells, download .xlsx" },
+    { "kind": "li", "text": "Slides — navigate a deck, download .pptx" }
+  ] }
+] }
+```
+````
+
+A `text` block is the same idea for plain content:
+`{ "type": "text", "title": "deploy-notes.md", "content": "1. build\n2. restart\n3. verify" }`
+
+**4. Workflow or architecture → diagram**
 
 ````
 ```astra-canvas
@@ -147,6 +225,10 @@ Here is where the time went last week.
 - **A command or snippet the reader may run** → `code`; add a `callout` when it
   is destructive or needs consent.
 - **What happened, in order** → `timeline` with `time` and `status` per entry.
+- **Data or prose the user may want to change, or take away as a file** →
+  `spreadsheet` / `slides` / `document` / `text`. These expand to fullscreen and
+  download as real `.xlsx` / `.pptx` / `.docx` / `.md`, on web and Android alike.
+  Use them whenever the artifact is a working document rather than a read-out.
 - **A property/fact list** (version facts, config readouts, object summaries)
   → `keyvalue`; set `mono:true` on hashes, versions and paths.
 - **A change worth reading line by line** → `diff` with `hunks` (or raw
