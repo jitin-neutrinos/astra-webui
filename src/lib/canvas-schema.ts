@@ -23,10 +23,13 @@ export interface KpiBlock {
 
 export interface ChartBlock {
   type: "chart";
-  chart: "line" | "area" | "bar" | "radial" | "pie" | "donut" | "stack";
+  chart: "line" | "area" | "bar" | "radial" | "pie" | "donut" | "stack"
+    // v5: these four ride the ALREADY-INSTALLED recharts 2.15 components —
+    // sankey/treemap/funnel/radar/scatter — so zero new bytes ship.
+    | "sankey" | "treemap" | "funnel" | "radar" | "scatter";
   title?: string;
   labels?: string[];
-  series: { name: string; points: number[] }[];
+  series: { name: string; points: number[]; items?: { name: string; value: number }[] }[];
 }
 
 export interface TableBlock {
@@ -243,6 +246,39 @@ export interface ReactiveExtra {
   visible?: unknown;
 }
 
+
+// ── knowledge graph (v5) — ported from the comindash dashboard ───────────────
+// Deterministic force layout (d3-force port, no dependency): same graph → same
+// picture every visit, so people build a mental map. Node KIND separates by
+// radius + opacity tier + shape, never hue (owner law: one accent).
+
+export interface GraphNode {
+  id: string;
+  label: string;
+  /** Free-form grouping; drives the cross-filter chips and the opacity tier. */
+  kind?: string;
+  weight?: number;
+  detail?: string;
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
+  /** "asserted" (dashed, analyst-added) vs anything else (solid, measured). */
+  kind?: string;
+  label?: string;
+  weight?: number;
+}
+
+export interface GraphBlock {
+  type: "graph";
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  title?: string;
+  /** Render height clamp (320..720); the card fits it, fullscreen uses more. */
+  height?: number;
+}
+
 export interface ImageBlock {
   type: "image";
   /** Host file path or /api/… URL; mapped through linkHref(). */
@@ -332,7 +368,7 @@ export type CanvasBlock =
   | AccordionBlock | TerminalBlock | BadgesBlock | DividerBlock
   | SpreadsheetBlock | SlidesBlock | DocumentBlock | TextBlock
   | SliderBlock | SelectBlock | MultiSelectBlock | SegmentedBlock | ToggleBlock | SearchBlock | DataBlock
-  | ImageBlock | GalleryBlock | VideoBlock;
+  | GraphBlock | ImageBlock | GalleryBlock | VideoBlock;
 
 export interface CanvasSpec {
   v: 1;
@@ -361,9 +397,9 @@ const BLOCK_TYPES = new Set([
   "spreadsheet", "slides", "document", "text",
   // v5 reactive + media
   "slider", "select", "multiselect", "segmented", "toggle", "search", "data",
-  "image", "gallery", "video",
+  "graph", "image", "gallery", "video",
 ]);
-const CHART_KINDS = new Set(["line", "area", "bar", "radial", "pie", "donut", "stack"]);
+const CHART_KINDS = new Set(["line", "area", "bar", "radial", "pie", "donut", "stack", "sankey", "treemap", "funnel", "radar", "scatter"]);
 const TONES = new Set(["info", "warn", "success", "danger"]);
 const TRENDS = new Set(["up", "down", "flat"]);
 
@@ -372,7 +408,10 @@ const TRENDS = new Set(["up", "down", "flat"]);
 // real fences showed the model reaches for these near-miss names constantly.
 const TYPE_ALIASES: Record<string, string> = {
   metric: "kpi", stat: "kpi", kpis: "kpi",
-  graph: "chart", plot: "chart",
+  // NB: `graph` is a real block type now (v5) — it must NOT alias to chart;
+  // validateBlock checks TYPE_ALIASES before BLOCK_TYPES, so a real type needs
+  // no entry here. `plot` stays an alias for a chart.
+  plot: "chart",
   flowchart: "diagram", flow: "diagram", map: "diagram", "graph-map": "diagram",
   list: "checklist", todo: "checklist", tasks: "checklist",
   "ordered-list": "steps", process: "steps",
@@ -410,6 +449,9 @@ const TYPE_ALIASES: Record<string, string> = {
   picture: "image", img: "image", screenshot: "image", thumbnail: "image",
   comparison: "gallery", images: "gallery", photos: "gallery",
   clip: "video", movie: "video", mp4: "video", "video-clip": "video",
+  // v5 graph
+  network: "graph", "knowledge-graph": "graph", relationmap: "graph", "force-graph": "graph",
+  topology: "graph", nodegraph: "graph", websvg: "graph",
 };
 
 // kpi `trend` is a DIRECTION. Models reuse severity/status words for it
@@ -447,6 +489,11 @@ export function validateBlock(b: any): CanvasBlock | null {
     else if (kind === "lines") b.chart = "line";
     else if (kind === "areas") b.chart = "area";
     else if (kind === "gauge" || kind === "circular-bar") b.chart = "radial";
+    else if (kind === "flow" || kind === "flow-diagram") b.chart = "sankey";
+    else if (kind === "sunburst" || kind === "icicle" || kind === "rectangle-treemap") b.chart = "treemap";
+    else if (kind === "conversion" || kind === "pyramid") b.chart = "funnel";
+    else if (kind === "spider" || kind === "polar") b.chart = "radar";
+    else if (kind === "bubble" || kind === "xy" || kind === "points") b.chart = "scatter";
   }
   // diagram layout alias: a `flowchart` block usually omits `layout`
   if (b.type === "diagram" && b.layout == null) {
@@ -472,14 +519,70 @@ export function validateBlock(b: any): CanvasBlock | null {
       return { type: "kpi", label: b.label, value: b.value, delta: b.delta, trend: b.trend, spark };
     case "chart": {
       if (!CHART_KINDS.has(b.chart)) return null;
+      const chart = b.chart;
+      const NEW_KINDS = chart === "sankey" || chart === "treemap" || chart === "funnel" ||
+        chart === "radar" || chart === "scatter";
+      if (b.labels != null && !isStrArr(b.labels)) return null;
+
+      // v5 shapes. A model reaches for the natural vocabulary per chart
+      // (sankey nodes/links, treemap items, funnel stages), not for a flat
+      // series — normalise all of them to the canonical series form here so the
+      // renderer has ONE shape to draw and a near-miss shape never degrades.
+      if (NEW_KINDS && (!Array.isArray(b.series) || b.series.length === 0)) {
+        const items = Array.isArray(b.items) ? b.items
+          : Array.isArray(b.stages) ? b.stages
+          : Array.isArray(b.nodes) && b.nodes.every((n: any) => n && typeof n === "object" && isNum(n.value))
+            ? b.nodes : null;
+        if (items && items.length > 0) {
+          const labels: string[] = [];
+          const points: number[] = [];
+          const kids: { name: string; value: number }[] = [];
+          for (const it of items) {
+            const label = isStr(it) ? it : isStr(it.label) ? it.label : isStr(it.name) ? it.name : isStr(it.stage) ? it.stage : null;
+            const value = isNum(it) ? it : isNum(it.value) ? it.value : isNum(it.count) ? it.count : null;
+            if (label == null || value == null) return null;
+            labels.push(label);
+            points.push(value);
+            kids.push({ name: label, value });
+          }
+          const series = [{ name: isStr(b.title) ? b.title : chart, points, items: kids }];
+          return { type: "chart", chart, title: isStr(b.title) ? b.title : undefined, labels, series };
+        }
+        // sankey with explicit nodes + links
+        if (chart === "sankey" && Array.isArray(b.nodes) && Array.isArray(b.links)) {
+          const nodeNames: string[] = [];
+          const index = new Map<string, number>();
+          for (const n of b.nodes) {
+            const nm = isStr(n) ? n : isStr(n?.id) ? n.id : isStr(n?.name) ? n.name : null;
+            if (nm == null) return null;
+            index.set(nm, nodeNames.length);
+            nodeNames.push(nm);
+          }
+          const vals = nodeNames.map(() => 0);
+          for (const l of b.links) {
+            if (!l || typeof l !== "object") return null;
+            const a = isStr(l.source) ? l.source : isStr(l.from) ? l.from : null;
+            const z = isStr(l.target) ? l.target : isStr(l.to) ? l.to : null;
+            const v = isNum(l.value) ? l.value : 1;
+            if (a == null || z == null || !index.has(a) || !index.has(z)) continue;
+            vals[index.get(a)!] += v;
+            vals[index.get(z)!] += v;
+          }
+          return { type: "chart", chart, title: isStr(b.title) ? b.title : undefined, labels: nodeNames, series: [{ name: "flow", points: vals }] };
+        }
+      }
+
       if (!Array.isArray(b.series) || b.series.length === 0) return null;
-      const series: { name: string; points: number[] }[] = [];
+      const series: { name: string; points: number[]; items?: { name: string; value: number }[] }[] = [];
       for (const s of b.series) {
         if (!s || !isStr(s.name) || !Array.isArray(s.points) || !s.points.every(isNum)) return null;
-        series.push({ name: s.name, points: s.points });
+        const kids = Array.isArray(s.items)
+          ? s.items.filter((it: any) => it && (isStr(it.name) || isStr(it.label)) && isNum(it.value))
+              .map((it: any) => ({ name: isStr(it.name) ? it.name : it.label, value: it.value }))
+          : undefined;
+        series.push({ name: s.name, points: s.points, items: kids });
       }
-      if (b.labels != null && !isStrArr(b.labels)) return null;
-      return { type: "chart", chart: b.chart, title: isStr(b.title) ? b.title : undefined, labels: b.labels, series };
+      return { type: "chart", chart, title: isStr(b.title) ? b.title : undefined, labels: b.labels, series };
     }
     case "table":
       if (!isStrArr(b.columns) || !Array.isArray(b.rows) || !b.rows.every(isStrArr)) return null;
@@ -945,6 +1048,43 @@ export function validateBlock(b: any): CanvasBlock | null {
         rows: rows.map((r) => (r.length < width ? [...r, ...new Array(width - r.length).fill(null)] : r)),
         header: b.header === false ? false : true,
       };
+    }
+    case "graph": {
+      if (!Array.isArray(b.nodes) || b.nodes.length === 0) return null;
+      if (b.nodes.length > 400) return null; // a card is not a data dump
+      const nodes: GraphNode[] = [];
+      const ids = new Set<string>();
+      for (const n of b.nodes) {
+        if (!n || !isStr(n.id) || !isStr(n.label)) return null;
+        if (ids.has(n.id)) continue; // duplicate ids collapse (last label wins)
+        ids.add(n.id);
+        nodes.push({
+          id: n.id,
+          label: n.label,
+          kind: isStr(n.kind) ? n.kind : undefined,
+          weight: isNum(n.weight) ? Math.max(0, n.weight) : 1,
+          detail: isStr(n.detail) ? n.detail : undefined,
+        });
+      }
+      if (nodes.length === 0) return null;
+      // A dangling edge is worse than no edge (comindash drops them, not the graph).
+      const edges: GraphEdge[] = [];
+      const rawEdges = Array.isArray(b.edges) ? b.edges : [];
+      for (const e of rawEdges) {
+        if (!e || typeof e !== "object") continue;
+        const src = isStr(e.source) ? e.source : isStr(e.from) ? e.from : null;
+        const tgt = isStr(e.target) ? e.target : isStr(e.to) ? e.to : null;
+        if (!src || !tgt || !ids.has(src) || !ids.has(tgt)) continue;
+        edges.push({
+          source: src,
+          target: tgt,
+          kind: isStr(e.kind) ? e.kind : undefined,
+          label: isStr(e.label) ? e.label : undefined,
+          weight: isNum(e.weight) ? e.weight : 1,
+        });
+      }
+      const height = isNum(b.height) ? Math.min(720, Math.max(320, b.height)) : undefined;
+      return { type: "graph", nodes, edges, title: isStr(b.title) ? b.title : undefined, height };
     }
     case "image": {
       const src = b.src ?? b.path ?? b.url;

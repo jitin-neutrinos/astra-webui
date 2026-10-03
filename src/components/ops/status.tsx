@@ -5,7 +5,7 @@ export type OpsStatus = "healthy" | "degraded" | "auth-gated" | "unreachable" | 
 export const STATUS_META: Record<OpsStatus, { label: string; dot: string; text: string; note?: string }> = {
   healthy:     { label: "Healthy",     dot: "bg-violetx",  text: "text-violetx" },
   degraded:    { label: "Degraded",    dot: "bg-fuchsiax", text: "text-fuchsiax" },
-  "auth-gated": { label: "Auth-gated", dot: "bg-cyanx",    text: "text-cyanx" },
+  "auth-gated": { label: "Auth-gated", dot: "bg-accent",    text: "text-accent" },
   unreachable: { label: "Unreachable", dot: "bg-redx",     text: "text-redx" },
   disabled:    { label: "Disabled",    dot: "bg-muted",    text: "text-muted" },
   inactive:    { label: "Inactive",    dot: "bg-muted",    text: "text-muted" },

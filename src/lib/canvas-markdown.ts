@@ -11,6 +11,11 @@ function blockToMd(b: CanvasBlock): string {
     }
     case "chart": {
       const head = `**${b.title || b.chart + " chart"}**`;
+      if (b.chart === "sankey" || b.chart === "treemap" || b.chart === "funnel") {
+        const cols = b.labels ?? [];
+        return [head, "", `| ${cols.join(" | ")} |`, `|${cols.map(() => "---").join("|")}|`,
+          ...b.series.map((sr) => `| ${sr.points.join(" | ")} |`)].join("\n");
+      }
       const cols = (b.labels || b.series[0].points.map((_, i) => String(i + 1))).join(" | ");
       const rows = b.series.map((s) => `${s.name} | ${s.points.join(" | ")}`);
       return [head, "", `| label | ${cols} |`, `|---|${cols.split(" | ").map(() => "---").join("|")}|`, ...rows.map((r) => `| ${r} |`)].join("\n");
@@ -131,6 +136,17 @@ function blockToMd(b: CanvasBlock): string {
       const head = `| ${cols.join(" | ")} |`;
       const sep = `|${cols.map(() => "---").join("|")}|`;
       return [head, sep, ...body.map((r) => `| ${r.map((c) => (c == null ? "" : String(c))).join(" | ")} |`)].join("\n");
+    }
+    case "graph": {
+      const kinds = [...new Set(b.nodes.map((n) => n.kind || "node"))];
+      const top = [...b.nodes].sort((a, z) => (z.weight ?? 1) - (a.weight ?? 1)).slice(0, 8);
+      const byId = new Map(b.nodes.map((n) => [n.id, n.label]));
+      return [
+        b.title ? `**${b.title}**` : "",
+        `${b.nodes.length} entities · ${b.edges.length} connections · ${kinds.length} kinds`,
+        ...top.map((n) => `- **${n.label}**${n.kind && n.kind !== "node" ? ` (${n.kind})` : ""} — ${n.weight ?? 1}${n.detail ? ` · ${n.detail}` : ""}`),
+        ...b.edges.slice(0, 12).map((e) => `- ${byId.get(e.source) ?? e.source} → ${byId.get(e.target) ?? e.target}${e.label ? ` (${e.label})` : ""}`),
+      ].filter(Boolean).join("\n");
     }
     case "image":
       return `![${b.alt || ""}](${b.src})${b.caption ? `\n\n${b.caption}` : ""}`;

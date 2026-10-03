@@ -105,7 +105,7 @@ export function AudioPlayer({ src, name }: { src: string; name: string }) {
         type="button" 
         onClick={toggle}
         aria-label={playing ? "Pause" : "Play"}
-        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-pill)] bg-[var(--surface-step-2)] text-[var(--color-cyanx)] hover:bg-[var(--surface-overlay)] transition-colors duration-[var(--motion-fast)]"
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-pill)] bg-[var(--surface-step-2)] text-[var(--color-accent)] hover:bg-[var(--surface-overlay)] transition-colors duration-[var(--motion-fast)]"
       >
         {playing ? <Pause className="h-5 w-5 fill-current" /> : <Play className="h-5 w-5 fill-current translate-x-[1px]" />}
       </button>
@@ -121,7 +121,7 @@ export function AudioPlayer({ src, name }: { src: string; name: string }) {
                 key={i} 
                 className={cn(
                   "w-1 rounded-sm transition-colors duration-100",
-                  filled ? "bg-[var(--color-cyanx)]" : "bg-white/10"
+                  filled ? "bg-[var(--color-accent)]" : "bg-white/10"
                 )}
                 style={{ height: `${h}px` }}
               />

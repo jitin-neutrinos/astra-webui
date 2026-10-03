@@ -9,7 +9,7 @@
 
 import * as React from "react";
 import { useEffect, useMemo, useRef } from "react";
-import { formatTerminal } from "../../lib/term-format";
+import { formatTerminal, unwrapToolEnvelope } from "../../lib/term-format";
 
 import * as CollapsiblePrimitive from "@radix-ui/react-collapsible";
 import {
@@ -203,7 +203,7 @@ function AiToolCallHeader({ children, className }: AiToolCallHeaderProps) {
     <CollapsiblePrimitive.Trigger
       data-slot="ai-tool-call-header"
       className={cn(
-        "flex w-full items-center gap-2 px-2 py-1.5 text-left text-[12.5px] font-medium transition-colors hover:bg-white/[0.03] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyanx/40 rounded-md min-w-0",
+        "flex w-full items-center gap-2 px-2 py-1.5 text-left text-[12.5px] font-medium transition-colors hover:bg-white/[0.03] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/40 rounded-md min-w-0",
         className,
       )}
     >
@@ -230,7 +230,7 @@ function AiToolCallHeader({ children, className }: AiToolCallHeaderProps) {
     <CollapsiblePrimitive.Trigger
       data-slot="ai-tool-call-header"
       className={cn(
-        "flex w-full items-center gap-2 px-2 py-1.5 text-left text-[12.5px] font-medium transition-colors hover:bg-white/[0.03] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyanx/40 rounded-md min-w-0",
+        "flex w-full items-center gap-2 px-2 py-1.5 text-left text-[12.5px] font-medium transition-colors hover:bg-white/[0.03] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/40 rounded-md min-w-0",
         className,
       )}
     >
@@ -344,10 +344,20 @@ function TerminalWindow({ title, text, maxHeight, exitCode, status }: {
 }) {
   const [copied, setCopied] = React.useState(false);
   // Copy the SANITIZED text: pasting escape codes into another terminal is a different bug.
-  const { lines, omitted, summary, clean } = React.useMemo(() => {
-    const r = formatTerminal(text || "", { maxLines: 400 });
-    return { lines: r.lines, omitted: r.omitted, summary: r.summary, clean: r.lines.map((l) => l.text).join("\n") };
+  //
+  // UNWRAP FIRST: `terminal` / `execute_code` results arrive persisted as a JSON envelope
+  // ({"output": "...", "exit_code": 0}). Formatting that verbatim renders the ENVELOPE —
+  // a `"output":` key line, the escaped payload on the next line, and an `exit_code`
+  // line that is not output at all. That is the "output text is duplicated 2-3 times"
+  // report (owner, 2026-10-03). Unwrapping here fixes every card that shows raw tool
+  // output, because TerminalWindow is the single choke point they all render through.
+  // The envelope's exit code becomes the window's status badge rather than body text.
+  const { lines, omitted, summary, clean, envExit } = React.useMemo(() => {
+    const un = unwrapToolEnvelope(text || "");
+    const r = formatTerminal(un.text, { maxLines: 400 });
+    return { lines: r.lines, omitted: r.omitted, summary: r.summary, clean: r.lines.map((l) => l.text).join("\n"), envExit: un.exitCode };
   }, [text]);
+  const effExit = exitCode != null ? exitCode : envExit;
   const onCopy = () => {
     void copyText(clean).then((ok) => {
       if (!ok) return;
@@ -355,14 +365,18 @@ function TerminalWindow({ title, text, maxHeight, exitCode, status }: {
       window.setTimeout(() => setCopied(false), 1600);
     });
   };
-  const shown = status === "error" ? "error" : (exitCode != null && exitCode !== 0) ? `exit ${exitCode}` : status === "running" ? "running" : null;
+  // Exit badge reads the SEGMENT's exit code first, then the envelope's — so a stored
+  // `{"output": ..., "exit_code": 1}` surfaces its failure instead of printing "exit_code"
+  // as a line of output.
+  const bad = status === "error" || (effExit != null && effExit !== 0);
+  const shown = status === "error" ? "error" : (effExit != null && effExit !== 0) ? `exit ${effExit}` : status === "running" ? "running" : null;
   return (
     <div className="ai-term" data-slot="ai-terminal" data-status={status || undefined}>
       <div className="ai-term-bar">
         <span className="ai-term-dots" aria-hidden="true"><i /><i /><i /></span>
         <span className="ai-term-title">{title || "terminal"}</span>
         {summary && <span className="ai-term-summary" title="result size">{summary}</span>}
-        {shown && <span className={cn("ai-term-status", status === "error" || (exitCode != null && exitCode !== 0) ? "is-err" : status === "running" ? "is-run" : "is-ok")}>{shown}</span>}
+        {shown && <span className={cn("ai-term-status", bad ? "is-err" : status === "running" ? "is-run" : "is-ok")}>{shown}</span>}
         <button type="button" className={cn("ai-term-copy", copied && "is-copied")} onClick={onCopy}
           aria-label={copied ? "Copied" : "Copy output"} title={copied ? "Copied" : "Copy output"}>
           {copied ? <Check className="size-2.5" /> : <Copy className="size-2.5" />}

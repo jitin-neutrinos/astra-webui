@@ -27,7 +27,7 @@ export function HarnessPage({ onBack }: { onBack: () => void }) {
     <div className="flex h-full w-full flex-col bg-void text-brandtext overflow-hidden">
       <div className="flex h-14 shrink-0 items-center justify-between border-b border-white/[0.07] px-4 md:px-6">
         <button onClick={onBack} className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-white/5 md:hidden shrink-0" aria-label="Back"><ArrowLeft className="h-4 w-4" /></button>
-        <div className="flex items-center gap-2 min-w-0"><Terminal className="h-5 w-5 text-cyanx shrink-0" /><h1 className="truncate font-display text-base font-semibold">Harness — Tools &amp; Agents</h1></div>
+        <div className="flex items-center gap-2 min-w-0"><Terminal className="h-5 w-5 text-accent shrink-0" /><h1 className="truncate font-display text-base font-semibold">Harness — Tools &amp; Agents</h1></div>
       </div>
       <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24">
         <div className="mx-auto max-w-4xl space-y-6">
@@ -35,7 +35,7 @@ export function HarnessPage({ onBack }: { onBack: () => void }) {
 
           {/* Skills */}
           <section className="rounded-2xl border border-white/[0.08] bg-midnight/50 p-5 backdrop-blur-md">
-            <h2 className="flex items-center gap-2 text-sm font-display font-semibold mb-3"><Braces className="h-4 w-4 text-cyanx" /> Skills</h2>
+            <h2 className="flex items-center gap-2 text-sm font-display font-semibold mb-3"><Braces className="h-4 w-4 text-accent" /> Skills</h2>
             {d.error ? (
               <div className="text-xs text-redx">{d.error}</div>
             ) : (
@@ -51,7 +51,7 @@ export function HarnessPage({ onBack }: { onBack: () => void }) {
                     <div key={s.name} className="flex items-center justify-between rounded-lg bg-white/[0.04] px-3 py-2">
                       <span className="font-medium text-brandtext truncate">{s.name}</span>
                       <div className="flex items-center gap-2 text-muted tabular-nums">
-                        <span className={s.enabled === false ? "text-fuchsiax" : (s.usage === 0 ? "text-muted" : "text-cyanx")}>{s.status || "—"}</span>
+                        <span className={s.enabled === false ? "text-fuchsiax" : (s.usage === 0 ? "text-muted" : "text-accent")}>{s.status || "—"}</span>
                         <span className="text-brandtext font-medium">{s.usage || 0}</span>
                         <span className="text-xs">calls</span>
                       </div>
@@ -67,7 +67,7 @@ export function HarnessPage({ onBack }: { onBack: () => void }) {
 
           {/* MCP */}
           <section className="rounded-2xl border border-white/[0.08] bg-midnight/50 p-5 backdrop-blur-md">
-            <h2 className="flex items-center gap-2 text-sm font-display font-semibold mb-3"><Plug className="h-4 w-4 text-cyanx" /> MCP Servers</h2>
+            <h2 className="flex items-center gap-2 text-sm font-display font-semibold mb-3"><Plug className="h-4 w-4 text-accent" /> MCP Servers</h2>
             <div className="overflow-x-auto">
               <table className="w-full text-xs md:text-sm">
                 <thead><tr className="text-muted text-left"><th>Name</th><th>Transport</th><th>Enabled</th><th>Source</th><th>Tools</th></tr></thead>

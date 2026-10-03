@@ -42,7 +42,7 @@ export function ApprovalsPage({ onBack }: { onBack: () => void }) {
             <ArrowLeft className="h-4 w-4" />
           </button>
           <div className="flex items-center gap-2 min-w-0">
-            <ShieldCheck className="h-5 w-5 text-cyanx" />
+            <ShieldCheck className="h-5 w-5 text-accent" />
             <h1 className="truncate font-display text-base font-semibold">Approvals & Reviews</h1>
           </div>
         </div>
@@ -50,8 +50,8 @@ export function ApprovalsPage({ onBack }: { onBack: () => void }) {
 
       <div className="flex shrink-0 justify-center border-b border-white/[0.07] p-4 bg-midnight/30 md:sticky md:top-0 z-10">
         <div className="flex rounded-[10px] bg-white/[0.04] p-1 w-full max-w-sm">
-          <button onClick={() => { setTab("approval"); setLoading(true); }} className={cn("flex-1 rounded-[8px] px-4 py-1.5 text-sm font-medium transition-colors", tab === "approval" ? "bg-cyanx text-void" : "text-slate-400 hover:text-slate-200")}>Approvals</button>
-          <button onClick={() => { setTab("clarify"); setLoading(true); }} className={cn("flex-1 rounded-[8px] px-4 py-1.5 text-sm font-medium transition-colors", tab === "clarify" ? "bg-cyanx text-void" : "text-slate-400 hover:text-slate-200")}>Reviews</button>
+          <button onClick={() => { setTab("approval"); setLoading(true); }} className={cn("flex-1 rounded-[8px] px-4 py-1.5 text-sm font-medium transition-colors", tab === "approval" ? "bg-accent text-void" : "text-slate-400 hover:text-slate-200")}>Approvals</button>
+          <button onClick={() => { setTab("clarify"); setLoading(true); }} className={cn("flex-1 rounded-[8px] px-4 py-1.5 text-sm font-medium transition-colors", tab === "clarify" ? "bg-accent text-void" : "text-slate-400 hover:text-slate-200")}>Reviews</button>
         </div>
       </div>
 
@@ -160,7 +160,7 @@ function GateCard({ gate, onAnswered }: { gate: any, onAnswered: () => void }) {
           >
             $ {gate.command}
           </div>
-          <button onClick={() => setExpanded(!expanded)} className="mt-1.5 text-[11px] text-slate-400 hover:text-cyanx flex items-center gap-1">
+          <button onClick={() => setExpanded(!expanded)} className="mt-1.5 text-[11px] text-slate-400 hover:text-accent flex items-center gap-1">
              {expanded ? "Hide full command" : "Show full command"}
           </button>
         </div>
@@ -179,7 +179,7 @@ function GateCard({ gate, onAnswered }: { gate: any, onAnswered: () => void }) {
           <button 
              disabled={busy}
              onClick={() => handleAnswer("once")}
-             className="flex-1 rounded-lg bg-cyanx py-2 font-medium text-void transition-opacity hover:opacity-90 disabled:opacity-50">
+             className="flex-1 rounded-lg bg-accent py-2 font-medium text-void transition-opacity hover:opacity-90 disabled:opacity-50">
              Approve
           </button>
         </div>

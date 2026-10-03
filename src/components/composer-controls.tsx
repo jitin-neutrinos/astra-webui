@@ -307,7 +307,7 @@ export function ComposerControls({ setAttachments, disabled, sessionInfo, catalo
                       {effort === "" && (
                         <button type="button" className="cmenu-row" aria-selected={true} disabled={true}>
                           <span>Provider default</span>
-                          <Check className="h-3.5 w-3.5 text-cyanx" strokeWidth={2} />
+                          <Check className="h-3.5 w-3.5 text-accent" strokeWidth={2} />
                         </button>
                       )}
                       {EFFORTS.map((e) => (
@@ -315,7 +315,7 @@ export function ComposerControls({ setAttachments, disabled, sessionInfo, catalo
                           data-row={"effort:" + e.id} aria-selected={e.id === effort}
                           onClick={() => pick("effort:" + e.id, () => onPickEffort(e.id))}>
                           <span className="flex-1 truncate text-left">{e.label}</span>
-                          {e.id === effort ? <Check className="h-3.5 w-3.5 text-cyanx" strokeWidth={2} /> : null}
+                          {e.id === effort ? <Check className="h-3.5 w-3.5 text-accent" strokeWidth={2} /> : null}
                         </button>
                       ))}
                     </>
@@ -344,7 +344,7 @@ export function ComposerControls({ setAttachments, disabled, sessionInfo, catalo
                               <span className="truncate">{p.label}</span>
                               <small>{p.models.length} model{p.models.length === 1 ? "" : "s"}</small>
                             </span>
-                            {p.slug === activeProvider ? <Check className="h-3.5 w-3.5 text-cyanx" strokeWidth={2} /> : null}
+                            {p.slug === activeProvider ? <Check className="h-3.5 w-3.5 text-accent" strokeWidth={2} /> : null}
                           </button>
                         ))
                       )}
@@ -370,7 +370,7 @@ export function ComposerControls({ setAttachments, disabled, sessionInfo, catalo
                           data-row={"model:" + m} aria-selected={m === model && activeProvider === provider}
                           onClick={() => pick("model:" + m, () => onPickModel({ provider: activeProvider, model: m }))}>
                           <span className="flex-1 truncate text-left font-mono text-[12px]">{m}</span>
-                          {m === model && activeProvider === provider ? <Check className="h-3.5 w-3.5 text-cyanx" strokeWidth={2} /> : null}
+                          {m === model && activeProvider === provider ? <Check className="h-3.5 w-3.5 text-accent" strokeWidth={2} /> : null}
                         </button>
                       ))}
                     </>

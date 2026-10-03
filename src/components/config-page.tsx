@@ -255,7 +255,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
     const displayLabel = label || path;
 
     const renderSaveState = () => {
-      if (saveStatus === "saving") return <Loader2 className="w-3.5 h-3.5 animate-spin text-cyanx" />;
+      if (saveStatus === "saving") return <Loader2 className="w-3.5 h-3.5 animate-spin text-accent" />;
       if (saveStatus === "saved") return <Check className="w-3.5 h-3.5 text-green-400" />;
       if (saveStatus === "error") return <span className="text-[10px] text-redx font-mono flex items-center gap-1 cursor-pointer" onClick={() => updateVal(path, val)} title="Retry"><AlertTriangle className="w-3 h-3" /> Retry</span>;
       return null;
@@ -274,7 +274,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
           {type === "boolean" ? (
             <button
               onClick={() => updateVal(path, !val)}
-              className={cn("w-10 h-5 rounded-[5px] transition-colors relative", val ? "bg-cyanx" : "bg-white/10")}
+              className={cn("w-10 h-5 rounded-[5px] transition-colors relative", val ? "bg-accent" : "bg-white/10")}
             >
               <span className={cn("absolute top-0.5 left-0.5 bg-void w-4 h-4 rounded-[3px] transition-transform", val && "translate-x-5")} />
             </button>
@@ -283,7 +283,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
               <select
                 value={val ?? ""}
                 onChange={(e) => updateVal(path, e.target.value)}
-                className="bg-midnight border border-white/10 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-cyanx/50 min-w-[140px] appearance-none cursor-pointer"
+                className="bg-midnight border border-white/10 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-accent/50 min-w-[140px] appearance-none cursor-pointer"
               >
                 {options.map((opt: string) => <option key={opt} value={opt}>{opt || "off"}</option>)}
               </select>
@@ -293,7 +293,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
                 type="text"
                 value={drafts[path] ?? val ?? ""}
                 onChange={(e) => editTextInput(path, e.target.value)}
-                className="bg-midnight border border-white/10 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-cyanx/50 w-full sm:w-48"
+                className="bg-midnight border border-white/10 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-accent/50 w-full sm:w-48"
               />
             )
           ) : type === "number" ? (
@@ -301,13 +301,13 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
               type="number"
               value={drafts[path] ?? val ?? ""}
               onChange={(e) => editTextInput(path, e.target.value, (v) => { const n = parseFloat(v); return Number.isNaN(n) ? undefined : n; })}
-              className="bg-midnight border border-white/10 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-cyanx/50 w-24 text-right"
+              className="bg-midnight border border-white/10 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-accent/50 w-24 text-right"
             />
           ) : type === "list" ? (
             <textarea
               value={drafts[path] ?? (Array.isArray(val) ? val.join('\n') : "")}
               onChange={(e) => editTextInput(path, e.target.value, (v) => v.split('\n').filter(x => x))}
-              className="bg-midnight border border-white/10 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-cyanx/50 w-full sm:w-64 min-h-[60px]"
+              className="bg-midnight border border-white/10 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-accent/50 w-full sm:w-64 min-h-[60px]"
               placeholder="One item per line"
             />
           ) : (
@@ -315,7 +315,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
               type="text"
               value={drafts[path] ?? val ?? ""}
               onChange={(e) => editTextInput(path, e.target.value)}
-              className="bg-midnight border border-white/10 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-cyanx/50 w-full sm:w-64"
+              className="bg-midnight border border-white/10 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-accent/50 w-full sm:w-64"
             />
           )}
         </div>
@@ -337,7 +337,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
         </button>
         <div>
           <h2 className="font-display text-2xl lg:text-3xl tracking-tight text-brandtext">System Configuration</h2>
-          <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-cyanx/70 mt-1">Live core parameters</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-accent/70 mt-1">Live core parameters</p>
         </div>
       </div>
 
@@ -394,7 +394,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
         <section className="rounded-2xl border border-redx/20 bg-redx/5 p-6 backdrop-blur-md">
           <h3 className="font-display text-lg text-redx mb-4 border-b border-redx/10 pb-2">Danger Zone</h3>
           <div className="flex flex-wrap gap-3">
-            <button onClick={exportConfig} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-void border border-white/10 hover:border-cyanx/50 transition-colors text-sm font-mono text-slate-300">
+            <button onClick={exportConfig} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-void border border-white/10 hover:border-accent/50 transition-colors text-sm font-mono text-slate-300">
               <Download className="w-4 h-4" /> Export Config
             </button>
             <button onClick={importConfig} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-void border border-white/10 hover:border-fuchsia-500/50 transition-colors text-sm font-mono text-slate-300">
@@ -425,7 +425,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
                   placeholder="Search settings..." 
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="w-full bg-midnight/50 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-cyanx/50 font-mono"
+                  className="w-full bg-midnight/50 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-accent/50 font-mono"
                 />
               </div>
 
@@ -433,7 +433,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
                 if (categories[cat].length === 0) return null;
                 return (
                   <section key={cat} className="rounded-2xl border border-white/[0.04] bg-midnight/30 p-6">
-                    <h3 className="font-mono text-xs uppercase tracking-[0.2em] text-cyanx/70 mb-4 border-b border-white/[0.04] pb-2">{cat}</h3>
+                    <h3 className="font-mono text-xs uppercase tracking-[0.2em] text-accent/70 mb-4 border-b border-white/[0.04] pb-2">{cat}</h3>
                     <div className="space-y-1">
                       {categories[cat].sort().map(path => renderField(path))}
                     </div>
@@ -451,14 +451,14 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
 
       {/* Undo Toast */}
       {undoState && (
-        <div className="fixed bottom-6 right-6 z-50 bg-void border border-cyanx/30 rounded-lg shadow-2xl p-4 flex items-center gap-4 animate-in slide-in-from-bottom-5 fade-in duration-200">
+        <div className="fixed bottom-6 right-6 z-50 bg-void border border-accent/30 rounded-lg shadow-2xl p-4 flex items-center gap-4 animate-in slide-in-from-bottom-5 fade-in duration-200">
           <div>
             <p className="text-sm font-medium text-slate-200">Setting updated</p>
             <p className="text-xs font-mono text-slate-500 mt-0.5 max-w-[200px] truncate">{undoState.path}</p>
           </div>
           <button 
             onClick={handleUndo}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-cyanx/10 text-cyanx hover:bg-cyanx/20 transition-colors text-xs font-mono uppercase tracking-wider font-bold"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-accent/10 text-accent hover:bg-accent/20 transition-colors text-xs font-mono uppercase tracking-wider font-bold"
           >
             <Undo className="w-3.5 h-3.5" /> Undo
           </button>

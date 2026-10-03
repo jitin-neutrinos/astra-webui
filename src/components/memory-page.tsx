@@ -41,7 +41,7 @@ export function MemoryPage({ onBack }: { onBack: () => void }) {
     <div className="flex h-full w-full flex-col bg-void text-brandtext overflow-hidden">
       <div className="flex h-14 shrink-0 items-center justify-between border-b border-white/[0.07] px-4 md:px-6">
         <button onClick={onBack} className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-white/5 md:hidden shrink-0" aria-label="Back"><ArrowLeft className="h-4 w-4" /></button>
-        <div className="flex items-center gap-2 min-w-0"><Brain className="h-5 w-5 text-cyanx shrink-0" /><h1 className="truncate font-display text-base font-semibold">Memory — Tools &amp; Stores</h1></div>
+        <div className="flex items-center gap-2 min-w-0"><Brain className="h-5 w-5 text-accent shrink-0" /><h1 className="truncate font-display text-base font-semibold">Memory — Tools &amp; Stores</h1></div>
       </div>
       <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24">
         <div className="mx-auto max-w-3xl space-y-6">
@@ -52,7 +52,7 @@ export function MemoryPage({ onBack }: { onBack: () => void }) {
             <h2 className="text-sm font-display font-semibold mb-4">Memory Providers</h2>
             {d.providers ? (
               <div className="space-y-2 text-xs md:text-sm">
-                <div className="rounded-xl bg-white/[0.06] px-3 py-2 flex items-center gap-2"><span className="font-medium text-brandtext">Active:</span> <span className="text-cyanx font-medium">{String(d.providers.active || d.providers?.rows?.[0]?.name || "—")}</span></div>
+                <div className="rounded-xl bg-white/[0.06] px-3 py-2 flex items-center gap-2"><span className="font-medium text-brandtext">Active:</span> <span className="text-accent font-medium">{String(d.providers.active || d.providers?.rows?.[0]?.name || "—")}</span></div>
                 {(d.providers.rows || []).map((r: any) => (
                   <div key={r.name} className="rounded-xl bg-white/[0.03] px-3 py-2.5 flex items-center justify-between">
                     <div><div className="font-medium text-brandtext">{r.name}</div><div className="text-muted">{r.description}</div></div>

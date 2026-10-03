@@ -309,9 +309,16 @@ test("alias: donut/columns/gauge chart kinds normalize", () => {
   // v3: `donut` is now its own kind (center-total donut), no longer aliased to pie
   const donut = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "chart", chart: "donut", series: [{ name: "s", points: [1] }] }] }));
   assert.equal((donut!.blocks[0] as any).chart, "donut");
-  const bars = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "graph", chart: "columns", series: [{ name: "s", points: [1] }] }] }));
+  // v5: `graph` is a REAL block type now, so it is no longer a chart alias. The
+  // near-miss the alias table still absorbs is `plot` (and a chart that says
+  // `kind:"graph"`). A block literally typed `graph` must reach the graph
+  // validator — pinning that here, because the alias table is checked FIRST and
+  // a stale `graph: "chart"` entry silently hijacked the whole block type.
+  const bars = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "chart", chart: "columns", series: [{ name: "s", points: [1] }] }] }));
   assert.equal((bars!.blocks[0] as any).type, "chart");
   assert.equal((bars!.blocks[0] as any).chart, "bar");
+  const plot = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "plot", chart: "bar", series: [{ name: "s", points: [1] }] }] }));
+  assert.equal((plot!.blocks[0] as any).type, "chart", "plot still normalizes to chart");
 });
 
 test("alias: flowchart without layout defaults to flow", () => {

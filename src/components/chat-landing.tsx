@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
 import { ArrowUp, Square, TriangleAlert, RotateCcw, Pencil, ChevronDown, Plus, WifiOff, Loader2, CheckCircle2, Check } from "lucide-react";
 import * as notify from "@/lib/notify";
@@ -129,7 +129,7 @@ function ChatTitle({ storedSessionId, title, onTitleChange }: { storedSessionId:
           autoFocus
           maxLength={80}
           aria-label="Chat name"
-          className="w-56 rounded-md border border-cyanx/40 bg-black/50 px-2 py-1 font-mono text-[11px] text-brandtext focus:outline-none"
+          className="w-56 rounded-md border border-accent/40 bg-black/50 px-2 py-1 font-mono text-[11px] text-brandtext focus:outline-none"
         />
       ) : (
         <>
@@ -140,7 +140,7 @@ function ChatTitle({ storedSessionId, title, onTitleChange }: { storedSessionId:
             type="button"
             onClick={() => { setDraft(title); setEditing(true); }}
             aria-label="Rename chat" title="Rename chat"
-            className="rounded p-1 text-slate-500 transition-colors hover:bg-white/5 hover:text-cyanx"
+            className="rounded p-1 text-slate-500 transition-colors hover:bg-white/5 hover:text-accent"
           >
             <Pencil className="h-3.5 w-3.5" strokeWidth={1.5} />
           </button>
@@ -1714,6 +1714,96 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   // WAI-ARIA practice is one small polite region carrying only settled state,
   // so a screen reader says "Astra is replying" once, then reads the finished
   // answer once. Tokens themselves are never announced.
+  // PERF (measured 2026-10-03, profile at 6x CPU throttle): the feed's `.map` used to
+  // run inside render, so every keystroke in the composer rebuilt the JSX for EVERY
+  // message and React re-reconciled all of them — 27.9% of the profile sat in
+  // updateFunctionComponent with 3+ forced layouts per keystroke. The draft text (`input`)
+  // lives in this component, so its setState dragged the whole transcript with it.
+  //
+  // Memoized on the things the map actually READS. Every handler below is a useCallback
+  // with a stable identity, so typing a letter changes none of these deps and the row
+  // elements are reused verbatim. `bgItems` / `isStreaming` / `openBgRef` /
+  // `storedSessionId` genuinely change and must stay in the list — dropping one would
+  // leave a stale dock receipt or a stale last-turn action row.
+  const messageList = useMemo(() => messages.map((m, idx) => {
+
+                if (m.isSysNote && m.bgId) {
+                  const it = bgItems.find((x) => x.id === m.bgId);
+                  if (it && !it.dismissed) {
+                    return it.kind === "steer"
+                      ? <SteerNote key={m.id} item={it} onDismiss={dismissBgItem} />
+                      : <BgNote key={m.id} item={it} onDismiss={dismissBgItem} />;
+                  }
+                  if (it?.dismissed) return null;
+                  return null;
+                }
+                // A bg turn's REPLY lives in the dock, not the feed (owner
+                // mandate) — see bg-routing.ts for the two exceptions.
+                if (!showsInFeed(m as any, openBgRef)) return null;
+                // Owner 10-02: the action row (copy / edit / regenerate) must sit
+                // ENTIRELY inside the bubble. It used to be a sibling of the
+                // bubble with margin-top:-30px, so it straddled the bottom
+                // border — and absolute positioning would resolve against the
+                // scroll pane, not the bubble. So it is BUILT INSIDE the bubble
+                // element now (see UserBubble `actions` slot + TurnTimeline).
+                const canRegen = !isStreaming && idx === messages.length - 1
+                  && m.role !== "user" && m.segments.length > 0
+                  && !m.segments.some((s) => s.kind === "approval" && s.resolved == null);
+                const actions = !m.isSysNote && (m.role === "user" || !m.isStreaming) ? (
+                  <div className="chat-actions">
+                    {m.role === "user" ? (
+                      <>
+                        <AnimatedCopyButton text={m.content} />
+                        {!isStreaming && (
+                          <button type="button" aria-label="Edit message" title="Edit"
+                            onClick={() => {
+                              setInput(m.content.replace(/\n\nAttached file: .*/g, ""));
+                              setAttachments((m.files ?? []).map((f) => ({ id: newId(), name: f.name, size: 0, status: "done" as const, progress: 100, serverPath: f.path })));
+                              setMessages(p => p.slice(0, idx));
+                              setTimeout(() => taRef.current?.focus(), 0);
+                            }}>
+                            <Pencil />
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <AnimatedCopyButton
+                          text={m.segments.filter((s) => s.kind === "text").map((s) => s.text ?? "").join("\n\n")} />
+                        {canRegen && (
+                          <button type="button" aria-label="Regenerate message" title="Regenerate"
+                            onClick={() => retry()}>
+                            <RotateCcw />
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                ) : null;
+                return (
+                <div key={m.id} data-msg-id={m.id} className={m.isSysNote ? "chat-sys-note" : "flex w-full items-start"}>
+                {m.isSysNote ? (
+                  <>◈ {m.content}</>
+                ) : null}
+                {!m.isSysNote && (
+                <div className="min-w-0 w-full">
+                  {m.role === "user" ? (
+                    <div>
+                      <UserBubble msg={m} avatarUrl={avatarUrl} onOpenMedia={openMedia} actions={actions} />
+                    </div>
+                  ) : m.segments.length ? (
+                    <TurnTimeline segments={m.segments} streaming={m.isStreaming} sessionId={storedSessionId || ""} ts={m.ts} onToggleTool={toggleToolCollapse} onApprovalRespond={respondApproval} onGateRespond={respondGate} onClarifyAnswer={respondClarify} onOpenMedia={openMedia} actions={actions} />
+                  ) : m.isStreaming ? (
+                    <span className="chat-bubble-ai flex w-full items-center rounded-2xl px-3 py-2.5">
+                      <AITextLoading texts={["Thinking...", "Working on it...", "Almost there..."]} />
+                    </span>
+                  ) : null}
+                </div>
+                )}
+              </div>
+              );
+  }), [messages, bgItems, openBgRef, isStreaming, storedSessionId]);
+
   const liveAnnouncement = (() => {
     if (failedUp) return `Upload failed: ${attachments.find((a) => a.status === "error")?.name ?? "file"}`;
     if (uploading) {
@@ -1821,83 +1911,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
                   <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading earlier messages…
                 </div>
               )}
-              {messages.map((m, idx) => {
-                if (m.isSysNote && m.bgId) {
-                  const it = bgItems.find((x) => x.id === m.bgId);
-                  if (it && !it.dismissed) {
-                    return it.kind === "steer"
-                      ? <SteerNote key={m.id} item={it} onDismiss={dismissBgItem} />
-                      : <BgNote key={m.id} item={it} onDismiss={dismissBgItem} />;
-                  }
-                  if (it?.dismissed) return null;
-                  return null;
-                }
-                // A bg turn's REPLY lives in the dock, not the feed (owner
-                // mandate) — see bg-routing.ts for the two exceptions.
-                if (!showsInFeed(m as any, openBgRef)) return null;
-                // Owner 10-02: the action row (copy / edit / regenerate) must sit
-                // ENTIRELY inside the bubble. It used to be a sibling of the
-                // bubble with margin-top:-30px, so it straddled the bottom
-                // border — and absolute positioning would resolve against the
-                // scroll pane, not the bubble. So it is BUILT INSIDE the bubble
-                // element now (see UserBubble `actions` slot + TurnTimeline).
-                const canRegen = !isStreaming && idx === messages.length - 1
-                  && m.role !== "user" && m.segments.length > 0
-                  && !m.segments.some((s) => s.kind === "approval" && s.resolved == null);
-                const actions = !m.isSysNote && (m.role === "user" || !m.isStreaming) ? (
-                  <div className="chat-actions">
-                    {m.role === "user" ? (
-                      <>
-                        <AnimatedCopyButton text={m.content} />
-                        {!isStreaming && (
-                          <button type="button" aria-label="Edit message" title="Edit"
-                            onClick={() => {
-                              setInput(m.content.replace(/\n\nAttached file: .*/g, ""));
-                              setAttachments((m.files ?? []).map((f) => ({ id: newId(), name: f.name, size: 0, status: "done" as const, progress: 100, serverPath: f.path })));
-                              setMessages(p => p.slice(0, idx));
-                              setTimeout(() => taRef.current?.focus(), 0);
-                            }}>
-                            <Pencil />
-                          </button>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <AnimatedCopyButton
-                          text={m.segments.filter((s) => s.kind === "text").map((s) => s.text ?? "").join("\n\n")} />
-                        {canRegen && (
-                          <button type="button" aria-label="Regenerate message" title="Regenerate"
-                            onClick={() => retry()}>
-                            <RotateCcw />
-                          </button>
-                        )}
-                      </>
-                    )}
-                  </div>
-                ) : null;
-                return (
-                <div key={m.id} data-msg-id={m.id} className={m.isSysNote ? "chat-sys-note" : "flex w-full items-start"}>
-                {m.isSysNote ? (
-                  <>◈ {m.content}</>
-                ) : null}
-                {!m.isSysNote && (
-                <div className="min-w-0 w-full">
-                  {m.role === "user" ? (
-                    <div>
-                      <UserBubble msg={m} avatarUrl={avatarUrl} onOpenMedia={openMedia} actions={actions} />
-                    </div>
-                  ) : m.segments.length ? (
-                    <TurnTimeline segments={m.segments} streaming={m.isStreaming} sessionId={storedSessionId || ""} ts={m.ts} onToggleTool={toggleToolCollapse} onApprovalRespond={respondApproval} onGateRespond={respondGate} onClarifyAnswer={respondClarify} onOpenMedia={openMedia} actions={actions} />
-                  ) : m.isStreaming ? (
-                    <span className="chat-bubble-ai flex w-full items-center rounded-2xl px-3 py-2.5">
-                      <AITextLoading texts={["Thinking...", "Working on it...", "Almost there..."]} />
-                    </span>
-                  ) : null}
-                </div>
-                )}
-              </div>
-              );
-            })}
+              {messageList}
           </div>
         )}
       </div>

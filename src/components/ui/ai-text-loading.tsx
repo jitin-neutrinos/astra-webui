@@ -57,7 +57,7 @@ export default function AITextLoading({
               backgroundPosition: ["200% center", "-200% center"],
             }}
             className={cn(
-              "flex min-w-max justify-center whitespace-nowrap bg-[length:200%_100%] bg-gradient-to-r from-cyanx via-violetx to-cyanx bg-clip-text font-medium text-sm text-transparent", // astra brand: cyan→violet shimmer replaces vendor grays; text-sm for inline chat
+              "flex min-w-max justify-center whitespace-nowrap bg-[length:200%_100%] bg-gradient-to-r from-accent via-violetx to-accent bg-clip-text font-medium text-sm text-transparent", // astra brand: cyan→violet shimmer replaces vendor grays; text-sm for inline chat
               className
             )}
             exit={{ opacity: 0, y: -20 }}

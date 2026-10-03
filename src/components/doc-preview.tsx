@@ -29,12 +29,12 @@ function ErrorBox({ message, name, path }: { message: string; name: string; path
         <button
           type="button"
           onClick={() => downloadFile(path, name)}
-          className="font-mono text-[11px] text-cyanx hover:underline"
+          className="font-mono text-[11px] text-accent hover:underline"
         >
           download instead
         </button>
       ) : (
-        <a href={downloadUrl(name)} className="font-mono text-[11px] text-cyanx hover:underline">
+        <a href={downloadUrl(name)} className="font-mono text-[11px] text-accent hover:underline">
           download instead
         </a>
       )}

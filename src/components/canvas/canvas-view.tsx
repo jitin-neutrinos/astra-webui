@@ -14,6 +14,7 @@
 // as before (the provider is inert when nothing binds).
 import { useReducer } from "react";
 import { Copy, Check, Loader2 } from "lucide-react";
+import { cn } from "../../lib/utils";
 import { canvasToMarkdown } from "../../lib/canvas-markdown";
 import { copyText } from "../../lib/copy-text";
 import { Blocks } from "./canvas-blocks";
@@ -57,6 +58,7 @@ function deriveTitle(spec: { title?: string; blocks: CanvasBlock[] }): string {
       case "select": case "multiselect": case "segmented": return blk.label || "Controls";
       case "toggle": return blk.label || "Toggle";
       case "search": return blk.label || "Filter";
+      case "graph": return blk.title || `Graph — ${blk.nodes?.length ?? 0} entities · ${blk.edges?.length ?? 0} connections`;
       case "image": return blk.alt || blk.caption || "Image";
       case "gallery": return `Gallery — ${blk.items?.length ?? 0}`;
       case "video": return blk.caption || "Video";
@@ -118,8 +120,11 @@ export default function CanvasView({ spec, partial, canvasId = "0" }: { spec?: C
         <header className="ast-canvas-head">
           <span className="ast-canvas-title">{title}</span>
           <div className="ast-canvas-actions">
-            <button type="button" className="ast-canvas-copy" onClick={onCopy} aria-label="Copy canvas as markdown">
-              {done ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            <button type="button" className={cn("ast-canvas-copy", done && "is-checked")} onClick={onCopy} aria-label="Copy canvas as markdown">
+              <span className="ast-cv-copy-swap" aria-hidden="true">
+                <Copy className="h-3.5 w-3.5" />
+                <Check className="h-3.5 w-3.5" />
+              </span>
               <span>{done ? "Copied" : "Copy"}</span>
             </button>
           </div>

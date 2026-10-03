@@ -128,10 +128,10 @@ function supportsRootDecls(src) {
 }
 const sbVars = supportsRootDecls(stripComments(css));
 check('thumb token resolves off accent primary inside @supports',
-  /--sb-thumb:\s*color-mix\(in srgb, var\(--color-cyanx\) 45%/.test(sbVars),
+  /--sb-thumb:\s*color-mix\(in srgb, var\(--color-accent\) 45%/.test(sbVars),
   sbVars.length ? '' : 'no @supports color-mix rule for --sb-thumb');
 check('track token resolves off accent primary inside @supports',
-  /--sb-track:\s*color-mix\(in srgb, var\(--color-cyanx\) 8%/.test(sbVars));
+  /--sb-track:\s*color-mix\(in srgb, var\(--color-accent\) 8%/.test(sbVars));
 
 // the shared selector list must actually reach transcript + tool surfaces
 const SHARED = ['.chat-scroll', '.chat-think-text', '.chat-term-out', '.suba-tail',

@@ -36,8 +36,8 @@ type SessionRow = {
 };
 
 const STATE_META: Record<string, { label: string; cls: string; spin: boolean }> = {
-  dumping: { label: "Saving chat", cls: "text-cyanx", spin: true },
-  reviewing: { label: "Reviewing", cls: "text-cyanx", spin: true },
+  dumping: { label: "Saving chat", cls: "text-accent", spin: true },
+  reviewing: { label: "Reviewing", cls: "text-accent", spin: true },
   awaiting_retry: { label: "Queued for retry", cls: "text-amber-400", spin: false },
   failed: { label: "Review failed", cls: "text-red-400", spin: false },
   done: { label: "Saved & closed", cls: "text-emerald-400", spin: false },
@@ -163,7 +163,7 @@ export function TrainingPage({ onBack }: { onBack: () => void }) {
     <div className="flex h-full w-full flex-col bg-void text-brandtext overflow-hidden">
       <div className="flex h-14 shrink-0 items-center justify-between border-b border-white/[0.07] px-4 md:px-6">
         <button onClick={onBack} className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-white/5 md:hidden shrink-0" aria-label="Back"><ArrowLeft className="h-4 w-4" /></button>
-        <div className="flex items-center gap-2 min-w-0"><GraduationCap className="h-5 w-5 text-cyanx shrink-0" /><h1 className="truncate font-display text-base font-semibold">Training &amp; Reviews — Session training</h1></div>
+        <div className="flex items-center gap-2 min-w-0"><GraduationCap className="h-5 w-5 text-accent shrink-0" /><h1 className="truncate font-display text-base font-semibold">Training &amp; Reviews — Session training</h1></div>
       </div>
       <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24">
         <div className="mx-auto max-w-4xl space-y-6">
@@ -173,9 +173,9 @@ export function TrainingPage({ onBack }: { onBack: () => void }) {
           </p>
 
           <section className="rounded-2xl border border-white/[0.08] bg-midnight/50 p-5 backdrop-blur-md">
-            <h2 className="flex items-center gap-2 text-sm font-display font-semibold mb-3"><GraduationCap className="h-4 w-4 text-cyanx" /> Session training</h2>
+            <h2 className="flex items-center gap-2 text-sm font-display font-semibold mb-3"><GraduationCap className="h-4 w-4 text-accent" /> Session training</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {tile("In flight", active, "text-cyanx")}
+              {tile("In flight", active, "text-accent")}
               {tile("Failed", failed, "text-redx")}
               {tile("Saved & closed", done, "text-emerald-400")}
               {tile("Total jobs", ordered.length, "text-brandtext")}
@@ -183,7 +183,7 @@ export function TrainingPage({ onBack }: { onBack: () => void }) {
           </section>
 
           <section className="rounded-2xl border border-white/[0.08] bg-midnight/50 p-5 backdrop-blur-md">
-            <h2 className="flex items-center gap-2 text-sm font-display font-semibold mb-3"><Loader2 className="h-4 w-4 text-cyanx" /> Review jobs</h2>
+            <h2 className="flex items-center gap-2 text-sm font-display font-semibold mb-3"><Loader2 className="h-4 w-4 text-accent" /> Review jobs</h2>
             {jobsError && <div className="mb-2 text-xs text-redx">{jobsError}</div>}
             {ordered.length === 0 ? (
               <div className="py-3 text-xs text-muted">{loading ? "Loading review jobs." : "No review jobs yet."}</div>
@@ -224,7 +224,7 @@ export function TrainingPage({ onBack }: { onBack: () => void }) {
           </section>
 
           <section className="rounded-2xl border border-white/[0.08] bg-midnight/50 p-5 backdrop-blur-md">
-            <h2 className="flex items-center gap-2 text-sm font-display font-semibold mb-3"><CheckCircle2 className="h-4 w-4 text-cyanx" /> Ended sessions</h2>
+            <h2 className="flex items-center gap-2 text-sm font-display font-semibold mb-3"><CheckCircle2 className="h-4 w-4 text-accent" /> Ended sessions</h2>
             {sessionsError && <div className="mb-2 text-xs text-redx">{sessionsError}</div>}
             {sessions.length === 0 ? (
               <div className="py-3 text-xs text-muted">{loading ? "Loading ended sessions." : "No ended sessions yet."}</div>

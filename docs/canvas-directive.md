@@ -36,12 +36,12 @@ answer. 2–4 cards in one reply is normal. The anti-slop rule is about
 *fragmenting a single idea* across five blocks, never about *using enough
 cards*.
 
-### Block types (closed set — 26)
+### Block types (closed set — 37)
 
 | type | shape | use for |
 |---|---|---|
 | `kpi` | `{label, value, delta?, trend?:"up"\|"down"\|"flat", spark?:number[3..24]}` | headline metrics, counts, deltas; `spark` adds an inline trend line |
-| `chart` | `{chart:"line"\|"area"\|"bar"\|"radial"\|"pie"\|"donut"\|"stack", title?, labels?, series:[{name, points:number[]}]}` | trends, distributions, compositions, before/after; `donut` shows the total in the hole |
+| `chart` | `{chart:"line"\|"area"\|"bar"\|"radial"\|"pie"\|"donut"\|"stack"\|"sankey"\|"treemap"\|"funnel"\|"radar"\|"scatter", title?, labels?, series:[{name, points:number[]}]}` | trends, distributions, compositions, before/after; `donut` shows the total in the hole; the last four (v5) accept their natural vocabulary instead of `series` — see below |
 | `table` | `{columns:string[], rows:string[][]}` | comparisons, matrices, option tables, findings |
 | `diagram` | `{layout:"flow"\|"relationship", direction?:"tb"\|"lr", nodes:[{id,label,detail?}], edges:[{from,to,label?}]}` | workflows, pipelines, dependency and relationship maps |
 | `checklist` | `{items:[{text, status?:"done"\|"open"\|"fail"}]}` | status, audit results, done/not-done |
@@ -114,6 +114,44 @@ renders `—` (fail-soft per prop), never a broken card. Numeric strings
 (`"1,234"`, `"12%"`) coerce; `state` values that are objects are unsupported —
 keep them scalars. NEVER hand-write a control block without a matching `"state"`
 seed (the slider shows its own `value?` until first interaction, fine).
+
+### Chart kinds beyond the usual seven (v5) — emit the NATURAL vocabulary
+
+Four more chart kinds ship, all driven by the chart engine already in the bundle.
+For these you do NOT need `series` — give the data the way the chart is normally
+described and the parser normalizes it:
+
+| kind | emit this | reads as |
+|---|---|---|
+| `sankey` | `{type:"chart", chart:"sankey", nodes:[{id:"a"},{id:"b"},…], links:[{source:"a", target:"b", value:5}]}` | flow between stages (the parser computes node magnitudes from the links) |
+| `sankey` (alt) | `{type:"chart", chart:"sankey", labels:["Visit","Signup","Paid"], series:[{name:"flow", points:[1000,120,64]}]}` | same, from a flat series |
+| `treemap` | `{type:"chart", chart:"treemap", items:[{name:"src", value:50}, {name:"docs", value:30}]}` | part-to-whole by size |
+| `funnel` | `{type:"chart", chart:"funnel", stages:[{label:"Visits", value:1000}, {label:"Signup", value:120}]}` | stage-by-stage drop-off (label each stage; include the % you computed) |
+| `radar` | `{type:"chart", chart:"radar", labels:["speed","cost","quality"], series:[{name:"us", points:[8,5,9]}]}` | multi-axis profile, 2 series max on a phone |
+| `scatter` | `{type:"chart", chart:"scatter", labels:["a","b","c"], series:[{name:"s", points:[1,4,9]}]}` | correlation / distribution (x = label order, y = value) |
+
+Laws still apply: ONE accent with opacity tiers (no per-slice hue), legend always
+on, no gridlines/axis lines, values formatted with the `compact`/`money` helpers
+when they get large. Aliases accepted: `flow`→sankey, `sunburst`/`icicle`→treemap,
+`conversion`/`pyramid`→funnel, `bubble`/`xy`→scatter, `spider`→radar.
+
+### Knowledge graph (v5) — relationship maps and topology
+
+| type | shape | behaviour |
+|---|---|---|
+| `graph` | `{title?, height?, nodes:[{id, label, kind?, weight?, detail?}], edges:[{source, target, kind?:"asserted", label?, weight?}]}` | deterministic force map, pan + zoom, tap a node to focus its neighbourhood (everything else dims but never disappears), kind filter chips, and a text list of connections for keyboard/screen-reader access |
+
+- `weight` drives node SIZE (area) — give the thing that matters most the biggest
+  weight, not every node the same. `detail` is the line shown when a node is
+  selected, so put the insight there.
+- `kind` groups nodes (e.g. `person`, `product`, `service`). Kinds render as
+  circle / square / diamond at three opacity tiers — no colour coding.
+- `kind:"asserted"` on an edge draws it dashed (a relation someone asserted);
+  measured co-occurrence edges stay solid.
+- An edge to a node that does not exist is dropped, not fatal. Do not emit
+  orphan ids.
+- Keep it under ~60 nodes; beyond that a card is unreadable on a phone.
+- Aliases: `network`, `knowledge-graph`, `topology`, `relationmap`.
 
 ### Media blocks (v5) — images and video you GENERATED or have as host files
 

@@ -11,8 +11,8 @@ import { GraduationCap, ChevronDown, Loader2, AlertTriangle, CheckCircle2, Clock
 type JobState = "dumping" | "reviewing" | "awaiting_retry" | "failed" | "done";
 
 const STATE_META: Record<JobState, { label: string; cls: string; spin: boolean }> = {
-  dumping: { label: "Saving chat", cls: "text-cyanx", spin: true },
-  reviewing: { label: "Reviewing", cls: "text-cyanx", spin: true },
+  dumping: { label: "Saving chat", cls: "text-accent", spin: true },
+  reviewing: { label: "Reviewing", cls: "text-accent", spin: true },
   awaiting_retry: { label: "Queued for retry", cls: "text-amber-400", spin: false },
   failed: { label: "Review failed", cls: "text-red-400", spin: false },
   done: { label: "Saved & closed", cls: "text-emerald-400", spin: false },
@@ -95,7 +95,7 @@ export default function TrainingStatus({ open, onToggle }: { open: boolean; onTo
         className="flex h-10 items-center gap-2 rounded-lg px-3 text-sm text-slate-300 transition-colors duration-150 hover:bg-white/5 hover:text-white max-lg:h-10 max-lg:w-10 max-lg:justify-center max-lg:p-0"
       >
         {meta.spin
-          ? <Loader2 className="h-4 w-4 animate-spin text-cyanx" />
+          ? <Loader2 className="h-4 w-4 animate-spin text-accent" />
           : chipJob.status === "failed"
             ? <AlertTriangle className="h-4 w-4 text-red-400" />
             : chipJob.status === "awaiting_retry"

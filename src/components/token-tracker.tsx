@@ -146,7 +146,7 @@ export default function TokenTrackerPage({ onBack }: { onBack?: () => void }) {
         )}
         <div>
           <h2 className="font-display text-3xl tracking-tight text-brandtext">Global Token Tracker</h2>
-          <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-cyanx/70 mt-1">Live harness usage / token optimization observability</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-accent/70 mt-1">Live harness usage / token optimization observability</p>
           <p className="text-xs text-muted mt-2">
             Source: tokenbeacon per-request capture (claude-code, hermes, opencode) + LiteLLM/OpenRouter rate maps. Refresh: every 30s.
             {status && ` Capture ${timeAgo(status.capture_last_run)}.`}
@@ -164,7 +164,7 @@ export default function TokenTrackerPage({ onBack }: { onBack?: () => void }) {
         {/* Capture worker health */}
         <section className="rounded-2xl border border-white/[0.08] bg-midnight/50 p-6 backdrop-blur-md">
           <h3 className="font-display text-xl text-brandtext mb-4 flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-cyanx" strokeWidth={1.5} />
+            <ShieldCheck className="h-5 w-5 text-accent" strokeWidth={1.5} />
             Capture Workers
           </h3>
           <div className="grid grid-cols-3 gap-3">
@@ -178,7 +178,7 @@ export default function TokenTrackerPage({ onBack }: { onBack?: () => void }) {
                   {w.icon}
                   {w.label}
                 </div>
-                <div className={`mt-1 text-sm font-medium ${w.ts ? "text-cyanx" : "text-redx"}`}>
+                <div className={`mt-1 text-sm font-medium ${w.ts ? "text-accent" : "text-redx"}`}>
                   {w.ts ? timeAgo(w.ts) : "no data"}
                 </div>
               </div>
@@ -199,7 +199,7 @@ export default function TokenTrackerPage({ onBack }: { onBack?: () => void }) {
         <section className="rounded-2xl border border-white/[0.08] bg-midnight/50 p-6 backdrop-blur-md">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-display text-xl text-brandtext flex items-center gap-2">
-              <BarChart3 className="h-5 w-5 text-cyanx" strokeWidth={1.5} />
+              <BarChart3 className="h-5 w-5 text-accent" strokeWidth={1.5} />
               Per-Harness Usage
             </h3>
             <div className="flex rounded-lg border border-white/[0.08] overflow-hidden" role="tablist" aria-label="Period">
@@ -209,7 +209,7 @@ export default function TokenTrackerPage({ onBack }: { onBack?: () => void }) {
                   role="tab"
                   aria-selected={days === p.days}
                   onClick={() => setDays(p.days)}
-                  className={`px-3 py-1.5 text-xs font-medium transition ${days === p.days ? "bg-cyanx/10 text-cyanx" : "text-slate-500 hover:text-slate-300"}`}
+                  className={`px-3 py-1.5 text-xs font-medium transition ${days === p.days ? "bg-accent/10 text-accent" : "text-slate-500 hover:text-slate-300"}`}
                 >
                   {p.label}
                 </button>
@@ -247,10 +247,10 @@ export default function TokenTrackerPage({ onBack }: { onBack?: () => void }) {
                         <td className="py-2.5 px-3 text-right text-muted">{formatTokens(h.cache_read)}</td>
                         <td className="py-2.5 px-3 text-right text-muted">{formatTokens(h.cache_write)}</td>
                         <td className="py-2.5 px-3 text-right text-muted">{formatTokens(h.output)}</td>
-                        <td className="py-2.5 px-3 text-right text-cyanx font-bold">{formatUSD(h.cost)}</td>
+                        <td className="py-2.5 px-3 text-right text-accent font-bold">{formatUSD(h.cost)}</td>
                         <td className="py-2.5 px-3">
                           <div className="h-1.5 w-24 rounded-[3px] bg-white/5 overflow-hidden">
-                            <div className="h-full rounded-[3px] bg-cyanx/70" style={{ width: `${Math.round((h.cost / maxCost) * 100)}%` }} />
+                            <div className="h-full rounded-[3px] bg-accent/70" style={{ width: `${Math.round((h.cost / maxCost) * 100)}%` }} />
                           </div>
                         </td>
                       </tr>
@@ -258,13 +258,13 @@ export default function TokenTrackerPage({ onBack }: { onBack?: () => void }) {
                   })
                 )}
                 {byHarness.size > 0 && (
-                  <tr className="font-bold text-brandtext bg-cyanx/[0.04]">
+                  <tr className="font-bold text-brandtext bg-accent/[0.04]">
                     <td className="py-2.5 px-3">Total</td>
                     <td className="py-2.5 px-3 text-right">—</td>
                     <td className="py-2.5 px-3 text-right">—</td>
                     <td className="py-2.5 px-3 text-right">—</td>
                     <td className="py-2.5 px-3 text-right">—</td>
-                    <td className="py-2.5 px-3 text-right text-cyanx">{formatUSD(totalCost)}</td>
+                    <td className="py-2.5 px-3 text-right text-accent">{formatUSD(totalCost)}</td>
                     <td className="py-2.5 px-3">—</td>
                   </tr>
                 )}
@@ -276,7 +276,7 @@ export default function TokenTrackerPage({ onBack }: { onBack?: () => void }) {
         {/* Latest captured requests */}
         <section className="rounded-2xl border border-white/[0.08] bg-midnight/50 p-6 backdrop-blur-md">
           <h3 className="font-display text-xl text-brandtext mb-4 flex items-center gap-2">
-            <Cpu className="h-5 w-5 text-cyanx" strokeWidth={1.5} />
+            <Cpu className="h-5 w-5 text-accent" strokeWidth={1.5} />
             Latest Captured Requests
           </h3>
           <div className="divide-y divide-white/[0.04]">
@@ -290,7 +290,7 @@ export default function TokenTrackerPage({ onBack }: { onBack?: () => void }) {
                   <span className="text-muted">
                     {formatTokens(r.input_tokens + r.cache_read_tokens + r.cache_write_tokens)} → {formatTokens(r.output_tokens)}
                   </span>
-                  {r.cost_usd != null && <span className="ml-3 text-cyanx">{formatUSD(r.cost_usd)}</span>}
+                  {r.cost_usd != null && <span className="ml-3 text-accent">{formatUSD(r.cost_usd)}</span>}
                 </div>
               </div>
             ))}

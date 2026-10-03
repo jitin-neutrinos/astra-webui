@@ -195,7 +195,7 @@ export function StreamingText({
       className="relative inline-block h-[1.1em] w-0 align-[-0.22em]"
     >
       <motion.span
-        className="absolute inset-y-0 left-px block w-[2px] bg-cyanx"
+        className="absolute inset-y-0 left-px block w-[2px] bg-accent"
         initial={false}
         animate={blink ? { opacity: [1, 1, 0, 0] } : { opacity: done ? 0 : 1 }}
         transition={
@@ -249,7 +249,7 @@ export function StreamingText({
                 ? `Replay ${label}`
                 : "Skip to the end"
             }
-            className="inline-grid h-7 place-items-center rounded-[6px] border border-white/10 px-2.5 text-[11.5px] font-medium text-slate-400 transition-colors duration-150 hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyanx/60"
+            className="inline-grid h-7 place-items-center rounded-[6px] border border-white/10 px-2.5 text-[11.5px] font-medium text-slate-400 transition-colors duration-150 hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
           >
             <motion.span
               aria-hidden

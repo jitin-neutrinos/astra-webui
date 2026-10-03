@@ -399,6 +399,13 @@ export const REGRESSIONS = [
     guard: "src/lib/canvas-theme.check.ts",
   },
   {
+    id: "RG-065",
+    found: "2026-10-04",
+    symptom:
+      "The `graph` block was silently hijacked: TYPE_ALIASES carried a v1 entry `graph: \"chart\"`, and validateBlock resolves aliases BEFORE BLOCK_TYPES — so a knowledge graph never reached the graph validator and every card degraded. Also pins the layout maths (deterministic settle, all-pairs separation so labels never stack, dangling edges dropped), component counting that counts ISOLATED nodes, and the four new chart kinds' data contracts (natural vocabulary normalises, garbage still degrades).",
+    guard: "src/lib/canvas-graph.check.ts",
+  },
+  {
     id: "RG-061",
     found: "2026-10-04",
     symptom:
@@ -411,6 +418,20 @@ export const REGRESSIONS = [
     symptom:
       "Reactive binding regressions: pointer/expression resolution, $from dataset filters (fail-soft on unknown ops/unset bindings), sort direction, header inference (row-0-as-header) or top-clamping in canvas-bind.ts.",
     guard: "src/lib/canvas-bind.check.ts",
+  },
+  {
+    id: "RG-063",
+    found: "2026-10-04",
+    symptom:
+      "Text split mid-word on wrap: 23 chat/canvas surfaces used overflow-wrap:anywhere or word-break:break-word, so a tight line broke a word in half (deploy|ment) and hash/URL runs broke regardless. Now one global baseline (overflow-wrap:break-word + word-break:normal + hyphens:none) with .gate-finding-file as the only sanctioned break-all (a raw path is not prose).",
+    guard: "src/lib/text-wrap.check.ts",
+  },
+  {
+    id: "RG-064",
+    found: "2026-10-04",
+    symptom:
+      "Accent was addressed by HUE NAME (--color-cyanx / text-cyanx), so any palette whose accent is not cyan read as 'Astra blue with a pink button'. All components now consume the role token --color-accent (theme-store repaints it per palette; the role annotation for channel vars reads `accent`, and the palette storage slot keeps its original key).",
+    guard: "src/lib/canvas-theme.check.ts",
   },
 ];
 

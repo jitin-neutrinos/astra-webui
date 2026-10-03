@@ -143,9 +143,13 @@ export function applyPalette(p: Palette, mode: ThemeMode = getMode()) {
   }
   let n = 0;
   // Direct @theme overrides: tailwind utilities (text-brandtext, bg-void, …)
+  // `--color-accent` is the ROLE every component consumes and is derived from
+  // whichever palette is active — so a palette switch must move it explicitly,
+  // or a non-Astra palette paints Astra's cyan everywhere the accent is used.
   for (const [token, hex] of Object.entries(source)) {
     if (token.startsWith("--color-") && /^#[0-9a-fA-F]{6}$/.test(hex)) root.style.setProperty(token, hex);
   }
+  root.style.setProperty("--color-accent", source["--color-cyanx"] || astraMode["--color-cyanx"] || "#22d3ee");
   // Non-color tokens the palettes carry (--glow-accent, --glow-accent-strong, --bg-url,
   // --bg-video). These differ per MODE — dark defines a glow, light sets "none" — so skipping
   // them left dark-mode glows burning on light paper after a toggle. Write them verbatim.
@@ -188,7 +192,11 @@ export function applyPalette(p: Palette, mode: ThemeMode = getMode()) {
     // toggle path write values the reload path never does, which is the divergence we're fixing.
     const role = roleOf.get(prop);
     if (role) {
-      const hex = source["--color-" + role];
+      // Role → palette slot. The accent role is named for what it IS (the theme's
+      // accent), while the storage slot in palettes.json keeps its original key
+      // (`--color-cyanx`) so the 5 palette files stay untouched — map here
+      // instead of renaming the palette schema under every consumer.
+      const hex = role === "accent" ? source["--color-cyanx"] : source["--color-" + role];
       if (hex && /^#[0-9a-fA-F]{6}$/.test(hex)) { root.style.setProperty(prop, rgbOfHex(hex).join(" ")); n++; continue; }
     }
     // derived accent-family shades (not the accent itself): keep the shade ratio.

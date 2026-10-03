@@ -35,7 +35,7 @@ export function ContextPage({ onBack }: { onBack: () => void }) {
           <ArrowLeft className="h-4 w-4" />
         </button>
         <div className="flex items-center gap-2 min-w-0">
-          <Gauge className="h-5 w-5 text-cyanx shrink-0" />
+          <Gauge className="h-5 w-5 text-accent shrink-0" />
           <h1 className="truncate font-display text-base font-semibold">Context — Tools &amp; Optimization</h1>
         </div>
       </div>
@@ -50,7 +50,7 @@ export function ContextPage({ onBack }: { onBack: () => void }) {
 
           {/* Headroom */}
           <section className="rounded-2xl border border-white/[0.08] bg-midnight/50 p-5 backdrop-blur-md">
-            <h2 className="flex items-center gap-2 text-sm font-display font-semibold mb-4"><Gauge className="h-4 w-4 text-cyanx" /> Headroom Proxy</h2>
+            <h2 className="flex items-center gap-2 text-sm font-display font-semibold mb-4"><Gauge className="h-4 w-4 text-accent" /> Headroom Proxy</h2>
             {d.headroom ? (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs md:text-sm">
                 {Object.entries({ version: d.headroom.version, ready: String(d.headroom.ready), uptime: `${Math.round((d.headroom.uptime_seconds || 0) / 60)}m` }).map(([k, v]) => (
@@ -70,7 +70,7 @@ export function ContextPage({ onBack }: { onBack: () => void }) {
 
           {/* Tracker optimization */}
           <section className="rounded-2xl border border-white/[0.08] bg-midnight/50 p-5 backdrop-blur-md">
-            <h2 className="flex items-center gap-2 text-sm font-display font-semibold mb-3"><Clock className="h-4 w-4 text-cyanx" /> Optimization Stats (30d)</h2>
+            <h2 className="flex items-center gap-2 text-sm font-display font-semibold mb-3"><Clock className="h-4 w-4 text-accent" /> Optimization Stats (30d)</h2>
             {d.tracker ? (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs md:text-sm">

@@ -233,7 +233,7 @@ export default function VaultPage() {
           className="w-full max-w-sm rounded-2xl border border-white/[0.07] bg-midnight/80 p-6 backdrop-blur-2xl"
         >
           <div className="mb-5 flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[rgba(34,211,238,0.1)] text-[color:var(--color-cyanx)]">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[rgba(34,211,238,0.1)] text-[color:var(--color-accent)]">
               <LockKeyhole className="h-5 w-5" strokeWidth={1.5} aria-hidden />
             </span>
             <div>
@@ -252,7 +252,7 @@ export default function VaultPage() {
                 value={pw}
                 onChange={(e) => setPw(e.target.value)}
                 placeholder="Security key"
-                className="w-full rounded-lg border border-white/[0.09] bg-void/60 py-2.5 pl-3 pr-11 text-sm outline-none transition-colors focus:border-[color:var(--color-cyanx)] focus:ring-1 focus:ring-[color:var(--color-cyanx)]"
+                className="w-full rounded-lg border border-white/[0.09] bg-void/60 py-2.5 pl-3 pr-11 text-sm outline-none transition-colors focus:border-[color:var(--color-accent)] focus:ring-1 focus:ring-[color:var(--color-accent)]"
               />
               {/* You cannot check a mistyped key through asterisks. */}
               <button
@@ -260,7 +260,7 @@ export default function VaultPage() {
                 onClick={() => setShowPw((v) => !v)}
                 aria-label={showPw ? "Hide security key" : "Show security key"}
                 aria-pressed={showPw}
-                className="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted transition-colors hover:text-[color:var(--color-cyanx)]"
+                className="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted transition-colors hover:text-[color:var(--color-accent)]"
               >
                 {showPw ? <EyeOff className="h-4 w-4" strokeWidth={1.5} aria-hidden /> : <Eye className="h-4 w-4" strokeWidth={1.5} aria-hidden />}
               </button>
@@ -269,7 +269,7 @@ export default function VaultPage() {
             <button
               type="submit"
               disabled={pwBusy || !pw}
-              className="w-full rounded-lg bg-[color:var(--color-cyanx)] px-3 py-2.5 text-sm font-medium text-white transition-[transform,background-color] duration-150 hover:bg-[#075985] active:scale-[0.98] disabled:opacity-50"
+              className="w-full rounded-lg bg-[color:var(--color-accent)] px-3 py-2.5 text-sm font-medium text-white transition-[transform,background-color] duration-150 hover:bg-[#075985] active:scale-[0.98] disabled:opacity-50"
             >
               {pwBusy ? "Checking…" : "Unlock"}
             </button>
@@ -292,7 +292,7 @@ export default function VaultPage() {
       <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6">
         {/* header */}
         <div className="mb-5 flex flex-wrap items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[rgba(34,211,238,0.1)] text-[color:var(--color-cyanx)]">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[rgba(34,211,238,0.1)] text-[color:var(--color-accent)]">
             <Vault className="h-5 w-5" strokeWidth={1.5} aria-hidden />
           </span>
           <div className="min-w-0 flex-1">
@@ -346,7 +346,7 @@ export default function VaultPage() {
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder="Search key, project, harness, device…"
-                className="w-full rounded-lg border border-white/[0.09] bg-void/60 py-2 pl-8 pr-3 text-sm outline-none transition-colors focus:border-[color:var(--color-cyanx)] focus:ring-1 focus:ring-[color:var(--color-cyanx)]"
+                className="w-full rounded-lg border border-white/[0.09] bg-void/60 py-2 pl-8 pr-3 text-sm outline-none transition-colors focus:border-[color:var(--color-accent)] focus:ring-1 focus:ring-[color:var(--color-accent)]"
               />
             </div>
             {/* Sort: ONE control that cycles field, and a separate direction
@@ -376,7 +376,7 @@ export default function VaultPage() {
               aria-pressed={revealAll}
               className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-medium transition-colors active:scale-[0.98] ${
                 revealAll
-                  ? "border-[rgba(34,211,238,0.3)] bg-[rgba(34,211,238,0.1)] text-[color:var(--color-cyanx)]"
+                  ? "border-[rgba(34,211,238,0.3)] bg-[rgba(34,211,238,0.1)] text-[color:var(--color-accent)]"
                   : "border-white/[0.09] text-muted hover:bg-void/60"
               }`}
             >
@@ -396,7 +396,7 @@ export default function VaultPage() {
                   <p className="truncate text-sm font-medium">{d.name}</p>
                   <p className="truncate text-xs text-muted">{d.projects.join(", ")}</p>
                 </div>
-                <span className="rounded-[6px] bg-[rgba(34,211,238,0.1)] px-2 py-0.5 text-[11px] font-medium text-[color:var(--color-cyanx)]">
+                <span className="rounded-[6px] bg-[rgba(34,211,238,0.1)] px-2 py-0.5 text-[11px] font-medium text-[color:var(--color-accent)]">
                   {d.count} {d.count === 1 ? "var" : "vars"}
                 </span>
               </div>
@@ -434,7 +434,7 @@ export default function VaultPage() {
                         href={list[0].url}
                         target="_blank"
                         rel="noreferrer noopener"
-                        className="font-mono text-[11px] text-[color:var(--color-cyanx)] underline underline-offset-2 hover:opacity-80"
+                        className="font-mono text-[11px] text-[color:var(--color-accent)] underline underline-offset-2 hover:opacity-80"
                       >
                         {list[0].url.replace(/^https?:\/\//, "")}
                       </a>
@@ -500,7 +500,7 @@ export default function VaultPage() {
                               disabled={val === undefined}
                               aria-label={shown(e.id) ? `Hide ${e.key}` : `Reveal ${e.key}`}
                               aria-pressed={shown(e.id)}
-                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/[0.09] text-muted transition-colors hover:bg-void/60 hover:text-[color:var(--color-cyanx)] disabled:opacity-40 active:scale-[0.96]"
+                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/[0.09] text-muted transition-colors hover:bg-void/60 hover:text-[color:var(--color-accent)] disabled:opacity-40 active:scale-[0.96]"
                             >
                               {shown(e.id) ? <EyeOff className="h-4 w-4" strokeWidth={1.5} aria-hidden /> : <Eye className="h-4 w-4" strokeWidth={1.5} aria-hidden />}
                             </button>
@@ -508,7 +508,7 @@ export default function VaultPage() {
                               onClick={() => copyVal(e.id)}
                               disabled={!val || !shown(e.id)}
                               aria-label={`Copy ${e.key}`}
-                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/[0.09] text-muted transition-colors hover:bg-void/60 hover:text-[color:var(--color-cyanx)] disabled:opacity-40 active:scale-[0.96]"
+                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/[0.09] text-muted transition-colors hover:bg-void/60 hover:text-[color:var(--color-accent)] disabled:opacity-40 active:scale-[0.96]"
                             >
                               {copied === e.id ? <Check className="h-4 w-4 text-emerald-400" strokeWidth={1.5} aria-hidden /> : <Copy className="h-4 w-4" strokeWidth={1.5} aria-hidden />}
                             </button>

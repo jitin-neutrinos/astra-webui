@@ -158,7 +158,7 @@ function GallerySection({ title, entries, loading, error, onRetry, onOpen }: {
       <h3 className="fg-title">
         <span>{title}</span>
         <span className="fg-count">{filtered.length}</span>
-        <button onClick={onRetry} className="p-1 hover:text-cyanx transition" aria-label="Refresh"><RefreshCw className="w-3.5 h-3.5" /></button>
+        <button onClick={onRetry} className="p-1 hover:text-accent transition" aria-label="Refresh"><RefreshCw className="w-3.5 h-3.5" /></button>
       </h3>
 
       <div className="fg-toolbar">
@@ -187,7 +187,7 @@ function GallerySection({ title, entries, loading, error, onRetry, onOpen }: {
         <div className="fg-empty">
           <AlertTriangle className="w-5 h-5 text-redx" />
           <p className="text-sm text-slate-300">Failed to load files</p>
-          <button onClick={onRetry} className="text-xs text-cyanx hover:underline">Retry</button>
+          <button onClick={onRetry} className="text-xs text-accent hover:underline">Retry</button>
         </div>
       ) : filtered.length === 0 ? (
         <div className="fg-empty">

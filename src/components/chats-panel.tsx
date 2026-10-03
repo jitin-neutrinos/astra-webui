@@ -362,7 +362,7 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId, onEndSession }: 
               </span>
               <span className="flex-1" />
               {live && <span className="ast-live-dot" title="Session active now"><Loader2 className="w-2.5 h-2.5 animate-spin" /></span>}
-              {s.pinned && <Pin className="w-2.5 h-2.5 text-cyanx/80 shrink-0" aria-label="Pinned" />}
+              {s.pinned && <Pin className="w-2.5 h-2.5 text-accent/80 shrink-0" aria-label="Pinned" />}
               {unread > 0
                 ? <UnreadPill count={unread} />
                 : ((s as any).unread === false && (s as any).last_read_at != null && <CheckCheck className="w-2.5 h-2.5 ast-read-tick" aria-label="Read" />)}
@@ -411,7 +411,7 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId, onEndSession }: 
                 </button>
               </div>
             )}
-            {busy && <Loader2 className="w-3 h-3 animate-spin text-cyanx absolute right-2 top-2" />}
+            {busy && <Loader2 className="w-3 h-3 animate-spin text-accent absolute right-2 top-2" />}
           </div>
         )}
       </div>
@@ -439,7 +439,7 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId, onEndSession }: 
             value={query}
             onChange={e => setQuery(e.target.value)}
             placeholder="Search chats…"
-            className="ast-chats-search w-full rounded-lg pl-9 pr-8 py-1.5 text-sm focus:outline-none focus:border-cyanx/50 focus:ring-1 focus:ring-cyanx/50 transition-all"
+            className="ast-chats-search w-full rounded-lg pl-9 pr-8 py-1.5 text-sm focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/50 transition-all"
             aria-label="Search chats"
           />
           {query && (

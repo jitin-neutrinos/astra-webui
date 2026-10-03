@@ -188,7 +188,7 @@ export function DiagramBlockView({ block }: { block: DiagramBlock }) {
       <svg className="ast-cv-edges" aria-hidden="true">
         {edges.map((e, i) => (
           <g key={i}>
-            <path d={e.d} fill="none" stroke="var(--color-cyanx)" strokeOpacity={0.5} strokeWidth={1.6} />
+            <path d={e.d} fill="none" stroke="var(--color-accent)" strokeOpacity={0.5} strokeWidth={1.6} />
             {e.label && <text x={e.x} y={e.y} className="ast-cv-edge-label">{e.label}</text>}
           </g>
         ))}
@@ -250,10 +250,10 @@ export function StepsView({ block }: { block: StepsBlock }) {
 const CALLOUT_TONE: Record<string, string> = {
   // Owner 2026-10-03: one accent everywhere — tone survives through the
   // leading dot + title weight, not through separate hues.
-  info: "var(--color-cyanx)",
-  success: "var(--color-cyanx)",
-  warn: "var(--color-cyanx)",
-  danger: "var(--color-cyanx)",
+  info: "var(--color-accent)",
+  success: "var(--color-accent)",
+  warn: "var(--color-accent)",
+  danger: "var(--color-accent)",
 };
 
 export function CalloutView({ block }: { block: CalloutBlock }) {
@@ -288,7 +288,7 @@ export function ProgressView({ block }: { block: ProgressBlock }) {
         aria-valuemax={100}
         aria-label={block.label}
       >
-        <div className="ast-cv-progress-fill" style={{ width: `${pct}%` }} />
+        <div className="ast-cv-progress-fill" style={{ ["--cv-pct" as string]: pct }} />
       </div>
       {block.detail && <span className="ast-cv-progress-detail">{block.detail}</span>}
     </div>
@@ -529,7 +529,7 @@ export function HeatmapView({ block }: { block: HeatmapBlock }) {
                 <span
                   key={c + ci}
                   className="ast-cv-heat-cell"
-                  style={{ background: `color-mix(in srgb, var(--color-cyanx) ${pct(v)}%, transparent)` }}
+                  style={{ background: `color-mix(in srgb, var(--color-accent) ${pct(v)}%, transparent)` }}
                   title={`${r} · ${c}: ${v}`}
                 >
                   {!wide && <span className="ast-cv-heat-val">{compactNum(v)}</span>}
@@ -542,7 +542,7 @@ export function HeatmapView({ block }: { block: HeatmapBlock }) {
       <div className="ast-cv-heat-scale" aria-hidden="true">
         <span className="ast-cv-heat-scale-label">low</span>
         {[6, 25, 44, 63, 83].map((p) => (
-          <span key={p} className="ast-cv-heat-step" style={{ background: `color-mix(in srgb, var(--color-cyanx) ${p}%, transparent)` }} />
+          <span key={p} className="ast-cv-heat-step" style={{ background: `color-mix(in srgb, var(--color-accent) ${p}%, transparent)` }} />
         ))}
         <span className="ast-cv-heat-scale-label">high</span>
       </div>
@@ -615,8 +615,8 @@ export function AccordionView({ block }: { block: AccordionBlock }) {
 // ---- Terminal -----------------------------------------------------------------
 
 const TERM_TONE: Record<string, string | undefined> = {
-  stdout: undefined, info: "var(--color-cyanx)", success: "var(--color-cyanx)",
-  stderr: "var(--color-cyanx)", dim: "var(--color-muted)",
+  stdout: undefined, info: "var(--color-accent)", success: "var(--color-accent)",
+  stderr: "var(--color-accent)", dim: "var(--color-muted)",
 };
 
 export function TerminalView({ block }: { block: TerminalBlock }) {
@@ -705,13 +705,17 @@ export function Blocks({
           <div key={gi} className={cn("ast-cv-group", (rowKind === "kpi" || rowKind === "progress") && "rows")}>
             {g.map((b, bi) => {
               const inner = renderOne(b, `${canvasId}-${gi}`, bi);
-              if (!animate) return <div key={bi} className="ast-cv-item">{inner}</div>;
+              // --i drives the CSS stagger (no per-block JS timer) and keeps the
+              // arrival index in the DOM for QA.
+              const idx = { ["--i" as string]: bi } as React.CSSProperties;
+              if (!animate) return <div key={bi} className="ast-cv-item" style={idx}>{inner}</div>;
               return (
                 <motion.div key={bi}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.18, delay: Math.min(bi * 0.05, 0.25) }}
-                  className="ast-cv-item">
+                  className="ast-cv-item"
+                  style={idx}>
                   {inner}
                 </motion.div>
               );
@@ -734,6 +738,8 @@ const TextLazy = lazy(() => import("./canvas-docs").then((m) => ({ default: m.Te
 // v5 reactive + media blocks: another lazy chunk (canvas-reactive). Control
 // blocks read/write the per-canvas state provided by CanvasStateProvider.
 const ReactiveLazy = lazy(() => import("./canvas-reactive").then((m) => ({ default: m.ReactiveHub })));
+// v5 knowledge graph — its own lazy chunk (layout maths + SVG renderer).
+const GraphLazy = lazy(() => import("./canvas-graph-view"));
 
 function DocSkeleton() {
   // No spinner: the owner reads a loader artifact as a broken card.
@@ -781,5 +787,7 @@ function renderOne(b: CanvasBlock, id: string, bi: number): React.ReactNode {
     case "slider": case "select": case "multiselect": case "segmented":
     case "toggle": case "search": case "image": case "gallery": case "video":
       return <Suspense fallback={null}><ReactiveLazy block={b} /></Suspense>;
+    // v5 knowledge graph
+    case "graph": return <Suspense fallback={<div className="ast-cv-graph-skeleton" aria-busy="true" />}><GraphLazy block={b} /></Suspense>;
   }
 }
