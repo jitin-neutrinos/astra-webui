@@ -17,7 +17,7 @@ import { useMemo } from "react";
 import {
   ResponsiveContainer, AreaChart, Area, LineChart, Line, BarChart, Bar,
   RadialBarChart, RadialBar, PieChart, Pie, Cell, XAxis, YAxis,
-  Tooltip, Legend, type TooltipProps,
+  Tooltip, Legend, PolarAngleAxis, type TooltipProps,
 } from "recharts";
 import type { ChartBlock } from "../../lib/canvas-schema";
 
@@ -145,6 +145,7 @@ export function ChartBlockView({ block }: { block: ChartBlock }) {
                   nameKey="name"
                   innerRadius="64%"
                   outerRadius="92%"
+                  cornerRadius={4}
                   paddingAngle={2}
                   stroke="none"
                   isAnimationActive={false}
@@ -170,6 +171,10 @@ export function ChartBlockView({ block }: { block: ChartBlock }) {
             startAngle={90}
             endAngle={-270}
           >
+            {/* Fixed 0-100 domain: without it recharts auto-scales the bar to the
+                data max, so a 71% gauge rendered as a FULL ring (every gate
+                gauge read as 100%). The domain is what makes the value honest. */}
+            <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
             <RadialBar
               dataKey={block.series[0].name}
               cornerRadius={6}
@@ -177,7 +182,7 @@ export function ChartBlockView({ block }: { block: ChartBlock }) {
               fill={SERIES_COLORS[0]}
               isAnimationActive={false}
             />
-            <Tooltip content={<TT />} />
+            <Tooltip content={<TT />} isAnimationActive={false} />
           </RadialBarChart>
         ) : (
           <PieChart>
