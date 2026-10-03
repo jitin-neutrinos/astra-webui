@@ -12,7 +12,6 @@ import { Copy, Check, Loader2 } from "lucide-react";
 import { canvasToMarkdown } from "../../lib/canvas-markdown";
 import { copyText } from "../../lib/copy-text";
 import { Blocks } from "./canvas-blocks";
-import { CanvasFullscreenProvider } from "./canvas-fullscreen";
 import type { CanvasSpec, CanvasBlock } from "../../lib/canvas-schema";
 
 // The heading is ALWAYS derived from the data, so a canvas never reads as a
@@ -68,7 +67,6 @@ export default function CanvasView({ spec, partial, canvasId = "0" }: { spec?: C
   if (partial) {
     const liveTitle = deriveTitle(partial);
     return (
-      <CanvasFullscreenProvider>
         <section className="ast-canvas ast-canvas-live" aria-label={liveTitle} aria-busy="true">
           <header className="ast-canvas-head">
             <span className="ast-canvas-title">{liveTitle}</span>
@@ -81,7 +79,6 @@ export default function CanvasView({ spec, partial, canvasId = "0" }: { spec?: C
             <Blocks blocks={partial.blocks} canvasId={`${canvasId}-p`} />
           </div>
         </section>
-      </CanvasFullscreenProvider>
     );
   }
 
@@ -97,7 +94,6 @@ export default function CanvasView({ spec, partial, canvasId = "0" }: { spec?: C
   };
 
   return (
-    <CanvasFullscreenProvider>
       <section className="ast-canvas" aria-label={title}>
         <header className="ast-canvas-head">
           <span className="ast-canvas-title">{title}</span>
@@ -112,6 +108,5 @@ export default function CanvasView({ spec, partial, canvasId = "0" }: { spec?: C
           <Blocks blocks={spec.blocks} canvasId={canvasId} />
         </div>
       </section>
-    </CanvasFullscreenProvider>
   );
 }

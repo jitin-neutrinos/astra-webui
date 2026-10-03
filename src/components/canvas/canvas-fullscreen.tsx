@@ -53,6 +53,9 @@ export function useCanvasExpand() {
 const useOpen = () => useSyncExternalStore(subscribe, () => openId, () => null);
 const useTitle = () => useSyncExternalStore(subscribe, () => openTitle, () => "");
 
+// MOUNT THIS ONCE, at the app root. Every canvas card used to mount its own
+// provider, so one open card produced N overlays and N scroll-locks that never
+// balanced (measured live: 4 `.ast-cv-full` nodes, body overflow stuck hidden).
 export function CanvasFullscreenProvider({ children }: { children: ReactNode }) {
   const id = useOpen();
   const title = useTitle();
@@ -77,19 +80,24 @@ export function CanvasFullscreenProvider({ children }: { children: ReactNode }) 
   }, [open]);
 
   // Escape + scroll-lock, so the chat behind cannot scroll away underneath.
+  //
+  // Safe now precisely because this provider is mounted ONCE: the earlier
+  // per-card provider registered one lock per card, so a lock outlived its own
+  // overlay and left `body { overflow: hidden }` with nothing on screen.
   useEffect(() => {
     if (!open) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(null);
     };
     window.addEventListener("keydown", onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     return () => {
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = prevOverflow;
     };
   }, [open]);
+
 
   const ctx = useMemo<FullscreenCtx>(
     () => ({ openId: id, expand: (k, t) => setOpen(k, t), close: () => setOpen(null) }),
@@ -105,10 +113,18 @@ export function CanvasFullscreenProvider({ children }: { children: ReactNode }) 
 }
 
 // The shell owns the slot; the expanded block portals its live node into it.
+//
+// The overlay itself MUST be portalled to document.body. React renders it
+// wherever the provider sits, which inside a chat message is inside
+// `.chat-scroll` — a SCROLLING container whose own offset makes a
+// `position: fixed` child anchor to THAT box instead of the viewport. Measured
+// live: top -4604px, 2314px tall, i.e. entirely off-screen and invisible.
+// Portalling to body is what makes "fixed" mean the viewport.
 function FullscreenShell({ title, onClose }: { title: string; onClose: () => void }) {
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
-  return (
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <div
       className="ast-cv-full"
       role="dialog"
@@ -130,7 +146,8 @@ function FullscreenShell({ title, onClose }: { title: string; onClose: () => voi
         </header>
         <div className="ast-cv-full-body" data-cv-slot="1" />
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

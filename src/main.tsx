@@ -10,6 +10,7 @@ import { initAndroidShell } from './native/android-resume'
 // Self-guards native-only; without this call the whole module is tree-shaken
 // and the app paints white bands above/below the viewport (drift-erase class).
 import { initShellTheme } from './native/shell-theme'
+import { CanvasFullscreenProvider } from './components/canvas/canvas-fullscreen'
 // Theme engine: restore the saved palette (no-op when it is the default Astra UI)
 // before first paint so a non-default palette never flashes the stock colors.
 import { restorePalette, startThemeSync } from './lib/theme-store'
@@ -21,6 +22,13 @@ initShellTheme().catch(() => { /* never block app boot on shell glue */ })
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    {/* The fullscreen host is a page-wide singleton. It must be mounted HERE,
+        once: mounting it per canvas card produced one overlay AND one
+        scroll-lock per card (measured live — four stacked `.ast-cv-full` nodes
+        for a single open card, with body overflow stuck at `hidden` after
+        close, leaving the chat unscrollable). */}
+    <CanvasFullscreenProvider>
+      <App />
+    </CanvasFullscreenProvider>
   </StrictMode>,
 )

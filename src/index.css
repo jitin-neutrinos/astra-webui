@@ -4184,6 +4184,11 @@ a.ast-cv-ref-link:hover { border-bottom-color: var(--color-cyanx); }
 .ast-cv-full {
   position: fixed;
   inset: 0;
+  /* 100dvh, not auto: as a flex child of a tall body the pane otherwise grows
+     with the portalled content instead of filling the viewport. */
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
   z-index: 90;
   display: flex;
   padding: calc(var(--native-inset-top, 0px) + 12px) 12px calc(var(--native-inset-bottom, 0px) + 12px);
