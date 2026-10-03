@@ -204,7 +204,11 @@ const ELEMENTAL = [
         "--color-surface": "#c8e0eb",
         "--color-brandtext": "#082f42",
         "--color-muted": "#3f6678",
-        "--color-cyanx": "#0369a1",
+        // Water's own light accent: a TEAL-leaning deep blue. It was #0369a1, which is
+        // byte-identical to astra-ui's light accent, so water/light was indistinguishable from
+        // the Astra theme AND un-auditable (a compliance scan cannot tell "frozen" from
+        // "coincidentally equal"). Hue 193 vs Astra's 201, contrast 5.59 on water's void.
+        "--color-cyanx": "#0b6b85",
         "--color-violetx": "#0f766e",
         "--color-fuchsiax": "#6d28d9",
         "--color-redx": "#be123c",
