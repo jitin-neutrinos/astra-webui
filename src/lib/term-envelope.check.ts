@@ -17,6 +17,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import { formatTerminal, unwrapToolEnvelope } from "./term-format.ts";
+import { describeOutput } from "./tool-io.ts";
 
 // ---------- 1. envelope duplication ----------
 
@@ -148,6 +149,42 @@ test("large output is not corrupted by unwrapping", () => {
 
 /** The exact dep list the chat feed memo uses. Kept here so a silent edit is caught. */
 const FEED_DEPS = ["messages", "bgItems", "openBgRef", "isStreaming", "storedSessionId"];
+
+test("describeOutput is fed the UNWRAPPED text, so the payload renders exactly once", () => {
+  // The duplication came from the CALL SITE, not the helpers: chat-timeline described the RAW
+  // envelope (yielding an `Output` field whose value was the payload) while the TerminalWindow
+  // rendered the same text again. This pins the composition the timeline now performs.
+  const env = JSON.stringify({ output: "PASSED: x=1\nstdout: 50% stdout", exit_code: 0 });
+  const raw = describeOutput("execute_code", env);
+  const fixed = describeOutput("execute_code", unwrapToolEnvelope(env).text);
+
+  // Before: an `Output` field carrying the payload -> the window repeated it.
+  assert.ok(
+    raw.some((f) => f.key === "Output" && f.value.includes("PASSED: x=1")),
+    "the raw envelope is expected to yield a duplicating Output field: " + JSON.stringify(raw)
+  );
+  // After: exactly ONE field, no envelope key anywhere.
+  assert.equal(fixed.length, 1, "expected a single field: " + JSON.stringify(fixed));
+  assert.equal(/"(output|stdout|exit_code)"\s*:/.test(fixed[0].value), false);
+  assert.ok(fixed[0].value.includes("PASSED: x=1"));
+  // And with fields present the timeline renders NO window (its `outFields.length === 0` guard),
+  // so the payload appears exactly once across the whole card.
+  assert.notEqual(fixed.length, 0);
+});
+
+test("every envelope shape yields a single non-duplicating field", () => {
+  for (const env of [
+    JSON.stringify({ output: "The file /home/x/y.ts has been updated.", exit_code: 0 }),
+    JSON.stringify({ result: { output: "patched" } }),
+    JSON.stringify({ output: ["line1", "line2"], exit_code: 0 }),
+    JSON.stringify({ content: [{ type: "text", text: "a" }, { type: "text", text: "b" }] }),
+  ]) {
+    const fields = describeOutput("execute_code", unwrapToolEnvelope(env).text);
+    const leaks = fields.filter((f) => /"(output|stdout|exit_code|content)"\s*:/.test(f.value));
+    assert.equal(leaks.length, 0, "envelope leaked into a field: " + JSON.stringify(leaks));
+    assert.ok(fields.length >= 1, "expected at least one field for " + env);
+  }
+});
 
 test("the feed memo lists every dependency the row JSX reads", () => {
   // Reading the source is deliberate: the bug class is a DROPPED dep, which no runtime
