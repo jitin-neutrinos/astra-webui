@@ -915,3 +915,52 @@ test("a bad editable block drops alone — sibling blocks survive", () => {
   assert.ok(spec);
   assert.deepEqual(spec!.blocks.map((b) => b.type), ["kpi", "text"]);
 });
+
+// ── bracket-depth repair (regression from a real DB replay) ───────────────────
+// Replaying every astra-canvas fence in ~/.hermes/state.db (120 fences) found
+// the model sometimes emits ONE surplus closing bracket at the very end of a
+// card — e.g. a `steps` block closed with `] }` after its array was already
+// closed, leaving bracket depth -1. The whole card degraded to raw JSON.
+// Two messages, 19 blocks, all otherwise perfectly valid.
+
+test("a surplus trailing closer still renders (depth -1)", () => {
+  const raw = `\`\`\`astra-canvas
+{ "v": 1, "blocks": [
+  { "type": "kpi", "label": "Rows", "value": 67 },
+  { "type": "steps", "items": [ { "title": "Port", "status": "done" } ] }
+  ]
+] }
+\`\`\``;
+  const parts = splitCanvasBlocks(raw, false);
+  const canv = parts.filter((p) => p.kind === "canvas");
+  assert.equal(canv.length, 1, "the card must render, not degrade");
+  assert.deepEqual(canv[0].spec.blocks.map((b) => b.type), ["kpi", "steps"]);
+});
+
+test("unclosed trailing brackets are closed, not rejected", () => {
+  const raw = `\`\`\`astra-canvas
+{ "v": 1, "blocks": [
+  { "type": "kpi", "label": "A", "value": 1 }
+\`\`\``;
+  const canv = splitCanvasBlocks(raw, false).filter((p) => p.kind === "canvas");
+  assert.equal(canv.length, 1);
+  assert.equal(canv[0].spec.blocks[0].type, "kpi");
+});
+
+test("depth repair never touches braces inside string values", () => {
+  const raw = `\`\`\`astra-canvas
+{ "v": 1, "blocks": [ { "type": "callout", "tone": "info", "body": "a } b ] c" } ] }
+\`\`\``;
+  const canv = splitCanvasBlocks(raw, false).filter((p) => p.kind === "canvas");
+  assert.equal(canv.length, 1);
+  assert.equal((canv[0].spec.blocks[0] as any).body, "a } b ] c");
+});
+
+test("an unfixable payload still degrades rather than inventing blocks", () => {
+  // Missing `{` on a kpi item — genuinely malformed, and no repair should fake it.
+  const raw = `\`\`\`astra-canvas
+{ "v": 1, "blocks": [ { "type": "kpi", "items": [ { "label": "a", "value": 1 }, "label": "b", "value": 2 } ] } ] }
+\`\`\``;
+  const canv = splitCanvasBlocks(raw, false).filter((p) => p.kind === "canvas");
+  assert.equal(canv.length, 0, "no block may be fabricated from broken JSON");
+});

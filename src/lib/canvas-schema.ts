@@ -787,7 +787,55 @@ function lenientJson(raw: string): unknown {
     .replace(/(^|[^:"'\\])\/\/.*$/gm, "$1") // line comments (not inside strings)
     .replace(/,(\s*[}\]])/g, "$1");         // trailing commas
   try { return attempt(repaired); } catch { /* try bare-key quoting */ }
-  return attempt(quoteBareKeys(repaired));
+  try { return attempt(quoteBareKeys(repaired)); } catch { /* fall through to depth repair */ }
+
+  // ── Bracket-depth repair ──────────────────────────────────────────────────
+  // Observed live (DB replay of 120 fences): the model sometimes emits ONE
+  // surplus closer at the very end of a card — e.g. `... ] }\n  ]\n] }` where the
+  // blocks array was already closed, leaving depth -1. The whole card then
+  // degraded to raw JSON. Replay: 2 messages, 19 blocks, all otherwise valid.
+  //
+  // Deliberately conservative: it walks with a STACK of open brackets, ignoring
+  // bracket characters inside strings, drops a stray closer that matches nothing,
+  // then re-closes with the exact mirror of what is still open. It never invents
+  // content and never reorders keys, so a payload it "repairs" is the payload the
+  // model meant. Anything it cannot make parseable still degrades as before.
+  return attempt(balanceBrackets(quoteBareKeys(repaired)));
+}
+
+/**
+ * Make bracket nesting self-consistent without touching string contents.
+ * Idempotent: returns the input unchanged when it is already balanced.
+ */
+function balanceBrackets(s: string): string {
+  let body = s.trim();
+  for (let pass = 0; pass < 5; pass++) {
+    const stack: string[] = [];
+    let droppedStrayCloser = false;
+    for (let i = 0; i < body.length; i++) {
+      const c = body[i];
+      if (c === '"') {
+        // Step over the string so a brace or quote inside it is never structural.
+        i++;
+        while (i < body.length) {
+          if (body[i] === "\\") { i += 2; continue; }
+          if (body[i] === '"') break;
+          i++;
+        }
+        continue;
+      }
+      if (c === "{" || c === "[") { stack.push(c); continue; }
+      if (c === "}" || c === "]") {
+        const want = c === "}" ? "{" : "[";
+        if (stack[stack.length - 1] === want) stack.pop();
+        else { body = body.slice(0, i) + body.slice(i + 1); droppedStrayCloser = true; break; }
+      }
+    }
+    if (droppedStrayCloser) continue;          // retry against the shortened text
+    if (stack.length === 0) return body;        // balanced
+    body += stack.reverse().map((c) => (c === "{" ? "}" : "]")).join("");
+  }
+  return body;
 }
 
 /**
