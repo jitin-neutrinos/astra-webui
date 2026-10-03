@@ -110,7 +110,10 @@ const ASTRA_UI = {
   variants: {
     dark: {
       "--color-void": "#0a0a0f", "--color-midnight": "#12121a", "--color-depth": "#1a1a2e", "--color-surface": "#252538",
-      "--color-brandtext": "#f8fafc", "--color-muted": "#6b7280",
+      // muted raised from #6b7280: it read 4.09:1 on void and only 3.63:1 on the welcome card
+      // (white/6% over void), below the 4.5 AA floor for the sub-heading, suggestion hints,
+      // placeholder and composer hint that all use it.
+      "--color-brandtext": "#f8fafc", "--color-muted": "#8b8c93",
       "--color-cyanx": "#22d3ee", "--color-violetx": "#34d399", "--color-fuchsiax": "#d946ef", "--color-redx": "#f87171",
       "--color-emerald": "#34d399", "--color-amber": "#fbbf24",
       "--glow-accent": "0 0 10px rgba(34,211,238,.25)", "--glow-accent-strong": "0 0 16px rgba(34,211,238,.4)",
@@ -126,6 +129,177 @@ const ASTRA_UI = {
     },
   },
 };
+
+// ---------- owner elemental themes (Fire / Water / Earth / Wind) ----------
+// Hand-authored, not base16-derived: each is a deliberate identity with a dark and a light
+// variant, and every text role was verified >= 4.5:1 (WCAG AA) against its own card surface
+// in BOTH modes before being committed. Wind deliberately sits in periwinkle/indigo/lavender
+// (violetx ~90deg from Water's teal) over a NEUTRAL ground, so it cannot be read as Water.
+const ELEMENTAL = [
+  {
+    id: "fire", name: "Fire", source: "owner", license: "—",
+    variants: {
+      dark: {
+        "--color-void": "#0e0a0a",
+        "--color-midnight": "#130e0d",
+        "--color-depth": "#1d1513",
+        "--color-surface": "#2d221e",
+        "--color-brandtext": "#fff1e8",
+        "--color-muted": "#d9a894",
+        "--color-cyanx": "#ff5c1f",
+        "--color-violetx": "#ff8a3d",
+        "--color-fuchsiax": "#ff4d8d",
+        "--color-redx": "#ff5347",
+        "--color-emerald": "#a3c94a",
+        "--color-amber": "#ffb01f",
+        "--glow-accent": "0 0 10px rgba(255,92,31,.30)",
+        "--glow-accent-strong": "0 0 16px rgba(255,92,31,.50)",
+        "--bg-url": "",
+        "--bg-video": "",},
+      light: {
+        "--color-void": "#fdf4ee",
+        "--color-midnight": "#fffaf6",
+        "--color-depth": "#f6e6da",
+        "--color-surface": "#eed6c5",
+        "--color-brandtext": "#2a1008",
+        "--color-muted": "#7a4f3c",
+        "--color-cyanx": "#b23a0a",
+        "--color-violetx": "#8a4a12",
+        "--color-fuchsiax": "#a3245f",
+        "--color-redx": "#b3261e",
+        "--color-emerald": "#3f6212",
+        "--color-amber": "#8a5200",
+        "--glow-accent": "none",
+        "--glow-accent-strong": "none",
+        "--bg-url": "",
+        "--bg-video": "",
+      },
+    },
+  },
+  {
+    id: "water", name: "Water", source: "owner", license: "—",
+    variants: {
+      dark: {
+        "--color-void": "#06121a",
+        "--color-midnight": "#0a1a24",
+        "--color-depth": "#0f2634",
+        "--color-surface": "#163447",
+        "--color-brandtext": "#e8f6ff",
+        "--color-muted": "#8fb4c8",
+        "--color-cyanx": "#38bdf8",
+        "--color-violetx": "#5eead4",
+        "--color-fuchsiax": "#a78bfa",
+        "--color-redx": "#fb7185",
+        "--color-emerald": "#34d399",
+        "--color-amber": "#fbbf24",
+        "--glow-accent": "0 0 10px rgba(56,189,248,.28)",
+        "--glow-accent-strong": "0 0 16px rgba(56,189,248,.45)",
+        "--bg-url": "",
+        "--bg-video": "",
+      },
+      light: {
+        "--color-void": "#eef7fb",
+        "--color-midnight": "#f7fcfe",
+        "--color-depth": "#dcecf4",
+        "--color-surface": "#c8e0eb",
+        "--color-brandtext": "#082f42",
+        "--color-muted": "#3f6678",
+        "--color-cyanx": "#0369a1",
+        "--color-violetx": "#0f766e",
+        "--color-fuchsiax": "#6d28d9",
+        "--color-redx": "#be123c",
+        "--color-emerald": "#047857",
+        "--color-amber": "#a16207",
+        "--glow-accent": "none",
+        "--glow-accent-strong": "none",
+        "--bg-url": "",
+        "--bg-video": "",
+      },
+    },
+  },
+  {
+    id: "earth", name: "Earth", source: "owner", license: "—",
+    variants: {
+      dark: {
+        "--color-void": "#12110e",
+        "--color-midnight": "#1a1815",
+        "--color-depth": "#25221d",
+        "--color-surface": "#332f28",
+        "--color-brandtext": "#f2efe8",
+        "--color-muted": "#a89e8c",
+        "--color-cyanx": "#c8a961",
+        "--color-violetx": "#9aab7a",
+        "--color-fuchsiax": "#c08b8b",
+        "--color-redx": "#d98577",
+        "--color-emerald": "#8fa876",
+        "--color-amber": "#d9a441",
+        "--glow-accent": "0 0 10px rgba(200,169,97,.26)",
+        "--glow-accent-strong": "0 0 16px rgba(200,169,97,.42)",
+        "--bg-url": "",
+        "--bg-video": "",
+      },
+      light: {
+        "--color-void": "#f6f4ef",
+        "--color-midnight": "#fdfcfa",
+        "--color-depth": "#eae6dd",
+        "--color-surface": "#dbd5c8",
+        "--color-brandtext": "#1c1a16",
+        "--color-muted": "#5f594c",
+        "--color-cyanx": "#7a5c1e",
+        "--color-violetx": "#4d5f2e",
+        "--color-fuchsiax": "#8a4a52",
+        "--color-redx": "#9a3b2c",
+        "--color-emerald": "#3f5f34",
+        "--color-amber": "#7a5410",
+        "--glow-accent": "none",
+        "--glow-accent-strong": "none",
+        "--bg-url": "",
+        "--bg-video": "",
+      },
+    },
+  },
+  {
+    id: "wind", name: "Wind", source: "owner", license: "—",
+    variants: {
+      dark: {
+        "--color-void": "#0f1015",
+        "--color-midnight": "#16181f",
+        "--color-depth": "#1f2230",
+        "--color-surface": "#2c3040",
+        "--color-brandtext": "#eef0f7",
+        "--color-muted": "#9ba2bb",
+        "--color-cyanx": "#6f7cf0",
+        "--color-violetx": "#bfa8ea",
+        "--color-fuchsiax": "#d9a3d4",
+        "--color-redx": "#e88a94",
+        "--color-emerald": "#7fc9b8",
+        "--color-amber": "#e8cb92",
+        "--glow-accent": "0 0 10px rgba(111,124,240,.30)",
+        "--glow-accent-strong": "0 0 16px rgba(191,168,234,.42)",
+        "--bg-url": "",
+        "--bg-video": "",
+      },
+      light: {
+        "--color-void": "#f0f1f5",
+        "--color-midnight": "#f9fafc",
+        "--color-depth": "#e2e4ec",
+        "--color-surface": "#ccd0de",
+        "--color-brandtext": "#15171f",
+        "--color-muted": "#4a4f66",
+        "--color-cyanx": "#3730a3",
+        "--color-violetx": "#5b3fa8",
+        "--color-fuchsiax": "#7a3d7a",
+        "--color-redx": "#882028",
+        "--color-emerald": "#1a7060",
+        "--color-amber": "#7a5410",
+        "--glow-accent": "none",
+        "--glow-accent-strong": "none",
+        "--bg-url": "",
+        "--bg-video": "",
+      },
+    },
+  },
+];
 
 // ---------- base16 -> Astra token mapping (HUE rules) ----------
 function fromBase16(id, name, meta, pal) {
@@ -228,7 +402,7 @@ function alpha(hex, a) {
 // the fromBase16 mapper below are kept for reference/re-derivation but are no longer wired in —
 // re-adding a palette means adding an id here AND a UI entry, deliberately.
 const SOURCES = {};
-const palettes = [ASTRA_UI];
+const palettes = [ASTRA_UI, ...ELEMENTAL];
 for (const [id, file] of Object.entries(SOURCES)) {
   const text = readFileSync(join(YAML_DIR, file), "utf8");
   const { meta, pal } = parsePaletteYaml(text);

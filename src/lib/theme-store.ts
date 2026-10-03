@@ -32,8 +32,16 @@ function channels(variant: PaletteVariant, token: string): string {
 // Token -> generated channel var suffixes produced by tokenize.mjs.
 // We discover them from the live stylesheet instead of hardcoding: any
 // definition comment block carries them; simpler: we re-derive by scanning CSSOM once.
-/** Sync the browser-chrome color (theme-color meta) with the active palette's void, and in light
- *  mode re-derive the slate ramp from the palette's ink so utility text stays AA on tinted paper. */
+/** Sync the browser-chrome color (theme-color meta) with the active palette's void, and
+ *  re-derive the slate ramp from the palette's own ink so `text-slate-*` utilities stay
+ *  readable on ANY theme's ground, in BOTH modes.
+ *
+ *  Why this matters: the chat surface uses `text-slate-300..700` in ~10 places (sidebar
+ *  section labels, composer hint, timestamps). Those utilities resolve from @theme at BUILD
+ *  time, so they carry Tailwind's stock slate values and completely bypass the palette. Stock
+ *  slate-600 (#475569) is only 2.4:1 on a dark ground — below even the 3:1 non-text minimum —
+ *  which is what reads as "muddy, hard-to-read secondary text". Deriving the ramp from the
+ *  palette's ink + void makes every step a tint of THAT theme's own colours. */
 function syncThemeColorMeta(mode: ThemeMode) {
   const p = mergeCustom(palettes.find((x) => x.id === currentPaletteId()) || palettes[0]);
   const v = p.variants[mode] || {};
@@ -43,16 +51,17 @@ function syncThemeColorMeta(mode: ThemeMode) {
     meta?.setAttribute("content", voidHex);
   }
   const root = document.documentElement;
-  if (mode === "light") {
-    const ink = v["--color-brandtext"] || "#0f172a";
-    // slate-N ≈ ink washed toward paper; steps chosen so each stays >= 4.5:1 on the paper
-    const ramp: Array<[string, number]> = [["--color-slate-200", 82], ["--color-slate-300", 68], ["--color-slate-400", 55], ["--color-slate-500", 45], ["--color-slate-600", 40], ["--color-slate-700", 30]];
-    for (const [name, keep] of ramp) {
-      root.style.setProperty(name, `color-mix(in oklab, ${ink} ${100 - keep}%, ${v["--color-void"]})`);
-    }
-  } else {
-    // dark: restore the @theme defaults (no inline overrides)
-    for (const name of ["--color-slate-200", "--color-slate-300", "--color-slate-400", "--color-slate-500", "--color-slate-600", "--color-slate-700"]) root.style.removeProperty(name);
+  const ink = v["--color-brandtext"] || (mode === "light" ? "#0f172a" : "#f8fafc");
+  const ground = voidHex || (mode === "light" ? "#f5f2ec" : "#0a0a0f");
+  // keep% = how much INK remains after mixing toward the ground.
+  // Light (ink is dark): lighter steps keep LESS ink. Dark (ink is light): lighter steps keep MORE.
+  const ramp: Array<[string, number]> = mode === "light"
+    ? [["--color-slate-200", 82], ["--color-slate-300", 68], ["--color-slate-400", 55], ["--color-slate-500", 45], ["--color-slate-600", 40], ["--color-slate-700", 30]]
+    // keep% tuned per step so slate-600 clears 4.5:1 (real labels) and slate-700 clears 3:1
+    // (the dimmest step, used for hairlines/meta) on every palette's own ground.
+    : [["--color-slate-200", 78], ["--color-slate-300", 66], ["--color-slate-400", 59], ["--color-slate-500", 55], ["--color-slate-600", 54], ["--color-slate-700", 44]];
+  for (const [name, keep] of ramp) {
+    root.style.setProperty(name, `color-mix(in oklab, ${ink} ${keep}%, ${ground})`);
   }
 }
 

@@ -59,10 +59,11 @@ export function ThemePanel({ onUpload }: { onUpload?: (file: File) => Promise<st
 
   return (
     <section data-theme-engine-new className="tf-panel">
-      {/* theme — Astra UI is the only one */}
+      {/* theme — Astra UI plus the owner's elemental themes (Fire / Water / Earth / Wind) */}
       <div className="tf-section">
         <div className="tf-section-head">
           <span className="tf-section-title">Theme</span>
+          <span className="tf-sub">{palettes.length} themes · each with dark + light</span>
         </div>
         <div className="tf-grid">
           {palettes.map((p) => {
@@ -72,7 +73,7 @@ export function ThemePanel({ onUpload }: { onUpload?: (file: File) => Promise<st
               <button key={p.id} type="button"
                 className={isActive ? "tf-card tf-card-active" : "tf-card"}
                 onClick={() => { setPalette(p.id); setActive(p.id); }}
-                title={`${p.name} — the Astra brand theme`}>
+                title={`${p.name} — applies in both dark and light`}>
                 <span className="tf-swatches">
                   {SWATCH_TOKENS.map((t) => <i key={t} style={{ background: v[t] || "#000" }} />)}
                 </span>
