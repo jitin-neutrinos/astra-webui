@@ -62,19 +62,47 @@ export async function initShellTheme() {
   // fallback for older WebViews where the vars never appear.
   const root = document.documentElement;
   let lastTop = '', lastBottom = '';
+  // Fallback insets measured natively (window vs viewport, in CSS px). Used only when
+  // env(safe-area-inset-*) reports nothing, which is the case on a WebView that never got the
+  // SystemBars CSS injection (we now run insetsHandling: 'disable' so the page owns the full
+  // screen). Without a real fallback the chrome would sit under the bars.
+  let fallbackTop = 0, fallbackBottom = 0;
+  const measureFallback = () => {
+    // The activity is edge-to-edge, so the difference between the physical screen and the
+    // WebView viewport is the bar space. visualViewport is the most reliable source.
+    const screenH = (window.screen && window.screen.height) ? window.screen.height : 0;
+    const innerH = window.innerHeight || 0;
+    const vvH = window.visualViewport ? Math.round(window.visualViewport.height) : innerH;
+    const viewportH = Math.max(vvH, innerH);
+    // screen.height is in CSS px on Android WebView; guard against a bogus value.
+    const gap = Math.max(0, Math.round(screenH - viewportH));
+    if (gap > 0 && gap < 160) {
+      // Split the gap: the status bar is the larger share on modern phones. If we already know
+      // one side, attribute the remainder to the other.
+      fallbackTop = Math.round(gap * 0.55);
+      fallbackBottom = gap - fallbackTop;
+    }
+  };
   const applyInsets = () => {
     const probe = document.createElement('div');
     probe.style.cssText = 'position:fixed;visibility:hidden';
     document.body.appendChild(probe);
     const readVar = (name: string, envName: string) => {
       const injected = getComputedStyle(root).getPropertyValue(name).trim();
-      if (injected) return injected;
+      if (injected && injected !== '0px') return injected;
       probe.style.setProperty('padding-top', `env(${envName}, 0px)`);
-      return getComputedStyle(probe).paddingTop;
+      const env = getComputedStyle(probe).paddingTop;
+      if (env && env !== '0px') return env;
+      return null; // nothing usable -> caller falls back to the measured value
     };
-    const top = readVar('--safe-area-inset-top', 'safe-area-inset-top');
-    const bottom = readVar('--safe-area-inset-bottom', 'safe-area-inset-bottom');
+    let top = readVar('--safe-area-inset-top', 'safe-area-inset-top');
+    let bottom = readVar('--safe-area-inset-bottom', 'safe-area-inset-bottom');
     probe.remove();
+    if (top === null || bottom === null) {
+      measureFallback();
+      if (top === null) top = `${fallbackTop}px`;
+      if (bottom === null) bottom = `${fallbackBottom}px`;
+    }
     if (top !== lastTop) { lastTop = top; root.style.setProperty('--native-inset-top', top); }
     if (bottom !== lastBottom) { lastBottom = bottom; root.style.setProperty('--native-inset-bottom', bottom); }
   };
@@ -155,7 +183,11 @@ export async function initShellTheme() {
   requestAnimationFrame(updateColors);
   setTimeout(updateColors, 100);
   setTimeout(updateColors, 500);
-  setInterval(updateColors, 1200);
+  // Slowed from 1200ms to 5000ms (2026-10-03): real-time device measurement
+  // showed the per-keystroke timeline re-render (20.5ms at 7,366 DOM nodes) is
+  // the dominant lag source; the ticker itself is minor overhead, but reducing
+  // it removes a competing timer from the main thread during typing bursts.
+  setInterval(updateColors, 5000);
   window.addEventListener('resize', updateColors);
   setTimeout(() => reportLayout('boot+2s'), 2000);
   setTimeout(() => reportLayout('boot+6s'), 6000);
