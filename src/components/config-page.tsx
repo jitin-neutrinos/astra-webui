@@ -201,24 +201,43 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
     setUndoState(null);
   };
 
-  // Derive current provider from model name (persists across reloads)
-  const currentProvider = useMemo(() => {
+  // Model ids a provider owns. Shape varies: plain strings or {id|name}.
+  const modelIds = (p: any): string[] =>
+    (Array.isArray(p?.models) ? p.models : [])
+      .map((m: any) => (typeof m === "string" ? m : m?.id || m?.name || ""))
+      .filter(Boolean);
+
+  // The provider that OWNS the persisted model. `model` is the only persisted
+  // key — there is no top-level `provider` in config, so writing one is a no-op
+  // and the old derive-only version snapped straight back to zai.
+  const providerOwningModel = useMemo(() => {
     const model = getVal("model");
     if (!model) return "";
-    for (const p of providerOptions) {
-      const models = (p.models || []).map((m: any) => typeof m === "string" ? m : m.id || m.name);
-      if (models.includes(model)) return p.slug;
-    }
-    return "";
+    return providerOptions.find((p: any) => modelIds(p).includes(model))?.slug || "";
   }, [getVal("model"), providerOptions]);
+
+  // Selection intent lives locally so the picker does not fight the user; it
+  // re-syncs whenever the persisted model changes (undo, import, reset).
+  const [selectedProvider, setSelectedProvider] = useState("");
+  useEffect(() => {
+    if (providerOwningModel) setSelectedProvider(providerOwningModel);
+  }, [providerOwningModel]);
+
+  // Picking a provider also moves the model onto that provider — the pair is
+  // persisted through `model`, so the choice survives a reload.
+  const pickProvider = (slug: string) => {
+    setSelectedProvider(slug);
+    const ids = modelIds(providerOptions.find((p: any) => p.slug === slug));
+    if (ids.length && !ids.includes(getVal("model"))) updateVal("model", ids[0]);
+  };
 
   // Models filtered by selected provider
   const filteredModels = useMemo(() => {
-    if (!currentProvider) return modelOptions;
-    const p = providerOptions.find((x: any) => x.slug === currentProvider);
+    if (!selectedProvider) return modelOptions;
+    const p = providerOptions.find((x: any) => x.slug === selectedProvider);
     if (!p) return modelOptions;
-    return (p.models || []).map((m: any) => typeof m === "string" ? m : m.id || m.name).filter(Boolean);
-  }, [currentProvider, providerOptions, modelOptions]);
+    return modelIds(p);
+  }, [selectedProvider, providerOptions, modelOptions]);
 
   // Fallback chain helpers
   const addFallbackEntry = () => {
@@ -498,14 +517,14 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
                   <label className="text-xs text-slate-500 font-mono mb-1 block">Provider</label>
                   <div className="flex gap-2">
                     <DropdownSelect
-                      value={currentProvider}
-                      onChange={(v) => updateVal("provider", v)}
+                      value={selectedProvider}
+                      onChange={pickProvider}
                       options={providerOptions.map(p => ({ value: p.slug, label: p.name }))}
                       placeholder="Select provider"
-                      className="flex-1"
+                      className="flex-1 min-w-0"
                     />
-                    <button onClick={() => setShowAddProvider(true)} className="p-2 rounded-lg bg-cyanx/10 hover:bg-cyanx/20 text-cyanx transition-colors shrink-0" title="Add provider">
-                      <Plus className="w-4 h-4" />
+                    <button onClick={() => setShowAddProvider(true)} className="h-[38px] w-[38px] shrink-0 grid place-items-center rounded-lg bg-cyanx/10 hover:bg-cyanx/20 text-cyanx transition-colors" title="Add provider" aria-label="Add provider">
+                      <Plus className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
@@ -515,12 +534,12 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
                     <DropdownSelect
                       value={getVal("model") || ""}
                       onChange={(v) => updateVal("model", v)}
-                      options={filteredModels.map((m: string) => ({ value: m, label: m }))}
+                      options={filteredModels.map(m => ({ value: m, label: m }))}
                       placeholder="Select model"
-                      className="flex-1"
+                      className="flex-1 min-w-0"
                     />
-                    <button onClick={() => setShowAddModel(true)} className="p-2 rounded-lg bg-cyanx/10 hover:bg-cyanx/20 text-cyanx transition-colors shrink-0" title="Add model">
-                      <Plus className="w-4 h-4" />
+                    <button onClick={() => setShowAddModel(true)} className="h-[38px] w-[38px] shrink-0 grid place-items-center rounded-lg bg-cyanx/10 hover:bg-cyanx/20 text-cyanx transition-colors" title="Add model" aria-label="Add model">
+                      <Plus className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
@@ -534,8 +553,8 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
                     <label className="text-sm text-slate-200 font-medium font-mono">Fallback Chain</label>
                     <p className="text-xs text-slate-500 mt-0.5">Ordered failover sequence</p>
                   </div>
-                  <button onClick={addFallbackEntry} className="flex items-center gap-1 px-2 py-1 rounded-md bg-cyanx/10 hover:bg-cyanx/20 text-cyanx text-xs font-mono transition-colors">
-                    <Plus className="w-3 h-3" /> Add
+                  <button onClick={addFallbackEntry} className="h-[38px] w-[38px] shrink-0 grid place-items-center rounded-lg bg-cyanx/10 hover:bg-cyanx/20 text-cyanx transition-colors" title="Add fallback provider" aria-label="Add fallback provider">
+                    <Plus className="h-4 w-4" />
                   </button>
                 </div>
                 <div className="space-y-2">
@@ -548,10 +567,10 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
                           onChange={(v) => updateFallbackEntry(i, "provider", v)}
                           options={providerOptions.map(p => ({ value: p.slug, label: p.name }))}
                           placeholder="Provider"
-                          className="flex-1 sm:flex-none"
+                          className="flex-1 min-w-0"
                         />
-                        <button onClick={() => removeFallbackEntry(i)} className="p-1 rounded hover:bg-redx/20 text-slate-500 hover:text-redx transition-colors shrink-0" title="Remove">
-                          <Trash2 className="w-3.5 h-3.5" />
+                        <button onClick={() => removeFallbackEntry(i)} className="h-[38px] w-[38px] shrink-0 grid place-items-center rounded-lg bg-white/[0.04] hover:bg-redx/15 text-slate-500 hover:text-redx transition-colors" title="Remove" aria-label={`Remove fallback entry ${i + 1}`}>
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
                       <DropdownSelect
@@ -565,6 +584,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
                           });
                         })()}
                         placeholder="Model"
+                        className="flex-1 min-w-0"
                       />
                     </div>
                   ))}
