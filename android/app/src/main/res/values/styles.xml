@@ -17,6 +17,14 @@
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
         <item name="colorAccent">@color/colorAccent</item>
+        <!-- Android's system-bar CONTRAST SCRIM. Left at the default (true) the
+             system composites a translucent light/dark scrim over the navigation
+             bar whenever it judges the app content behind it "too similar" — which
+             is exactly the near-white strip the owner sees at the bottom while the
+             rest of the app is tinted. Transparent bar colors alone do NOT stop it.
+             Both must be false so the bar shows the page's own theme colour. -->
+        <item name="android:enforceStatusBarContrast">false</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
     </style>
 
     <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
@@ -33,9 +41,15 @@
              setStyle call. With it unset it inherits AppCompat's default - WHITE - which is
              exactly the "static white navbar/status bar" regression. Transparent lets the
              theme-driven page colour show through, so every current and future theme is covered
-             automatically. (targetSdk 36 enforces edge-to-edge, so android:statusBarColor /
-             navigationBarColor are ignored; the decor background is the real mechanism.) -->
+             automatically. -->
         <item name="android:windowBackground">@android:color/transparent</item>
+        <!-- Same contrast-scrim opt-out as AppTheme: this is the theme BridgeActivity
+             actually applies at runtime (it calls setTheme(R.style.AppTheme_NoActionBar)),
+             so the attributes must live here too or the scrim returns. -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:enforceStatusBarContrast">false</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
     </style>
 
 
@@ -50,6 +64,8 @@
         <item name="android:backgroundDimEnabled">false</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:enforceStatusBarContrast">false</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowAnimationStyle">@null</item>
     </style>
