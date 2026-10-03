@@ -9,7 +9,18 @@ import { rm, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "..");
-const PORT = 3911 + (Number(process.env.VAULT_CHECK_PORT_OFFSET) || 0);
+// Base port 3911 + the per-worker-slot offset that scripts/run-checks.mjs sets
+// on every worker (ASTRA_CHECK_PORT_OFFSET). The legacy VAULT_CHECK_PORT_OFFSET
+// still works so the documented manual dodge below keeps functioning.
+//
+// This matters because the regression gate re-runs this check with spawnSync
+// WHILE the worker pool is still running it. Two servers on one port means the
+// health poll is answered by the wrong process, so every assertion silently
+// tests a stranger — which is how a collision shows up as a phantom
+// "REGRESSED" rather than an obvious error.
+const PORT =
+  3911 +
+  (Number(process.env.ASTRA_CHECK_PORT_OFFSET ?? process.env.VAULT_CHECK_PORT_OFFSET) || 0);
 const PASSWORD = "check-password-123";
 const SECRET = "check-secret-xyz";
 const VAULT_SECRET = "check-vault-secret";
@@ -20,7 +31,18 @@ const VAULT_SECRET = "check-vault-secret";
 // destroyed the vault. Point it at a scratch file and refuse to run if the
 // target is not one.
 const PROD_REGISTRY = resolve(ROOT, "data", "vault-registry.json");
-const regPath = process.env.VAULT_CHECK_REGISTRY || resolve(ROOT, "data", "vault-registry.check.json");
+// Scratch registry, PER-SLOT. The port offset alone was not enough: two
+// concurrent instances also shared ONE registry path, and each run does
+// `rm(regPath)` at start and re-seeds it — so the loser's delete wiped the
+// winner's data and step 13 then read an empty file and crashed on
+// `.find` of undefined. Deriving the filename from the same offset that
+// derives the port makes both resources slot-scoped, so concurrent runs are
+// fully isolated. VAULT_CHECK_REGISTRY still overrides (and the production
+// registry is refused below).
+const SLOT = Number(process.env.ASTRA_CHECK_PORT_OFFSET ?? process.env.VAULT_CHECK_PORT_OFFSET) || 0;
+const regPath =
+  process.env.VAULT_CHECK_REGISTRY ||
+  resolve(ROOT, "data", `vault-registry.check${SLOT ? `-${SLOT}` : ""}.json`);
 if (regPath === PROD_REGISTRY) {
   console.error("refusing to run: VAULT_CHECK_REGISTRY points at the production registry");
   process.exit(2);
@@ -42,6 +64,26 @@ const ok = (name, cond) => { if (!cond) fails.push(name); console.log(`${cond ? 
 // real one. (That is how a stale 11:50 server pointed at the PRODUCTION
 // registry made step 4 report "registry missing" while the registry had 3
 // entries.) Fail loudly, and print the remedy.
+// Adopt the spawned server so NO exit path can orphan it. Previously the only
+// cleanup was `child.kill("SIGKILL")` at the END of main(), so every early exit
+// — assertPortFree's `process.exit(2)`, the `main().catch()` below, any thrown
+// fetch — left the server running and holding its port. The next concurrent
+// instance then hit EADDRINUSE and, worse, could be answered by the orphan
+// instead of its own child. An orphan left by an earlier run is exactly what the
+// assertPortFree comment warns about, and this check was manufacturing them.
+let serverChild = null;
+function reapChild() {
+  if (!serverChild) return;
+  try { serverChild.kill("SIGKILL"); } catch { /* already gone */ }
+  serverChild = null;
+}
+for (const sig of ["exit", "SIGINT", "SIGTERM"]) {
+  process.on(sig, () => {
+    reapChild();
+    if (sig !== "exit") process.exit(sig === "SIGINT" ? 130 : 143);
+  });
+}
+
 async function assertPortFree(port) {
   const probe = createServer(); // node:http, already imported
   try {
@@ -80,6 +122,7 @@ async function main() {
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
+  serverChild = child; // adopted by reapChild() — see the exit handlers above
   let childLog = "";
   child.stdout.on("data", (d) => { childLog += d; });
   child.stderr.on("data", (d) => { childLog += d; });
@@ -213,8 +256,6 @@ async function main() {
     ok("garbage token 403", res.status === 403);
   }
 
-  // cleanup
-  child.kill("SIGKILL");
   await rm(regPath, { force: true });
   if (fails.length) {
     console.log(`\n${fails.length} FAILED: ${fails.join(", ")}`);
@@ -224,4 +265,6 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((e) => { console.error("check crashed:", e); process.exit(1); });
+// catch must reap too — a throw here previously left the server running and
+// holding its port for the next instance.
+main().catch((e) => { reapChild(); console.error("check crashed:", e); process.exit(1); });

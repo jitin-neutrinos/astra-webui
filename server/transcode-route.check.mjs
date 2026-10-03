@@ -72,8 +72,13 @@ if (ffmpegOk) {
   console.log("SKIP: ffmpeg missing — happy-path branch not exercised");
 }
 
-// 2. wiring: spawn the real server with an explicit env
-const PORT = "3917";
+// 2. wiring: spawn the real server with an explicit env.
+// Base port 3917 + the per-worker-slot offset (see scripts/run-checks.mjs).
+// The offset is what stops this colliding with a concurrent instance — the
+// regression gate re-runs this check with spawnSync while the pool still has
+// one running, and two servers on one port makes the health poll below talk to
+// the wrong process and reports a phantom failure.
+const PORT = String(3917 + (Number(process.env.ASTRA_CHECK_PORT_OFFSET) || 0));
 const SECRET = "check-secret";
 const HERE = new URL(".", import.meta.url).pathname.replace(/\/$/, ""); // …/server
 const child = spawn(process.execPath, [join(HERE, "server.mjs")], {
