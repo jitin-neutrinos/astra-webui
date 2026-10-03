@@ -40,7 +40,6 @@ import { useEffect, useRef } from "react";
  *   2. `bands` drops on low-memory / low-core devices (see isLowSpec);
  *   3. the drop-shadow is disabled there via the `.astra-lowspec` class.
  */
-const STROKE = 1.25;
 export const TRACE_TAIL = 16;   // comet length in path units of 100 (~290px)
 
 /** True on devices that can't afford the full-quality comet. */
@@ -99,18 +98,33 @@ export function ComposerTrace({ bands = 28 }: { bands?: number }) {
       const visible = w > 40 && h > 20;
       svg.style.display = visible ? "" : "none";
       if (!visible) return;
-      const half = STROKE / 2;
+      // The SVG must be the composer's OWN border box, 1:1 with its viewBox.
+      // Corrections, all measured against the real DOM:
+      //  1. sizing it w+2 x h+2 while the viewBox stayed 0 0 w h made the browser SCALE the
+      //     drawing — the stroke drifted 1.6px right / 2.5px down and shrank 4px.
+      //  2. `position:absolute; inset:0` is relative to the PADDING box, so the 1px CSS border
+      //     pushed the SVG 1px inside the visible edge.
+      //  3. insetting the rect by half the stroke put its centre line 1.14px inside a 1px
+      //     border, which rendered as a DOUBLED line beside the real border.
+      const bw = parseFloat(getComputedStyle(host).borderTopWidth) || 0;
+      // The trace must sit ON the CSS border, not inside it. The composer's border-box edge is
+      // at the host's top-left; `inset:0` is the PADDING box (already bw inside), and the rect
+      // is then inset by half the stroke. Both push the line inboard, so pull the SVG out by
+      // the border width AND shift the rect out by half the stroke to land on the border's own
+      // centre line. Measured before: the stroke centre sat 1.14px inside a 1px border, which
+      // read as a doubled line.
+      svg.style.inset = `${-bw}px`;
       svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
-      svg.setAttribute("width", String(w + 2));
-      svg.setAttribute("height", String(h + 2));
+      svg.setAttribute("width", String(w));
+      svg.setAttribute("height", String(h));
       const geo = {
-        x: half,
-        y: half,
-        width: Math.max(0, w - STROKE),
-        height: Math.max(0, h - STROKE),
-        // stroke is centred on the border path: pull the rect radius in by half
-        // the stroke width or the corners sit proud of the CSS radius
-        rx: Math.max(0, r - half),
+        x: 0,
+        y: 0,
+        width: Math.max(0, w),
+        height: Math.max(0, h),
+        // the rect edge IS the border path: no half-stroke inset, and keep the CSS radius so
+        // the corners follow the same curve as the border
+        rx: Math.max(0, r),
       };
       for (const el of rectsRef.current) {
         if (!el) continue;
