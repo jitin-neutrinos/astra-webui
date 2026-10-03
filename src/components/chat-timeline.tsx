@@ -42,14 +42,32 @@ export { MEDIA_RE, mediaPaths, stripMediaLines };
 
 import DOMPurify from "dompurify";
 import { renderRichHtml } from "../lib/rich-html";
+import { splitCanvasBlocks, type CanvasSpec } from "../lib/canvas-schema";
 import { wireCodeCopyButtons } from "../lib/rich-pre";
 import { safeTail } from "../lib/safe-tail";
 import { copyText } from "../lib/copy-text";
+import { lazy, Suspense } from "react";
+
+// Canvas chunk (recharts + block renderers) loads only when a message
+// actually carries a valid canvas — the main bundle never pays for it.
+const CanvasView = lazy(() => import("./canvas/canvas-view"));
+
+function CanvasHost({ spec }: { spec: CanvasSpec }) {
+  return (
+    <Suspense fallback={<div className="ast-canvas ast-canvas-loading" aria-busy="true" />}>
+      <CanvasView spec={spec} />
+    </Suspense>
+  );
+}
 
 let purifyHooked = false;
 
 export function RichText({ text, onOpenMedia, streaming }: { text: string; onOpenMedia?: (items: MediaItem[], index: number) => void; streaming?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  // Canvas parts split out of the raw text; markdown keeps everything else
+  // (invalid/streaming fences stay inside the md flow, fail-soft).
+  const parts = useMemo(() => splitCanvasBlocks(text, streaming), [text, streaming]);
+  const plainText = useMemo(() => parts.filter((p) => p.kind === "md").map((p) => (p as { text: string }).text).join(""), [parts]);
   const html = useMemo(() => {
     if (!purifyHooked) {
       DOMPurify.addHook("afterSanitizeAttributes", (n) => {
@@ -65,8 +83,8 @@ export function RichText({ text, onOpenMedia, streaming }: { text: string; onOpe
       purifyHooked = true;
     }
 
-    return renderRichHtml(text, streaming);
-  }, [text, streaming]);
+    return renderRichHtml(plainText, streaming);
+  }, [plainText, streaming]);
 
   useEffect(() => {
     const root = containerRef.current;
@@ -85,10 +103,28 @@ export function RichText({ text, onOpenMedia, streaming }: { text: string; onOpe
     });
   }, [html, onOpenMedia]);
 
+  const hasCanvas = parts.some((p) => p.kind === "canvas");
+
+  if (!hasCanvas) {
+    // Fast path: exactly the pre-canvas render (single md div + copy button).
+    return (
+      <div className="relative group" ref={containerRef}>
+        <AnimatedCopyButton sm className="!absolute top-2 right-2 z-10 !h-6 !w-6 opacity-0 group-hover:opacity-100 transition-opacity" text={text} />
+        <div className="chat-md" dangerouslySetInnerHTML={{ __html: html }} />
+      </div>
+    );
+  }
+
+  // Canvas path: render parts in chronological order; all md parts share the
+  // outer ref so copy-buttons/image-lightbox wiring covers every md chunk.
   return (
-    <div className="relative group">
+    <div className="relative group" ref={containerRef}>
       <AnimatedCopyButton sm className="!absolute top-2 right-2 z-10 !h-6 !w-6 opacity-0 group-hover:opacity-100 transition-opacity" text={text} />
-      <div ref={containerRef} className="chat-md" dangerouslySetInnerHTML={{ __html: html }} />
+      {parts.map((p, i) =>
+        p.kind === "canvas"
+          ? <CanvasHost key={`cv${i}`} spec={p.spec} />
+          : <div key={`md${i}`} className="chat-md" dangerouslySetInnerHTML={{ __html: renderRichHtml(p.text, streaming) }} />
+      )}
     </div>
   );
 }

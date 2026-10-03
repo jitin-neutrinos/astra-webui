@@ -6,6 +6,16 @@ import { draftKey } from "./gate-envelope";
 import type { GateReply, GateAction } from "./gate-envelope";
 import { RichText } from "../chat-timeline";
 import { FinalReportCard } from "./final-report";
+import { reviewBodyToBlocks, fixBodyToBlocks } from "../../lib/canvas-gates";
+import { Blocks } from "../canvas/canvas-blocks";
+
+// Gate bodies rendered through the shared canvas blocks (severity KPI row,
+// findings table, checklists, report stats) inside the existing gate shell.
+// Import statically here: gates are a primary canvas consumer and the gate
+// path must not flash a lazy-fallback while the user waits on a decision.
+function GateBlocks({ blocks }: { blocks: import("../../lib/canvas-schema").CanvasBlock[] }) {
+  return <Blocks blocks={blocks} animate={false} />;
+}
 
 export function GateCard({ seg, sessionId, onRespond, onOpenMedia: _onOpenMedia }: {
   seg: Segment;
@@ -158,20 +168,10 @@ export function GateCard({ seg, sessionId, onRespond, onOpenMedia: _onOpenMedia 
       ) : (env.kind === "review" || env.kind === "fix") ? (
         <div className="gate-body">
           {env.kind === "review" ? (
-            ((env.body as any).findings || []).map((f: any) => (
-              <div key={f.id} className="gate-finding-row">
-                <div className={cn("gate-finding-rail", f.severity)} />
-                <div className="gate-finding-content">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className={cn("gate-finding-chip", f.severity)}>{f.severity}</span>
-                    <span className="gate-finding-file">{f.file}{f.line ? `:${f.line}` : ""}</span>
-                  </div>
-                  <h4 className="gate-finding-title">{f.title}</h4>
-                  <RichText text={f.detail} />
-                </div>
-              </div>
-            ))
-          ) : null}
+            <GateBlocks blocks={reviewBodyToBlocks(env.body as any)} />
+          ) : (
+            <GateBlocks blocks={fixBodyToBlocks(env.body as any)} />
+          )}
         </div>
       ) : null}
 
