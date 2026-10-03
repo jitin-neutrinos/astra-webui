@@ -1,13 +1,16 @@
-// theme-panel.tsx — Config page "Themes" section: palette picker + token editor
-// + chat backdrop picker (image URL / upload / video / YouTube). Compact, flat,
-// brand-locked (no new shapes; uses the page's existing card/chip vocabulary).
+// theme-panel.tsx — Config page "Appearance" section.
+// Astra UI is the only theme. This panel shows: the theme (Astra UI), a Dark/Light mode
+// toggle wired to the SAME state as the sidebar button, a live token editor for the active
+// mode, and the chat backdrop picker (image URL / upload / video / YouTube).
+// Compact, flat, brand-locked (uses the page's existing card/chip vocabulary).
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../lib/utils";
 import {
-  palettes, currentPaletteId, setPalette, resetToAstra, getMode,
+  palettes, currentPaletteId, setPalette, getMode,
   readCustom, clearCustom, setToken, mergeCustom, readChatBg, writeChatBg,
   youtubeId, type Palette, type ThemeMode,
 } from "../lib/theme-store";
+import { useTheme } from "./theme-toggle";
 
 const SWATCH_TOKENS = ["--color-void", "--color-midnight", "--color-depth", "--color-cyanx", "--color-violetx", "--color-fuchsiax", "--color-redx", "--color-emerald"];
 const EDIT_TOKENS = ["--color-void", "--color-midnight", "--color-depth", "--color-surface", "--color-brandtext", "--color-muted", "--color-cyanx", "--color-violetx", "--color-fuchsiax", "--color-redx", "--color-emerald", "--color-amber"];
@@ -21,18 +24,23 @@ export function ThemePanel({ onUpload }: { onUpload?: (file: File) => Promise<st
   const [busyUp, setBusyUp] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // SAME hook the sidebar toggle uses: one source of truth, so flipping either control moves
+  // both. The hook owns the wipe animation and the data-theme flip + broadcast.
+  const [theme, toggleTheme] = useTheme();
+  const isLight = theme === "light";
+
   useEffect(() => {
     const onMode = () => setMode(getMode());
     window.addEventListener("astra-theme-change", onMode);
     return () => window.removeEventListener("astra-theme-change", onMode);
   }, []);
 
+  // palette list is a single entry now, but keep the lookup shape so re-adding a theme later
+  // is a data change, not a rewrite.
   const shown: Palette = useMemo(() => {
     const p = palettes.find((x) => x.id === active) || palettes[0];
     return mergeCustom(p);
-  }, [active, customTick]); // customTick intentionally re-derives after edits; mode flips with the toggle (customTick bumps on mode change too)
-
-  const pick = (id: string) => { setPalette(id); setActive(id); };
+  }, [active, customTick]);
 
   const applyBg = (next: typeof bg) => { writeChatBg(next); setBg(next); };
 
@@ -51,47 +59,58 @@ export function ThemePanel({ onUpload }: { onUpload?: (file: File) => Promise<st
 
   return (
     <section data-theme-engine-new className="tf-panel">
-      <header className="tf-head">
-        <h3 className="tf-title">Themes</h3>
-        <span className="tf-sub">{palettes.length} palettes · colours & backgrounds only</span>
-      </header>
-
-      {/* palette picker — dark section + light section (owner 10-02 revamp) */}
-      {(["dark", "light"] as const).map((section) => (
-        <div key={section} className="tf-section">
-          <div className="tf-section-head">
-            <span className="tf-section-title">{section === "dark" ? "Dark mode themes" : "Light mode themes"}</span>
-            <span className={cn("tf-section-dot", section === mode && "tf-section-dot-on")} title={section === mode ? "matches current mode" : ""} />
-          </div>
-          <div className="tf-grid">
-            {palettes.map((p) => {
-              const v = mergeCustom(p).variants[section];
-              const isActive = p.id === active;
-              return (
-                <button key={p.id} type="button"
-                  className={isActive ? "tf-card tf-card-active" : "tf-card"}
-                  onClick={() => pick(p.id)}
-                  title={`${p.name} — ${p.source}`}>
-                  <span className="tf-swatches">
-                    {SWATCH_TOKENS.map((t) => <i key={t} style={{ background: v[t] || "#000" }} />)}
-                  </span>
-                  <span className="tf-name">{p.name}</span>
-                  <span className="tf-variant">{section} · {isActive ? "active" : "tap to apply"}</span>
-                </button>
-              );
-            })}
-          </div>
+      {/* theme — Astra UI is the only one */}
+      <div className="tf-section">
+        <div className="tf-section-head">
+          <span className="tf-section-title">Theme</span>
         </div>
-      ))}
+        <div className="tf-grid">
+          {palettes.map((p) => {
+            const v = mergeCustom(p).variants[mode];
+            const isActive = p.id === active;
+            return (
+              <button key={p.id} type="button"
+                className={isActive ? "tf-card tf-card-active" : "tf-card"}
+                onClick={() => { setPalette(p.id); setActive(p.id); }}
+                title={`${p.name} — the Astra brand theme`}>
+                <span className="tf-swatches">
+                  {SWATCH_TOKENS.map((t) => <i key={t} style={{ background: v[t] || "#000" }} />)}
+                </span>
+                <span className="tf-name">{p.name}</span>
+                <span className="tf-variant">{isActive ? "active" : "tap to apply"}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
-      {/* token editor for the active palette */}
+      {/* dark / light — the same state the sidebar button drives */}
+      <div className="tf-section">
+        <div className="tf-section-head">
+          <span className="tf-section-title">Appearance</span>
+          <span className="tf-sub">also on the sidebar</span>
+        </div>
+        <div className="tf-modes" role="radiogroup" aria-label="Colour mode">
+          <button type="button" role="radio" aria-checked={!isLight}
+            className={cn("tf-mode", !isLight && "tf-mode-on")}
+            onClick={() => { if (isLight) toggleTheme(null); }}>
+            Dark
+          </button>
+          <button type="button" role="radio" aria-checked={isLight}
+            className={cn("tf-mode", isLight && "tf-mode-on")}
+            onClick={() => { if (!isLight) toggleTheme(null); }}>
+            Light
+          </button>
+        </div>
+      </div>
+
+      {/* token editor for the active mode */}
       <div className="tf-edit">
         <div className="tf-edit-head">
           <span className="tf-edit-title">Tokens — {shown.name} ({mode})</span>
-          {active !== "astra-ui" && readCustom()[active] && (
+          {readCustom()[active] && (
             <button type="button" className="tf-mini" onClick={() => { clearCustom(active); setCustomTick((t) => t + 1); }}>Reset edits</button>
           )}
-          {active !== "astra-ui" && <button type="button" className="tf-mini" onClick={() => { resetToAstra(); setActive("astra-ui"); }}>Use Astra UI</button>}
         </div>
         <div className="tf-tokens">
           {EDIT_TOKENS.map((t) => (
@@ -103,7 +122,7 @@ export function ThemePanel({ onUpload }: { onUpload?: (file: File) => Promise<st
             </label>
           ))}
         </div>
-        <p className="tf-note">Edits persist on this device and apply live. Glows follow the accent; dark modes glow, light modes stay flat.</p>
+        <p className="tf-note">Edits persist on this device and apply live. Glows follow the accent; dark mode glows, light mode stays flat.</p>
       </div>
 
       {/* chat backdrop */}

@@ -151,7 +151,15 @@ export function applyPalette(p: Palette, mode: ThemeMode = getMode()) {
 }
 
 export function currentPaletteId(): string {
-  try { return localStorage.getItem(LS_KEY) || "astra-ui"; } catch { return "astra-ui"; }
+  // A stored id for a removed palette (the pre-2026-10-03 multi-theme store) must not leave the
+  // UI pointing at a theme that no longer exists — fall back to Astra UI and drop the stale key.
+  try {
+    const id = localStorage.getItem(LS_KEY);
+    if (!id) return palettes[0].id;
+    if (palettes.some((p) => p.id === id)) return id;
+    localStorage.removeItem(LS_KEY);
+    return palettes[0].id;
+  } catch { return palettes[0].id; }
 }
 
 export function setPalette(id: string): number {

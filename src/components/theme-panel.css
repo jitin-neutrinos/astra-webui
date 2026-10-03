@@ -41,3 +41,9 @@
 .tf-section-dot { width: 7px; height: 7px; border-radius: 3px; background: rgb(255 255 255 / 0.14); }
 .tf-section-dot-on { background: var(--color-cyanx); box-shadow: 0 0 6px rgb(var(--c-4) / 0.5); }
 .tf-variant { font: 400 10px/1 var(--font-mono); color: var(--color-muted); opacity: 0.7; margin-top: 2px; }
+
+/* dark / light mode switch — mirrors the sidebar toggle's state (one source of truth) */
+.tf-modes { display: inline-flex; gap: 4px; padding: 3px; border: 1px solid rgb(255 255 255 / 0.10); border-radius: 9px; background: rgb(0 0 0 / 0.20); }
+.tf-mode { font: 500 12px/1 var(--font-sans); color: var(--color-muted); background: transparent; border: none; border-radius: 7px; padding: 7px 16px; cursor: pointer; transition: color 150ms ease, background-color 150ms ease; }
+.tf-mode:hover { color: var(--color-brandtext); }
+.tf-mode-on { color: var(--color-void); background: var(--color-cyanx); }

@@ -385,7 +385,6 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
         <section className="rounded-2xl border border-white/[0.08] bg-midnight/50 p-6 backdrop-blur-md">
           <h3 className="font-display text-lg text-brandtext mb-4 border-b border-white/[0.04] pb-2">Appearance</h3>
           <div className="space-y-1">
-            {renderField("display.skin", "Theme Skin")}
             {renderField("streaming.enabled", "Stream Responses", "boolean")}
           </div>
           <ThemePanel />

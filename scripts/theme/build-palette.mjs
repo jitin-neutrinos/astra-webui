@@ -111,7 +111,7 @@ const ASTRA_UI = {
     dark: {
       "--color-void": "#0a0a0f", "--color-midnight": "#12121a", "--color-depth": "#1a1a2e", "--color-surface": "#252538",
       "--color-brandtext": "#f8fafc", "--color-muted": "#6b7280",
-      "--color-cyanx": "#22d3ee", "--color-violetx": "#8b5cf6", "--color-fuchsiax": "#d946ef", "--color-redx": "#f87171",
+      "--color-cyanx": "#22d3ee", "--color-violetx": "#34d399", "--color-fuchsiax": "#d946ef", "--color-redx": "#f87171",
       "--color-emerald": "#34d399", "--color-amber": "#fbbf24",
       "--glow-accent": "0 0 10px rgba(34,211,238,.25)", "--glow-accent-strong": "0 0 16px rgba(34,211,238,.4)",
       "--bg-url": "", "--bg-video": "",
@@ -119,7 +119,7 @@ const ASTRA_UI = {
     light: {
       "--color-void": "#f5f2ec", "--color-midnight": "#fdfcf9", "--color-depth": "#ece8df", "--color-surface": "#e1dcd1",
       "--color-brandtext": "#0f172a", "--color-muted": "#5b6472",
-      "--color-cyanx": "#0369a1", "--color-violetx": "#6d28d9", "--color-fuchsiax": "#a21caf", "--color-redx": "#b91c1c",
+      "--color-cyanx": "#0369a1", "--color-violetx": "#047857", "--color-fuchsiax": "#a21caf", "--color-redx": "#b91c1c",
       "--color-emerald": "#047857", "--color-amber": "#b45309",
       "--glow-accent": "none", "--glow-accent-strong": "none",
       "--bg-url": "", "--bg-video": "",
@@ -223,32 +223,11 @@ function alpha(hex, a) {
 }
 
 // ---------- run ----------
-const SOURCES = {
-  "tokyo-night-dark": "tokyo-night-dark.yaml",
-  "tokyo-night-storm": "tokyo-night-storm.yaml",
-  "tokyo-night-light": "tokyo-night-light.yaml",
-  "catppuccin-mocha": "catppuccin-mocha.yaml",
-  "dracula": "dracula.yaml",
-  "gruvbox-dark-medium": "gruvbox-dark-medium.yaml",
-  "rose-pine-dawn": "rose-pine-dawn.yaml",
-  "solarized-light": "solarized-light.yaml",
-  // funky/futuristic batch (owner 2026-10-02: 5 dark + 5 light counterparts)
-  "helios": "helios.yaml",
-  "horizon-dark": "horizon-dark.yaml",
-  "horizon-light": "horizon-light.yaml",
-  "nova": "nova.yaml",
-  "outrun-dark": "outrun-dark.yaml",
-  "unikitty-dark": "unikitty-dark.yaml",
-  "unikitty-light": "unikitty-light.yaml",
-  "vice": "vice.yaml",
-  "danqing": "danqing.yaml",
-  "danqing-light": "danqing-light.yaml",
-  "sagelight": "sagelight.yaml",
-  "solarflare": "solarflare.yaml",
-  "solarflare-light": "solarflare-light.yaml",
-  "shades-of-purple": "shades-of-purple.yaml",
-  "da-one-ocean": "da-one-ocean.yaml",
-};
+// Astra UI is the ONLY theme (owner 2026-10-03): the multi-theme store was removed so the
+// product ships one brand theme with a dark and a light variant. The base16 YAML sources and
+// the fromBase16 mapper below are kept for reference/re-derivation but are no longer wired in —
+// re-adding a palette means adding an id here AND a UI entry, deliberately.
+const SOURCES = {};
 const palettes = [ASTRA_UI];
 for (const [id, file] of Object.entries(SOURCES)) {
   const text = readFileSync(join(YAML_DIR, file), "utf8");
