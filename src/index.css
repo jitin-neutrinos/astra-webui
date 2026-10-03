@@ -747,7 +747,7 @@ html.theme-fading body * {
 .chat-suggest-label { font: 500 13.5px/1.4 var(--font-sans); color: var(--color-brandtext); }
 .chat-suggest-hint { font: 400 11.5px/1.4 var(--font-mono); color: var(--color-muted); }
 
-.chat-composer { position: relative; background: color-mix(in srgb, var(--color-void) 96%, transparent); backdrop-filter: blur(35px) saturate(1.3); /* idle: border transparent — the running trace is the outline; a static border under it read as a duplicate dim line */ border: 1px solid transparent; border-radius: 12px; padding: 10px 12px 8px; box-shadow: 0 1px 2px rgba(0,0,0,.18), 0 10px 32px -18px rgba(0,0,0,.55); transition: border-color 220ms cubic-bezier(0.23,1,0.32,1), box-shadow 220ms cubic-bezier(0.23,1,0.32,1); }
+.chat-composer { position: relative; background: color-mix(in srgb, var(--color-void) 96%, transparent); backdrop-filter: blur(35px) saturate(1.3); /* Idle outline: a faint hairline at the SAME weight and colour as the field/buttons separator, so the box is always readable as a box. The running trace animates on top of it (owner 2026-10-03: "even for the unfocused input, put a faint thin outline along with the running line"). Previously transparent on the theory that the trace alone was the outline, but an idle box then had no edge at all. */ border: 1px solid color-mix(in srgb, var(--color-cyanx) 40%, transparent); border-radius: 12px; padding: 10px 12px 8px; box-shadow: 0 1px 2px rgba(0,0,0,.18), 0 10px 32px -18px rgba(0,0,0,.55); transition: border-color 220ms cubic-bezier(0.23,1,0.32,1), box-shadow 220ms cubic-bezier(0.23,1,0.32,1); }
 /* running brand accent line: an SVG stroke on a rounded <rect> (composer-trace.tsx).
    The dash IS the rounded path, so the lit run bends through the corners exactly.
    A straight bar on an offset-path cannot: over an arc of radius r a bar of length
@@ -821,7 +821,7 @@ html.theme-fading body * {
 [data-theme="light"] .chat-bubble-ai { color: var(--color-brandtext); text-shadow: none; }
 [data-theme="light"] .chat-send { background:linear-gradient(180deg, rgb(var(--light-c-1)), rgb(var(--light-c-2))); color:#f8fafc; box-shadow: none }
 [data-theme="light"] .chat-send:hover { filter: brightness(1.08); box-shadow: none }
-[data-theme="light"] .chat-composer { background:color-mix(in srgb, var(--color-void) 96%, transparent); border-color:rgb(var(--light-c-5) / 0.12); box-shadow: none }
+[data-theme="light"] .chat-composer { background:color-mix(in srgb, var(--color-void) 96%, transparent); border-color:color-mix(in srgb, var(--color-cyanx) 22%, transparent); box-shadow: none }
 [data-theme="light"] .chat-composer:focus-within { border-color:rgb(var(--light-c-6) / 0.35); box-shadow: none }
 [data-theme="light"] .chat-composer::before { background:linear-gradient(135deg, rgb(var(--light-c-7) / 0.4), rgb(var(--light-c-8) / 0.18) 40%, transparent 60%, transparent); }
 .chat-chip:active, .chat-suggest:active, .chat-approval-btn:active, .chat-step:active, .chat-head-link:active, .chat-popout-chip:active { transform: scale(0.96); }
