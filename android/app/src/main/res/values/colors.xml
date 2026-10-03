@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Default void (dark). The window decor is painted with this by Capacitor's
+         SystemBars.setStyle(), and Android renders @android:color/transparent as OPAQUE BLACK,
+         so the value must be a real colour. AstraBarsPlugin re-syncs it at runtime to the ACTIVE
+         theme's void colour, so it tracks dark, light and every palette. -->
+    <color name="astra_void">#0A0A0F</color>
+</resources>

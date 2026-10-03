@@ -24,6 +24,7 @@ public class MainActivity : BridgeActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         registerPlugin(NativeNtfy::class.java)
         registerPlugin(CookieEncryptPlugin::class.java)
+        registerPlugin(AstraBarsPlugin::class.java)
         super.onCreate(savedInstanceState)
         installDownloadListener()
         installBackHandler()

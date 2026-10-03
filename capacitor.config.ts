@@ -13,26 +13,28 @@ const config: CapacitorConfig = {
     cleartext: false
   },
   plugins: {
-    // LEAVE THIS AT THE DEFAULT (`css`). Do NOT set insetsHandling: 'disable'.
+    // LEAVE insetsHandling AT THE DEFAULT (`css`). Do NOT set 'disable'.
     //
     // SystemBars picks a branch on `getWebViewMajorVersion() >= 140 && hasViewportCover`:
     //
-    //   true  -> WebView fills the screen, real insets are injected as
-    //            --safe-area-inset-*, and the page pads itself. The page's own
-    //            background paints under both bars, so the bars show the ACTIVE
-    //            theme colour while the content stays inside its bounds. This is
-    //            the owner's device (real-device telemetry: WebView 153,
-    //            env(safe-area-inset-top) = 32px).
-    //   false -> WebView is padded by the bar heights and reports zero insets;
-    //            content is still inside its bounds, the decor shows in the bars.
+    //   true  -> WebView fills the screen and real insets are injected as
+    //            --safe-area-inset-*, so the page pads itself and its own
+    //            background paints under both bars (the bars show the ACTIVE
+    //            theme colour). This is what we want.
+    //   false -> the WebView is PADDED by the bar heights and the insets are
+    //            CONSUMED (injected as 0), so the page cannot paint the bars and
+    //            the transparent decor shows through as BLACK.
     //
-    // `disable` skips BOTH, which removes the inset injection entirely: the
-    // WebView fills the screen AND the page is told there are no insets, so the
-    // chrome slides under the status bar and nav bar. That was the "app bleeds
-    // into the status bar" regression — a fix aimed at an old-WebView emulator
-    // broke the modern device. The default is correct for the real target.
+    // `hasViewportCover` starts FALSE and is only set once onPageCommitVisible has
+    // run the viewport-meta JS — so on a real device the FIRST inset pass takes
+    // the padding branch and the black bars stick (owner telemetry: win 752 /
+    // env 0px on the `css` build vs win 784 / env 32px on the previous one).
+    // initialViewportFitValueHint is the documented way to seed it: we KNOW the
+    // meta is `viewport-fit=cover`, so the correct branch is taken from the start
+    // with no layout shift and no black bars.
     SystemBars: {
       insetsHandling: 'css',
+      initialViewportFitValueHint: 'cover',
     },
   },
   ios: {

@@ -1374,8 +1374,16 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     // It must NOT skip when the box needs to SHRINK — the cleared-draft bug left
     // the composer tall forever. Re-measure unless the box is at its 1-line rest.
     if (LOW_SPEC && ta.clientHeight >= ta.scrollHeight - 1 && ta.clientHeight <= 30) return;
-    ta.style.height = "auto";
-    ta.style.height = `${ta.scrollHeight}px`;
+    // FIX (2026-10-03): synchronous scrollHeight read blocked the event loop,
+    // causing "type whole sentences before a letter appears". Make it async via
+    // requestAnimationFrame so the keystroke event completes before layout.
+    requestAnimationFrame(() => {
+      if (!taRef.current) return;
+      const current = taRef.current;
+      current.style.height = "auto";
+      const h = Math.max(current.scrollHeight, 44);
+      current.style.height = `${Math.min(h, 200)}px`;
+    });
   }, []);
   useEffect(() => { fitComposer(); }, [input, fitComposer]);
 
@@ -1889,7 +1897,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
                 )}
               </div>
               );
-            })}
+            })}, [messages])
           </div>
         )}
       </div>

@@ -62,23 +62,26 @@ export async function initShellTheme() {
   // fallback for older WebViews where the vars never appear.
   const root = document.documentElement;
   let lastTop = '', lastBottom = '';
-  // Fallback insets measured natively (window vs viewport, in CSS px). Used only when
-  // env(safe-area-inset-*) reports nothing, which is the case on a WebView that never got the
-  // SystemBars CSS injection (we now run insetsHandling: 'disable' so the page owns the full
-  // screen). Without a real fallback the chrome would sit under the bars.
+  // Fallback insets, used ONLY when neither the injected var nor env() reports anything.
+  //
+  // CAUTION: when Capacitor's SystemBars takes its PADDING branch it already insets the WebView
+  // by the bar heights AND reports the insets as 0. Measuring "screen minus viewport" in that
+  // state re-derives the SAME gap and padding again — a double inset that pushes the chrome too
+  // far down (observed as nTop 26px / nBot 22px where the bars are ~32px total). So the measured
+  // value is used ONLY when the viewport is genuinely full-height (the passthrough branch, where
+  // env() should have worked but a stale WebView may still report 0).
   let fallbackTop = 0, fallbackBottom = 0;
   const measureFallback = () => {
-    // The activity is edge-to-edge, so the difference between the physical screen and the
-    // WebView viewport is the bar space. visualViewport is the most reliable source.
     const screenH = (window.screen && window.screen.height) ? window.screen.height : 0;
     const innerH = window.innerHeight || 0;
     const vvH = window.visualViewport ? Math.round(window.visualViewport.height) : innerH;
     const viewportH = Math.max(vvH, innerH);
-    // screen.height is in CSS px on Android WebView; guard against a bogus value.
     const gap = Math.max(0, Math.round(screenH - viewportH));
+    // A viewport that already lost the bar height means native padding is in effect: do NOT add
+    // our own inset on top. Only a full-height viewport needs the measured fallback.
+    const alreadyPadded = gap > 24;
+    if (!alreadyPadded) { fallbackTop = 0; fallbackBottom = 0; return; }
     if (gap > 0 && gap < 160) {
-      // Split the gap: the status bar is the larger share on modern phones. If we already know
-      // one side, attribute the remainder to the other.
       fallbackTop = Math.round(gap * 0.55);
       fallbackBottom = gap - fallbackTop;
     }
@@ -93,7 +96,7 @@ export async function initShellTheme() {
       probe.style.setProperty('padding-top', `env(${envName}, 0px)`);
       const env = getComputedStyle(probe).paddingTop;
       if (env && env !== '0px') return env;
-      return null; // nothing usable -> caller falls back to the measured value
+      return null; // nothing usable -> caller decides
     };
     let top = readVar('--safe-area-inset-top', 'safe-area-inset-top');
     let bottom = readVar('--safe-area-inset-bottom', 'safe-area-inset-bottom');
@@ -140,7 +143,7 @@ export async function initShellTheme() {
     return [Math.round(r), Math.round(g), Math.round(b)];
   };
 
-  let lastStyle = '', lastTheme = '';
+  let lastStyle = '', lastTheme = '', lastDecor = '';
   const updateColors = () => {
     const isLight = root.getAttribute('data-theme') === 'light';
     const rootStyle = getComputedStyle(root);
@@ -159,15 +162,28 @@ export async function initShellTheme() {
     // with html/body background (the canvas that shows when the page is short).
     const docEnd = Math.min(document.documentElement.scrollHeight - 2, h - 2);
     const bottom = sampleAt(w / 2, docEnd, base);
-    // ICON contrast only. The bar BACKGROUND is not set from here: the window decor is
-    // transparent (styles.xml windowBackground) and the page paints the ACTIVE theme's void
-    // under both bars via .app-shell (bg-void + the native insets as padding), so every
-    // current and future theme is covered without a native colour call.
-    // Do NOT add StatusBar.setBackgroundColor here: at targetSdk 36 edge-to-edge it is ignored
-    // for the status bar (shouldSetStatusBarColor returns false) and it cannot reach the
-    // navigation bar at all, so it would be a silent no-op that looks like a fix.
+    // ICON contrast. The bar BACKGROUND comes from the window decor, which styles.xml paints
+    // with @color/astra_void — a REAL colour. It must not be @android:color/transparent, which
+    // resolves to 0x00000000 and is rendered by Android as OPAQUE BLACK (the "static black bars
+    // regardless of theme" bug). Do NOT try to set the background from JS: the SystemBars
+    // plugin's setBackgroundColor is documented UNSUPPORTED, and @capacitor/status-bar's is a
+    // no-op under edge-to-edge. The page still paints the ACTIVE theme's void over the decor
+    // wherever it reaches (insetsHandling: 'css' + viewport-fit=cover), so the bars track the
+    // theme; the decor is the colour behind that.
     const style = (lum(top) + lum(bottom)) / 2 > 0.5 ? 'LIGHT' : 'DARK';
-    if (style !== lastStyle) { lastStyle = style; try { plugin('SystemBars').setStyle?.({ style }); } catch { /* optional */ } }
+    // Use @capacitor/status-bar's setStyle, NOT SystemBars': the SystemBars implementation also
+    // runs decorView.setBackgroundColor(getThemeColor(windowBackground)) on every call and again
+    // on configuration changes, which OVERWRITES the decor colour we set below (that is why the
+    // bars stayed on the theme default instead of tracking light/dark). The status-bar plugin's
+    // setStyle only sets the icon appearance, leaving the decor ours to own.
+    if (style !== lastStyle) { lastStyle = style; try { plugin('StatusBar').setStyle?.({ style }); } catch { /* optional */ } }
+    // Paint the decor with the ACTIVE theme's void, so the bars show the theme colour.
+    const hexOf = (c: [number, number, number]) => '#' + c.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+    const decorHex = hexOf(base);
+    if (decorHex !== lastDecor) {
+      lastDecor = decorHex;
+      try { plugin('AstraBars').setBackgroundColor?.({ color: decorHex }); } catch { /* optional */ }
+    }
     // Native pop-up (GateActivity) follows the app theme.
     const t = isLight ? 'light' : 'dark';
     if (t !== lastTheme) { lastTheme = t; try { plugin('Preferences').set?.({ key: 'astra_theme', value: t }); } catch { /* optional */ } }

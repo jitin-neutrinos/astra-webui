@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { wipeClipFromRect } from "@/lib/theme-wipe";
+import { isLowSpec } from "./composer-trace";
 
 
 import { cn } from "@/lib/utils";
@@ -33,13 +34,21 @@ const WIPE_MS = 550;
 
 function runThemeTransition(apply: () => void, btn: HTMLElement | null) {
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (reduce || typeof document.startViewTransition !== "function") {
-    if (!reduce) {
+  // LOW-SPEC BAIL-OUT. `document.startViewTransition` snapshots the WHOLE viewport and animates
+  // a clip-path over it; on a weak phone (few cores / little memory) that snapshot + composite
+  // is the multi-second hang the owner reported on the dark/light toggle. The theme flip itself
+  // is a variable swap and is instant — only the transition is expensive — so on low-spec we do
+  // the flip directly and skip the wipe entirely. Same helper the composer trace uses, so the
+  // "is this device weak" judgement stays in one place.
+  const lowSpec = isLowSpec();
+  if (reduce || lowSpec || typeof document.startViewTransition !== "function") {
+    if (!reduce && !lowSpec) {
       const root = document.documentElement;
       root.classList.add("theme-fading");
       apply();
       window.setTimeout(() => root.classList.remove("theme-fading"), 300);
     } else {
+      // No transition at all: still flip synchronously so there is zero perceived delay.
       apply();
     }
     return;

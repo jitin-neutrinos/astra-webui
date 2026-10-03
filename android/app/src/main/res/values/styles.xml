@@ -8,7 +8,9 @@
          theme's void color shown through transparent bars, which is exactly
          the contract the owner has required across every palette change.) -->
     <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
-        <item name="android:windowBackground">@android:color/transparent</item>
+        <!-- Real colour, same reason as AppTheme.NoActionBar below: @android:color/transparent
+             resolves to 0x00000000 and Android paints the decor OPAQUE BLACK. -->
+        <item name="android:windowBackground">@color/astra_void</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowTranslucentStatus">true</item>
@@ -31,18 +33,16 @@
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
-        <!-- Full-bleed contract: the WebView fills the screen edge-to-edge and the PAGE paints
-             the theme colour under both system bars (.app-shell carries bg-void + the native
-             insets as PADDING, so its background extends beneath the bars).
-             This MUST be transparent. Capacitor's SystemBars.setStyle() (which we call to set
-             bar icon contrast) does:
+        <!-- This MUST be a REAL COLOUR, not @android:color/transparent.
+             Capacitor's SystemBars.setStyle() runs
                  decorView.setBackgroundColor(getThemeColor(context, android.R.attr.windowBackground))
-             so whatever windowBackground resolves to gets painted over the whole window on every
-             setStyle call. With it unset it inherits AppCompat's default - WHITE - which is
-             exactly the "static white navbar/status bar" regression. Transparent lets the
-             theme-driven page colour show through, so every current and future theme is covered
-             automatically. -->
-        <item name="android:windowBackground">@android:color/transparent</item>
+             on every call. @android:color/transparent is 0x00000000, and Android renders a
+             fully-transparent window background as OPAQUE BLACK — which is why the bars were
+             static black in every theme (owner: "not even theme dark, just static black").
+             A concrete colour also gives the WebView something sane to sit on before the page
+             paints. MainActivity re-syncs this to the ACTIVE theme's void at runtime via
+             SystemBars.setBackgroundColor, so it tracks dark/light and every palette. -->
+        <item name="android:windowBackground">@color/astra_void</item>
         <!-- Same contrast-scrim opt-out as AppTheme: this is the theme BridgeActivity
              actually applies at runtime (it calls setTheme(R.style.AppTheme_NoActionBar)),
              so the attributes must live here too or the scrim returns. -->
