@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from "react";
-import { ArrowLeft, Check, Loader2, Undo, Download, Upload, AlertTriangle, Search, ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
+import { ArrowLeft, Check, Loader2, Undo, Download, Upload, AlertTriangle, Search, ChevronDown, ChevronRight, RefreshCw, Brain, Cpu, Zap, Shield, Database } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type SchemaField = {
@@ -345,22 +345,127 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
         
         {/* Curated Sections */}
         
+        {/* Brain Section - Enriched */}
         <section className="rounded-2xl border border-white/[0.08] bg-midnight/50 p-6 backdrop-blur-md">
-          <h3 className="font-display text-lg text-brandtext mb-4 border-b border-white/[0.04] pb-2">Brain</h3>
-          <div className="space-y-1">
-            {renderField("model", "Default Model", "select", modelOptions)}
-            
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3 border-b border-white/[0.04]">
-              <div className="flex-1 min-w-0">
-                <label className="text-sm text-slate-200 font-medium font-mono">Fallback Chain</label>
-                <p className="text-xs text-slate-500 mt-0.5">Read-only view of fallback_providers</p>
-              </div>
-              <div className="text-xs font-mono text-slate-400 max-w-[50%] text-right truncate">
-                {(getVal("fallback_providers") || []).join(" → ") || "None"}
+          <div className="flex items-center gap-3 mb-4 border-b border-white/[0.04] pb-3">
+            <div className="w-8 h-8 rounded-lg bg-cyanx/10 flex items-center justify-center">
+              <Brain className="w-4 h-4 text-cyanx" />
+            </div>
+            <div>
+              <h3 className="font-display text-lg text-brandtext">Brain</h3>
+              <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Core AI Configuration</p>
+            </div>
+          </div>
+          
+          {/* Quick Stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+            <div className="bg-void/50 rounded-lg p-3">
+              <div className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-1">Model</div>
+              <div className="text-sm font-mono text-brandtext truncate">{getVal("model") || "—"}</div>
+            </div>
+            <div className="bg-void/50 rounded-lg p-3">
+              <div className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-1">Reasoning</div>
+              <div className="text-sm font-mono text-brandtext">{getVal("agent.reasoning_effort") || "—"}</div>
+            </div>
+            <div className="bg-void/50 rounded-lg p-3">
+              <div className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-1">Memory</div>
+              <div className="text-sm font-mono text-brandtext">{getVal("memory.memory_enabled") ? "On" : "Off"}</div>
+            </div>
+            <div className="bg-void/50 rounded-lg p-3">
+              <div className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-1">Streaming</div>
+              <div className="text-sm font-mono text-brandtext">{getVal("streaming.enabled") ? "On" : "Off"}</div>
+            </div>
+          </div>
+          
+          {/* Model & Provider */}
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Cpu className="w-3.5 h-3.5 text-cyanx/70" />
+              <h4 className="text-xs font-mono uppercase tracking-[0.15em] text-slate-400">Model & Provider</h4>
+            </div>
+            <div className="space-y-1">
+              {renderField("model", "Default Model", "select", modelOptions)}
+              {renderField("model_context_length", "Context Length", "number")}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3 border-b border-white/[0.04]">
+                <div className="flex-1 min-w-0">
+                  <label className="text-sm text-slate-200 font-medium font-mono">Fallback Chain</label>
+                  <p className="text-xs text-slate-500 mt-0.5">Read-only view of fallback_providers</p>
+                </div>
+                <div className="text-xs font-mono text-slate-400 max-w-[50%] text-right truncate">
+                  {(getVal("fallback_providers") || []).join(" → ") || "None"}
+                </div>
               </div>
             </div>
-
-            {renderField("agent.reasoning_effort", "Reasoning Effort", "select", ["off", "low", "medium", "high", "ultra"])}
+          </div>
+          
+          {/* Reasoning & Thinking */}
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Brain className="w-3.5 h-3.5 text-cyanx/70" />
+              <h4 className="text-xs font-mono uppercase tracking-[0.15em] text-slate-400">Reasoning & Thinking</h4>
+            </div>
+            <div className="space-y-1">
+              {renderField("agent.reasoning_effort", "Reasoning Effort", "select", ["off", "low", "medium", "high", "ultra"])}
+              {renderField("agent.service_tier", "Service Tier", "select", ["", "normal", "fast", "auto", "cold"])}
+              {renderField("agent.max_turns", "Max Turns", "number")}
+              {renderField("agent.reasoning_echo", "Reasoning Echo", "boolean")}
+            </div>
+          </div>
+          
+          {/* Memory & Context */}
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Database className="w-3.5 h-3.5 text-cyanx/70" />
+              <h4 className="text-xs font-mono uppercase tracking-[0.15em] text-slate-400">Memory & Context</h4>
+            </div>
+            <div className="space-y-1">
+              {renderField("memory.memory_enabled", "Memory System", "boolean")}
+              {renderField("memory.provider", "Memory Provider", "select", ["", "agentmemory", "byterover", "holographic", "honcho", "mem0", "openviking", "retaindb", "supermemory"])}
+              {renderField("memory.memory_char_limit", "Memory Char Limit", "number")}
+              {renderField("memory.user_char_limit", "User Char Limit", "number")}
+              {renderField("memory.user_profile_enabled", "User Profile", "boolean")}
+            </div>
+          </div>
+          
+          {/* Streaming & Output */}
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Zap className="w-3.5 h-3.5 text-cyanx/70" />
+              <h4 className="text-xs font-mono uppercase tracking-[0.15em] text-slate-400">Streaming & Output</h4>
+            </div>
+            <div className="space-y-1">
+              {renderField("streaming.enabled", "Stream Responses", "boolean")}
+              {renderField("streaming.buffer_threshold", "Buffer Threshold", "number")}
+              {renderField("streaming.cursor", "Cursor Character")}
+            </div>
+          </div>
+          
+          {/* Agent Behavior */}
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Shield className="w-3.5 h-3.5 text-cyanx/70" />
+              <h4 className="text-xs font-mono uppercase tracking-[0.15em] text-slate-400">Agent Behavior</h4>
+            </div>
+            <div className="space-y-1">
+              {renderField("agent.tool_use_enforcement", "Tool Use Enforcement")}
+              {renderField("agent.execution_guidance", "Execution Guidance")}
+              {renderField("agent.stall_guards", "Stall Guards", "boolean")}
+              {renderField("agent.verify_guidance", "Verify Guidance", "boolean")}
+              {renderField("agent.environment_probe", "Environment Probe", "boolean")}
+            </div>
+          </div>
+          
+          {/* Safety & Guards */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle className="w-3.5 h-3.5 text-cyanx/70" />
+              <h4 className="text-xs font-mono uppercase tracking-[0.15em] text-slate-400">Safety & Guards</h4>
+            </div>
+            <div className="space-y-1">
+              {renderField("agent.empty_response_guard.enabled", "Empty Response Guard", "boolean")}
+              {renderField("agent.empty_response_guard.cost_threshold_usd", "Cost Threshold (USD)", "number")}
+              {renderField("agent.bot_mode_protocol", "Bot Mode Protocol", "boolean")}
+            </div>
           </div>
         </section>
 
