@@ -211,11 +211,24 @@ export function StepsView({ block }: { block: StepsBlock }) {
 
 // ---- Callout -------------------------------------------------------------------
 
+// Owner 2026-10-03: the 3px coloured left rail was removed from every canvas
+// block. The border was the ONLY tone signal, so the tone now rides on a small
+// leading dot — the callout still reads info/warn/danger at a glance.
+const CALLOUT_TONE: Record<string, string> = {
+  info: "var(--color-cyanx)",
+  success: "#34d399",
+  warn: "#fbbf24",
+  danger: "#f87171",
+};
+
 export function CalloutView({ block }: { block: CalloutBlock }) {
   return (
     <div className={cn("ast-cv-callout", block.tone)}>
-      {block.title && <p className="ast-cv-callout-title">{block.title}</p>}
-      <p className="ast-cv-callout-body">{block.body}</p>
+      <span className="ast-cv-callout-dot" aria-hidden="true" style={{ background: CALLOUT_TONE[block.tone] || "var(--color-muted)" }} />
+      <div className="ast-cv-callout-main">
+        {block.title && <p className="ast-cv-callout-title">{block.title}</p>}
+        <p className="ast-cv-callout-body">{block.body}</p>
+      </div>
     </div>
   );
 }

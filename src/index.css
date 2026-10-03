@@ -3095,7 +3095,18 @@ html.theme-fading body * {
   border-radius: 8px;
   border: 1px solid rgb(var(--c-89) / 0.1);
   background: rgb(var(--c-89) / 0.03);
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
 }
+.ast-cv-callout-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-top: 4px;
+  border-radius: 2px; /* rounded rect, matching the design language */
+}
+.ast-cv-callout-main { min-width: 0; flex: 1; }
 .ast-cv-callout.info { border-color: rgb(var(--c-89) / 0.1); }
 .ast-cv-callout.success { border-color: rgb(var(--c-89) / 0.1); }
 .ast-cv-callout.warn { border-color: rgb(var(--c-89) / 0.1); }
@@ -3351,7 +3362,7 @@ html.theme-fading body * {
 .ast-cv-tree-kids {
   margin-left: 10px;
   padding-left: 12px;
-  border-left: 1px solid rgb(var(--c-89) / 0.12);
+  /* Owner 2026-10-03: no left rail. Nesting still reads from the indent. */
 }
 .ast-cv-tree-node { padding: 3px 0; }
 .ast-cv-tree-row {
@@ -3458,4 +3469,4 @@ a.ast-cv-ref-link:hover { border-bottom-color: var(--color-cyanx); }
 [data-theme="light"] .ast-cv-code { background: #f8fafc; border-color: rgba(15, 23, 42, 0.1); }
 [data-theme="light"] .ast-cv-code-head { background: rgba(15, 23, 42, 0.04); }
 [data-theme="light"] .ast-cv-cmp-card:hover { border-color: rgba(15, 23, 42, 0.18); }
-[data-theme="light"] .ast-cv-tree-kids { border-left-color: rgba(15, 23, 42, 0.14); }
+/* tree-kids left rail removed 2026-10-03 (owner); its light override went with it */
