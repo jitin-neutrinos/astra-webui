@@ -63,10 +63,14 @@ class NtfyPushService : Service() {
     private var reconnectRunnable: Runnable? = null
 
     // ---- brand (flat, no gradients) -----------------------------------------
-    // cyanx token from the web index.css; one accent everywhere.
-    private val brandColor: Int get() = 0xFF22D3EE.toInt()
-    private val greenStatus: Int get() = 0xFF10B981.toInt()   // okay token (GateActivity)
-    private val redStatus: Int get() = 0xFFEF4444.toInt()
+    // Every colour comes from the ACTIVE web palette via AstraThemeRead, so notifications track
+    // whichever theme the user picked. These getters replaced three hardcoded Astra literals
+    // (0xFF22D3EE / 0xFF10B981 / 0xFFEF4444), which kept notifications on the Astra accent even
+    // after a palette change. Read lazily per build so a repaint picks the new value up.
+    private val theme: AstraTokenMath.Tokens get() = AstraThemeRead.tokens(this)
+    private val brandColor: Int get() = AstraThemeRead.parseHex(theme.accent)
+    private val greenStatus: Int get() = AstraThemeRead.parseHex(theme.okay, 0xFF10B981.toInt())
+    private val redStatus: Int get() = AstraThemeRead.parseHex(theme.danger, 0xFFEF4444.toInt())
     private var ntfyUp = false   // gate socket health → status dot
 
     /** Full-color logo bitmap — small-icon slot. Owner wants the real
@@ -164,6 +168,19 @@ class NtfyPushService : Service() {
                 chatStates.clear()
                 updateGroupSummary()
             }
+            // Owner spec: already-posted notifications REPAINT on a theme change, not just new
+            // ones. The colours are baked into each posted Notification, so repainting means
+            // re-issuing them. Chat + group summary are rebuilt from the retained state; the
+            // ongoing status tile is rebuilt from live socket health; GATE notifications are NOT
+            // retained (they carry a one-shot payload + actions, and re-issuing would resurrect a
+            // card the user may have dismissed), so only their channel colour is resynced below.
+            ACTION_THEME_CHANGED -> {
+                AstraThemeRead.invalidate()
+                repaintChats()
+                updateGroupSummary()
+                publishStatus()
+                Log.d(TAG, "theme changed → repainted ${chatStates.size} chat notifs + status")
+            }
         }
         return START_STICKY
     }
@@ -174,6 +191,11 @@ class NtfyPushService : Service() {
     private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = getSystemService(NotificationManager::class.java)
+            // NOTE: the notification ACCENT is per-notification (Builder.setColor), which every
+            // builder below already sets from the active palette. NotificationChannel has NO colour
+            // setter at all (javap on android-36: only setLightColor, which is the LED, not the
+            // tint) — so there is no channel colour to retheme, and deleting a channel to force one
+            // would only reset the user's own importance/sound choices.
             manager.createNotificationChannel(
                 NotificationChannel(
                     CHANNEL_PUSH, "Astra approvals & questions",
@@ -205,6 +227,18 @@ class NtfyPushService : Service() {
                     description = "Background connection status"
                 }
             )
+        }
+    }
+
+    private fun manager(): NotificationManager =
+        getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+    /** notify() with the guards a background service needs (a posted dead object is not fatal). */
+    private fun post(nm: NotificationManager, id: Int, n: Notification) {
+        try {
+            nm.notify(id, n)
+        } catch (e: Exception) {
+            Log.e(TAG, "notify($id) failed", e)
         }
     }
 
@@ -488,16 +522,30 @@ class NtfyPushService : Service() {
         val snippet = (payload?.optString("text") ?: "")
             .replace('\n', ' ').trim().take(140)
         val displaySnippet = if (snippet.isEmpty()) "Your reply is ready." else snippet
-        
+
         val notifId = ("chat:$sid").hashCode().coerceAtLeast(2)
-        val state = chatStates.getOrPut(sid) { ChatState(info.title, info.storedKey, 0, notifId, mutableListOf()) }
+        val state = chatStates.getOrPut(sid) { ChatState(sid, info.title, info.storedKey, 0, notifId, mutableListOf()) }
         state.count++
         state.lines.add(displaySnippet)
         if (state.lines.size > 6) state.lines.removeAt(0)
 
+        post(manager(), notifId, chatNotification(state))
+        updateGroupSummary()
+    }
+
+    /**
+     * Build a chat card from ALREADY-RESOLVED state, with no network call.
+     *
+     * Split out of [showChatNotification] so a theme repaint can re-issue every posted card
+     * without re-resolving session info (which would hit the network once per chat). Everything
+     * the builder needs is on the retained [ChatState].
+     */
+    private fun chatNotification(state: ChatState): Notification {
+        val notifId = state.notifId
+        val displaySnippet = state.lines.lastOrNull() ?: "Your reply is ready."
         val intent = Intent(this, MainActivity::class.java).apply {
             action = Intent.ACTION_VIEW
-            data = Uri.parse("astra://open?path=/c/${info.storedKey}")
+            data = Uri.parse("astra://open?path=/c/${state.storedKey}")
             `package` = packageName
             addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
@@ -505,7 +553,7 @@ class NtfyPushService : Service() {
 
         val deleteIntent = Intent(this, NtfyPushService::class.java).apply {
             action = ACTION_CHAT_CLEARED
-            putExtra("sid", sid)
+            putExtra("sid", state.sid)
         }
         val deletePi = PendingIntent.getService(this, notifId, deleteIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
@@ -516,7 +564,7 @@ class NtfyPushService : Service() {
             messagingStyle.addMessage(line, System.currentTimeMillis(), person)
         }
 
-        val builder = NotificationCompat.Builder(this, CHANNEL_CHAT)
+        return NotificationCompat.Builder(this, CHANNEL_CHAT)
             .setContentTitle(state.title)
             .setContentText(displaySnippet)
             .setStyle(messagingStyle)
@@ -529,10 +577,19 @@ class NtfyPushService : Service() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setNumber(state.count)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            
-        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(notifId, builder.build())
-        
-        updateGroupSummary()
+            .build()
+    }
+
+    /** Re-issue every posted chat card so it picks up the new palette (live repaint). */
+    private fun repaintChats() {
+        val nm = manager()
+        for ((_, state) in chatStates) {
+            try {
+                post(nm, state.notifId, chatNotification(state))
+            } catch (e: Exception) {
+                Log.e(TAG, "repaint failed for ${state.storedKey}", e)
+            }
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -609,7 +666,7 @@ class NtfyPushService : Service() {
         return SessionInfo("Chat", sid)
     }
 
-    data class ChatState(var title: String, var storedKey: String, var count: Int, val notifId: Int, val lines: MutableList<String>)
+    data class ChatState(val sid: String, var title: String, var storedKey: String, var count: Int, val notifId: Int, val lines: MutableList<String>)
     private val chatStates = mutableMapOf<String, ChatState>()
     private val GROUP_KEY_CHAT = "astra-chat-replies"
 
@@ -818,5 +875,7 @@ class NtfyPushService : Service() {
         const val ACTION_CHAT_OPENED = "com.jitinnair.astra.CHAT_OPENED"
         const val ACTION_CHAT_CLEARED = "com.jitinnair.astra.CHAT_CLEARED"
         const val ACTION_CHAT_CLEARED_ALL = "com.jitinnair.astra.CHAT_CLEARED_ALL"
+        // Web layer pushed a new active palette: re-point the channels and repaint what is posted.
+        const val ACTION_THEME_CHANGED = "com.jitinnair.astra.THEME_CHANGED"
     }
 }

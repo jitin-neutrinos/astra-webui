@@ -189,6 +189,40 @@ export async function initShellTheme() {
     if (t !== lastTheme) { lastTheme = t; try { plugin('Preferences').set?.({ key: 'astra_theme', value: t }); } catch { /* optional */ } }
   };
 
+  // Push the ACTIVE palette to native surfaces (notifications + gate popup). These are native and
+  // outlive the WebView — the notification service holds a notification while the page is gone —
+  // so without this bridge they kept the Astra accent forever after a palette change. Resolves the
+  // tokens from the LIVE computed styles (so custom token edits count too), not from palettes.json,
+  // and is a no-op on web.
+  let lastPushed = '';
+  const pushThemeToNative = () => {
+    const mode = root.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+    const cs = getComputedStyle(root);
+    const tok = (name: string, fb: string) => {
+      const raw = cs.getPropertyValue(name).trim();
+      // The engine writes #rrggbb for --color-*; anything else (a channel triple, a color-mix)
+      // is not a value the native side can parse, so fall back rather than push garbage.
+      return /^#[0-9a-fA-F]{6}$/.test(raw) ? raw.toLowerCase() : fb;
+    };
+    const tokens = {
+      accent: tok('--color-cyanx', mode === 'light' ? '#0369A1' : '#22D3EE'),
+      void: tok('--color-void', mode === 'light' ? '#F5F2EC' : '#0A0A0F'),
+      surface: tok('--color-midnight', mode === 'light' ? '#FDFCF9' : '#12121A'),
+      surfaceHi: tok('--color-depth', mode === 'light' ? '#ECE8DF' : '#1A1A2E'),
+      hairline: tok('--color-surface', mode === 'light' ? '#E1DCD1' : '#252538'),
+      ink: tok('--color-brandtext', mode === 'light' ? '#0F172A' : '#F8FAFC'),
+      muted: tok('--color-muted', mode === 'light' ? '#5B6472' : '#9AA3B2'),
+      danger: tok('--color-redx', mode === 'light' ? '#B91C1C' : '#F87171'),
+      okay: tok('--color-emerald', mode === 'light' ? '#047857' : '#10B981'),
+      amber: tok('--color-amber', mode === 'light' ? '#B45309' : '#FB923C'),
+    };
+    // Only push on a real change: the ticker below calls this every 5s.
+    const sig = mode + '|' + JSON.stringify(tokens);
+    if (sig === lastPushed) return;
+    lastPushed = sig;
+    try { plugin('AstraTheme').sync?.({ mode, tokens }); } catch { /* optional */ }
+  };
+
   applyInsets();
   // Wait for SystemBars' injected vars + first paint, then keep watching —
   // the vars can land after onPageCommitVisible + requestApplyInsets.
@@ -199,11 +233,18 @@ export async function initShellTheme() {
   requestAnimationFrame(updateColors);
   setTimeout(updateColors, 100);
   setTimeout(updateColors, 500);
+  // Native theme push: boot (after the first paint has set the computed tokens), then on every
+  // theme/palette change, then on the slow ticker as a safety net for a change that landed while
+  // the app was backgrounded. pushThemeToNative() is change-gated, so the ticker costs nothing.
+  setTimeout(pushThemeToNative, 300);
+  window.addEventListener('astra-theme-change', pushThemeToNative);
+  window.addEventListener('astra-palette-change', pushThemeToNative);
   // Slowed from 1200ms to 5000ms (2026-10-03): real-time device measurement
   // showed the per-keystroke timeline re-render (20.5ms at 7,366 DOM nodes) is
   // the dominant lag source; the ticker itself is minor overhead, but reducing
   // it removes a competing timer from the main thread during typing bursts.
   setInterval(updateColors, 5000);
+  setInterval(pushThemeToNative, 5000);
   window.addEventListener('resize', updateColors);
   setTimeout(() => reportLayout('boot+2s'), 2000);
   setTimeout(() => reportLayout('boot+6s'), 6000);

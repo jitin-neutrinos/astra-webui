@@ -25,6 +25,7 @@ public class MainActivity : BridgeActivity() {
         registerPlugin(NativeNtfy::class.java)
         registerPlugin(CookieEncryptPlugin::class.java)
         registerPlugin(AstraBarsPlugin::class.java)
+        registerPlugin(AstraThemePlugin::class.java)
         super.onCreate(savedInstanceState)
         installDownloadListener()
         installBackHandler()

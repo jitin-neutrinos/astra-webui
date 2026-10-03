@@ -68,18 +68,26 @@ class GateActivity : Activity() {
     private lateinit var foot: LinearLayout        // pinned actions
 
     // ---- brand tokens (index.css @theme + [data-theme="light"]) -------------
+    // The ACTIVE palette, pushed from the web theme engine and read through AstraThemeRead, so the
+    // card follows whichever theme the user picked. `light` is kept only to pick the FALLBACK
+    // column when a token is missing from storage (fresh install / cleared prefs) — it is no
+    // longer the sole source of colour.
     private var light = false
+    private val theme: AstraTokenMath.Tokens get() = AstraThemeRead.tokens(this)
     private fun c(d: String, l: String) = Color.parseColor(if (light) l else d)
-    private val surface get() = c("#12121A", "#FDFCF9")
-    private val surfaceHi get() = c("#1A1A2E", "#ECE8DF")
-    private val hairline get() = c("#252538", "#E1DCD1")
-    private val well get() = c("#0A0A0F", "#F5F2EC")
-    private val ink get() = c("#F8FAFC", "#0F172A")
-    private val muted get() = c("#9AA3B2", "#5B6472")
-    private val brand get() = c("#22D3EE", "#0369A1")           // cyanx
-    private val onBrand get() = c("#0A0A0F", "#FFFFFF")
-    private val danger get() = c("#F87171", "#B91C1C")
-    private val okay = Color.parseColor("#10B981")
+    private val surface get() = AstraThemeRead.parseHex(theme.surface, c("#12121A", "#FDFCF9"))
+    private val surfaceHi get() = AstraThemeRead.parseHex(theme.surfaceHi, c("#1A1A2E", "#ECE8DF"))
+    private val hairline get() = AstraThemeRead.parseHex(theme.hairline, c("#252538", "#E1DCD1"))
+    private val well get() = AstraThemeRead.parseHex(theme.void, c("#0A0A0F", "#F5F2EC"))
+    private val ink get() = AstraThemeRead.parseHex(theme.ink, c("#F8FAFC", "#0F172A"))
+    private val muted get() = AstraThemeRead.parseHex(theme.muted, c("#9AA3B2", "#5B6472"))
+    private val brand get() = AstraThemeRead.parseHex(theme.accent, c("#22D3EE", "#0369A1"))   // cyanx
+    // Text ON the accent fill. Derived by luminance, not hardcoded: a pale accent (Fire/Wind light)
+    // needs dark text or the Allow button fails contrast. Previously a fixed dark-ink/white pair,
+    // which was wrong for every non-Astra palette.
+    private val onBrand get() = AstraThemeRead.parseHex(AstraTokenMath.onAccent(theme.accent), Color.BLACK)
+    private val danger get() = AstraThemeRead.parseHex(theme.danger, c("#F87171", "#B91C1C"))
+    private val okay = AstraThemeRead.parseHex(theme.okay, Color.parseColor("#10B981"))
 
     private fun tint(color: Int, a: Int) = Color.argb(a, Color.red(color), Color.green(color), Color.blue(color))
 
@@ -141,8 +149,13 @@ class GateActivity : Activity() {
     // ---- shell: scrim + centered card --------------------------------------
     private fun buildShell() {
         root = FrameLayout(this)
+        // Scrim: derived from the theme so it reads as a themed veil over the app behind the popup,
+        // not a fixed grey. Heavy enough in dark (the popup is the focus), much lighter in light
+        // (paper does not need suppressing as hard). Built with tint() rather than an alpha hex,
+        // because Android's Color.parseColor reads #AARRGGBB while CSS writes #rrggbbaa — mixing
+        // the two silently swaps the channels.
         scrim = View(this).apply {
-            setBackgroundColor(Color.parseColor(if (light) "#66101820" else "#B30A0A0F"))
+            setBackgroundColor(tint(well, if (light) 0x66 else 0xB3))
             alpha = 0f
             setOnClickListener { if (!busy) dismiss() }
         }
@@ -490,7 +503,7 @@ class GateActivity : Activity() {
 
         val sevColor = when (severity) {
             "low" -> muted
-            "high" -> c("#FB923C", "#C2410C")
+            "high" -> AstraThemeRead.parseHex(theme.amber, c("#FB923C", "#C2410C"))
             "critical" -> danger
             else -> brand   // moderate: brand teal (amber retired 2026-10-02)
         }
