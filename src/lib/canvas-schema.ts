@@ -167,6 +167,105 @@ export interface DividerBlock {
   label?: string;
 }
 
+// ── reactive canvas (v5) — controls + data carrier ───────────────────────────
+// A control block writes its value into the card's per-canvas state (canvas-
+// state.tsx) under `bind`; reader props on other blocks (kpi undecided value,
+// table/chart `where`, series `visible`, …) resolve against that state through
+// canvas-bind.ts + the closed expression language (canvas-expr.ts). Absent in
+// a spec ⇒ exactly the v1 rendering.
+
+export interface SliderBlock {
+  type: "slider";
+  label: string;
+  /** State key the current value is stored under. */
+  bind: string;
+  min: number;
+  max: number;
+  step?: number;
+  /** Initial/current value; a control with no current state writes this first. */
+  value?: number;
+  unit?: string;
+  /** Free-text format shown beside the value ("$18,000" via money/compact…). */
+  format?: "plain" | "money" | "compact" | "pct";
+}
+
+export interface SelectBlock {
+  type: "select";
+  label: string;
+  bind: string;
+  options: { label: string; value: string }[];
+  value?: string;
+}
+
+export interface MultiSelectBlock {
+  type: "multiselect";
+  label: string;
+  bind: string;
+  options: { label: string; value: string }[];
+  value?: string[];
+}
+
+export interface SegmentedBlock {
+  type: "segmented";
+  label?: string;
+  bind: string;
+  options: { label: string; value: string }[];
+  value?: string;
+}
+
+export interface ToggleBlock {
+  type: "toggle";
+  label: string;
+  bind: string;
+  value?: boolean;
+}
+
+export interface SearchBlock {
+  type: "search";
+  label?: string;
+  bind: string;
+  placeholder?: string;
+}
+
+export interface DataBlock {
+  type: "data";
+  /** Name every `$from` points at. Never rendered as a surface. */
+  name: string;
+  columns?: string[];
+  rows: (string | number | boolean | null)[][];
+  header?: boolean;
+}
+
+export interface ReactiveExtra {
+  /** Per-canvas initial state (written before the blocks render). */
+  state?: Record<string, string | number | boolean | null>;
+  /** Hide a block when this binding evaluates falsy (unset = visible). */
+  visible?: unknown;
+}
+
+export interface ImageBlock {
+  type: "image";
+  /** Host file path or /api/… URL; mapped through linkHref(). */
+  src: string;
+  alt?: string;
+  caption?: string;
+}
+
+export interface GalleryBlock {
+  type: "gallery";
+  items: { src: string; alt?: string; caption?: string }[];
+  layout?: "2col" | "3col";
+}
+
+export interface VideoBlock {
+  type: "video";
+  src: string;
+  poster?: string;
+  captions?: string;
+  caption?: string;
+}
+
+
 // ── Editable + downloadable blocks (v4) ──────────────────────────────────────
 // Every one of these is BOTH embedded and expandable to fullscreen, and has a
 // working Download. The shape stays plain JSON: an agent emits rows/slides/text,
@@ -231,11 +330,15 @@ export type CanvasBlock =
   | CodeBlock | ReferencesBlock
   | QuoteBlock | KeyValueBlock | DiffBlock | HeatmapBlock | TabsBlock
   | AccordionBlock | TerminalBlock | BadgesBlock | DividerBlock
-  | SpreadsheetBlock | SlidesBlock | DocumentBlock | TextBlock;
+  | SpreadsheetBlock | SlidesBlock | DocumentBlock | TextBlock
+  | SliderBlock | SelectBlock | MultiSelectBlock | SegmentedBlock | ToggleBlock | SearchBlock | DataBlock
+  | ImageBlock | GalleryBlock | VideoBlock;
 
 export interface CanvasSpec {
   v: 1;
   title?: string;
+  /** Per-canvas initial state for reactive blocks (controls write here). */
+  state?: Record<string, string | number | boolean | null>;
   blocks: CanvasBlock[];
 }
 
@@ -256,6 +359,9 @@ const BLOCK_TYPES = new Set([
   "quote", "keyvalue", "diff", "heatmap", "tabs",
   "accordion", "terminal", "badges", "divider",
   "spreadsheet", "slides", "document", "text",
+  // v5 reactive + media
+  "slider", "select", "multiselect", "segmented", "toggle", "search", "data",
+  "image", "gallery", "video",
 ]);
 const CHART_KINDS = new Set(["line", "area", "bar", "radial", "pie", "donut", "stack"]);
 const TONES = new Set(["info", "warn", "success", "danger"]);
@@ -290,6 +396,20 @@ const TYPE_ALIASES: Record<string, string> = {
   deck: "slides", presentation: "slides", pptx: "slides", "slide-deck": "slides",
   doc: "document", docx: "document", word: "document", "word-doc": "document", editor: "document",
   "plain-text": "text", textarea: "text", "text-editor": "text", "code-editor": "text",
+  // v5 reactive near-misses. `range`/`chips`/`grid`/`tags`/`rows`/`filter` names
+  // already exist above pointing elsewhere (grid→spreadsheet, chips/tags→badges);
+  // LAST WINS in a JS object literal, so reactive reads deliberately re-point
+  // them — the alias entry that survives replay-verified corpus matters more.
+  "range-slider": "slider", "input-slider": "slider",
+  dropdown: "select", picker: "select", "single-select": "select",
+  multi: "multiselect", "multi-select": "multiselect",
+  "toggle-group": "segmented", radiogroup: "segmented", pills: "segmented",
+  switch: "toggle", checkbox: "toggle", bool: "toggle", boolean: "toggle",
+  query: "search", "filter-input": "search",
+  dataset: "data", "data-table": "data", tabledata: "data",
+  picture: "image", img: "image", screenshot: "image", thumbnail: "image",
+  comparison: "gallery", images: "gallery", photos: "gallery",
+  clip: "video", movie: "video", mp4: "video", "video-clip": "video",
 };
 
 // kpi `trend` is a DIRECTION. Models reuse severity/status words for it
@@ -729,6 +849,137 @@ export function validateBlock(b: any): CanvasBlock | null {
         filename: isStr(b.filename) ? b.filename : undefined,
         content: src,
         language: isStr(b.language) ? b.language : isStr(b.lang) ? b.lang : undefined,
+      };
+    }
+    // ── v5 reactive + media ──────────────────────────────────────────────────
+    case "slider": {
+      if (!isStr(b.label) || !isStr(b.bind)) return null;
+      if (!/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(b.bind)) return null;
+      let min = isNum(b.min) ? b.min : 0;
+      let max = isNum(b.max) ? b.max : 100;
+      if (min > max) { const t = min; min = max; max = t; } // bounds confusion: swap, never reject
+      if (max === min) max = min + 1;
+      let step = isNum(b.step) && b.step > 0 ? b.step : (max - min) / 100;
+      const span = max - min;
+      if (step > span) step = span;
+      // snap step onto a sane decimal grid so the value never reads 33.33333334
+      const mag = Math.pow(10, Math.floor(Math.log10(step)) - 2);
+      step = Math.max(mag, Math.round(step / mag) * mag);
+      return {
+        type: "slider",
+        label: b.label,
+        bind: b.bind,
+        min, max, step,
+        value: isNum(b.value) ? Math.min(max, Math.max(min, b.value)) : undefined,
+        unit: isStr(b.unit) ? b.unit : undefined,
+        format: b.format === "money" || b.format === "compact" || b.format === "pct" ? b.format : "plain",
+      };
+    }
+    case "select":
+    case "multiselect":
+    case "segmented": {
+      const maxOpts = b.type === "segmented" ? 5 : 24;
+      if (!isStr(b.bind) || !/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(b.bind)) return null;
+      if (!Array.isArray(b.options) || b.options.length === 0 || b.options.length > maxOpts) return null;
+      const options: { label: string; value: string }[] = [];
+      const seen = new Set<string>();
+      for (const o of b.options) {
+        if (!o || typeof o !== "object") return null;
+        // near-miss: scalar option list (["prod","stage"] or strings as labels)
+        const label = isStr(o.label) ? o.label : isStr(o) ? o : isStr(o.value) ? o.value : isStr(o.name) ? o.name : null;
+        if (!label) return null;
+        const value = isStr(o.value) ? o.value : label;
+        if (seen.has(value)) continue; // duplicate values collapse silently
+        seen.add(value);
+        options.push({ label, value });
+      }
+      if (options.length === 0) return null;
+      if (b.type === "multiselect") {
+        const val = Array.isArray(b.value) ? b.value.filter((v: unknown): v is string => isStr(v)).filter((v: string) => seen.has(v)) : undefined;
+        return { type: "multiselect", label: isStr(b.label) ? b.label : "", bind: b.bind, options, value: val };
+      }
+      const val = isStr(b.value) && seen.has(b.value) ? b.value : options[0].value;
+      return b.type === "segmented"
+        ? { type: "segmented", label: isStr(b.label) ? b.label : undefined, bind: b.bind, options, value: val }
+        : { type: "select", label: isStr(b.label) ? b.label : "", bind: b.bind, options, value: val };
+    }
+    case "toggle": {
+      if (!isStr(b.label) || !isStr(b.bind)) return null;
+      if (!/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(b.bind)) return null;
+      return { type: "toggle", label: b.label, bind: b.bind, value: b.value === true ? true : b.value === false ? false : undefined };
+    }
+    case "search": {
+      if (!isStr(b.bind) || !/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(b.bind)) return null;
+      return {
+        type: "search",
+        label: isStr(b.label) ? b.label : undefined,
+        bind: b.bind,
+        placeholder: isStr(b.placeholder) ? b.placeholder : undefined,
+      };
+    }
+    case "data": {
+      // Named dataset: a carrier for `$from` readers — validated like a table,
+      // but cells may also be booleans and rows may be ragged (padded).
+      if (!isStr(b.name) || !/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(b.name)) return null;
+      const raw = Array.isArray(b.rows) ? b.rows : Array.isArray(b.data) ? b.data : null;
+      if (!raw || raw.length === 0) return null;
+      const rows: (string | number | boolean | null)[][] = [];
+      let width = 0;
+      for (const r of raw) {
+        if (!Array.isArray(r) || r.length === 0) return null;
+        width = Math.max(width, r.length);
+        const row: (string | number | boolean | null)[] = [];
+        for (const c of r) {
+          if (isStr(c) || isNum(c)) { row.push(c); continue; }
+          if (typeof c === "boolean") { row.push(c); continue; }
+          if (c == null) { row.push(null); continue; }
+          return null;
+        }
+        rows.push(row);
+      }
+      const columns = isStrArr(b.columns) ? b.columns : undefined;
+      return {
+        type: "data",
+        name: b.name,
+        columns,
+        rows: rows.map((r) => (r.length < width ? [...r, ...new Array(width - r.length).fill(null)] : r)),
+        header: b.header === false ? false : true,
+      };
+    }
+    case "image": {
+      const src = b.src ?? b.path ?? b.url;
+      if (!isStr(src) || src.trim() === "") return null;
+      return {
+        type: "image",
+        src,
+        alt: isStr(b.alt) ? b.alt : undefined,
+        caption: isStr(b.caption) ? b.caption : undefined,
+      };
+    }
+    case "gallery": {
+      const raw = Array.isArray(b.items) ? b.items : Array.isArray(b.images) ? b.images : null;
+      if (!raw || raw.length === 0) return null;
+      const items: GalleryBlock["items"] = [];
+      for (const it of raw) {
+        // Common slips: a bare string path, or {src} unnamed
+        if (isStr(it)) { items.push({ src: it }); continue; }
+        if (!it || typeof it !== "object") return null;
+        const src = it.src ?? it.path ?? it.url ?? it.image;
+        if (!isStr(src)) return null;
+        items.push({ src, alt: isStr(it.alt) ? it.alt : undefined, caption: isStr(it.caption) ? it.caption : undefined });
+      }
+      if (items.length === 0) return null;
+      return { type: "gallery", items: items.slice(0, 24), layout: b.layout === "3col" ? "3col" : "2col" };
+    }
+    case "video": {
+      const src = b.src ?? b.path ?? b.url;
+      if (!isStr(src) || src.trim() === "") return null;
+      return {
+        type: "video",
+        src,
+        poster: isStr(b.poster) ? b.poster : undefined,
+        captions: isStr(b.captions) ? b.captions : undefined,
+        caption: isStr(b.caption) ? b.caption : undefined,
       };
     }
     default:

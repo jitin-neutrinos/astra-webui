@@ -7,18 +7,24 @@
 //   partial — a canvas still STREAMING: blocks paint the moment each one
 //             completes, so the user watches the card build in real time
 //             instead of waiting for the closing fence.
+//
+// v5: reactive canvases — `spec.state` seeds a per-canvas store wrapped around
+// the body; control blocks (slider/select/…) write it; reader blocks resolve
+// `{bind, where, visible,…}` against it. A spec with no `state` renders exactly
+// as before (the provider is inert when nothing binds).
 import { useReducer } from "react";
 import { Copy, Check, Loader2 } from "lucide-react";
 import { canvasToMarkdown } from "../../lib/canvas-markdown";
 import { copyText } from "../../lib/copy-text";
 import { Blocks } from "./canvas-blocks";
+import { CanvasStateProvider } from "./canvas-state";
 import type { CanvasSpec, CanvasBlock } from "../../lib/canvas-schema";
 
 // The heading is ALWAYS derived from the data, so a canvas never reads as a
 // generic "Canvas". An owner-supplied title is kept but enriched with the first
 // real figure, so it stays contextually relevant to what is on screen.
 function deriveTitle(spec: { title?: string; blocks: CanvasBlock[] }): string {
-  const b = spec.blocks[0];
+  const b = spec.blocks.find((x) => x.type !== "data"); // data carriers never title the card
   const fromData = (blk: CanvasBlock | undefined): string | null => {
     if (!blk) return null;
     switch (blk.type) {
@@ -47,6 +53,13 @@ function deriveTitle(spec: { title?: string; blocks: CanvasBlock[] }): string {
       case "terminal": return blk.command ? blk.command.slice(0, 60) : blk.title || "Terminal";
       case "badges": return "Status";
       case "divider": return blk.label || "—";
+      case "slider": return blk.label || "Slider";
+      case "select": case "multiselect": case "segmented": return blk.label || "Controls";
+      case "toggle": return blk.label || "Toggle";
+      case "search": return blk.label || "Filter";
+      case "image": return blk.alt || blk.caption || "Image";
+      case "gallery": return `Gallery — ${blk.items?.length ?? 0}`;
+      case "video": return blk.caption || "Video";
       default: return null;
     }
   };
@@ -58,9 +71,10 @@ function deriveTitle(spec: { title?: string; blocks: CanvasBlock[] }): string {
   return derived || "Canvas";
 }
 
-export default function CanvasView({ spec, partial, canvasId = "0" }: { spec?: CanvasSpec; partial?: { title?: string; blocks: CanvasBlock[] }; canvasId?: string }) {
-  const [copied, ping] = useReducer((x: number) => x + 1, 0);
+export default function CanvasView({ spec, partial, canvasId = "0" }: { spec?: CanvasSpec; partial?: { title?: string; blocks: CanvasBlock[] }; canvasId: string }) {
+  const [copied, ping] = useReducer(copiedReducer, 0);
   const done = copied > 0;
+  const reactive = !!(spec?.state && Object.keys(spec.state).length > 0);
 
   // Streaming mode: paint the blocks that have completed so far, with a live
   // building indicator. No copy button — nothing final to copy yet.
@@ -70,7 +84,7 @@ export default function CanvasView({ spec, partial, canvasId = "0" }: { spec?: C
         <section className="ast-canvas ast-canvas-live" aria-label={liveTitle} aria-busy="true">
           <header className="ast-canvas-head">
             <span className="ast-canvas-title">{liveTitle}</span>
-            <span className="ast-canvas-building" role="status">
+            <span className="ast-canvas-building" role="status" aria-live="polite">
               <Loader2 className="h-3.5 w-3.5 ast-canvas-spin" aria-hidden="true" />
               <span>Building…</span>
             </span>
@@ -93,6 +107,12 @@ export default function CanvasView({ spec, partial, canvasId = "0" }: { spec?: C
     }
   };
 
+  const body = (
+    <div className="ast-canvas-body">
+      <Blocks blocks={spec.blocks} canvasId={canvasId} />
+    </div>
+  );
+
   return (
       <section className="ast-canvas" aria-label={title}>
         <header className="ast-canvas-head">
@@ -104,9 +124,9 @@ export default function CanvasView({ spec, partial, canvasId = "0" }: { spec?: C
             </button>
           </div>
         </header>
-        <div className="ast-canvas-body">
-          <Blocks blocks={spec.blocks} canvasId={canvasId} />
-        </div>
+        {reactive ? <CanvasStateProvider canvasId={canvasId} initial={spec.state ?? {}}>{body}</CanvasStateProvider> : body}
       </section>
   );
 }
+
+function copiedReducer(x: number): number { return x + 1; }

@@ -731,12 +731,18 @@ const SlidesLazy = lazy(() => import("./canvas-docs").then((m) => ({ default: m.
 const DocLazy = lazy(() => import("./canvas-docs").then((m) => ({ default: m.DocumentBlockView })));
 const TextLazy = lazy(() => import("./canvas-docs").then((m) => ({ default: m.TextView })));
 
+// v5 reactive + media blocks: another lazy chunk (canvas-reactive). Control
+// blocks read/write the per-canvas state provided by CanvasStateProvider.
+const ReactiveLazy = lazy(() => import("./canvas-reactive").then((m) => ({ default: m.ReactiveHub })));
+
 function DocSkeleton() {
   // No spinner: the owner reads a loader artifact as a broken card.
   return <div className="ast-cv-doc-skeleton" aria-busy="true" />;
 }
 
-function renderOne(b: CanvasBlock, id: string, bi: number) {
+function renderOne(b: CanvasBlock, id: string, bi: number): React.ReactNode {
+  // `data` blocks are carriers for `$from` readers — never a surface.
+  if (b.type === "data") return null;
   switch (b.type) {
     case "kpi": return <KpiTile block={b} />;
     case "progress": return <ProgressView block={b} />;
@@ -771,5 +777,9 @@ function renderOne(b: CanvasBlock, id: string, bi: number) {
     case "slides": return <Suspense fallback={<DocSkeleton />}><SlidesLazy block={b} id={`cv-deck-${id}-${bi}`} /></Suspense>;
     case "document": return <Suspense fallback={<DocSkeleton />}><DocLazy block={b} id={`cv-doc-${id}-${bi}`} /></Suspense>;
     case "text": return <Suspense fallback={<DocSkeleton />}><TextLazy block={b} id={`cv-text-${id}-${bi}`} /></Suspense>;
+    // v5 reactive + media (own lazy chunk)
+    case "slider": case "select": case "multiselect": case "segmented":
+    case "toggle": case "search": case "image": case "gallery": case "video":
+      return <Suspense fallback={null}><ReactiveLazy block={b} /></Suspense>;
   }
 }

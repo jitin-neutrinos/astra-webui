@@ -391,6 +391,27 @@ export const REGRESSIONS = [
       "Skeletal loaders were theme-coloured instead of grey: the shimmer sweep painted from --c-69 (annotated cyanx, i.e. the theme ACCENT), so one skeleton read cyan under Astra, sky blue under Water and ORANGE under Fire; the canvas doc placeholder painted from --c-89 (annotated redx) and went red under Fire; the config page hardcoded bg-white/5, invisible in light mode. All skeleton fills/sweeps now read --ast-sk-fill / --ast-sk-sweep, which theme-store re-derives per palette as a chroma-free grey.",
     guard: "src/lib/skeleton-grey.check.ts",
   },
+  {
+    id: "RG-060",
+    found: "2026-10-04",
+    symptom:
+      "Light theme lost its accent entirely: the theme-compliance pass rewrote the light scope's --color-cyanx to a SELF-REFERENCE (var(--color-cyanx)), which resolves to nothing — every accent-derived surface (bubbles, KPI values, chart strokes, buttons) went colourless in light mode, and color-mix() props built on it collapsed to transparent. Also pins: the canvas CSS region carries no painted hex (all token-routed), no coloured edge rails, and no unroled saturated channel var leaks past the 12 documented status/overlay exceptions.",
+    guard: "src/lib/canvas-theme.check.ts",
+  },
+  {
+    id: "RG-061",
+    found: "2026-10-04",
+    symptom:
+      "Reactive canvas expression sandbox regressions: prototype/constructor/global access, huge exponents (9^9^9 → Infinity), unbounded arrays (range(100000)), template mangling, or cross-scope compile-cache leaks in canvas-expr.ts would let agent-authored JSON read globals or lie on screen.",
+    guard: "src/lib/canvas-expr.check.ts",
+  },
+  {
+    id: "RG-062",
+    found: "2026-10-04",
+    symptom:
+      "Reactive binding regressions: pointer/expression resolution, $from dataset filters (fail-soft on unknown ops/unset bindings), sort direction, header inference (row-0-as-header) or top-clamping in canvas-bind.ts.",
+    guard: "src/lib/canvas-bind.check.ts",
+  },
 ];
 
 // ---- gate -----------------------------------------------------------------

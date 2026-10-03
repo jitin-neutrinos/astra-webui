@@ -67,6 +67,62 @@ cards*.
 | `document` | `{title?, filename?, content:[{kind?:"p"\|"h2"\|"h3"\|"li"\|"quote", text}]}` | **editable** structured prose; Download → `.docx`. Aliases: `doc`, `word` |
 | `text` | `{title?, filename?, content, language?}` | **editable** plain text/markdown; Download → `.md`/`.txt`. Aliases: `plain-text`, `textarea` |
 
+### Reactive blocks (v5) — INTERACTIVE canvases: sliders drive the numbers
+
+When the answer's point is WHAT-IF — the user should MOVE a control and watch
+KPIs/charts/tables recompute — emit a **reactive canvas**: add `"state": {…}`
+to the spec (the initial values) and use control blocks. Controls write locally
+to the state (no network); every connected block recomputes instantly.
+
+| type | shape | reads/writes |
+|---|---|---|
+| `slider` | `{label, bind, min, max, step?, value?, unit?, format?:"plain"\|"money"\|"compact"\|"pct"}` | writes state[bind] |
+| `select` | `{label, bind, options:[{label, value}], value?}` | writes state[bind] |
+| `multiselect` | `{label, bind, options:[{label, value}], value?:string[]}` | writes state[bind] (chips, multi-pick) |
+| `segmented` | `{label, bind, options:[{label, value}], value?}` (2–5 options) | writes state[bind] |
+| `toggle` | `{label, bind, value?:boolean}` | writes state[bind] true/false |
+| `search` | `{label?, bind, placeholder?}` | writes state[bind] typed text (filters datasets) |
+| `data` | `{name, columns?, rows:((string\|number\|boolean\|null)[])[], header?}` | **carrier only** — never renders; a named dataset for readers |
+
+Reader fields on EXISTING blocks (all optional, all resolve against `"state"`):
+
+- `kpi.value` / `progress.value` accept `{"$expr":"price * qty"}` — the
+  expression language supports arithmetic, comparisons, `? :`, and helpers:
+  `min max round abs clamp sum avg len at range compound fmt money pct compact`…
+  (`money(x)` → `$1,235`, `pct(0.12)` → `12%`, `compact(1284000)` → `1.3M`).
+- `table`/`chart` accept `bind`/`where` on a `data` block:
+  `{"type":"table", "columns":["svc","p95"], "bind":{"$from":"latency","filter":[{"col":"env","op":"==","value":"$env"}],"sort":{"by":"p95","dir":"desc"},"top":8}}`
+  (op set: `== != < <= > >= in`).
+- chart **series** accept `points: {"$expr":"…"}` (a number array) and
+  `visible: {"$expr":"show2025"}` — toggles show/hide series live.
+- ANY block accepts `visible: {"$expr":"…"}` — a toggle can reveal a callout.
+
+Canonical what-if example (emit exactly this shape):
+
+```json
+{ "v": 1, "title": "Loan affordability", "state": { "amount": 300000, "rate": 6.5, "years": 30 },
+  "blocks": [
+    { "type": "slider", "label": "Loan amount ($)", "bind": "amount", "min": 50000, "max": 1000000, "step": 10000, "format": "money" },
+    { "type": "slider", "label": "Rate (%)", "bind": "rate", "min": 0, "max": 12, "step": 0.1, "value": 6.5 },
+    { "type": "kpi", "label": "Sense-check", "value": { "$expr": "compact(amount)" } }
+  ] }
+```
+
+Expression safety laws (renderer-enforced): no property access, no `eval`, no
+globals — identifiers are ONLY your `state` keys. An expression that fails
+renders `—` (fail-soft per prop), never a broken card. Numeric strings
+(`"1,234"`, `"12%"`) coerce; `state` values that are objects are unsupported —
+keep them scalars. NEVER hand-write a control block without a matching `"state"`
+seed (the slider shows its own `value?` until first interaction, fine).
+
+### Media blocks (v5) — images and video you GENERATED or have as host files
+
+| type | shape | behaviour |
+|---|---|---|
+| `image` | `{src, alt?, caption?}` | renders embedded; `src` = host path (`~/Downloads/x.png`) or `/api/…` URL; click → media viewer |
+| `gallery` | `{items:[{src, alt?, caption?}], layout?:"2col"\|"3col"}` | 2-col grid (3-col desktop opt-in), tap to zoom; aliases: `images`, `pictures` |
+| `video` | `{src, poster?, captions?, caption?}` | native `<video controls playsinline>`; `captions` = host path of a `.vtt`. NEVER paste binary/base64 into JSON — reference the host file path you already produced; missing/dead paths render a clean "unavailable" slot, not a broken image icon.
+
 Run consecutive `kpi` blocks together (up to 4) and they render as a single
 KPI row; `progress` blocks group the same way. Anything invalid degrades to a
 plain code block — never silently drop data to make a block work.

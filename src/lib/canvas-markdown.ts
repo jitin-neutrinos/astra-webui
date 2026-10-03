@@ -112,6 +112,32 @@ function blockToMd(b: CanvasBlock): string {
       ].filter(Boolean).join("\n\n");
     case "text":
       return b.title ? `**${b.title}**\n\n\`\`\`\n${b.content}\n\`\`\`` : `\`\`\`\n${b.content}\n\`\`\``;
+    // ── v5 reactive + media ───────────────────────────────────────────────────
+    case "slider":
+      return `${b.value ?? "—"}${b.unit ?? ""}`;
+    case "select":
+      return `- Environment-style choice: **${b.options.find((o) => o.value === b.value)?.label ?? b.value ?? "—"}**`;
+    case "multiselect":
+      return b.value?.length ? b.value.map((v) => `- ${b.options.find((o) => o.value === v)?.label ?? v}`).join("\n") : "- none selected";
+    case "segmented":
+      return `**${b.label ?? "Choice"}:** ${b.options.find((o) => o.value === b.value)?.label ?? b.value ?? "—"}`;
+    case "toggle":
+      return `- [${b.value ? "x" : " "}] ${b.label}`;
+    case "search":
+      return `- filter: ${b.placeholder || "—"}`;
+    case "data": {
+      const cols = b.columns ?? (b.rows[0]?.every((c) => typeof c === "string") ? (b.rows[0] as string[]) : []);
+      const body = b.columns ? b.rows : b.rows.slice(1);
+      const head = `| ${cols.join(" | ")} |`;
+      const sep = `|${cols.map(() => "---").join("|")}|`;
+      return [head, sep, ...body.map((r) => `| ${r.map((c) => (c == null ? "" : String(c))).join(" | ")} |`)].join("\n");
+    }
+    case "image":
+      return `![${b.alt || ""}](${b.src})${b.caption ? `\n\n${b.caption}` : ""}`;
+    case "gallery":
+      return b.items.map((it) => `![${it.alt || ""}](${it.src})${it.caption ? ` — ${it.caption}` : ""}`).join("\n\n");
+    case "video":
+      return `[video: ${b.src}]${b.caption ? `\n\n${b.caption}` : ""}`;
   }
 }
 
