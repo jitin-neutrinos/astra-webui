@@ -35,6 +35,7 @@
     "docx": "^9.8.1",
     "docx-preview": "^0.4.1",
     "dompurify": "^3.4.15",
+    "jsonrepair": "^3.12.0",
     "lottie-react": "^3.1.2",
     "lucide-react": "^1.46.0",
     "marked": "^18.0.13",

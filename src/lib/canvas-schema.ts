@@ -778,10 +778,29 @@ function quoteBareKeys(s: string): string {
   return out;
 }
 
-/** Strip comments + trailing commas before JSON.parse (models emit both). */
+/**
+ * Tier 1 — locate the outermost JSON value in text that may be wrapped in prose.
+ *
+ * Ported from the Smartslate Polaris v4 AI-response validator
+ * (`frontend/src/lib/integrations/claude/validation.ts`), whose string-aware
+ * brace counter is genuinely good. Why it matters HERE specifically: a raw
+ * repair library run on fence content that still has prose around it returns an
+ * ARRAY of the prose and the object as siblings — measured with jsonrepair —
+ * which would destroy an otherwise-valid card. Extracting the outermost value
+ * FIRST makes that impossible, and handles the "Here is the card: {...}" shape
+ * that models emit constantly.
+ *
+ * String-aware on purpose: a brace or bracket inside a JSON string value must
+ * never affect the nesting count, or the extracted range is cut short.
+ *
+ * Returns null when there is no balanced outermost value (a genuinely truncated
+ * payload), so the caller falls through to the repair tiers.
+ */
+
 function lenientJson(raw: string): unknown {
   const attempt = (s: string) => JSON.parse(s);
   try { return attempt(raw); } catch { /* fall through to repair */ }
+
   const repaired = raw
     .replace(/\/\*[\s\S]*?\*\//g, "")      // block comments
     .replace(/(^|[^:"'\\])\/\/.*$/gm, "$1") // line comments (not inside strings)
@@ -789,18 +808,130 @@ function lenientJson(raw: string): unknown {
   try { return attempt(repaired); } catch { /* try bare-key quoting */ }
   try { return attempt(quoteBareKeys(repaired)); } catch { /* fall through to depth repair */ }
 
-  // ── Bracket-depth repair ──────────────────────────────────────────────────
-  // Observed live (DB replay of 120 fences): the model sometimes emits ONE
-  // surplus closer at the very end of a card — e.g. `... ] }\n  ]\n] }` where the
-  // blocks array was already closed, leaving depth -1. The whole card then
-  // degraded to raw JSON. Replay: 2 messages, 19 blocks, all otherwise valid.
-  //
-  // Deliberately conservative: it walks with a STACK of open brackets, ignoring
-  // bracket characters inside strings, drops a stray closer that matches nothing,
-  // then re-closes with the exact mirror of what is still open. It never invents
-  // content and never reorders keys, so a payload it "repairs" is the payload the
-  // model meant. Anything it cannot make parseable still degrades as before.
+  // Tier 2: bracket-depth repair (see balanceBrackets). Handles the surplus
+  // trailing closer the model emits at the end of a card.
   return attempt(balanceBrackets(quoteBareKeys(repaired)));
+}
+
+/**
+ * Tier 1 — locate the outermost JSON value in text that may be wrapped in prose.
+ *
+ * Ported from the Smartslate Polaris v4 AI-response validator
+ * (`frontend/src/lib/integrations/claude/validation.ts`), whose string-aware
+ * brace counter is genuinely good.
+ *
+ * NOT called from lenientJson, and that is deliberate. parseCanvasSpec falls back
+ * to parseNdjson ONLY when lenientJson throws, so any tier that returns a
+ * successful parse pre-empts it: an NDJSON body has no envelope, so isolating the
+ * outermost value yields the FIRST object alone and the rest of the card is
+ * silently dropped (measured — the NDJSON, bare-block and misnested-fence tests
+ * all broke when this ran in the sync path).
+ *
+ * So tier 1 lives on the ASYNC path only, as a precondition for the repair
+ * library. Measured reason: handed `Here is the card:\n{...}\nHope that helps.`,
+ * jsonrepair returns an ARRAY of [prose, object, prose] — which would destroy an
+ * otherwise-valid card. Isolating the outermost value first makes that
+ * impossible.
+ */
+export function extractOutermostJson(text: string): string | null {
+  const start = text.search(/[{[]/);
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  const stack: string[] = [];
+
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (c === "\\") escaped = true;
+      else if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') { inString = true; continue; }
+    if (c === "{" || c === "[") { depth++; stack.push(c); continue; }
+    if (c === "}" || c === "]") {
+      const want = c === "}" ? "{" : "[";
+      if (stack[stack.length - 1] !== want) return null; // crossed brackets
+      stack.pop();
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null; // never closed — a truncated stream, not a repair candidate
+}
+
+/**
+ * Tier 3 — a real repair library, behind a dynamic import so its~2.5 kB only
+ * loads on a canvas that actually needed it.
+ *
+ * Guarded twice, because a repair library will happily "fix" things it should
+ * not. Measured: handed `Here is the card:\n{...}\nHope that helps.` it returns
+ * an ARRAY of the prose and the object as siblings, which would destroy an
+ * otherwise-valid card. So it only ever receives an ALREADY-ISOLATED value
+ * (tier 1 guarantees that), and its output must still yield a usable `blocks`
+ * array or we treat it as unrecoverable. A repair that fabricates structure is
+ * worse than raw JSON shown honestly.
+ */
+let repairLib: ((text: string) => string) | null = null;
+
+export async function loadRepairLib(): Promise<((text: string) => string) | null> {
+  if (repairLib) return repairLib;
+  try {
+    const mod = await import("jsonrepair");
+    repairLib = mod.jsonrepair;
+    return repairLib;
+  } catch {
+    return null; // chunk failed to load — degrade exactly as before
+  }
+}
+
+/**
+ * Repair an already-isolated value with the library. Returns a full spec or
+ * null — NEVER a fabricated structure.
+ *
+ * coerceToBlocks returns the BLOCK LIST, not a spec, so this builds the
+ * envelope itself and runs the same per-block validation parseCanvasSpec uses.
+ * Returning the bare list here was the bug that made tier 3 a silent no-op:
+ * callers read `.blocks` off the result and got undefined, so every repaired
+ * card was discarded.
+ */
+export function repairIsolated(raw: string, repair: (t: string) => string): CanvasSpec | null {
+  const isolated = extractOutermostJson(raw);
+  if (!isolated) return null;
+  let out: unknown;
+  try {
+    out = JSON.parse(repair(isolated));
+  } catch {
+    return null;
+  }
+  if (!out || typeof out !== "object") return null;
+  const list = coerceToBlocks(out);
+  // Per-block tolerance, exactly like parseCanvasSpec: keep what validates,
+  // degrade only when NOTHING does.
+  const blocks: CanvasBlock[] = [];
+  for (const b of list) {
+    const v = validateBlock(b);
+    if (v) blocks.push(v);
+  }
+  if (blocks.length === 0) return null;
+  const title = isStr((out as { title?: unknown }).title) ? (out as { title: string }).title : undefined;
+  return { v: 1, title, blocks };
+}
+
+/**
+ * Async parse: identical to parseCanvasSpec, but allowed to pull the repair
+ * library in on demand for the defect classes tiers 1-2 cannot fix. A strict
+ * superset of the sync result, so callers can always fall back to it.
+ */
+export async function parseCanvasSpecAsync(raw: string): Promise<CanvasSpec | null> {
+  const direct = parseCanvasSpec(raw);
+  if (direct) return direct;
+  const repair = await loadRepairLib();
+  if (!repair) return null;
+  return repairIsolated(raw, repair);
 }
 
 /**
@@ -1007,8 +1138,18 @@ function scanFences(text: string): FenceMatch[] {
       if (/^[ \t]*(?=\r?$)/.test(text.slice(c.index + c[0].length)) && !fallback) fallback = c;
       if (parseCanvasSpec(text.slice(bodyStart, c.index))) { close = c; break; }
     }
-    if (!close) close = fallback;
-    if (!close) continue; // unterminated — caller decides (stream vs finalized)
+    if (!close) {
+      // No closer at all — genuinely unterminated. The stream/finalized
+      // distinction depends on this staying true, so `continue`.
+      //
+      // But a CLOSED fence whose body merely fails to parse must still be
+      // returned, or tier 3 is unreachable: the async splitter can only retry
+      // fences this function reports. Measured failure without this — single-quoted
+      // JSON was dropped here and never reached jsonrepair.
+      const lone = fallback;
+      if (!lone) continue;
+      close = lone;
+    }
     const end = close.index + close[0].length;
     out.push({ start: m.index, end, body: text.slice(bodyStart, close.index) });
     re.lastIndex = end;
@@ -1057,6 +1198,80 @@ export function splitCanvasBlocks(text: string, streaming = false): CanvasPart[]
 export function hasCanvas(text: string): boolean {
   text = healMisnestedFence(text);
   return scanFences(text).some((f) => parseCanvasSpec(f.body) !== null);
+}
+
+/**
+ * Async twin of splitCanvasBlocks: identical output, but a fence that tiers 1-2
+ * could not parse gets one more attempt with the repair library loaded on demand.
+ *
+ * This is the ONLY entry point that can reach tier 3, which is deliberate — the
+ * repair library must never be on the synchronous path the mount gate and the
+ * streaming parser share, or a chat with no canvas would pay for it.
+ *
+ * `streaming` behaves exactly as in the sync version: an unterminated fence is
+ * hidden while streaming and preserved as markdown once finalized.
+ */
+export async function splitCanvasBlocksAsync(text: string, streaming = false): Promise<CanvasPart[]> {
+  const sync = splitCanvasBlocks(text, streaming);
+  const healed = healMisnestedFence(text);
+
+  // Count fences with a plain opener scan rather than trusting scanFences: the
+  // scanner only reports fences whose body PARSES (its "first closer that wins"
+  // rule), so it reports none for the malformed payloads tier 3 exists to fix.
+  // Depending on it made the whole async path unreachable.
+  const openers = healed.match(/`{3,}astra-canvas/g)?.length ?? 0;
+  const parsedCount = sync.filter((p) => p.kind === "canvas").length;
+  if (openers - parsedCount <= 0) return sync;
+
+  const repair = await loadRepairLib();
+  if (!repair) return sync;
+
+  // Walk the healed text with a NON-GREEDY-per-fence delimiter that cannot span
+  // a fence boundary: the body stops at the first closer of the SAME length, and
+  // if the body does not parse, retry against the next opener (a code block
+  // containing ``` produces a closer of a DIFFERENT length, so length-matching
+  // alone is not enough and a lazy [\s\S]*? swallowed the following canvas).
+  const parts: CanvasPart[] = [];
+  let cursor = 0;
+  let searchFrom = 0;
+  while (searchFrom < healed.length) {
+    const open = healed.indexOf("astra-canvas", searchFrom);
+    if (open === -1) break;
+    const runStart = open - (() => { let n = 0, i = open - 1; while (i >= 0 && healed[i] === "`") { n++; i--; } return n; })();
+    const bodyStart = open + "astra-canvas".length;
+    const nl = healed.indexOf("\n", bodyStart);
+    if (nl === -1 || runStart < 0) { searchFrom = bodyStart; continue; }
+
+    // Candidate closers: every backtick run after the body.
+    const anyRe = /`{3,}/g;
+    anyRe.lastIndex = nl + 1;
+    let chosen: { body: string; end: number } | null = null;
+    for (let c = anyRe.exec(healed); c; c = anyRe.exec(healed)) {
+      const spec = parseCanvasSpec(healed.slice(nl + 1, c.index));
+      if (spec) { chosen = { body: healed.slice(nl + 1, c.index), end: c.index + c[0].length }; break; }
+    }
+    if (!chosen) {
+      const spec = repairIsolated(healed.slice(nl + 1), repair);
+      // Only accept the repaired body if it is followed by a real closer.
+      if (spec) {
+        const tailRe = /`{3,}/g;
+        tailRe.lastIndex = nl + 1;
+        const first = tailRe.exec(healed);
+        if (first) chosen = { body: healed.slice(nl + 1, first.index), end: first.index + first[0].length };
+      }
+    }
+    if (!chosen) { searchFrom = nl + 1; continue; }
+
+    if (runStart > cursor) parts.push({ kind: "md", text: healed.slice(cursor, runStart) });
+    const spec = parseCanvasSpec(chosen.body) ?? repairIsolated(chosen.body, repair);
+    if (spec) parts.push({ kind: "canvas", spec });
+    cursor = chosen.end;
+    searchFrom = chosen.end;
+  }
+  if (parts.length === 0) return sync; // nothing rescued — keep the sync result
+  const tail = healed.slice(cursor);
+  if (tail) parts.push({ kind: "md", text: tail });
+  return parts.filter((p) => p.kind === "canvas" || p.text.length > 0);
 }
 
 export interface TurnCanvasPlan {

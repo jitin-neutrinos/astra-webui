@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { splitCanvasBlocks, parseCanvasSpec, hasCanvas, planTurnCanvases, parseStreamingBlocks, parseStreamingCanvas } from "./canvas-schema.ts";
+import { splitCanvasBlocks, splitCanvasBlocksAsync, parseCanvasSpec, parseCanvasSpecAsync, extractOutermostJson, hasCanvas, planTurnCanvases, parseStreamingBlocks, parseStreamingCanvas } from "./canvas-schema.ts";
 
 const VALID = JSON.stringify({
   v: 1, title: "Usage",
@@ -963,4 +963,68 @@ test("an unfixable payload still degrades rather than inventing blocks", () => {
 \`\`\``;
   const canv = splitCanvasBlocks(raw, false).filter((p) => p.kind === "canvas");
   assert.equal(canv.length, 0, "no block may be fabricated from broken JSON");
+});
+
+
+// ── tiered repair: Polaris extraction + jsonrepair (2026-10-03) ────────────────
+
+test("tier 1 isolates JSON wrapped in prose (Polaris validator technique)", () => {
+  const body = 'Here is the card:\n{ "v": 1, "blocks": [ { "type": "kpi", "label": "A", "value": 1 } ] }\nHope that helps.';
+  const got = extractOutermostJson(body);
+  assert.ok(got, "must isolate the outermost value");
+  const spec = parseCanvasSpec(got!);
+  assert.ok(spec, "the isolated value must parse");
+  assert.equal(spec!.blocks[0].type, "kpi");
+});
+
+test("tier 1 ignores braces inside string values", () => {
+  const body = '{ "v":1, "blocks":[ { "type":"callout", "tone":"info", "body":"a } b { c" } ] } trailing';
+  assert.equal(extractOutermostJson(body), '{ "v":1, "blocks":[ { "type":"callout", "tone":"info", "body":"a } b { c" } ] }');
+});
+
+test("tier 1 returns null on a truncated value so tier 3 can try", () => {
+  assert.equal(extractOutermostJson('{ "v": 1, "blocks": [ { "type": "kpi" '), null);
+});
+
+test("tier 3 (jsonrepair) rescues classes tiers 1-2 cannot", async () => {
+  // Classes ONLY tier 3 handles: our own repairs refuse these outright.
+  const cases: [string, string][] = [
+    ["missing comma", '{ "v":1, "blocks":[ { "type":"kpi", "label":"A" "value":1 } ] }'],
+    ["single quotes", "{ 'v':1, 'blocks':[ { 'type':'kpi', 'label':'A', 'value':1 } ] }"],
+  ];
+  for (const [name, body] of cases) {
+    assert.equal(parseCanvasSpec(body), null, name + ": sync tiers must refuse it");
+    const spec = await parseCanvasSpecAsync(body);
+    assert.ok(spec, name + ": tier 3 must rescue it");
+    assert.ok(spec!.blocks.length > 0, name);
+    assert.ok(["kpi", "callout"].includes(spec!.blocks[0].type), name + " kept its type");
+  }
+
+  // An unclosed payload IS already handled by tier 2 (depth repair), so it must
+  // render synchronously — the async path must be a strict superset, never a
+  // different answer.
+  const unclosed = '{ "v":1, "blocks":[ { "type":"kpi", "label":"A", "value":1 } ';
+  assert.ok(parseCanvasSpec(unclosed), "tier 2 handles unclosed");
+  assert.ok(await parseCanvasSpecAsync(unclosed), "async agrees");
+});
+
+test("tier 3 refuses to fabricate: a missing brace stays degraded", async () => {
+  const broken = '{ "v": 1, "blocks": [ { "type": "kpi", "items": [ { "label": "a", "value": 1 }, "label": "b", "value": 2 } ] } ] }';
+  assert.equal(await parseCanvasSpecAsync(broken), null, "no block may be invented");
+});
+
+test("the async splitter rescues a card the sync splitter drops", async () => {
+  const msg = "Here you go:\n\n```astra-canvas\n{ 'v': 1, 'blocks': [ { 'type': 'kpi', 'label': 'A', 'value': 7 } ] }\n```\n\nHope that helps.";
+  assert.equal(splitCanvasBlocks(msg, false).filter((p) => p.kind === "canvas").length, 0, "sync must fail first");
+  const parts = await splitCanvasBlocksAsync(msg, false);
+  assert.equal(parts.filter((p) => p.kind === "canvas").length, 1, "tier 3 must rescue");
+});
+
+test("tier 3 never turns prose into an array of fragments", async () => {
+  const msg = 'Here it is:\n```astra-canvas\n{ "v":1, "blocks":[ { "type":"kpi", "label":"A", "value":1 } ] }\n```\nDone.';
+  const parts = await splitCanvasBlocksAsync(msg, false);
+  const card = parts.find((p) => p.kind === "canvas");
+  assert.ok(card, "card must render");
+  assert.equal((card as any).spec.blocks[0].type, "kpi");
+  assert.ok(parts.some((p) => p.kind === "md"), "prose must survive as prose");
 });
