@@ -131,6 +131,13 @@ export async function initShellTheme() {
     // with html/body background (the canvas that shows when the page is short).
     const docEnd = Math.min(document.documentElement.scrollHeight - 2, h - 2);
     const bottom = sampleAt(w / 2, docEnd, base);
+    // ICON contrast only. The bar BACKGROUND is not set from here: the window decor is
+    // transparent (styles.xml windowBackground) and the page paints the ACTIVE theme's void
+    // under both bars via .app-shell (bg-void + the native insets as padding), so every
+    // current and future theme is covered without a native colour call.
+    // Do NOT add StatusBar.setBackgroundColor here: at targetSdk 36 edge-to-edge it is ignored
+    // for the status bar (shouldSetStatusBarColor returns false) and it cannot reach the
+    // navigation bar at all, so it would be a silent no-op that looks like a fix.
     const style = (lum(top) + lum(bottom)) / 2 > 0.5 ? 'LIGHT' : 'DARK';
     if (style !== lastStyle) { lastStyle = style; try { plugin('SystemBars').setStyle?.({ style }); } catch { /* optional */ } }
     // Native pop-up (GateActivity) follows the app theme.

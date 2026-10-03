@@ -13,6 +13,19 @@
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <!-- Full-bleed contract: the WebView fills the screen edge-to-edge and the PAGE paints
+             the theme colour under both system bars (.app-shell carries bg-void + the native
+             insets as PADDING, so its background extends beneath the bars).
+             This MUST be transparent. Capacitor's SystemBars.setStyle() (which we call to set
+             bar icon contrast) does:
+                 decorView.setBackgroundColor(getThemeColor(context, android.R.attr.windowBackground))
+             so whatever windowBackground resolves to gets painted over the whole window on every
+             setStyle call. With it unset it inherits AppCompat's default - WHITE - which is
+             exactly the "static white navbar/status bar" regression. Transparent lets the
+             theme-driven page colour show through, so every current and future theme is covered
+             automatically. (targetSdk 36 enforces edge-to-edge, so android:statusBarColor /
+             navigationBarColor are ignored; the decor background is the real mechanism.) -->
+        <item name="android:windowBackground">@android:color/transparent</item>
     </style>
 
 
