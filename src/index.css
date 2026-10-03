@@ -810,7 +810,7 @@ html.theme-fading body * {
 [data-theme="light"] .chat-bubble-user,
 [data-theme="light"] .chat-turn { box-shadow: none; }
 [data-theme="light"] .chat-bubble-ai { color: var(--color-brandtext); text-shadow: none; }
-[data-theme="light"] .chat-send { background:linear-gradient(180deg, var(--color-cyanx), color-mix(in oklab, var(--color-cyanx) 62%, var(--color-void))); color:#f8fafc; box-shadow: none }
+[data-theme="light"] .chat-send { background:linear-gradient(180deg, rgb(var(--light-c-1)), rgb(var(--light-c-2))); color:#f8fafc; box-shadow: none }
 [data-theme="light"] .chat-send:hover { filter: brightness(1.08); box-shadow: none }
 [data-theme="light"] .chat-composer { background:color-mix(in srgb, rgb(var(--light-c-4)) 90%, transparent); border-color:rgb(var(--light-c-5) / 0.12); box-shadow: none }
 [data-theme="light"] .chat-composer:focus-within { border-color:rgb(var(--light-c-6) / 0.35); box-shadow: none }
@@ -1729,14 +1729,23 @@ html.theme-fading body * {
   background-color:rgb(var(--light-c-76));
 }
 
-/* bubbles on the warm light ground: Astra pale blue is defined in :root and
-   shared by both themes; only the USER green tint is re-balanced per theme. */
+/* Light-mode bubbles: the pre-theme-engine values, restored EXACTLY (owner 2026-10-03).
+   Baseline (commit 837d0b0) was:
+     --bubble-ai-bg: transparent;      --bubble-ai-border: rgba(3,105,161,.22);
+     --bubble-user-bg: transparent;    --bubble-user-border: rgba(4,120,87,.28);
+     --bubble-user-text: #064e3b;
+   The engine had retinted these into visible colour-mix fills, which read as "light mode is
+   broken". Kept token-routed where the result is byte-identical: `color-mix(in srgb, C p%,
+   transparent)` serialises to color(srgb ...) but is the SAME colour as rgba(C, p) — verified by
+   pixel comparison, not string equality. The user TEXT is a literal: it is a deliberately deep
+   green (65% of the accent toward black), and every color-mix spelling lands on a visibly
+   lighter tint than the baseline. */
 [data-theme="light"] {
-  --bubble-ai-bg: color-mix(in oklab, var(--color-cyanx) 6%, transparent);
-  --bubble-ai-border: color-mix(in oklab, var(--color-cyanx) 30%, transparent);
-  --bubble-user-bg: color-mix(in oklab, var(--color-emerald) 13%, transparent);
-  --bubble-user-border: color-mix(in oklab, var(--color-emerald) 48%, transparent);
-  --bubble-user-text: color-mix(in oklab, var(--color-emerald) 40%, var(--color-brandtext));
+  --bubble-ai-bg: transparent;
+  --bubble-ai-border: color-mix(in srgb, var(--color-cyanx) 22%, transparent);
+  --bubble-user-bg: transparent;
+  --bubble-user-border: color-mix(in srgb, var(--color-emerald) 28%, transparent);
+  --bubble-user-text: #064e3b;
 }
 
 /* light mode: every button + hover re-balanced to the warm surfaces.
@@ -3076,17 +3085,24 @@ html.theme-fading body * {
   color: var(--color-muted);
 }
 
-/* Callout */
+/* Callout
+   Owner 2026-10-03: the coloured 3px LEFT rail is gone. Every canvas block now
+   wears the same rounded 1px outline — the left edge read as a stray blue/yellow
+   stripe against the card. Tone is still carried, but by the icon glyph and the
+   title colour, not by an edge stripe. */
 .ast-cv-callout {
   padding: 10px 14px;
   border-radius: 8px;
-  border-left: 3px solid;
+  border: 1px solid rgb(var(--c-89) / 0.1);
   background: rgb(var(--c-89) / 0.03);
 }
-.ast-cv-callout.info { border-color: var(--color-cyanx); }
-.ast-cv-callout.success { border-color: #34d399; }
-.ast-cv-callout.warn { border-color: #fbbf24; }
-.ast-cv-callout.danger { border-color: #f87171; }
+.ast-cv-callout.info { border-color: rgb(var(--c-89) / 0.1); }
+.ast-cv-callout.success { border-color: rgb(var(--c-89) / 0.1); }
+.ast-cv-callout.warn { border-color: rgb(var(--c-89) / 0.1); }
+.ast-cv-callout.danger { border-color: rgb(var(--c-89) / 0.1); }
+.ast-cv-callout.warn .ast-cv-callout-title { color: #fbbf24; }
+.ast-cv-callout.danger .ast-cv-callout-title { color: #f87171; }
+.ast-cv-callout.success .ast-cv-callout-title { color: #34d399; }
 .ast-cv-callout-title {
   margin: 0 0 4px;
   font: 600 11.5px/1.3 var(--font-sans);
