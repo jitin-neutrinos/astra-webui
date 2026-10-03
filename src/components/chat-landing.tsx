@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
 import { ArrowUp, Square, TriangleAlert, RotateCcw, Pencil, ChevronDown, Plus, WifiOff, Loader2, CheckCircle2, Check } from "lucide-react";
-import TrainingStatus from "./training-status";
 import * as notify from "@/lib/notify";
 import { AnimatedCopyButton } from "@/lib/animated-copy";
 import { cn } from "@/lib/utils";
@@ -1199,7 +1198,6 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
 // What stays here is the reset path: when the sidebar ends the OPEN session it
 // bumps resetSignal, and the welcome page must appear WITHOUT the auto-greeting
 // (end ≠ new chat, or the greeting reads as "here's your new session").
-  const [trainingOpen, setTrainingOpen] = useState(false);
   // Set when End session lands the user on the welcome page: the reset effect
   // consumes it to suppress the auto-greeting (end ≠ new chat).
   const endWelcomeRef = useRef(false);
@@ -1757,7 +1755,6 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         </span>
         <span className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.25em] text-slate-500">
 
-          <TrainingStatus open={trainingOpen} onToggle={() => setTrainingOpen((v) => !v)} />
           <button type="button" onClick={onNewChatClick}
             aria-label="New chat" title="New chat" data-ncflow={ncFlow} disabled={ncFlow !== "idle"}
             className="nc-btn flex h-10 items-center gap-2 rounded-lg px-4 text-sm shadow-[0_0_16px_rgba(34,211,238,0.12)] transition-[border-color,background-color,box-shadow,opacity] duration-150 hover:shadow-[0_0_22px_rgba(34,211,238,0.25)] active:scale-[0.97] motion-reduce:transition-none max-lg:h-10 max-lg:w-10 max-lg:justify-center max-lg:p-0">

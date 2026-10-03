@@ -21,6 +21,10 @@ import {
   Activity,
   ShieldCheck,
   Vault as VaultIcon,
+  Gauge,
+  Brain,
+  Terminal,
+  GraduationCap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as notify from "@/lib/notify";
@@ -28,6 +32,10 @@ import { ChatLanding } from "./components/chat-landing";
 import { ThemeToggle, ThemeIconButton } from "./components/theme-toggle";
 import { ChatsPanel } from "./components/chats-panel";
 import { FilesPanel } from "./components/files-panel";
+import { ContextPage } from "./components/context-page";
+import { MemoryPage } from "./components/memory-page";
+import { HarnessPage } from "./components/harness-page";
+import { TrainingPage } from "./components/training-page";
 import TokenTrackerPage from "./components/token-tracker";
 import { useMobileViewport } from "./hooks/use-mobile-viewport";
 import { isLowSpec } from "./components/composer-trace";
@@ -268,10 +276,14 @@ function Shell({ onLogout }: { onLogout: () => void }) {
   // address bar, browser back/forward, and reload all land on the right page —
   // previously non-chat views were just an in-memory flag with no URL of their own,
   // so navigating away and back (or reloading) always dropped you back into chat.
-  const parsePath = (): { view: 'chat' | 'files' | 'tracker' | 'config' | 'approvals' | 'vault'; sessionId: string | null } => {
+  const parsePath = (): { view: 'chat' | 'files' | 'tracker' | 'config' | 'approvals' | 'vault' | 'context' | 'memory' | 'harness' | 'training'; sessionId: string | null } => {
     const p = location.pathname;
     if (p === "/files") return { view: "files", sessionId: null };
     if (p === "/tracker") return { view: "tracker", sessionId: null };
+    if (p === "/context") return { view: "context", sessionId: null };
+    if (p === "/memory") return { view: "memory", sessionId: null };
+    if (p === "/harness") return { view: "harness", sessionId: null };
+    if (p === "/training") return { view: "training", sessionId: null };
     if (p === "/config") return { view: "config", sessionId: null };
     if (p === "/approvals") return { view: "approvals", sessionId: null };
     if (p === "/vault" || p === "/env") return { view: "vault", sessionId: null };
@@ -279,7 +291,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
     return { view: "chat", sessionId: match ? match[1] : null };
   };
   const initial = parsePath();
-  const [view, setView] = useState<'chat' | 'files' | 'tracker' | 'config' | 'approvals' | 'vault'>(initial.view as 'chat' | 'files' | 'tracker' | 'config' | 'approvals' | 'vault');
+  const [view, setView] = useState<'chat' | 'files' | 'tracker' | 'config' | 'approvals' | 'vault' | 'context' | 'memory' | 'harness' | 'training'>(initial.view as 'chat' | 'files' | 'tracker' | 'config' | 'approvals' | 'vault' | 'context' | 'memory' | 'harness' | 'training');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("astra-sidebar-collapsed") === "1");
   const toggleSidebar = () => setSidebarCollapsed((c) => {
     localStorage.setItem("astra-sidebar-collapsed", c ? "0" : "1");
@@ -291,9 +303,13 @@ function Shell({ onLogout }: { onLogout: () => void }) {
   // Non-chat views own their own path + title directly (chat's own path/title
   // effect only runs while it is the active view — see ChatLanding's isActiveView).
   useEffect(() => {
-    const TITLES: Record<typeof view, string> = { chat: "Astra", files: "Files — Astra", tracker: "Global Token Tracker — Astra", config: "Config — Astra", approvals: "Approvals & Reviews — Astra", vault: "Vault — Astra" };
+    const TITLES: Record<typeof view, string> = { chat: "Astra", files: "Files — Astra", tracker: "Global Token Tracker — Astra", config: "Config — Astra", approvals: "Approvals & Reviews — Astra", vault: "Vault — Astra", context: "Context — Astra", memory: "Memory — Astra", harness: "Harness — Astra", training: "Training & Reviews — Astra" };
     if (view === "files" && location.pathname !== "/files") history.pushState({}, "", "/files");
     else if (view === "tracker" && location.pathname !== "/tracker") history.pushState({}, "", "/tracker");
+    else if (view === "context" && location.pathname !== "/context") history.pushState({}, "", "/context");
+    else if (view === "memory" && location.pathname !== "/memory") history.pushState({}, "", "/memory");
+    else if (view === "harness" && location.pathname !== "/harness") history.pushState({}, "", "/harness");
+    else if (view === "training" && location.pathname !== "/training") history.pushState({}, "", "/training");
     else if (view === "config" && location.pathname !== "/config") history.pushState({}, "", "/config");
     else if (view === "approvals" && location.pathname !== "/approvals") history.pushState({}, "", "/approvals");
     else if (view === "vault" && location.pathname !== "/vault") history.pushState({}, "", "/vault");
@@ -382,6 +398,10 @@ function Shell({ onLogout }: { onLogout: () => void }) {
           onOpenConfig={() => { closeDrawer(); setView('config'); }}
           onOpenApprovals={() => { closeDrawer(); setView('approvals'); }}
           onOpenVault={() => { closeDrawer(); setView('vault'); }}
+          onOpenContext={() => { closeDrawer(); setView('context'); }}
+          onOpenMemory={() => { closeDrawer(); setView('memory'); }}
+          onOpenHarness={() => { closeDrawer(); setView('harness'); }}
+          onOpenTraining={() => { closeDrawer(); setView('training'); }}
         />
         <div className={cn("flex flex-1 flex-col overflow-hidden", view !== 'chat' && "hidden")}>
           <ChatLanding resetSignal={resetSignal} selectedSessionId={selectedSessionId} onSessionChange={setActiveSessionId}
@@ -404,12 +424,24 @@ function Shell({ onLogout }: { onLogout: () => void }) {
         {view === 'vault' && (
           <VaultPage />
         )}
+        {view === 'context' && (
+          <ContextPage onBack={() => setView('chat')} />
+        )}
+        {view === 'memory' && (
+          <MemoryPage onBack={() => setView('chat')} />
+        )}
+        {view === 'harness' && (
+          <HarnessPage onBack={() => setView('chat')} />
+        )}
+        {view === 'training' && (
+          <TrainingPage onBack={() => setView('chat')} />
+        )}
       </div>
     </div>
   );
 }
 
-function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDrawer, onToggleCollapse, onLogout, onSelectSession, onEndSession, onOpenTracker, onOpenConfig, onOpenApprovals, onOpenVault }: { activeView: 'chat' | 'files' | 'tracker' | 'config' | 'approvals' | 'vault'; collapsed: boolean; drawerOpen: boolean; activeSessionId: string | null; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onSelectSession: (id: string) => void; onEndSession?: (id: string) => Promise<void>; onOpenTracker?: () => void; onOpenConfig?: () => void; onOpenApprovals?: () => void; onOpenVault?: () => void; }) {
+function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDrawer, onToggleCollapse, onLogout, onSelectSession, onEndSession, onOpenTracker, onOpenConfig, onOpenApprovals, onOpenVault, onOpenContext, onOpenMemory, onOpenHarness, onOpenTraining }: { activeView: 'chat' | 'files' | 'tracker' | 'config' | 'approvals' | 'vault' | 'context' | 'memory' | 'harness' | 'training'; collapsed: boolean; drawerOpen: boolean; activeSessionId: string | null; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onSelectSession: (id: string) => void; onEndSession?: (id: string) => Promise<void>; onOpenTracker?: () => void; onOpenConfig?: () => void; onOpenApprovals?: () => void; onOpenVault?: () => void; onOpenContext?: () => void; onOpenMemory?: () => void; onOpenHarness?: () => void; onOpenTraining?: () => void; }) {
   const [mode, setMode] = useState<'nav' | 'chats' | 'files'>('nav');
   
   const asideChatsRef = useRef<HTMLElement>(null);
@@ -495,6 +527,10 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
         { name: "Plugins", icon: <Blocks className="h-4 w-4" strokeWidth={1.5} /> },
         { name: "MCP", icon: <Plug className="h-4 w-4" strokeWidth={1.5} /> },
         { name: "Profile", icon: <UserRound className="h-4 w-4" strokeWidth={1.5} /> },
+        { name: "Context", icon: <Gauge className="h-4 w-4" strokeWidth={1.5} />, onClick: () => { onOpenContext?.(); } },
+        { name: "Memory", icon: <Brain className="h-4 w-4" strokeWidth={1.5} />, onClick: () => { onOpenMemory?.(); } },
+        { name: "Harness", icon: <Terminal className="h-4 w-4" strokeWidth={1.5} />, onClick: () => { onOpenHarness?.(); } },
+        { name: "Training & Reviews", icon: <GraduationCap className="h-4 w-4" strokeWidth={1.5} />, onClick: () => { onOpenTraining?.(); } },
       ],
     },
     {
@@ -628,6 +664,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
                 : item.name === "Global Token Tracker" ? activeView === "tracker"
                 : item.name === "Config" ? activeView === "config"
                 : item.name === "Approvals & Reviews" ? activeView === "approvals"
+                : item.name === "Training & Reviews" ? activeView === "training"
                 : false;
               return (
               <button key={item.name} type="button" onClick={item.onClick}
