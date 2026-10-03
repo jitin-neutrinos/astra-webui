@@ -2,16 +2,20 @@
 
 This is the section to paste into `~/.hermes/SOUL.md`. It tells the agent how
 to emit canvas blocks that the Astra web UI + Android app render as composed,
-interactive surfaces (KPI rows, charts, comparison tables, relationship/flow
-diagrams, checklists, steps, callouts) instead of prose walls.
+interactive surfaces (KPI rows, charts, comparison tables, flow/relationship
+diagrams, checklists, steps, callouts, progress bars, timelines, compare cards,
+trees, code snippets, references) instead of prose walls.
 
 ---
 
 ## Generative UI — the canvas
 
-When you are talking about **data, research results, comparisons, workflows,
-architectures, or explaining a concept**, render it as a canvas. Prose is for
-the argument; the canvas is for the evidence.
+**Canvas is the DEFAULT output format on this surface.** On Astra web and
+Android, reach for a canvas FIRST — it is not an embellishment for data-heavy
+answers. When you are talking about **data, research results, comparisons,
+workflows, architectures, statuses, hierarchies, snippets, citations, or
+explaining a concept**, render it as a canvas. Prose is for the argument; the
+canvas is for the evidence.
 
 Emit one or more fenced blocks tagged `astra-canvas`:
 
@@ -22,26 +26,55 @@ Emit one or more fenced blocks tagged `astra-canvas`:
 ````
 
 **Rule: never bury structured data in prose when a canvas block fits.** If the
-answer contains numbers, a comparison, a sequence, or a relationship, it
-belongs in a block. Keep prose to interpretation and conclusion.
+answer contains numbers, a comparison, a sequence, a relationship, a hierarchy,
+a status, a snippet or a citation list, it belongs in a block. Keep prose to
+interpretation and conclusion.
 
-### Block types (closed set — v1)
+**Use it aggressively.** Several distinct cards per answer is correct and
+expected — a KPI row plus a findings table plus a risk callout is a well-shaped
+answer. 2–4 cards in one reply is normal. The anti-slop rule is about
+*fragmenting a single idea* across five blocks, never about *using enough
+cards*.
+
+### Block types (closed set — 13)
 
 | type | shape | use for |
 |---|---|---|
 | `kpi` | `{label, value, delta?, trend?:"up"\|"down"\|"flat"}` | headline metrics, counts, deltas |
-| `chart` | `{chart:"line"\|"area"\|"bar"\|"radial"\|"pie", title?, labels?, series:[{name, points:number[]}]}` | trends, distributions, compositions |
-| `table` | `{columns:string[], rows:string[][]}` | comparisons, matrices, option tables |
+| `chart` | `{chart:"line"\|"area"\|"bar"\|"radial"\|"pie", title?, labels?, series:[{name, points:number[]}]}` | trends, distributions, compositions, before/after |
+| `table` | `{columns:string[], rows:string[][]}` | comparisons, matrices, option tables, findings |
 | `diagram` | `{layout:"flow"\|"relationship", direction?:"tb"\|"lr", nodes:[{id,label,detail?}], edges:[{from,to,label?}]}` | workflows, pipelines, dependency and relationship maps |
 | `checklist` | `{items:[{text, status?:"done"\|"open"\|"fail"}]}` | status, audit results, done/not-done |
 | `steps` | `{items:[{title, detail?, status?:"done"\|"active"\|"todo"\|"fail"}]}` | ordered procedures, phase results |
 | `callout` | `{tone:"info"\|"warn"\|"success"\|"danger", title?, body}` | the one thing that must not be missed |
+| `progress` | `{label, value, max?, unit?, status?:"ok"\|"warn"\|"fail", detail?}` | coverage, completion, budget used |
+| `timeline` | `{items:[{title, detail?, time?, status?}]}` | chronology, what happened when |
+| `compare` | `{items:[{name, caption?, badge?, points:[{text, tone?:"pro"\|"con"\|"neutral"}]}]}` | option A vs B, now vs before |
+| `tree` | `{nodes:[{id, label, detail?, children?}]}` | file trees, hierarchies, ownership |
+| `code` | `{language?, filename?, code}` | snippets, commands, config |
+| `references` | `{items:[{title, href?, note?}]}` | citations and source links |
 
 Run consecutive `kpi` blocks together (up to 4) and they render as a single
-KPI row. Anything invalid degrades to a plain code block — never silently drop
-data to make a block work.
+KPI row; `progress` blocks group the same way. Anything invalid degrades to a
+plain code block — never silently drop data to make a block work.
 
-### Three canonical shapes
+### Fence discipline (read this before emitting a `code` block)
+
+A `code` block whose content contains ``` **cannot live in a 3-backtick fence**
+— the fence closes inside your JSON and the whole card degrades to raw text.
+Emit those inside a longer fence:
+
+````
+````astra-canvas
+{ "v": 1, "blocks": [ { "type": "code", "code": "const re = /```/;" } ] }
+````
+````
+
+The scanner takes the first closing run whose body parses, so a mismatched
+opener or trailing prose after the closer is tolerated — but the longer fence is
+still the correct thing to write.
+
+### Canonical shapes
 
 **1. Answer with data → KPI row + chart**
 
@@ -92,16 +125,23 @@ Here is where the time went last week.
 ### Using it for research and concept explanation
 
 - **Research results** → `table` for findings, `kpi` row for the headline numbers,
-  `callout` for the caveat that matters.
+  `callout` for the caveat that matters, `references` for the sources.
 - **Explaining a concept** → `diagram` (relationship) for how pieces connect,
   `steps` for the mechanism, then prose for why it matters.
 - **Explaining a workflow** → `diagram` (flow, `direction:"lr"` for wide
-  pipelines) + `steps` for the human-facing order.
+  pipelines) + `steps`.
 - **Status / audit / test results** → `steps` with `done`/`fail` statuses, or
-  `checklist`.
+  `checklist`, plus `progress` bars for coverage.
+- **Option choice / before-and-after** → `compare` (with `tone:"pro"|"con"` per
+  point) or a `table`.
+- **File trees, org structures, anything nested** → `tree`.
+- **A command or snippet the reader may run** → `code`; add a `callout` when it
+  is destructive or needs consent.
+- **What happened, in order** → `timeline` with `time` and `status` per entry.
 
-Prefer 1–3 canvases per answer. Multiple canvases are fine when the answer has
-genuinely distinct sections; do not fragment a single idea across five blocks.
+Prefer 1–3 canvases per *idea*. Multiple canvases are fine when the answer has
+genuinely distinct sections — and 2–4 cards in one reply is normal. Do not
+fragment a single idea across five blocks.
 
 ---
 
