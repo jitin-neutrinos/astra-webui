@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { splitCanvasBlocks, parseCanvasSpec, hasCanvas } from "./canvas-schema";
+import { splitCanvasBlocks, parseCanvasSpec, hasCanvas, planTurnCanvases } from "./canvas-schema";
 
 const VALID = JSON.stringify({
   v: 1, title: "Usage",
@@ -178,4 +178,78 @@ test("a full v2 canvas (all 13 block types) parses in order", () => {
   assert.equal(spec!.blocks.length, 13);
   const parts = splitCanvasBlocks("```astra-canvas\n" + JSON.stringify(all) + "\n```");
   assert.equal((parts[0] as any).spec.blocks.length, 13);
+});
+
+// ---- turn-level planning: the mid-response split bug ------------------------
+// Regression: the segment engine opens a NEW text segment on a tool call, a
+// message boundary, or a non-extending `text-final`. A canvas fence spanning
+// that boundary was unparseable in both halves, so it degraded to a code block.
+
+const SPEC1 = JSON.stringify({ v: 1, title: "Split", blocks: [{ type: "kpi", label: "A", value: 1 }] });
+const SPEC2 = JSON.stringify({ v: 1, title: "Second", blocks: [{ type: "callout", tone: "info", body: "b" }] });
+
+test("a fence split across two segments still renders", () => {
+  const plan = planTurnCanvases([
+    "Here is the data:\n```astra-canvas\n" + SPEC1.slice(0, 20),
+    SPEC1.slice(20) + "\n```\nThat is the summary.",
+  ]);
+  assert.equal(plan.canvases.length, 1);
+  assert.equal(plan.canvases[0].spec.title, "Split");
+  assert.equal(plan.canvases[0].afterSeg, 1);
+  assert.ok(!plan.mdPerSeg.join("").includes("astra-canvas"));
+  assert.ok(plan.mdPerSeg[0].includes("Here is the data"));
+  assert.ok(plan.mdPerSeg[1].includes("That is the summary"));
+});
+
+test("a fence split across THREE segments renders", () => {
+  const plan = planTurnCanvases([
+    "intro ```astra-canvas\n" + SPEC1.slice(0, 10),
+    SPEC1.slice(10, 40),
+    SPEC1.slice(40) + "\n``` outro",
+  ]);
+  assert.equal(plan.canvases.length, 1);
+  assert.equal(plan.canvases[0].afterSeg, 2);
+  assert.ok(!plan.mdPerSeg.join("").includes("astra-canvas"));
+});
+
+test("multiple canvases across segments keep document order", () => {
+  const plan = planTurnCanvases([
+    "a ```astra-canvas\n" + SPEC1 + "\n``` b",
+    "c ```astra-canvas\n" + SPEC2 + "\n``` d",
+  ]);
+  assert.equal(plan.canvases.length, 2);
+  assert.equal(plan.canvases[0].spec.title, "Split");
+  assert.equal(plan.canvases[1].spec.title, "Second");
+  assert.equal(plan.canvases[0].afterSeg, 0);
+  assert.equal(plan.canvases[1].afterSeg, 1);
+  assert.equal(plan.mdPerSeg[0], "a  b");
+  assert.equal(plan.mdPerSeg[1], "c  d");
+});
+
+test("two canvases inside ONE segment both anchor to it", () => {
+  const plan = planTurnCanvases(["x ```astra-canvas\n" + SPEC1 + "\n``` y ```astra-canvas\n" + SPEC2 + "\n``` z"]);
+  assert.equal(plan.canvases.length, 2);
+  assert.equal(plan.canvases[0].afterSeg, 0);
+  assert.equal(plan.canvases[1].afterSeg, 0);
+  assert.ok(!plan.mdPerSeg[0].includes("astra-canvas"));
+});
+
+test("an INVALID fence split across segments stays markdown (fail-soft)", () => {
+  const plan = planTurnCanvases(["t ```astra-canvas\n{not json", " at all}\n``` end"]);
+  assert.equal(plan.canvases.length, 0);
+  assert.ok(plan.mdPerSeg.join("").includes("not json"));
+});
+
+test("streaming withholds a fence that is still open at the tail", () => {
+  const open = planTurnCanvases(["done. ```astra-canvas\n" + SPEC1.slice(0, 15)], true);
+  assert.equal(open.canvases.length, 0);
+  assert.ok(!open.mdPerSeg[0].includes("astra-canvas"));
+  assert.ok(open.mdPerSeg[0].includes("done."));
+  const closed = planTurnCanvases(["done. ```astra-canvas\n" + SPEC1 + "\n```"], false);
+  assert.equal(closed.canvases.length, 1);
+});
+
+test("no segments / empty input is safe", () => {
+  assert.deepEqual(planTurnCanvases([]), { mdPerSeg: [], canvases: [] });
+  assert.deepEqual(planTurnCanvases(["", ""]).mdPerSeg, ["", ""]);
 });

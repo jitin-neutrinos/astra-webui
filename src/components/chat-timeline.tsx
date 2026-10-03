@@ -42,7 +42,7 @@ export { MEDIA_RE, mediaPaths, stripMediaLines };
 
 import DOMPurify from "dompurify";
 import { renderRichHtml } from "../lib/rich-html";
-import { splitCanvasBlocks, type CanvasSpec } from "../lib/canvas-schema";
+import { splitCanvasBlocks, planTurnCanvases, type CanvasSpec } from "../lib/canvas-schema";
 import { wireCodeCopyButtons } from "../lib/rich-pre";
 import { safeTail } from "../lib/safe-tail";
 import { copyText } from "../lib/copy-text";
@@ -364,8 +364,19 @@ function useReveal(text: string, done: boolean, instant: boolean) {
   return instant ? text.length : Math.min(n, text.length);
 }
 
-function TextRow({ seg, reveal, onOpenMedia }: { seg: Segment; reveal?: boolean; onOpenMedia?: (items: MediaItem[], index: number) => void }) {
-  const text = seg.text ?? "";
+function TextRow({ seg, reveal, onOpenMedia, mdOverride, canvases }: {
+  seg: Segment;
+  reveal?: boolean;
+  onOpenMedia?: (items: MediaItem[], index: number) => void;
+  /** Turn-level canvas plan: this segment's markdown with fences already removed. */
+  mdOverride?: string;
+  /** Canvases anchored to this segment (parsed from the WHOLE turn). */
+  canvases?: CanvasSpec[];
+}) {
+  const raw = seg.text ?? "";
+  // When the turn planner ran, reveal the STRIPPED markdown (canvas JSON must
+  // never be swept in character by character — it renders as a block instead).
+  const text = mdOverride !== undefined ? mdOverride : raw;
   const instant = usePrefersReducedMotion();
   // Only the timeline's LAST text segment (the latest response) sweeps on
   // mount; every older row renders whole inside its turn's fade-in. A live
@@ -377,10 +388,12 @@ function TextRow({ seg, reveal, onOpenMedia }: { seg: Segment; reveal?: boolean;
   const displayRaw = seg.status === "done" && n >= text.length ? text : shown;
   const display = useMemo(() => stripMediaLines(displayRaw), [displayRaw]);
 
-  if (!text) return null;
+  if (!text && !canvases?.length) return null;
   return (
     <div className="chat-text-seg">
       {display && <RichText text={display} onOpenMedia={onOpenMedia} streaming={seg.status === "run"} />}
+      {/* Canvases anchored here by the turn planner render after this segment's prose. */}
+      {canvases?.map((spec, i) => <CanvasHost key={`cv${i}`} spec={spec} />)}
       {n >= text.length && paths.length > 0 && (
         <MediaGrid className="mt-2" items={paths.map((p) => toItem(p))} onOpen={onOpenMedia} />
       )}
@@ -610,31 +623,62 @@ export function TurnTimeline({ segments, streaming, sessionId, ts, onToggleTool,
   if (!segments.length) return null;
 
   const isRunning = turnIsRunning(segments, streaming);
-  // Reveal policy: only the last segment sweeps (latest response). Everything
-  // earlier renders whole; each turn's own 200ms fade supplies the motion.
-  const lastIdx = segments.length - 1;
+    // Reveal policy: only the last segment sweeps (latest response). Everything
+    // earlier renders whole; each turn's own 200ms fade supplies the motion.
+    const lastIdx = segments.length - 1;
 
-  return (
-    <div className={cn("chat-turn", isRunning && "running")} aria-busy={isRunning}>
-      <div className="chat-turn-head">
-        <img src="/astra-logo.png" alt="" aria-hidden="true" className="chat-turn-logo" />
-        {ts != null && (
-          <div className="chat-turn-ts">{new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
-        )}
+    // Canvas planning is TURN-level, never per-segment: the segment engine splits
+    // one assistant message across several text segments (tool calls, message
+    // boundaries, non-extending `text-final`), and a fence spanning a boundary
+    // cannot parse from either half. Stitch, parse, then hand each canvas back to
+    // the segment where it COMPLETES so it still renders in place.
+    const canvasPlan = useMemo(() => {
+      const textIdx: number[] = [];
+      segments.forEach((s, i) => { if (s.kind === "text") textIdx.push(i); });
+      const plan = planTurnCanvases(textIdx.map((i) => segments[i].text || ""), streaming && isRunning);
+      const bySeg = new Map<number, CanvasSpec[]>();
+      for (const c of plan.canvases) {
+        // translate "index within text segments" back to the real segment index
+        const real = textIdx[c.afterSeg];
+        if (real == null) continue;
+        if (!bySeg.has(real)) bySeg.set(real, []);
+        bySeg.get(real)!.push(c.spec);
+      }
+      const mdFor = new Map<number, string>();
+      textIdx.forEach((real, k) => mdFor.set(real, plan.mdPerSeg[k] ?? ""));
+      return { bySeg, mdFor };
+    }, [segments, streaming, isRunning]);
+
+    return (
+      <div className={cn("chat-turn", isRunning && "running")} aria-busy={isRunning}>
+        <div className="chat-turn-head">
+          <img src="/astra-logo.png" alt="" aria-hidden="true" className="chat-turn-logo" />
+          {ts != null && (
+            <div className="chat-turn-ts">{new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
+          )}
+        </div>
+        {segments.map((seg, i) => {
+          // Slow sweep ONLY for the chat being watched live (owner 2026-10-01): a
+          // restored/navigated-into chat paints whole; `streaming` here means
+          // THIS turn is the live one in the active view.
+          const reveal = !!streaming && i === lastIdx;
+          if (seg.kind === "thinking") return <ThoughtRow key={seg.id} seg={seg} />;
+          if (seg.kind === "tool") return <BundleToolRow key={seg.id} seg={seg} onToggleTool={onToggleTool} />;
+          if (seg.kind === "approval") return <ApprovalRow key={seg.id} seg={seg} onRespond={onApprovalRespond} />;
+          if (seg.kind === "clarify") return <ClarifyCard key={seg.id} seg={seg} onAnswer={onClarifyAnswer} />;
+          if (seg.kind === "gate") return <GateCard key={seg.id} seg={seg} sessionId={sessionId} onRespond={onGateRespond} onOpenMedia={onOpenMedia} />;
+          return (
+            <TextRow
+              key={seg.id}
+              seg={seg}
+              reveal={reveal}
+              onOpenMedia={onOpenMedia}
+              mdOverride={canvasPlan.mdFor.get(i)}
+              canvases={canvasPlan.bySeg.get(i)}
+            />
+          );
+        })}
+        {actions}
       </div>
-      {segments.map((seg, i) => {
-        // Slow sweep ONLY for the chat being watched live (owner 2026-10-01):
-        // a restored/navigated-into chat paints whole; `streaming` here means
-        // THIS turn is the live one in the active view.
-        const reveal = !!streaming && i === lastIdx;
-        if (seg.kind === "thinking") return <ThoughtRow key={seg.id} seg={seg} />;
-        if (seg.kind === "tool") return <BundleToolRow key={seg.id} seg={seg} onToggleTool={onToggleTool} />;
-        if (seg.kind === "approval") return <ApprovalRow key={seg.id} seg={seg} onRespond={onApprovalRespond} />;
-        if (seg.kind === "clarify") return <ClarifyCard key={seg.id} seg={seg} onAnswer={onClarifyAnswer} />;
-        if (seg.kind === "gate") return <GateCard key={seg.id} seg={seg} sessionId={sessionId} onRespond={onGateRespond} onOpenMedia={onOpenMedia} />;
-        return <TextRow key={seg.id} seg={seg} reveal={reveal} onOpenMedia={onOpenMedia} />;
-      })}
-      {actions}
-    </div>
-  );
-}
+    );
+  }

@@ -335,4 +335,99 @@ export function hasCanvas(text: string): boolean {
   return false;
 }
 
+export interface TurnCanvasPlan {
+  /** Per text-segment markdown with every canvas fence removed. */
+  mdPerSeg: string[];
+  /** Canvases found, each anchored to the segment in which its closing fence lands. */
+  canvases: { spec: CanvasSpec; afterSeg: number }[];
+}
+
+/**
+ * Turn-level canvas planning.
+ *
+ * A single assistant message is NOT one string: the segment engine opens a NEW
+ * text segment whenever the previous one is not a running text segment — a tool
+ * call, a message boundary, or a `text-final` that does not extend the live
+ * text all split it (chat-segments.ts). An ```astra-canvas fence that spans such
+ * a boundary used to be unparseable in BOTH halves, so the canvas silently
+ * degraded to a code block — the "canvas missing from mid-response" bug.
+ *
+ * This stitches the turn's text segments back together, parses canvases out of
+ * the whole, and hands each canvas back anchored to the segment where it
+ * COMPLETES, so it still renders in the right place in the transcript.
+ *
+ * Fail-soft is unchanged: an invalid fence stays in the markdown, and while
+ * streaming a still-open fence is withheld rather than flashed as raw JSON.
+ */
+export function planTurnCanvases(segTexts: string[], streaming = false): TurnCanvasPlan {
+  const texts = segTexts.map((t) => t ?? "");
+  const mdPerSeg = texts.slice();
+  const canvases: TurnCanvasPlan["canvases"] = [];
+  if (texts.length === 0) return { mdPerSeg, canvases };
+
+  const starts: number[] = [];
+  let total = "";
+  for (const t of texts) {
+    starts.push(total.length);
+    total += t;
+  }
+  const segOf = (pos: number): number => {
+    let lo = 0;
+    let hi = starts.length - 1;
+    let ans = 0;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (starts[mid] <= pos) {
+        ans = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return ans;
+  };
+
+  // Collect removals per segment first, then apply RIGHT-TO-LEFT so earlier
+  // splices cannot shift the offsets of later ones.
+  const cuts: number[][] = texts.map(() => []);
+  FENCE_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = FENCE_RE.exec(total)) !== null) {
+    const spec = parseCanvasSpec(m[1]);
+    if (!spec) continue; // invalid → leave the fence in the markdown
+    const s = m.index;
+    const e = m.index + m[0].length;
+    for (let i = 0; i < texts.length; i++) {
+      const ss = starts[i];
+      const se = ss + texts[i].length;
+      const cs = Math.max(s, ss);
+      const ce = Math.min(e, se);
+      if (cs < ce) cuts[i].push(cs - ss, ce - ss);
+    }
+    canvases.push({ spec, afterSeg: segOf(e - 1) });
+  }
+
+  for (let i = 0; i < texts.length; i++) {
+    if (cuts[i].length === 0) continue;
+    let out = mdPerSeg[i];
+    for (let k = cuts[i].length - 2; k >= 0; k -= 2) {
+      out = out.slice(0, cuts[i][k]) + out.slice(cuts[i][k + 1]);
+    }
+    mdPerSeg[i] = out;
+  }
+
+  // Streaming: withhold a still-open fence at the tail instead of flashing raw
+  // JSON. Anything already closed above rendered above.
+  if (streaming) {
+    for (let i = texts.length - 1; i >= 0; i--) {
+      if (!mdPerSeg[i].includes("```astra-canvas")) continue;
+      const open = OPEN_FENCE_RE.exec(mdPerSeg[i]);
+      if (open) mdPerSeg[i] = mdPerSeg[i].slice(0, open.index);
+      break;
+    }
+  }
+
+  return { mdPerSeg, canvases };
+}
+
 void BLOCK_TYPES;
