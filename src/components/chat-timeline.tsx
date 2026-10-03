@@ -385,7 +385,14 @@ function TextRow({ seg, reveal, onOpenMedia, mdOverride, canvases }: {
   const n = useReveal(text, seg.status === "done", instant || reveal === false);
   const shown = useMemo(() => safeTail(text.slice(0, n)), [text, n]);
   const paths = useMemo(() => mediaPathsSpaced(text), [text]);
-  const displayRaw = seg.status === "done" && n >= text.length ? text : shown;
+  // A DONE segment always renders its FULL text. The old `n >= text.length` gate
+  // meant a sweep that never finished — killed by a backgrounded WebView timer,
+  // a Stop, or a dropped socket — left the message permanently TRUNCATED, so
+  // trailing markdown (`**bold`, a list) never closed and rendered as literal
+  // asterisks. Correct markdown beats a tidy sweep: sweeping is a live-only nicety.
+  const isDone = seg.status === "done";
+  const fullyRevealed = n >= text.length;
+  const displayRaw = isDone ? text : shown;
   const display = useMemo(() => stripMediaLines(displayRaw), [displayRaw]);
 
   if (!text && !canvases?.length) return null;
@@ -394,7 +401,7 @@ function TextRow({ seg, reveal, onOpenMedia, mdOverride, canvases }: {
       {display && <RichText text={display} onOpenMedia={onOpenMedia} streaming={seg.status === "run"} />}
       {/* Canvases anchored here by the turn planner render after this segment's prose. */}
       {canvases?.map((spec, i) => <CanvasHost key={`cv${i}`} spec={spec} />)}
-      {n >= text.length && paths.length > 0 && (
+      {(fullyRevealed || isDone) && paths.length > 0 && (
         <MediaGrid className="mt-2" items={paths.map((p) => toItem(p))} onOpen={onOpenMedia} />
       )}
     </div>
