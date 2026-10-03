@@ -3578,3 +3578,40 @@ a.ast-cv-ref-link:hover { border-bottom-color: var(--color-cyanx); }
 [data-theme="light"] .ast-cv-code-head { background: color-mix(in srgb, var(--color-brandtext) 4.0%, transparent); }
 [data-theme="light"] .ast-cv-cmp-card:hover { border-color: color-mix(in srgb, var(--color-brandtext) 18.0%, transparent); }
 /* tree-kids left rail removed 2026-10-03 (owner); its light override went with it */
+
+/* [typing-lag] off-screen turn skip (content-visibility). Does not change layout; only skips paint for non-visible turns. */
+.chat-turn { content-visibility: auto; contain-intrinsic-size: auto 280px; contain: layout style; }
+/* Re-enable painting for the FIRST turn in the scroll container (visible by default) so it is never skipped by mistake. */
+.chat-feed > div:first-child .chat-turn { content-visibility: visible; }
+
+/* Live canvas: streaming build state. Blocks appear as each one completes. */
+.ast-canvas-live {
+  border-color: color-mix(in oklab, var(--color-cyanx) 28%, transparent);
+}
+.ast-canvas-building {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: 500 10.5px/1 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-cyanx);
+}
+.ast-canvas-spin {
+  animation: ast-canvas-spin 900ms linear infinite;
+}
+@keyframes ast-canvas-spin {
+  to { transform: rotate(360deg); }
+}
+/* each newly-arrived block fades up so the build is visible, not a jump */
+.ast-canvas-live .ast-cv-item {
+  animation: ast-cv-arrive 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+@keyframes ast-cv-arrive {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ast-canvas-spin { animation: none; }
+  .ast-canvas-live .ast-cv-item { animation: none; }
+}

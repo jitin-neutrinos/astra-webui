@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { splitCanvasBlocks, parseCanvasSpec, hasCanvas, planTurnCanvases } from "./canvas-schema.ts";
+import { splitCanvasBlocks, parseCanvasSpec, hasCanvas, planTurnCanvases, parseStreamingBlocks, parseStreamingCanvas } from "./canvas-schema.ts";
 
 const VALID = JSON.stringify({
   v: 1, title: "Usage",
@@ -503,4 +503,54 @@ test("the coercer never turns junk into a canvas", () => {
   assert.equal(parseCanvasSpec('{"v":1,"blocks":[]}'), null);
   assert.equal(parseCanvasSpec(""), null);
   assert.equal(parseCanvasSpec("[]"), null);
+});
+
+// ---- real-time streaming parse: blocks appear as they complete --------------
+
+test("streaming parse yields completed blocks, skips the half-written one", () => {
+  const full = JSON.stringify({ v: 1, title: "Live", blocks: [
+    { type: "kpi", label: "A", value: 1 },
+    { type: "callout", tone: "info", body: "bbbbbbbb" },
+  ] });
+  // cut mid-way through the SECOND block's body string (no spaces in stringify)
+  const cut = full.slice(0, full.indexOf("bbbb") + 2);
+  const body = cut.slice(cut.indexOf("{"));
+  const blocks = parseStreamingBlocks(body);
+  assert.equal(blocks.length, 1, "only the completed block is emitted");
+  assert.equal((blocks[0] as any).label, "A");
+});
+
+test("streaming parse grows block-by-block as text arrives", () => {
+  const one = JSON.stringify({ v: 1, blocks: [{ type: "kpi", label: "A", value: 1 }] });
+  const two = JSON.stringify({ v: 1, blocks: [
+    { type: "kpi", label: "A", value: 1 },
+    { type: "kpi", label: "B", value: 2 },
+  ] });
+  const b1 = parseStreamingBlocks(one.slice(one.indexOf("{")));
+  const b2 = parseStreamingBlocks(two.slice(two.indexOf("{")));
+  assert.equal(b1.length, 1);
+  assert.equal(b2.length, 2, "second block joins once its brace closes");
+});
+
+test("streaming parse ignores a brace inside a string value", () => {
+  const body = JSON.stringify({ v: 1, blocks: [
+    { type: "callout", tone: "info", body: "a } brace and \\\" quote inside" },
+    { type: "kpi", label: "B", value: 2 },
+  ] });
+  const blocks = parseStreamingBlocks(body);
+  assert.equal(blocks.length, 2, "the } inside the string did not end the block early");
+  assert.ok((blocks[0] as any).body.includes("brace"));
+});
+
+test("parseStreamingCanvas pulls partial title + blocks from an open fence", () => {
+  const spec = JSON.stringify({ v: 1, title: "Building now", blocks: [{ type: "kpi", label: "A", value: 9 }] });
+  const text = "prose\n```astra-canvas\n" + spec; // fence still OPEN (no closing ```)
+  const live = parseStreamingCanvas(text);
+  assert.ok(live, "partial canvas detected");
+  assert.equal(live!.title, "Building now");
+  assert.equal(live!.blocks.length, 1);
+});
+
+test("parseStreamingCanvas returns null before any block completes", () => {
+  assert.equal(parseStreamingCanvas("```astra-canvas\n{ \"v\": 1, \"blocks\": [ { \"type\": \"kp"), null);
 });

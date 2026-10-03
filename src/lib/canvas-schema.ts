@@ -121,7 +121,7 @@ export type CanvasPart =
 // A still-open fence at the tail (streaming in progress). NO `^` anchor: the open
 // fence is usually mid-message ("done. ```astra-canvas"), and an anchored pattern
 // silently fails to strip it — raw JSON then streams to the user.
-const OPEN_FENCE_RE = /`{3,}astra-canvas[^\n]*\n[\s\S]*$/;
+const OPEN_FENCE_RE = /`{3,}astra-canvas[^\n]*\n([\s\S]*)$/;
 
 const BLOCK_TYPES = new Set([
   "kpi", "chart", "table", "diagram", "checklist", "steps", "callout",
@@ -163,8 +163,9 @@ function isStr(v: unknown): v is string { return typeof v === "string"; }
 function isNum(v: unknown): v is number { return typeof v === "number" && Number.isFinite(v); }
 function isStrArr(v: unknown): v is string[] { return Array.isArray(v) && v.every(isStr); }
 
-/** Validate one parsed block object; null = invalid. */
-function validateBlock(b: any): CanvasBlock | null {
+/** Validate one parsed block object; null = invalid. Exported for the
+ *  streaming partial parser, which validates blocks as they arrive. */
+export function validateBlock(b: any): CanvasBlock | null {
   if (!b || typeof b !== "object" || !isStr(b.type)) return null;
   // Aliases: models reach for near-miss names. Accept the obvious ones instead
   // of dropping the block (and, before per-block tolerance, the whole card).
@@ -618,6 +619,75 @@ export interface TurnCanvasPlan {
   mdPerSeg: string[];
   /** Canvases found, each anchored to the segment in which its closing fence lands. */
   canvases: { spec: CanvasSpec; afterSeg: number }[];
+}
+
+/**
+ * Streaming incremental parse of an OPEN canvas fence body.
+ *
+ * The body is partial JSON (`{ "blocks": [ {...}, {...}, {`half`). We walk it
+ * brace-by-brace, tracking string/escape state, and validate every COMPLETE
+ * top-level element of `blocks` as soon as its closing brace lands. That lets
+ * the UI paint each block the moment it finishes instead of waiting for the
+ * whole fence — "watch the canvas render", not "card appears at the end".
+ *
+ * Returns only blocks that are fully formed AND valid; a half-written block is
+ * skipped until more text arrives (its next render picks it up).
+ */
+export function parseStreamingBlocks(body: string): CanvasBlock[] {
+  const blocksKey = body.indexOf('"blocks"');
+  if (blocksKey === -1) return [];
+  const arrStart = body.indexOf("[", blocksKey);
+  if (arrStart === -1) return [];
+
+  const out: CanvasBlock[] = [];
+  let depth = 0;          // depth of the CURRENT element (0 = between elements)
+  let inStr = false;
+  let esc = false;
+  let elemStart = -1;
+
+  for (let i = arrStart + 1; i < body.length; i++) {
+    const ch = body[i];
+    if (esc) { esc = false; continue; }
+    if (inStr) {
+      if (ch === "\\") esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') { inStr = true; if (depth === 0) { /* string start is not an element start */ } continue; }
+    if (ch === "{" || ch === "[") {
+      if (depth === 0) elemStart = i;
+      depth++;
+      continue;
+    }
+    if (ch === "}" || ch === "]") {
+      depth--;
+      if (depth === 0 && elemStart !== -1) {
+        const raw = body.slice(elemStart, i + 1);
+        try {
+          const parsed = JSON.parse(raw);
+          const v = validateBlock(parsed);
+          if (v) out.push(v);
+        } catch { /* incomplete or malformed element — skip until it completes */ }
+        elemStart = -1;
+      }
+      if (depth < 0) break; // the blocks array closed
+      continue;
+    }
+  }
+  return out;
+}
+
+/** Pull the partial canvas state out of a still-open fence at the tail of text. */
+export function parseStreamingCanvas(text: string): { title?: string; blocks: CanvasBlock[] } | null {
+  const open = OPEN_FENCE_RE.exec(text);
+  if (!open) return null;
+  const body = open[1];
+  const blocks = parseStreamingBlocks(body);
+  if (blocks.length === 0) return null;
+  const tm = /"title"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(body);
+  let title: string | undefined;
+  if (tm) { try { title = JSON.parse(`"${tm[1]}"`); } catch { title = tm[1]; } }
+  return { title, blocks };
 }
 
 /**
