@@ -73,6 +73,92 @@ export function prettyJson(s: string): string | null {
   try { return JSON.stringify(v, null, 2); } catch { return null; }
 }
 
+/**
+ * A tool result stored as a JSON ENVELOPE (`{"output": "...", "exit_code": 0}`) is
+ * the shape the gateway persists for `terminal` and every code-execute card. Handed
+ * to the terminal window verbatim it renders the ENVELOPE, not the output: the reader
+ * sees a `"output":` key line, the escaped payload on a second line, and an
+ * `exit_code` line that is not output at all — the "output is duplicated 2-3 times"
+ * report (owner, 2026-10-03).
+ *
+ * Unwrap it to the real output text and hand the exit code back separately. Only a
+ * WHOLE JSON object counts; prose or a log line that merely contains braces is
+ * returned untouched, so this can never eat a log that looks like JSON.
+ */
+export function unwrapToolEnvelope(raw: string): { text: string; exitCode: number | null } {
+  const t = (raw || "").trim();
+  if (!t || t[0] !== "{") return { text: raw || "", exitCode: null };
+  let exitCode: number | null = null;
+  let value: unknown;
+  try {
+    value = JSON.parse(t);
+  } catch {
+    return { text: raw, exitCode: null };   // starts with '{' but isn't JSON
+  }
+
+  // Walk the envelope down to the text it carries. The walk is bounded (DEPTH) because a
+  // self-referential or pathological shape must not spin the renderer, and it stops at the
+  // first STRING leaf — that string is the output, and every wrapper above it was framing.
+  //
+  // Probed shapes that the flat single-level lookup missed (all four rendered the raw JSON
+  // envelope into the card, which is the duplicated-"output" report):
+  //   {"result":{"output":"x"}}        nested one level
+  //   {"output":["l1","l2"]}           output as an ARRAY of lines
+  //   {"output":[{"text":"a"}]}        output as an array of blocks (MCP-style)
+  //   {"output":"","error":"boom"}      empty payload with the error beside it
+  for (let depth = 0; depth < 4; depth++) {
+    if (typeof value === "string") {
+      return { text: value, exitCode };
+    }
+    if (value === null || typeof value !== "object") break;
+
+    const obj = value as Record<string, unknown>;
+    if (typeof obj.exit_code === "number" && exitCode === null) exitCode = obj.exit_code;
+
+    // A content/block array is a list of {type:"text", text:"..."} parts: concatenate the
+    // text parts and ignore non-text blocks (images, resources) rather than dumping JSON.
+    if (Array.isArray(obj.content)) {
+      const parts = obj.content
+        .map((c) => (c && typeof c === "object" ? (c as Record<string, unknown>).text : c))
+        .filter((x): x is string => typeof x === "string" && x.length > 0);
+      if (parts.length) return { text: parts.join("\n"), exitCode };
+      break;
+    }
+
+    let next: unknown = null;
+    let found = false;
+    for (const k of ["output", "stdout", "text", "result", "content", "data"]) {
+      if (k in obj && obj[k] != null && !(typeof obj[k] === "string" && !obj[k])) {
+        next = obj[k];
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      // No payload key carried text. If the envelope DOES carry a message, show THAT rather
+      // than the raw JSON: `{"output":"", "error":"boom"}` is a failed call, and printing the
+      // envelope is the same duplicated-"output" defect one level down. A shape with no
+      // message at all falls through to the raw text below.
+      for (const k of ["error", "message", "detail", "reason"]) {
+        const m = obj[k];
+        if (typeof m === "string" && m) return { text: m, exitCode };
+      }
+      break;
+    }
+
+    if (Array.isArray(next)) {
+      // An array of strings is the lines of one output; an array of blocks is joined below.
+      if (next.every((x) => typeof x === "string")) {
+        return { text: (next as string[]).join("\n"), exitCode };
+      }
+      value = { content: next };
+      continue;
+    }
+    value = next;
+  }
+  return { text: raw, exitCode };
+}
+
 const ISO = /\b(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?(Z|[+-]\d{2}:?\d{2})\b/g;
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
