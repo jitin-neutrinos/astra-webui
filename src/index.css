@@ -1594,6 +1594,14 @@ html.theme-fading body * {
 .ast-topbar { display: flex; }
 .mobile-accent-header { background: color-mix(in oklab, var(--color-midnight) 45%, transparent); backdrop-filter: blur(29px) saturate(1.25); }
 
+/* Light mode: sidebar + header are FULLY OPAQUE, unblurred, and use the PAGE ground (--color-void)
+   (owner 2026-10-03). Two reasons: the glass treatment read as a smudge over the warm paper, and
+   the translucent ground let the WebGL canvas tint the chrome. --color-midnight is the CARD
+   colour on other light pages, so using it here left the chrome visibly cooler/lighter than the
+   page and produced a seam at the sidebar edge; --color-void is what the rest of the UI paints. */
+[data-theme="light"] .sidebar-glass,
+[data-theme="light"] .mobile-accent-header { background: var(--color-void); backdrop-filter: none; }
+
 /* actions docked INSIDE the bubble (owner 10-02, corrected): absolutely
    positioned bottom-right inside the bubble's own box — the row must be FULLY
    inside the glass, never straddling the bottom border. */

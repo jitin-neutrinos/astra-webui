@@ -17,7 +17,10 @@ const DARK_BG = "#0A0A0F";
 // Ground = deeper warm paper — bloom lifts it to ~paper white in the frame.
 const LIGHT_TUBES = ["#0369A1", "#047857"];
 const LIGHT_LIGHTS = ["#0369A1", "#047857", "#0284C7", "#059669"];
-const LIGHT_BG = "#ECE8DF";
+// The chat ground must be the page ground (--color-void #f5f2ec), not --color-depth:
+// painting #ece8df here made the chat interface a different colour from every other
+// page in light mode (owner 2026-10-03). Keep in step with [data-theme="light"] body.
+const LIGHT_BG = "#F5F2EC";
 // Light bloom: strength 0.35 + threshold 0.88 — enough glow halo, not enough to
 // bleach the frame (0.8 strength dropped visible tube color 4x). Light
 // intensity 120 (down from vendor 200): strong enough to carry the accent
@@ -42,7 +45,7 @@ function applyGround(app: TubesApp | null, theme: "dark" | "light") {
   // from an existing material is the vehicle for setClearColor.
   const vehicle = app.tubes.tubes[0]?.material.color;
   if (!vehicle) return;
-  const groundHex = theme === "light" ? 0xece8df : 0x0a0a0f;
+  const groundHex = theme === "light" ? 0xf5f2ec : 0x0a0a0f;
   const keep = { r: vehicle.r, g: vehicle.g, b: vehicle.b };
   vehicle.set?.(groundHex);
   app.three.renderer.setClearColor(vehicle, 1);
