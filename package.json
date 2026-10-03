@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check": "node scripts/run-checks.mjs",
+    "check:serial": "node scripts/run-checks.mjs --serial",
+    "verify": "npm run lint && npm run build && npm run check"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.2",
@@ -29,6 +32,7 @@
     "@vidstack/react": "^1.15.6",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
+    "docx": "^9.8.1",
     "docx-preview": "^0.4.1",
     "dompurify": "^3.4.15",
     "lottie-react": "^3.1.2",
@@ -38,6 +42,7 @@
     "pdfjs-dist": "^6.3.289",
     "playwright": "^1.63.0",
     "pptx-preview": "^1.0.7",
+    "pptxgenjs": "^4.0.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "recharts": "^2.15.4",
@@ -58,5 +63,8 @@
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
     "vite": "^8.3.0"
+  },
+  "overrides": {
+    "image-size": "^2.0.4"
   }
 }

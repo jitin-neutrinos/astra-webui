@@ -167,13 +167,71 @@ export interface DividerBlock {
   label?: string;
 }
 
+// ── Editable + downloadable blocks (v4) ──────────────────────────────────────
+// Every one of these is BOTH embedded and expandable to fullscreen, and has a
+// working Download. The shape stays plain JSON: an agent emits rows/slides/text,
+// never an engine-specific object.
+
+export interface SpreadsheetBlock {
+  type: "spreadsheet";
+  title?: string;
+  filename?: string;
+  /** Sheet names in tab order. First one is shown when nothing else applies. */
+  sheets?: string[];
+  /** Each row is a cell array; ragged rows are allowed and pad on render. */
+  rows: (string | number)[][];
+  /** Row 0 treated as the header row. Default true. */
+  header?: boolean;
+  /** Explicit column labels; derived from row 0 when omitted. */
+  columns?: string[];
+}
+
+export interface SlidesBlock {
+  type: "slides";
+  title?: string;
+  filename?: string;
+  slides: {
+    heading: string;
+    bullets?: string[];
+    /** Optional speaker note, rendered small under the slide. */
+    note?: string;
+    /** Optional per-slide layout hint. */
+    layout?: "title" | "bullets";
+  }[];
+}
+
+export interface DocumentBlock {
+  type: "document";
+  title?: string;
+  filename?: string;
+  /** Heading + paragraph + bullet outline. */
+  content: {
+    heading?: string;
+    /** "p" | "h2" | "h3" | "li" — plain text, rendered in order. */
+    kind?: string;
+    text: string;
+    level?: 1 | 2 | 3;
+  }[];
+}
+
+export interface TextBlock {
+  type: "text";
+  title?: string;
+  filename?: string;
+  /** Plain text or markdown source; edited as text, copied verbatim. */
+  content: string;
+  /** language tag for the download extension when filename has none. */
+  language?: string;
+}
+
 export type CanvasBlock =
   | KpiBlock | ChartBlock | TableBlock | DiagramBlock
   | ChecklistBlock | StepsBlock | CalloutBlock
   | ProgressBlock | TimelineBlock | CompareBlock | TreeBlock
   | CodeBlock | ReferencesBlock
   | QuoteBlock | KeyValueBlock | DiffBlock | HeatmapBlock | TabsBlock
-  | AccordionBlock | TerminalBlock | BadgesBlock | DividerBlock;
+  | AccordionBlock | TerminalBlock | BadgesBlock | DividerBlock
+  | SpreadsheetBlock | SlidesBlock | DocumentBlock | TextBlock;
 
 export interface CanvasSpec {
   v: 1;
@@ -197,6 +255,7 @@ const BLOCK_TYPES = new Set([
   "progress", "timeline", "compare", "tree", "code", "references",
   "quote", "keyvalue", "diff", "heatmap", "tabs",
   "accordion", "terminal", "badges", "divider",
+  "spreadsheet", "slides", "document", "text",
 ]);
 const CHART_KINDS = new Set(["line", "area", "bar", "radial", "pie", "donut", "stack"]);
 const TONES = new Set(["info", "warn", "success", "danger"]);
@@ -221,9 +280,16 @@ const TYPE_ALIASES: Record<string, string> = {
   "heat-map": "heatmap", heat: "heatmap",
   "tab-group": "tabs", tabbed: "tabs",
   accordion: "accordion", collapsible: "accordion", collapse: "accordion", details: "accordion", faq: "accordion",
-  term: "terminal", console: "terminal", shell: "terminal", cli: "terminal", output: "terminal",
+  "term": "terminal", console: "terminal", shell: "terminal", cli: "terminal", output: "terminal",
   badge: "badges", chips: "badges", "status-badges": "badges", tags: "badges",
   separator: "divider", rule: "divider", hr: "divider",
+  // v4 editable surfaces. `note` is deliberately NOT here — it already aliases
+  // to callout above, and a callout rendered as an editable box would be a
+  // silent behaviour change for existing cards.
+  sheet: "spreadsheet", grid: "spreadsheet", excel: "spreadsheet", xlsx: "spreadsheet", workbook: "spreadsheet",
+  deck: "slides", presentation: "slides", pptx: "slides", "slide-deck": "slides",
+  doc: "document", docx: "document", word: "document", "word-doc": "document", editor: "document",
+  "plain-text": "text", textarea: "text", "text-editor": "text", "code-editor": "text",
 };
 
 // kpi `trend` is a DIRECTION. Models reuse severity/status words for it
@@ -577,6 +643,94 @@ export function validateBlock(b: any): CanvasBlock | null {
     }
     case "divider":
       return { type: "divider", label: isStr(b.label) ? b.label : undefined };
+    case "spreadsheet": {
+      // rows may arrive as `rows`, `data`, or `cells`; every cell must be a
+      // scalar (models sometimes nest {v:…}) — a non-scalar rejects the block.
+      const raw = Array.isArray(b.rows) ? b.rows : Array.isArray(b.data) ? b.data : Array.isArray(b.cells) ? b.cells : null;
+      if (!raw || raw.length === 0) return null;
+      const rows: (string | number)[][] = [];
+      for (const r of raw) {
+        if (isStr(r)) { rows.push([r]); continue; } // one cell per line is a common slip
+        if (!Array.isArray(r) || r.length === 0) return null;
+        const row: (string | number)[] = [];
+        for (const c of r) {
+          if (isStr(c) || isNum(c)) { row.push(c); continue; }
+          if (c == null) { row.push(""); continue; }
+          if (isStr(c.v) || isNum(c.v)) { row.push(c.v as string | number); continue; }
+          if (isStr(c.value) || isNum(c.value)) { row.push(c.value as string | number); continue; }
+          return null;
+        }
+        rows.push(row);
+      }
+      const sheets = isStrArr(b.sheets) ? b.sheets : undefined;
+      const columns = isStrArr(b.columns) ? b.columns : undefined;
+      return {
+        type: "spreadsheet",
+        title: isStr(b.title) ? b.title : undefined,
+        filename: isStr(b.filename) ? b.filename : undefined,
+        sheets,
+        columns,
+        rows,
+        header: b.header === false ? false : true,
+      };
+    }
+    case "slides": {
+      // accept `slides` or `pages` or `deck`
+      const raw = Array.isArray(b.slides) ? b.slides : Array.isArray(b.pages) ? b.pages : Array.isArray(b.deck) ? b.deck : null;
+      if (!raw || raw.length === 0) return null;
+      const slides: SlidesBlock["slides"] = [];
+      for (const s of raw) {
+        if (!s || typeof s !== "object") return null;
+        const heading = isStr(s.heading) ? s.heading : isStr(s.title) ? s.title : isStr(s.text) ? s.text : undefined;
+        const bullets: string[] = [];
+        for (const src of [s.bullets, s.points, s.items]) {
+          if (isStrArr(src)) bullets.push(...src);
+          else if (Array.isArray(src)) for (const x of src) if (isStr(x)) bullets.push(x);
+        }
+        if (!heading && bullets.length === 0) return null; // a slide with nothing on it
+        slides.push({
+          heading: heading ?? "",
+          bullets: bullets.length > 0 ? bullets : undefined,
+          note: isStr(s.note) ? s.note : undefined,
+          layout: s.layout === "title" ? "title" : "bullets",
+        });
+      }
+      return { type: "slides", title: isStr(b.title) ? b.title : undefined, filename: isStr(b.filename) ? b.filename : undefined, slides };
+    }
+    case "document": {
+      // accept `content` or `body` or `sections`; plain strings allowed (a para each)
+      const raw = Array.isArray(b.content) ? b.content : Array.isArray(b.body) ? b.body : Array.isArray(b.sections) ? b.sections : null;
+      if (!raw || raw.length === 0) return null;
+      const content: DocumentBlock["content"] = [];
+      for (const c of raw) {
+        if (isStr(c)) {
+          if (c.trim() === "") continue;
+          content.push({ text: c });
+          continue;
+        }
+        if (!c || typeof c !== "object" || !isStr(c.text)) return null;
+        const kindOk = c.kind === "p" || c.kind === "h2" || c.kind === "h3" || c.kind === "li" || c.kind === "quote";
+        content.push({
+          kind: kindOk ? c.kind : undefined,
+          level: c.level === 1 || c.level === 2 || c.level === 3 ? c.level : undefined,
+          text: c.text,
+        });
+      }
+      if (content.length === 0) return null;
+      return { type: "document", title: isStr(b.title) ? b.title : undefined, filename: isStr(b.filename) ? b.filename : undefined, content };
+    }
+    case "text": {
+      // `content`/`text`/`value`/`body` all name the same string
+      const src = b.content ?? b.text ?? b.value ?? b.body;
+      if (!isStr(src)) return null;
+      return {
+        type: "text",
+        title: isStr(b.title) ? b.title : undefined,
+        filename: isStr(b.filename) ? b.filename : undefined,
+        content: src,
+        language: isStr(b.language) ? b.language : isStr(b.lang) ? b.lang : undefined,
+      };
+    }
     default:
       return null;
   }

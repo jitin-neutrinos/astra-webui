@@ -77,6 +77,41 @@ function blockToMd(b: CanvasBlock): string {
       return b.items.map((it) => `\`${it.label}\``).join(" · ");
     case "divider":
       return b.label ? `--- ${b.label} ---` : "---";
+    case "spreadsheet": {
+      const width = Math.max(...b.rows.map((r) => r.length), b.columns?.length ?? 0);
+      const head = b.header !== false && b.rows[0] ? b.rows[0].map((c) => String(c)) : Array.from({ length: width }, (_, i) => b.columns?.[i] ?? "");
+      const body = b.header !== false ? b.rows.slice(1) : b.rows;
+      return [
+        b.title ? `**${b.title}**` : "",
+        `| ${head.join(" | ")} |`,
+        `|${Array.from({ length: width }, () => " ---").join("|")}|`,
+        ...body.map((r) => `| ${Array.from({ length: width }, (_, i) => String(r[i] ?? "")).join(" | ")} |`),
+      ].filter(Boolean).join("\n");
+    }
+    case "slides":
+      return [
+        b.title ? `**${b.title}**` : "",
+        ...b.slides.flatMap((s, i) => [
+          `### ${i + 1}. ${s.heading}`,
+          ...(s.bullets ?? []).map((x) => `- ${x}`),
+          s.note ? `\n> ${s.note}` : "",
+        ]),
+      ].filter(Boolean).join("\n\n");
+    case "document":
+      return [
+        b.title ? `**${b.title}**` : "",
+        ...b.content.map((c) => {
+          if (c.kind === "h2") return `## ${c.text}`;
+          if (c.kind === "h3") return `### ${c.text}`;
+          if (c.kind === "li") return `- ${c.text}`;
+          if (c.kind === "quote") return `> ${c.text}`;
+          if (!c.kind && c.level === 2) return `## ${c.text}`;
+          if (!c.kind && c.level === 3) return `### ${c.text}`;
+          return c.text;
+        }),
+      ].filter(Boolean).join("\n\n");
+    case "text":
+      return b.title ? `**${b.title}**\n\n\`\`\`\n${b.content}\n\`\`\`` : `\`\`\`\n${b.content}\n\`\`\``;
   }
 }
 

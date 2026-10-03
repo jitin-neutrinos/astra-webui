@@ -248,6 +248,8 @@ export function StepsView({ block }: { block: StepsBlock }) {
 // block. The border was the ONLY tone signal, so the tone now rides on a small
 // leading dot — the callout still reads info/warn/danger at a glance.
 const CALLOUT_TONE: Record<string, string> = {
+  // Owner 2026-10-03: one accent everywhere — tone survives through the
+  // leading dot + title weight, not through separate hues.
   info: "var(--color-cyanx)",
   success: "var(--color-cyanx)",
   warn: "var(--color-cyanx)",
@@ -383,22 +385,43 @@ export function CodeView({ block }: { block: CodeBlock }) {
 
 // ---- References ---------------------------------------------------------------
 
+// Owner 2026-10-03: canvas links must WORK over the internet — a local file
+// path pasted as an href is dead in a browser. Map host paths to the site's
+// own served download endpoint (authed, works on web + Android + any device
+// signed in); http(s) hrefs pass through untouched.
+function linkHref(href?: string): string | undefined {
+  if (!href) return undefined;
+  if (/^https?:\/\//i.test(href) || href.startsWith("/") && !href.startsWith("/home/")) {
+    // absolute URL or a site-relative path — usable as-is
+    if (/^https?:\/\//i.test(href)) return href;
+  }
+  // host file path (~/..., /home/..., or bare relative repo path) → served
+  if (href.startsWith("~") || href.startsWith("/home/") || href.startsWith("/")) {
+    const p = href.replace(/^~(?=\/)/, "");
+    return `/api/hx/files/download?path=${encodeURIComponent(p)}`;
+  }
+  return href;
+}
+
 export function ReferencesView({ block }: { block: ReferencesBlock }) {
   return (
     <ol className="ast-cv-refs">
-      {block.items.map((it, i) => (
-        <li key={i} className="ast-cv-ref">
-          <span className="ast-cv-ref-index">{i + 1}</span>
-          <span className="ast-cv-ref-body">
-            {it.href ? (
-              <a className="ast-cv-ref-link" href={it.href} target="_blank" rel="noopener noreferrer">{it.title}</a>
-            ) : (
-              <span className="ast-cv-ref-link">{it.title}</span>
-            )}
-            {it.note && <span className="ast-cv-ref-note">{it.note}</span>}
-          </span>
-        </li>
-      ))}
+      {block.items.map((it, i) => {
+        const href = linkHref(it.href);
+        return (
+          <li key={i} className="ast-cv-ref">
+            <span className="ast-cv-ref-index">{i + 1}</span>
+            <span className="ast-cv-ref-body">
+              {href ? (
+                <a className="ast-cv-ref-link" href={href} target="_blank" rel="noopener noreferrer">{it.title}</a>
+              ) : (
+                <span className="ast-cv-ref-link">{it.title}</span>
+              )}
+              {it.note && <span className="ast-cv-ref-note">{it.note}</span>}
+            </span>
+          </li>
+        );
+      })}
     </ol>
   );
 }
@@ -645,7 +668,16 @@ export function DividerView({ block }: { block: DividerBlock }) {
 
 // ---- Grouping (KPI rows + single blocks) ----------------------------------------
 
-export function Blocks({ blocks, animate = true }: { blocks: CanvasBlock[]; animate?: boolean }) {
+export function Blocks({
+  blocks,
+  animate = true,
+  canvasId = "0",
+}: {
+  blocks: CanvasBlock[];
+  animate?: boolean;
+  /** Stable per-card prefix for fullscreen slot keys; unique within one canvas. */
+  canvasId?: string;
+}) {
   const groups: CanvasBlock[][] = [];
   let rowRun: CanvasBlock[] = [];
   const flush = () => { if (rowRun.length > 0) { groups.push(rowRun); rowRun = []; } };
@@ -672,7 +704,7 @@ export function Blocks({ blocks, animate = true }: { blocks: CanvasBlock[]; anim
         return (
           <div key={gi} className={cn("ast-cv-group", (rowKind === "kpi" || rowKind === "progress") && "rows")}>
             {g.map((b, bi) => {
-              const inner = renderOne(b);
+              const inner = renderOne(b, `${canvasId}-${gi}`, bi);
               if (!animate) return <div key={bi} className="ast-cv-item">{inner}</div>;
               return (
                 <motion.div key={bi}
@@ -691,7 +723,20 @@ export function Blocks({ blocks, animate = true }: { blocks: CanvasBlock[]; anim
   );
 }
 
-function renderOne(b: CanvasBlock) {
+// v4 editable surfaces live in their own module, lazy so an ordinary chat never
+// loads docx / pptxgenjs. Only canvas-docs pulls those; canvas-blocks stays
+// dependency-free (the eager-path rule that keeps recharts out of the main bundle).
+const SpreadsheetLazy = lazy(() => import("./canvas-docs").then((m) => ({ default: m.SpreadsheetView })));
+const SlidesLazy = lazy(() => import("./canvas-docs").then((m) => ({ default: m.SlidesBlockView })));
+const DocLazy = lazy(() => import("./canvas-docs").then((m) => ({ default: m.DocumentBlockView })));
+const TextLazy = lazy(() => import("./canvas-docs").then((m) => ({ default: m.TextView })));
+
+function DocSkeleton() {
+  // No spinner: the owner reads a loader artifact as a broken card.
+  return <div className="ast-cv-doc-skeleton" aria-busy="true" />;
+}
+
+function renderOne(b: CanvasBlock, id: string, bi: number) {
   switch (b.type) {
     case "kpi": return <KpiTile block={b} />;
     case "progress": return <ProgressView block={b} />;
@@ -720,5 +765,11 @@ function renderOne(b: CanvasBlock) {
         </Suspense>
       );
     case "callout": return <CalloutView block={b} />;
+    // v4 editable surfaces. The id keys the fullscreen slot: canvas index +
+    // block index is stable and unique per card.
+    case "spreadsheet": return <Suspense fallback={<DocSkeleton />}><SpreadsheetLazy block={b} id={`cv-sheet-${id}-${bi}`} /></Suspense>;
+    case "slides": return <Suspense fallback={<DocSkeleton />}><SlidesLazy block={b} id={`cv-deck-${id}-${bi}`} /></Suspense>;
+    case "document": return <Suspense fallback={<DocSkeleton />}><DocLazy block={b} id={`cv-doc-${id}-${bi}`} /></Suspense>;
+    case "text": return <Suspense fallback={<DocSkeleton />}><TextLazy block={b} id={`cv-text-${id}-${bi}`} /></Suspense>;
   }
 }

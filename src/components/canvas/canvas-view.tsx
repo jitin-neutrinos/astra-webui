@@ -12,6 +12,7 @@ import { Copy, Check, Loader2 } from "lucide-react";
 import { canvasToMarkdown } from "../../lib/canvas-markdown";
 import { copyText } from "../../lib/copy-text";
 import { Blocks } from "./canvas-blocks";
+import { CanvasFullscreenProvider } from "./canvas-fullscreen";
 import type { CanvasSpec, CanvasBlock } from "../../lib/canvas-schema";
 
 // The heading is ALWAYS derived from the data, so a canvas never reads as a
@@ -34,6 +35,10 @@ function deriveTitle(spec: { title?: string; blocks: CanvasBlock[] }): string {
       case "callout": return blk.title || (blk.tone ? blk.tone.charAt(0).toUpperCase() + blk.tone.slice(1) : "Note");
       case "code": return blk.filename || (blk.language ? `${blk.language} snippet` : "Snippet");
       case "references": return "References";
+      case "spreadsheet": return blk.title || `Spreadsheet — ${blk.rows?.[0]?.length ?? 0} cols`;
+      case "slides": return blk.title || `Slides — ${blk.slides?.length ?? 0} deck`;
+      case "document": return blk.title || "Document";
+      case "text": return blk.title || "Text";
       case "quote": return blk.attribution ? `Quote — ${blk.attribution}` : "Quote";
       case "keyvalue": return blk.title || (blk.items?.[0]?.key ? `${blk.items[0].key}: ${blk.items[0].value}` : "Facts");
       case "diff": return blk.filename ? `Diff — ${blk.filename}` : "Changes";
@@ -54,7 +59,7 @@ function deriveTitle(spec: { title?: string; blocks: CanvasBlock[] }): string {
   return derived || "Canvas";
 }
 
-export default function CanvasView({ spec, partial }: { spec?: CanvasSpec; partial?: { title?: string; blocks: CanvasBlock[] } }) {
+export default function CanvasView({ spec, partial, canvasId = "0" }: { spec?: CanvasSpec; partial?: { title?: string; blocks: CanvasBlock[] }; canvasId?: string }) {
   const [copied, ping] = useReducer((x: number) => x + 1, 0);
   const done = copied > 0;
 
@@ -63,18 +68,20 @@ export default function CanvasView({ spec, partial }: { spec?: CanvasSpec; parti
   if (partial) {
     const liveTitle = deriveTitle(partial);
     return (
-      <section className="ast-canvas ast-canvas-live" aria-label={liveTitle} aria-busy="true">
-        <header className="ast-canvas-head">
-          <span className="ast-canvas-title">{liveTitle}</span>
-          <span className="ast-canvas-building" role="status">
-            <Loader2 className="h-3.5 w-3.5 ast-canvas-spin" aria-hidden="true" />
-            <span>Building…</span>
-          </span>
-        </header>
-        <div className="ast-canvas-body">
-          <Blocks blocks={partial.blocks} />
-        </div>
-      </section>
+      <CanvasFullscreenProvider>
+        <section className="ast-canvas ast-canvas-live" aria-label={liveTitle} aria-busy="true">
+          <header className="ast-canvas-head">
+            <span className="ast-canvas-title">{liveTitle}</span>
+            <span className="ast-canvas-building" role="status">
+              <Loader2 className="h-3.5 w-3.5 ast-canvas-spin" aria-hidden="true" />
+              <span>Building…</span>
+            </span>
+          </header>
+          <div className="ast-canvas-body">
+            <Blocks blocks={partial.blocks} canvasId={`${canvasId}-p`} />
+          </div>
+        </section>
+      </CanvasFullscreenProvider>
     );
   }
 
@@ -90,17 +97,21 @@ export default function CanvasView({ spec, partial }: { spec?: CanvasSpec; parti
   };
 
   return (
-    <section className="ast-canvas" aria-label={title}>
-      <header className="ast-canvas-head">
-        <span className="ast-canvas-title">{title}</span>
-        <button type="button" className="ast-canvas-copy" onClick={onCopy} aria-label="Copy canvas as markdown">
-          {done ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-          <span>{done ? "Copied" : "Copy"}</span>
-        </button>
-      </header>
-      <div className="ast-canvas-body">
-        <Blocks blocks={spec.blocks} />
-      </div>
-    </section>
+    <CanvasFullscreenProvider>
+      <section className="ast-canvas" aria-label={title}>
+        <header className="ast-canvas-head">
+          <span className="ast-canvas-title">{title}</span>
+          <div className="ast-canvas-actions">
+            <button type="button" className="ast-canvas-copy" onClick={onCopy} aria-label="Copy canvas as markdown">
+              {done ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              <span>{done ? "Copied" : "Copy"}</span>
+            </button>
+          </div>
+        </header>
+        <div className="ast-canvas-body">
+          <Blocks blocks={spec.blocks} canvasId={canvasId} />
+        </div>
+      </section>
+    </CanvasFullscreenProvider>
   );
 }

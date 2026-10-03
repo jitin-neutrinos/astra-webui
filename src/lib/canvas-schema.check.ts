@@ -820,3 +820,98 @@ test("v4: a full 22-type canvas parses in order", () => {
   assert.ok(spec);
   assert.equal(spec!.blocks.length, 23);
 });
+
+// ── v4 editable + downloadable surfaces ──────────────────────────────────────
+// (spreadsheet / slides / document / text). Each is BASIC editing plus an
+// expandable fullscreen view, and a Download that writes server-side first.
+
+test("spreadsheet accepts rows with mixed scalars and headers", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "spreadsheet", title: "Q3", rows: [["Region", "Rev"], ["EMEA", 120], ["APAC", 95]] },
+  ] }));
+  assert.ok(spec);
+  const b: any = spec!.blocks[0];
+  assert.equal(b.type, "spreadsheet");
+  assert.equal(b.header, true, "header defaults to true");
+  assert.deepEqual(b.rows[1], ["EMEA", 120]);
+});
+
+test("spreadsheet aliases data/cells, unwraps {v|value} cells, pads nulls", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "sheet", data: [[{ value: "A" }, null, 3]] },
+  ] }));
+  assert.ok(spec, "the 'sheet' alias must resolve");
+  assert.deepEqual((spec!.blocks[0] as any).rows[0], ["A", "", 3]);
+});
+
+test("spreadsheet rejects non-scalar cells and empty row sets", () => {
+  assert.equal(parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "spreadsheet", rows: [[{ nested: { a: 1 } }]] }] })), null);
+  assert.equal(parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "spreadsheet", rows: [] }] })), null);
+});
+
+test("slides accept heading+bullets, plus title/points aliases", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "slides", slides: [{ heading: "Intro", bullets: ["a", "b"] }] },
+    { type: "deck", pages: [{ title: "End", points: ["thanks"] }] },
+  ] }));
+  assert.ok(spec);
+  const b: any = spec!.blocks[0];
+  assert.equal(b.slides[0].heading, "Intro");
+  assert.deepEqual(b.slides[0].bullets, ["a", "b"]);
+  const c: any = spec!.blocks[1];
+  assert.equal(c.type, "slides");
+  assert.deepEqual(c.slides[0].bullets, ["thanks"]);
+});
+
+test("a slide with neither heading nor bullets is rejected", () => {
+  assert.equal(parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "slides", slides: [{ note: "orphan note only" }] }] })), null);
+});
+
+test("document accepts structured parts and bare strings; keeps kind", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "document", content: [
+      { kind: "h2", text: "Title" },
+      { kind: "li", text: "bullet" },
+      "a plain paragraph",
+    ] },
+  ] }));
+  assert.ok(spec);
+  const b: any = spec!.blocks[0];
+  assert.equal(b.content.length, 3);
+  assert.equal(b.content[0].kind, "h2");
+  assert.equal(b.content[2].kind, undefined, "bare string becomes a paragraph");
+});
+
+test("text reads content/text/value/body alike", () => {
+  for (const key of ["content", "text", "value", "body"]) {
+    const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "text", [key]: "hello" }] }));
+    assert.ok(spec, `text via ${key}`);
+    assert.equal((spec!.blocks[0] as any).content, "hello");
+  }
+  assert.equal(parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "text", content: 42 }] })), null);
+});
+
+test("'note' still aliases to callout — it must NOT become a text editor", () => {
+  // A lone block is valid here (callout needs only a body), so this isolates the
+  // alias itself rather than the whole-card tolerance rule.
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "note", tone: "warn", title: "Heads up", body: "just a note" },
+  ] }));
+  assert.ok(spec, "a valid callout block must survive on its own");
+  const b: any = spec!.blocks[0];
+  assert.equal(b.type, "callout", "regression guard for the alias table");
+  assert.equal(b.body, "just a note");
+});
+
+test("a bad editable block drops alone — sibling blocks survive", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "kpi", label: "ok", value: 1 },
+    { type: "spreadsheet", rows: [[{ nope: 1 }]] },
+    { type: "text", content: "kept" },
+  ] }));
+  assert.ok(spec);
+  assert.deepEqual(spec!.blocks.map((b) => b.type), ["kpi", "text"]);
+});
