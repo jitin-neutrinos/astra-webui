@@ -54,7 +54,7 @@ export function BgDock({ items, onSubmitFollowUp, onDismiss, onOpenItem }: BgDoc
   const activeCount = visible.filter((it) => it.status !== "done").length;
 
   return (
-    <div className="bgd-wrap mx-auto max-w-3xl" role="region" aria-label="Background tasks">
+    <div className="bgd-wrap mx-auto w-full max-w-[52rem]" role="region" aria-label="Background tasks">
       <div className="bgd-bar">
         {activeCount > 0 && <Loader2 className="bgd-bar-spin h-3 w-3 animate-spin" aria-hidden="true" />}
         <span className="bgd-bar-label">

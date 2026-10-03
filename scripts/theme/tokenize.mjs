@@ -133,8 +133,11 @@ css = css.replace(/([^{}]+)\{([^{}]*)\}/g, (whole, sel, body) => {
 // ---- emit definitions ----
 const defs = varSeq.map((v) => {
   const ch = v.role ? hexChannels(astra.variants[v.light ? "light" : "dark"]["--color-" + v.role]) : v.rgb;
-  // --r-N carries the role so the runtime engine can retarget every derived shade too
-  const roleTag = v.role ? `  --r-${v.key.replace(/--(light-)?c-/, "")}: ${v.role};` : "";
+  // --r-N carries the role so the runtime engine can retarget every derived shade too.
+  // Keep the `light-` prefix: stripping it collided with an unrelated --c-N and orphaned the
+  // role (--light-c-33's annotation was written as --r-33 while no --c-33 exists), so the
+  // runtime could not find the role and accent-scaled the prop instead.
+  const roleTag = v.role ? `  --r-${v.key.replace(/^--/, "")}: ${v.role};` : "";
   return roleTag ? `  ${v.key}: ${ch.join(" ")};\n${roleTag}` : `  ${v.key}: ${ch.join(" ")};`;
 });
 const GLOWS = [

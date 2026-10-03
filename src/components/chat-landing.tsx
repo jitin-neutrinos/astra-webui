@@ -1898,11 +1898,12 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         <SubagentPanel subs={roster} open={suba.open} setOpen={suba.setOpen} now={suba.now} rpc={rpc} sessionId={liveSessionId || storedSessionId || null} />
         <BgDock items={bgItems} onSubmitFollowUp={handleFollowUpBg} onDismiss={dismissBgItem} onOpenItem={openBgItem} />
         {cmdSurfaces.map((it) => (
-          <CommandSurface
-            key={it.id}
-            item={it}
-            onDismiss={(id) => setCmdSurfaces((list) => list.filter((x) => x.id !== id))}
-          />
+          <div key={it.id} className="mx-auto w-full max-w-[52rem]">
+            <CommandSurface
+              item={it}
+              onDismiss={(id) => setCmdSurfaces((list) => list.filter((x) => x.id !== id))}
+            />
+          </div>
         ))}
         <div className={cn("chat-composer mx-auto w-full max-w-[52rem]", dragOver && "drag-over")}>
           {/* Fewer comet bands on low-memory/low-core devices (see composer-trace). */}

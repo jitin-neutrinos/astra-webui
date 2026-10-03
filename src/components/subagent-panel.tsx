@@ -125,7 +125,7 @@ export function SubagentPanel({ subs, open, setOpen, now, rpc, sessionId }: {
   const failed = subs.some((s) => s.status && s.status !== "running");
 
   return (
-    <div className="suba-wrap mx-auto max-w-3xl" role="region" aria-label="Sub-agent activity">
+    <div className="suba-wrap mx-auto w-full max-w-[52rem]" role="region" aria-label="Sub-agent activity">
       <button type="button" className="suba-bar" aria-expanded={open} onClick={() => setOpen(!open)}>
         <span className={cn("suba-pulse", failed && "suba-pulse-err")} aria-hidden="true" />
         <Bot className="suba-bar-icon" aria-hidden="true" />

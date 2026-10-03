@@ -64,7 +64,10 @@ const rgbOfHex = (h: string): [number, number, number] => {
 // Retarget a derived shade (gradient bottoms, dim glows): keep each channel's
 // ratio to the old accent, scaled onto the new accent.
 function deriveShade(oldChannels: string, oldAccent: [number, number, number], newAccent: [number, number, number]): string {
-  const ch = oldChannels.split(/\s+/).map(Number);
+  // Accept either separator — callers have passed both historically, and splitting the wrong
+  // one silently produced a single NaN token.
+  const ch = oldChannels.split(/[\s,]+/).map(Number);
+  if (ch.length !== 3 || ch.some((x) => !Number.isFinite(x))) return newAccent.join(" ");
   return [0, 1, 2].map((i) => Math.max(0, Math.min(255, Math.round(newAccent[i] * (ch[i] / (oldAccent[i] || 1)))))).join(" ");
 }
 
@@ -72,10 +75,28 @@ export function applyPalette(p: Palette, mode: ThemeMode = getMode()) {
   const source = mode === "light" ? p.variants.light : p.variants.dark;
   const astraMode = (mode === "light" ? palettes[0].variants.light : palettes[0].variants.dark);
   const root = document.documentElement;
+  // astra-ui IS the stylesheet's own default: :root holds its dark values and the
+  // [data-theme="light"] scope holds its light ones. Writing 280 inline overrides for it made the
+  // toggle path diverge from the reload path (boot deliberately skips astra-ui, so it showed 5
+  // inline props against the toggle's 282). Clear our overrides and let the cascade supply it.
+  const isDefault = p.id === palettes[0].id;
+  if (isDefault) {
+    for (const name of [...root.style]) {
+      if (name.startsWith("--") && name !== "--i") root.style.removeProperty(name);
+    }
+    return 0;
+  }
   let n = 0;
   // Direct @theme overrides: tailwind utilities (text-brandtext, bg-void, …)
   for (const [token, hex] of Object.entries(source)) {
     if (token.startsWith("--color-") && /^#[0-9a-fA-F]{6}$/.test(hex)) root.style.setProperty(token, hex);
+  }
+  // Non-color tokens the palettes carry (--glow-accent, --glow-accent-strong, --bg-url,
+  // --bg-video). These differ per MODE — dark defines a glow, light sets "none" — so skipping
+  // them left dark-mode glows burning on light paper after a toggle. Write them verbatim.
+  for (const token of ["--glow-accent", "--glow-accent-strong", "--bg-url", "--bg-video"]) {
+    const v = source[token];
+    if (typeof v === "string") root.style.setProperty(token, v);
   }
   // role map from the --r-N annotations tokenize.mjs emits: chanProp -> role.
   // ALSO collect every channel var prop+default (the triple-keyed table collapses
@@ -89,10 +110,13 @@ export function applyPalette(p: Palette, mode: ThemeMode = getMode()) {
       const txt = rule.style;
       for (let i = 0; i < txt.length; i++) {
         const prop = txt[i];
-        if (prop.startsWith("--r-")) { roleOf.set(prop.replace("--r-", "--c-"), txt.getPropertyValue(prop).trim()); continue; }
+        if (prop.startsWith("--r-")) { roleOf.set("--" + prop.replace("--r-", ""), txt.getPropertyValue(prop).trim()); continue; }
         if (/^--(light-)?c-\d+$/.test(prop)) {
           const val = txt.getPropertyValue(prop).trim();
-          if (/^\d+\s+\d+\s+\d+$/.test(val)) chans.push([prop, val.split(/\s+/).join(",")]);
+          // SPACE-joined everywhere: channels() and the astraAccentCh comparison below both use
+          // spaces. Storing commas here made `rgbKey !== astraAccentCh` always true and made
+          // deriveShade split a comma-joined string into one token -> NaN channels.
+          if (/^\d+\s+\d+\s+\d+$/.test(val)) chans.push([prop, val.split(/\s+/).join(" ")]);
         }
       }
     }
@@ -102,16 +126,24 @@ export function applyPalette(p: Palette, mode: ThemeMode = getMode()) {
   const accentAstra = rgbOfHex(astraMode["--color-cyanx"]);
   const astraAccentCh = channels(astraMode, "--color-cyanx");
   for (const [prop, rgbKey] of chans) {
+    // `--light-c-N` and `--c-N` are INDEPENDENT props with their own colors and roles: the
+    // light scope's `--light-c-4` is paper while `--c-4` is cyanx. Do NOT alias their roles —
+    // only the prop's own --r-N annotation is authoritative. Props the tokenizer left unroled
+    // are deliberately theme-stable own-channel literals; inventing a role for them made the
+    // toggle path write values the reload path never does, which is the divergence we're fixing.
     const role = roleOf.get(prop);
     if (role) {
       const hex = source["--color-" + role];
       if (hex && /^#[0-9a-fA-F]{6}$/.test(hex)) { root.style.setProperty(prop, rgbOfHex(hex).join(" ")); n++; continue; }
     }
-    // derived accent-family shades (not the accent itself): keep the shade ratio
-    if (astraAccentCh && rgbKey !== astraAccentCh) {
-      const [r, g, b] = rgbKey.split(",").map(Number);
+    // derived accent-family shades (not the accent itself): keep the shade ratio.
+    // Compare against BOTH astra accents: a prop holding the light accent (e.g. the light-only
+    // login glow wash) must be recognized as "the accent" even when applied in dark mode, or the
+    // toggle path scales it while the reload path skips it.
+    if (astraAccentCh && rgbKey !== astraAccentCh && rgbKey !== channels(palettes[0].variants.dark, "--color-cyanx") && rgbKey !== channels(palettes[0].variants.light, "--color-cyanx")) {
+      const [r, g, b] = rgbKey.split(/[\s,]+/).map(Number);
       const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
-      const inFamily = mx - mn > 30 && (Math.abs(r - accentAstra[0]) + Math.abs(g - accentAstra[1]) + Math.abs(b - accentAstra[2])) < 420;
+      const inFamily = Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b) && mx - mn > 30 && (Math.abs(r - accentAstra[0]) + Math.abs(g - accentAstra[1]) + Math.abs(b - accentAstra[2])) < 420;
       if (inFamily) { root.style.setProperty(prop, deriveShade(rgbKey, accentAstra, accentNew)); n++; }
     }
   }
