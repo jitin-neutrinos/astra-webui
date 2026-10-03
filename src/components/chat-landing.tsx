@@ -1897,7 +1897,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
                 )}
               </div>
               );
-            })}, [messages])
+            })}
           </div>
         )}
       </div>

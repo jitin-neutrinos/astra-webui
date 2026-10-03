@@ -20,8 +20,8 @@
   /* accent-derived: follows the active theme's brand color */
   --bubble-ai-bg: color-mix(in oklab, var(--color-cyanx) 7%, transparent);
   --bubble-ai-border: color-mix(in oklab, var(--color-cyanx) 30%, transparent);
-  --bubble-ai-code-bg: rgba(34, 211, 238, 0.08);
-  --bubble-ai-inline-bg: rgba(34, 211, 238, 0.09);
+  --bubble-ai-code-bg: color-mix(in srgb, var(--color-cyanx) 8.0%, transparent);
+  --bubble-ai-inline-bg: color-mix(in srgb, var(--color-cyanx) 9.0%, transparent);
   --bubble-user-bg: color-mix(in oklab, var(--color-emerald) 16%, transparent);
   --bubble-user-border: color-mix(in oklab, var(--color-emerald) 45%, transparent);
   --bubble-user-text: color-mix(in oklab, var(--color-emerald) 28%, var(--color-brandtext));
@@ -66,6 +66,7 @@
   --c-9: 34 211 238;
   --r-c-9: cyanx;
   --c-10: 103 232 249;
+  --r-c-10: cyanx;
   --c-11: 34 211 238;
   --r-c-11: cyanx;
   --c-12: 139 92 246;
@@ -87,9 +88,11 @@
   --r-c-20: cyanx;
   --c-21: 255 255 255;
   --c-22: 8 145 178;
+  --r-c-22: cyanx;
   --c-23: 52 211 153;
   --r-c-23: emerald;
   --c-24: 5 150 105;
+  --r-c-24: emerald;
   --c-25: 52 211 153;
   --r-c-25: emerald;
   --light-c-1: 6 182 212;
@@ -105,6 +108,7 @@
   --r-c-34: void;
   --light-c-9: 255 255 255;
   --c-36: 239 68 68;
+  --r-c-36: redx;
   --c-37: 248 113 113;
   --r-c-37: redx;
   --c-38: 239 68 68;
@@ -122,7 +126,9 @@
   --c-48: 248 113 113;
   --r-c-48: redx;
   --c-49: 239 68 68;
+  --r-c-49: redx;
   --c-50: 239 68 68;
+  --r-c-50: redx;
   --c-51: 248 113 113;
   --r-c-51: redx;
   --light-c-12: 250 247 240;
@@ -165,6 +171,7 @@
   --c-78: 148 163 184;
   --c-79: 226 232 240;
   --c-80: 239 68 68;
+  --r-c-80: redx;
   --c-81: 239 68 68;
   --c-82: 255 255 255;
   --light-c-25: 100 116 139;
@@ -179,12 +186,14 @@
   --c-90: 255 255 255;
   --c-91: 255 255 255;
   --c-92: 239 68 68;
+  --r-c-92: redx;
   --c-93: 100 116 139;
   --c-94: 203 213 225;
   --c-95: 71 85 105;
   --c-96: 248 250 252;
   --r-c-96: brandtext;
   --c-97: 239 68 68;
+  --r-c-97: redx;
   --light-c-29: 15 23 42;
   --r-light-c-29: brandtext;
   --light-c-30: 15 23 42;
@@ -214,9 +223,13 @@
   --c-114: 3 105 161;
   --c-115: 2 132 199;
   --c-116: 3 105 161;
+  --r-c-116: cyanx;
   --c-117: 4 120 87;
+  --r-c-117: violetx;
   --c-118: 2 132 199;
+  --r-c-118: cyanx;
   --c-119: 125 211 252;
+  --r-c-119: cyanx;
   --c-120: 56 189 248;
   --c-121: 52 211 153;
   --r-c-121: emerald;
@@ -265,8 +278,11 @@
   --c-146: 248 250 252;
   --r-c-146: brandtext;
   --c-147: 255 95 87;
+  --r-c-147: redx;
   --c-148: 254 188 46;
+  --r-c-148: amber;
   --c-149: 40 200 64;
+  --r-c-149: emerald;
   --c-150: 248 250 252;
   --r-c-150: brandtext;
   --c-151: 52 211 153;
@@ -349,12 +365,17 @@
   --c-195: 248 250 252;
   --r-c-195: brandtext;
   --c-196: 6 19 31;
+  --r-c-196: depth;
   --c-197: 10 10 15;
   --r-c-197: void;
   --c-198: 94 234 212;
+  --r-c-198: emerald;
   --c-199: 94 234 212;
+  --r-c-199: emerald;
   --c-200: 94 234 212;
+  --r-c-200: emerald;
   --c-201: 94 234 212;
+  --r-c-201: emerald;
   --c-202: 10 10 15;
   --r-c-202: void;
   --c-203: 255 255 255;
@@ -365,9 +386,11 @@
   --c-206: 248 113 113;
   --r-c-206: redx;
   --c-207: 251 146 60;
+  --r-c-207: amber;
   --c-208: 251 191 36;
   --r-c-208: amber;
   --c-209: 56 189 248;
+  --r-c-209: cyanx;
   --c-210: 148 163 184;
   --light-c-76: 245 242 236;
   --r-c-76: void;
@@ -426,6 +449,7 @@
   --light-c-96: 5 150 105;
   --light-c-97: 5 150 105;
   --c-245: 16 185 129;
+  --r-c-245: emerald;
   --c-246: 248 113 113;
   --r-c-246: redx;
   --c-247: 139 92 246;
@@ -470,10 +494,13 @@
   --r-c-109: void;
   --c-267: 148 163 184;
   --c-268: 15 23 42;
+  --r-c-268: brandtext;
   --c-269: 148 163 184;
   --c-270: 15 23 42;
+  --r-c-270: brandtext;
   --c-271: 148 163 184;
   --c-272: 15 23 42;
+  --r-c-272: brandtext;
   --light-c-110: 15 23 42;
   --r-c-110: brandtext;
   --light-c-111: 250 250 247;
@@ -763,7 +790,7 @@ html.theme-fading body * {
    don't hardcode them here or the stack bands and reads as a dim second line.
    `butt` caps keep the leading edge a clean sharp cut. */
 .composer-trace-step { fill: none; stroke:rgb(var(--c-9)); stroke-linecap: butt; animation: composer-trace-run 9s linear infinite; }
-.composer-trace-head { stroke:rgb(var(--c-10)); filter:drop-shadow(0 0 3px rgb(var(--c-11) / 0.5)); }
+.composer-trace-head { stroke:rgb(var(--c-10)); filter:drop-shadow(0 0 2px rgb(var(--c-10) / 0.95)) drop-shadow(0 0 6px rgb(var(--c-11) / 0.75)) drop-shadow(0 0 12px rgb(var(--c-11) / 0.4)); }
 /* Direction: a <rect>'s stroke path runs clockwise (rightward along the top,
    then down the right edge). SVG dashoffset DECREASING walks the dash forward
    along that path, so the sweep is negative. Owner asked for clockwise. */
@@ -789,7 +816,7 @@ html.theme-fading body * {
 /* Recognized slash command: the "/" is stripped from the textarea's OWN value
    (see onInputChange), so the text needs no mirror overlay and the native caret
    sits exactly where the user is typing. */
-.chat-composer-input.cmd-active { color: var(--color-cyanx); caret-color: var(--color-cyanx); text-shadow: 0 0 8px rgba(34,211,238,.55); }
+.chat-composer-input.cmd-active { color: var(--color-cyanx); caret-color: var(--color-cyanx); text-shadow: 0 0 8px color-mix(in srgb, var(--color-cyanx) 55.0%, transparent); }
 /* Separation between the text field and the buttons row: same shape and same background
    (the composer is ONE surface at the theme's void colour), divided by a hairline in the
    theme's own accent. Alpha is tuned per mode — on a dark ground a faint accent is
@@ -927,7 +954,7 @@ html.theme-fading body * {
 .chat-chip-options { padding: 0; width: 30px; height: 30px; justify-content: center; align-items: center; border-color:rgb(var(--c-11) / 0.5); color: var(--color-cyanx); box-shadow:0 0 10px rgb(var(--c-66) / 0.28), inset 0 0 6px rgb(var(--c-67) / 0.07); }
 .chat-chip-options svg { filter:drop-shadow(0 0 4px rgb(var(--c-18) / 0.55)); fill: currentColor; }
 .chat-chip-options:hover { border-color:rgb(var(--c-68) / 0.75); box-shadow:0 0 14px rgb(var(--c-4) / 0.4), inset 0 0 8px rgb(var(--c-69) / 0.1); }
-.chat-chip-options[aria-expanded="true"] { border-color:rgb(var(--c-68) / 0.75); color: var(--color-cyanx); }
+.chat-chip-options[aria-expanded="true"] { border-color: color-mix(in srgb, var(--color-cyanx) 75%, transparent); color: var(--color-cyanx); box-shadow: 0 0 14px color-mix(in srgb, var(--color-cyanx) 35%, transparent); }
 .chat-chip[aria-expanded="true"] { border-color:rgb(var(--c-4) / 0.4); color: var(--color-brandtext); }
 
 
@@ -1036,8 +1063,8 @@ html.theme-fading body * {
   color: var(--color-muted); cursor: pointer; text-align: left;
   transition: background-color 140ms ease, color 140ms ease;
 }
-.ast-file-group-head:hover { background: rgba(34,211,238,.06); color: var(--color-brandtext); }
-.ast-file-group-head:focus-visible { outline: 2px solid rgba(34,211,238,.5); outline-offset: -2px; }
+.ast-file-group-head:hover { background: color-mix(in srgb, var(--color-cyanx) 6.0%, transparent); color: var(--color-brandtext); }
+.ast-file-group-head:focus-visible { outline: 2px solid color-mix(in srgb, var(--color-cyanx) 50.0%, transparent); outline-offset: -2px; }
 .ast-file-group-title { flex: 1; min-width: 0; font: 500 10.5px/1 var(--font-mono); letter-spacing: .09em; text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ast-file-group-count { font: 400 10px/1 var(--font-mono); color: var(--color-muted); opacity: .8; }
 .ast-file-group-chev { transition: transform 180ms cubic-bezier(0.23,1,0.32,1); }
@@ -1057,11 +1084,11 @@ html.theme-fading body * {
   width: 22px; height: 22px; border: none; border-radius: 5px; background: transparent;
   color: var(--color-muted); cursor: pointer; opacity: 0; transition: opacity 120ms ease, color 120ms ease, background-color 120ms ease; }
 .ast-file-row:hover .ast-file-dl, .ast-file-dl:focus-visible { opacity: 1; }
-.ast-file-dl:hover { background: rgba(34,211,238,.1); color: var(--color-cyanx); }
+.ast-file-dl:hover { background: color-mix(in srgb, var(--color-cyanx) 10.0%, transparent); color: var(--color-cyanx); }
 .ast-file-note { display: flex; align-items: center; gap: 5px; padding: 5px 8px;
   font: 400 10.5px/1.3 var(--font-sans); color: var(--color-muted); }
-[data-theme="light"] .ast-file-row:hover { background: rgba(15,23,42,.04); }
-[data-theme="light"] .ast-file-dl:hover { background: rgba(3,105,161,.1); color: #0369a1; }
+[data-theme="light"] .ast-file-row:hover { background: color-mix(in srgb, var(--color-brandtext) 4.0%, transparent); }
+[data-theme="light"] .ast-file-dl:hover { background: color-mix(in srgb, var(--color-cyanx) 10.0%, transparent); color: var(--color-cyanx); }
 
 /* ---- theme toggle icon (illustrated sun / moon) ---------------------------
    The glow is on the ICON only (the owner's explicit ask) — the button keeps
@@ -1722,7 +1749,7 @@ html.theme-fading body * {
   --color-muted: #5b6472;
 
   /* brand accents, darkened for ≥4.5:1 on light surfaces */
-  --color-cyanx: #0369a1;
+  --color-cyanx: var(--color-cyanx);
   --color-violetx: #047857;
   --color-fuchsiax: #a21caf;
   --color-redx: #b91c1c;
@@ -1748,7 +1775,7 @@ html.theme-fading body * {
 
 /* Light-mode bubbles: the pre-theme-engine values, restored EXACTLY (owner 2026-10-03).
    Baseline (commit 837d0b0) was:
-     --bubble-ai-bg: transparent;      --bubble-ai-border: rgba(3,105,161,.22);
+     --bubble-ai-bg: transparent;      --bubble-ai-border: color-mix(in srgb, var(--color-cyanx) 22.0%, transparent);
      --bubble-user-bg: transparent;    --bubble-user-border: rgba(4,120,87,.28);
      --bubble-user-text: #064e3b;
    The engine had retinted these into visible colour-mix fills, which read as "light mode is
@@ -1916,7 +1943,7 @@ html.theme-fading body * {
 .bgd-bar-spin { color: var(--color-cyanx); }
 
 /* /steer receipt — its own surface, not a background job */
-.steer-note { border: 1px solid rgba(34,211,238,.25); border-left: 2px solid rgba(34,211,238,.55); border-radius: 8px; background: rgba(34,211,238,.06); padding: 6px 8px; display: flex; flex-direction: column; gap: 3px; transition: border-color 200ms ease, background-color 200ms ease, opacity 400ms ease, max-height 400ms ease; max-height: 120px; overflow: hidden; }
+.steer-note { border: 1px solid color-mix(in srgb, var(--color-cyanx) 25.0%, transparent); border-left: 2px solid color-mix(in srgb, var(--color-cyanx) 55.0%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--color-cyanx) 6.0%, transparent); padding: 6px 8px; display: flex; flex-direction: column; gap: 3px; transition: border-color 200ms ease, background-color 200ms ease, opacity 400ms ease, max-height 400ms ease; max-height: 120px; overflow: hidden; }
 .steer-note-head { display: flex; align-items: center; gap: 5px; }
 .steer-note-label { font: 500 10.5px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: color-mix(in oklab, var(--color-cyanx) 85%, var(--color-brandtext)); flex: 1; }
 .steer-note-ico { color: var(--color-cyanx); }
@@ -1928,7 +1955,7 @@ html.theme-fading body * {
 .steer-note-text { font: 400 12.5px/1.45 var(--font-sans); color: var(--color-cyanx); min-width: 0; }
 .steer-note[data-status="done"] { background: rgba(52,211,153,.05); border-color: rgba(52,211,153,.25); border-left-color: rgba(52,211,153,.55); }
 .steer-note[data-status="done"] .steer-note-label { color: color-mix(in oklab, #34d399 80%, var(--color-brandtext)); }
-.bgd-input{ font: 400 12px/1 var(--font-mono); border: 1px solid rgba(34,211,238,.25); background: transparent; color: var(--color-brandtext); transition: border-color 150ms; }
+.bgd-input{ font: 400 12px/1 var(--font-mono); border: 1px solid color-mix(in srgb, var(--color-cyanx) 25.0%, transparent); background: transparent; color: var(--color-brandtext); transition: border-color 150ms; }
 .bgd-input:focus { border-color: var(--color-cyanx); }
 .bgd-pulse { position: relative; width: 7px; height: 7px; border-radius: 9999px; background: var(--color-cyanx); box-shadow:0 0 8px rgb(var(--c-70) / 0.7); flex-shrink: 0; }
 .bgd-pulse::after { content: ""; position: absolute; inset: -4px; border-radius: 9999px; border:1px solid rgb(var(--c-11) / 0.5); animation: suba-ping 1.8s cubic-bezier(0,0,.2,1) infinite; }
@@ -1943,23 +1970,23 @@ html.theme-fading body * {
 [data-theme="light"] .bgd-card { background: var(--color-midnight); border-color:rgb(var(--light-c-66) / 0.35); }
 [data-theme="light"] .bgd-row:hover { background:rgb(var(--light-c-70) / 0.06); }
 [data-theme="light"] .bgd-text { color: var(--color-brandtext); }
-[data-theme="light"] .bgd-text:not(:disabled):hover { color: #0369a1; }
+[data-theme="light"] .bgd-text:not(:disabled):hover { color: var(--color-cyanx); }
 [data-theme="light"] .bgd-dismiss:hover { background: rgba(220,38,38,.10); color: #dc2626; }
-[data-theme="light"] .bgd-spin { color: #0369a1; }
+[data-theme="light"] .bgd-spin { color: var(--color-cyanx); }
 [data-theme="light"] .bgd-check { color: #059669; }
 [data-theme="light"] .bgd-note-dismiss:hover { color: #dc2626; }
-[data-theme="light"] .bgd-input { border-color: rgba(15,23,42,.14); color: var(--color-brandtext); }
-[data-theme="light"] .bgd-pulse { background: #0369a1; box-shadow: none }
-[data-theme="light"] .bgd-qpos { border-color: rgba(3,105,161,.4); color: #0369a1; }
-[data-theme="light"] .bgd-meta-live { color: #0369a1; text-shadow: none; }
-[data-theme="light"] .steer-note { border-color: rgba(3,105,161,.28); border-left-color: rgba(3,105,161,.6); background: rgba(3,105,161,.05); }
-[data-theme="light"] .steer-note-label { color: #0369a1; }
-[data-theme="light"] .steer-note-ico { color: #0369a1; }
+[data-theme="light"] .bgd-input { border-color: color-mix(in srgb, var(--color-brandtext) 14.0%, transparent); color: var(--color-brandtext); }
+[data-theme="light"] .bgd-pulse { background: var(--color-cyanx); box-shadow: none }
+[data-theme="light"] .bgd-qpos { border-color: color-mix(in srgb, var(--color-cyanx) 40.0%, transparent); color: var(--color-cyanx); }
+[data-theme="light"] .bgd-meta-live { color: var(--color-cyanx); text-shadow: none; }
+[data-theme="light"] .steer-note { border-color: color-mix(in srgb, var(--color-cyanx) 28.0%, transparent); border-left-color: color-mix(in srgb, var(--color-cyanx) 60.0%, transparent); background: color-mix(in srgb, var(--color-cyanx) 5.0%, transparent); }
+[data-theme="light"] .steer-note-label { color: var(--color-cyanx); }
+[data-theme="light"] .steer-note-ico { color: var(--color-cyanx); }
 [data-theme="light"] .steer-note-ico-done { color: #059669; }
-[data-theme="light"] .steer-note-text { color: #0369a1; }
+[data-theme="light"] .steer-note-text { color: var(--color-cyanx); }
 [data-theme="light"] .steer-note[data-status="done"] { background: rgba(5,150,105,.05); border-color: rgba(5,150,105,.3); border-left-color: rgba(5,150,105,.6); }
 [data-theme="light"] .steer-note[data-status="done"] .steer-note-label { color: #047857; }
-[data-theme="light"] .bgd-pulse::after { border-color: rgba(3,105,161,.4); }
+[data-theme="light"] .bgd-pulse::after { border-color: color-mix(in srgb, var(--color-cyanx) 40.0%, transparent); }
 
 @media (prefers-reduced-motion: reduce) {
   .bgd-pulse::after { animation: none; opacity: 0; }
@@ -2618,12 +2645,12 @@ html.theme-fading body * {
    generated: text-shadow/drop-shadow always dropped; box-shadow keeps only
    neutral black elevation parts, colored halo parts dropped. */
 [data-theme="light"] .chat-welcome-glyph { filter: none !important; }
-[data-theme="light"] .composer-trace-head { filter: none !important; }
+[data-theme="light"] .composer-trace-head { filter:drop-shadow(0 0 2px rgb(var(--c-11) / 0.55)) drop-shadow(0 0 5px rgb(var(--c-11) / 0.3)); }
 [data-theme="light"] .chat-send[data-sent] { box-shadow: 0 1px 2px rgba(0,0,0,.25) !important; }
 [data-theme="light"] .nc-btn[data-ncflow="press"] { box-shadow: none !important; }
-[data-theme="light"] .chat-chip-options { box-shadow: none !important; }
-[data-theme="light"] .chat-chip-options svg { filter: none !important; }
-[data-theme="light"] .chat-chip-options:hover { box-shadow: none !important; }
+[data-theme="light"] .chat-chip-options { border-color: color-mix(in srgb, var(--color-cyanx) 45%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-cyanx) 12%, transparent), 0 0 10px color-mix(in srgb, var(--color-cyanx) 18%, transparent); }
+[data-theme="light"] .chat-chip-options svg { filter: drop-shadow(0 0 3px color-mix(in srgb, var(--color-cyanx) 45%, transparent)); }
+[data-theme="light"] .chat-chip-options:hover { border-color: color-mix(in srgb, var(--color-cyanx) 70%, transparent); box-shadow: 0 0 14px color-mix(in srgb, var(--color-cyanx) 30%, transparent); }
 [data-theme="light"] .cmenu-ico-on { filter: none !important; }
 [data-theme="light"] .cmenu-switch-on { box-shadow: none !important; }
 [data-theme="light"] .chat-turn-logo { filter: none !important; }
@@ -2664,8 +2691,8 @@ html.theme-fading body * {
 }
 
 /* ── Slash-command palette (dynamic, live from the Hermes CLI registry) ── */
-.cmdpal { position: absolute; bottom: calc(100% + 10px); left: 0; right: 0; z-index: 56; background: var(--color-midnight); border: 1px solid rgba(34,211,238,.25); border-radius: 14px; box-shadow: 0 18px 50px rgba(0,0,0,.6); overflow: hidden; animation: chat-pop 160ms cubic-bezier(0.23,1,0.32,1) both; transform-origin: bottom center; display: flex; flex-direction: column; max-height: min(56vh, 460px); }
-.cmdpal-head { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px 7px; border-bottom: 1px solid rgba(34,211,238,.14); }
+.cmdpal { position: absolute; bottom: calc(100% + 10px); left: 0; right: 0; z-index: 56; background: var(--color-midnight); border: 1px solid color-mix(in srgb, var(--color-cyanx) 25.0%, transparent); border-radius: 14px; box-shadow: 0 18px 50px rgba(0,0,0,.6); overflow: hidden; animation: chat-pop 160ms cubic-bezier(0.23,1,0.32,1) both; transform-origin: bottom center; display: flex; flex-direction: column; max-height: min(56vh, 460px); }
+.cmdpal-head { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px 7px; border-bottom: 1px solid color-mix(in srgb, var(--color-cyanx) 14.0%, transparent); }
 .cmdpal-title { font: 500 11px/1 var(--font-sans); letter-spacing: .09em; text-transform: uppercase; color: var(--color-cyanx); }
 .cmdpal-count { font: 400 11px/1 var(--font-mono); color: var(--color-muted); }
 .cmdpal-list { overflow-y: auto; padding: 4px; display: flex; flex-direction: column; gap: 2px; }
@@ -2674,7 +2701,7 @@ html.theme-fading body * {
 /* Brand blue on the highlighted row: brand-blue text + translucent brand fill.
    Rounded rectangle, not a pill (brand rule). */
 .cmdpal-row { display: grid; grid-template-columns: minmax(0,auto) 1fr; grid-template-areas: "name desc" "meta desc"; align-items: baseline; column-gap: 10px; row-gap: 2px; width: 100%; text-align: left; padding: 7px 9px; border: 1px solid transparent; border-radius: 9px; background: transparent; cursor: pointer; transition: background-color 120ms ease, border-color 120ms ease; }
-.cmdpal-row.is-active { background: rgba(34,211,238,.11); border-color: rgba(34,211,238,.38); box-shadow: 0 0 14px -4px rgba(34,211,238,.45); }
+.cmdpal-row.is-active { background: color-mix(in srgb, var(--color-cyanx) 11.0%, transparent); border-color: color-mix(in srgb, var(--color-cyanx) 38.0%, transparent); box-shadow: 0 0 14px -4px color-mix(in srgb, var(--color-cyanx) 45.0%, transparent); }
 .cmdpal-name { grid-area: name; font: 500 13.5px/1.35 var(--font-sans); color: var(--color-brandtext); white-space: nowrap; }
 .cmdpal-row.is-active .cmdpal-name { color: var(--color-cyanx); }
 .cmdpal-alias { margin-left: 7px; font: 400 10.5px/1 var(--font-sans); color: var(--color-muted); }
@@ -2687,14 +2714,14 @@ html.theme-fading body * {
 @media (max-width: 640px) { .cmdpal { left: 0; right: 0; max-height: min(52vh, 380px); } .cmdpal-desc { display: none; } .cmdpal-row { grid-template-areas: "name meta"; } }
 
 /* Light mode: flat. No glows anywhere (owner mandate). */
-[data-theme="light"] .cmdpal { border-color: rgba(3,105,161,.3); box-shadow: none; }
-[data-theme="light"] .cmdpal-head { border-bottom-color: rgba(3,105,161,.18); }
-[data-theme="light"] .cmdpal-title, [data-theme="light"] .cmdpal-slash, [data-theme="light"] .cmdpal-args { color: #0369a1; }
+[data-theme="light"] .cmdpal { border-color: color-mix(in srgb, var(--color-cyanx) 30.0%, transparent); box-shadow: none; }
+[data-theme="light"] .cmdpal-head { border-bottom-color: color-mix(in srgb, var(--color-cyanx) 18.0%, transparent); }
+[data-theme="light"] .cmdpal-title, [data-theme="light"] .cmdpal-slash, [data-theme="light"] .cmdpal-args { color: var(--color-cyanx); }
 [data-theme="light"] .cmdpal-name { color: #0f172a; }
-[data-theme="light"] .cmdpal-row.is-active { background: rgba(3,105,161,.09); border-color: rgba(3,105,161,.32); box-shadow: none; }
-[data-theme="light"] .cmdpal-row.is-active .cmdpal-name { color: #0369a1; }
-[data-theme="light"] .cmdpal-row.is-active .cmdpal-desc { color: rgba(15,23,42,.8); }
-[data-theme="light"] .cmdpal-cat { border-color: rgba(3,105,161,.24); color: #0369a1; }
+[data-theme="light"] .cmdpal-row.is-active { background: color-mix(in srgb, var(--color-cyanx) 9.0%, transparent); border-color: color-mix(in srgb, var(--color-cyanx) 32.0%, transparent); box-shadow: none; }
+[data-theme="light"] .cmdpal-row.is-active .cmdpal-name { color: var(--color-cyanx); }
+[data-theme="light"] .cmdpal-row.is-active .cmdpal-desc { color: color-mix(in srgb, var(--color-brandtext) 80.0%, transparent); }
+[data-theme="light"] .cmdpal-cat { border-color: color-mix(in srgb, var(--color-cyanx) 24.0%, transparent); color: var(--color-cyanx); }
 
 /* ── Theme toggle morph (comindash port): mask bite slides, rays recede+rotate,
    core swells. CSS transitions; reduced motion snaps via the global tiered block. */
@@ -2751,7 +2778,7 @@ html.theme-fading body * {
 .cmdsheet-list { overflow-y: auto; padding: 2px 8px 10px; display: flex; flex-direction: column; gap: 2px; }
 .cmdsheet-empty { padding: 20px 12px; text-align: center; font: 400 12px/1.5 var(--font-sans); color: var(--color-muted); }
 .cmdsheet-row { display: grid; grid-template-columns: minmax(0,auto) 1fr auto; align-items: baseline; gap: 9px; width: 100%; text-align: left; padding: 7px 9px; border: 1px solid transparent; border-radius: 9px; background: transparent; cursor: pointer; }
-.cmdsheet-row:hover:not(:disabled) { background: rgba(34,211,238,.11); border-color: rgba(34,211,238,.38); }
+.cmdsheet-row:hover:not(:disabled) { background: color-mix(in srgb, var(--color-cyanx) 11.0%, transparent); border-color: color-mix(in srgb, var(--color-cyanx) 38.0%, transparent); }
 .cmdsheet-row:disabled { opacity: .55; cursor: progress; }
 .cmdsheet-name { font: 500 13px/1.3 var(--font-sans); color: var(--color-brandtext); white-space: nowrap; }
 .cmdsheet-row:hover:not(:disabled) .cmdsheet-name { color: var(--color-cyanx); }
@@ -2760,12 +2787,12 @@ html.theme-fading body * {
 .cmdsheet-badge { font: 400 9.5px/1 var(--font-sans); color: var(--color-cyanx); border: 1px solid rgb(var(--c-6) / 0.4); border-radius: 5px; padding: 3px 5px; white-space: nowrap; }
 
 /* Light mode: flat. No glows anywhere (owner mandate). */
-[data-theme="light"] .cmdsurf, [data-theme="light"] .cmdsheet-panel { border-color: rgba(3,105,161,.28); box-shadow: none; }
-[data-theme="light"] .cmdsheet { background: rgba(15,23,42,.34); }
-[data-theme="light"] .cmdsurf-cmd, [data-theme="light"] .cmdsheet-slash, [data-theme="light"] .cmdsheet-out-head, [data-theme="light"] .cmdsurf-chip { color: #0369a1; }
-[data-theme="light"] .cmdsheet-row:hover:not(:disabled) { background: rgba(3,105,161,.09); border-color: rgba(3,105,161,.32); }
-[data-theme="light"] .cmdsheet-row:hover:not(:disabled) .cmdsheet-name { color: #0369a1; }
-[data-theme="light"] .cmdsheet-badge { color: #0369a1; border-color: rgba(3,105,161,.3); }
+[data-theme="light"] .cmdsurf, [data-theme="light"] .cmdsheet-panel { border-color: color-mix(in srgb, var(--color-cyanx) 28.0%, transparent); box-shadow: none; }
+[data-theme="light"] .cmdsheet { background: color-mix(in srgb, var(--color-brandtext) 34.0%, transparent); }
+[data-theme="light"] .cmdsurf-cmd, [data-theme="light"] .cmdsheet-slash, [data-theme="light"] .cmdsheet-out-head, [data-theme="light"] .cmdsurf-chip { color: var(--color-cyanx); }
+[data-theme="light"] .cmdsheet-row:hover:not(:disabled) { background: color-mix(in srgb, var(--color-cyanx) 9.0%, transparent); border-color: color-mix(in srgb, var(--color-cyanx) 32.0%, transparent); }
+[data-theme="light"] .cmdsheet-row:hover:not(:disabled) .cmdsheet-name { color: var(--color-cyanx); }
+[data-theme="light"] .cmdsheet-badge { color: var(--color-cyanx); border-color: color-mix(in srgb, var(--color-cyanx) 30.0%, transparent); }
 
 /* Composer stack */
 .chat-composer-stack { display: flex; flex-direction: column; gap: 6px; }
@@ -3090,7 +3117,7 @@ html.theme-fading body * {
   flex: none;
 }
 .ast-cv-step.done .ast-cv-step-marker { background: rgba(52, 211, 153, 0.15); color: #34d399; }
-.ast-cv-step.active .ast-cv-step-marker { background: rgba(34, 211, 238, 0.2); color: var(--color-cyanx); }
+.ast-cv-step.active .ast-cv-step-marker { background: color-mix(in srgb, var(--color-cyanx) 20.0%, transparent); color: var(--color-cyanx); }
 .ast-cv-step.fail .ast-cv-step-marker { background: rgba(248, 113, 113, 0.15); color: #f87171; }
 .ast-cv-step-body { flex: 1; }
 .ast-cv-step-title {
@@ -3148,7 +3175,7 @@ html.theme-fading body * {
 /* Light mode adjustments: neutral elevation, no glows */
 [data-theme="light"] .ast-canvas {
   background: #ffffff;
-  border-color: rgba(15, 23, 42, 0.08);
+  border-color: color-mix(in srgb, var(--color-brandtext) 8.0%, transparent);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 [data-theme="light"] .ast-cv-kpi,
@@ -3156,16 +3183,16 @@ html.theme-fading body * {
 [data-theme="light"] .ast-cv-table-wrap,
 [data-theme="light"] .ast-cv-diagram {
   background: #f8fafc;
-  border-color: rgba(15, 23, 42, 0.08);
+  border-color: color-mix(in srgb, var(--color-brandtext) 8.0%, transparent);
 }
 [data-theme="light"] .ast-cv-node {
   background: #ffffff;
-  border-color: rgba(15, 23, 42, 0.1);
+  border-color: color-mix(in srgb, var(--color-brandtext) 10.0%, transparent);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
 }
 [data-theme="light"] .ast-cv-tooltip {
   background: #ffffff;
-  border-color: rgba(15, 23, 42, 0.12);
+  border-color: color-mix(in srgb, var(--color-brandtext) 12.0%, transparent);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
@@ -3483,10 +3510,10 @@ a.ast-cv-ref-link:hover { border-bottom-color: var(--color-cyanx); }
 [data-theme="light"] .ast-cv-table-wrap,
 [data-theme="light"] .ast-cv-diagram {
   background: #f8fafc;
-  border-color: rgba(15, 23, 42, 0.09);
+  border-color: color-mix(in srgb, var(--color-brandtext) 9.0%, transparent);
 }
-[data-theme="light"] .ast-cv-progress-track { background: rgba(15, 23, 42, 0.08); }
-[data-theme="light"] .ast-cv-code { background: #f8fafc; border-color: rgba(15, 23, 42, 0.1); }
-[data-theme="light"] .ast-cv-code-head { background: rgba(15, 23, 42, 0.04); }
-[data-theme="light"] .ast-cv-cmp-card:hover { border-color: rgba(15, 23, 42, 0.18); }
+[data-theme="light"] .ast-cv-progress-track { background: color-mix(in srgb, var(--color-brandtext) 8.0%, transparent); }
+[data-theme="light"] .ast-cv-code { background: #f8fafc; border-color: color-mix(in srgb, var(--color-brandtext) 10.0%, transparent); }
+[data-theme="light"] .ast-cv-code-head { background: color-mix(in srgb, var(--color-brandtext) 4.0%, transparent); }
+[data-theme="light"] .ast-cv-cmp-card:hover { border-color: color-mix(in srgb, var(--color-brandtext) 18.0%, transparent); }
 /* tree-kids left rail removed 2026-10-03 (owner); its light override went with it */
