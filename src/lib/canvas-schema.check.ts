@@ -449,6 +449,53 @@ test("the turn planner heals a misnested fence in a split segment", () => {
   assert.equal(plan.canvases[0].spec.blocks.length, 2);
 });
 
+// A `code` block whose content contains ``` used to truncate the fence and dump
+// raw JSON. Reproduced live: the card below is verbatim what produced it.
+test("a code block containing triple backticks still renders (4-backtick fence)", () => {
+  const spec = {
+    v: 1, title: "Code + references",
+    blocks: [
+      { type: "code", language: "ts", filename: "canvas-schema.ts",
+        code: 'const FENCE_RE = /```astra-canvas[^\\n]*\\n([\\s\\S]*?)```/g;' },
+      { type: "references", items: [{ title: "Directive", href: "https://astra.jitinnair.com/docs" }] },
+    ],
+  };
+  const text = "````astra-canvas\n" + JSON.stringify(spec) + "\n````\nafter";
+  const parts = splitCanvasBlocks(text);
+  const canvases = parts.filter((p) => p.kind === "canvas") as any[];
+  assert.equal(canvases.length, 1, "card renders instead of raw JSON");
+  assert.equal(canvases[0].spec.title, "Code + references");
+  assert.equal(canvases[0].spec.blocks.length, 2);
+  assert.equal((canvases[0].spec.blocks[0] as any).code.includes("```"), true, "backticks survive");
+  assert.ok(parts.some((p) => p.kind === "md" && (p as any).text.includes("after")));
+  assert.equal(hasCanvas(text), true, "mount gate agrees");
+});
+
+// A 3-backtick fence is still the common case and must keep working, and a
+// 4-backtick fence must not swallow a later 3-backtick canvas.
+test("fence lengths are independent and do not swallow each other", () => {
+  const a = JSON.stringify({ v: 1, blocks: [{ type: "kpi", label: "A", value: 1 }] });
+  const text = "```astra-canvas\n" + a + "\n```\nmiddle\n````astra-canvas\n" +
+    JSON.stringify({ v: 1, blocks: [{ type: "code", code: "x ``` y" }] }) + "\n````\nend";
+  const parts = splitCanvasBlocks(text);
+  const canvases = parts.filter((p) => p.kind === "canvas") as any[];
+  assert.equal(canvases.length, 2);
+  assert.equal((canvases[0].spec.blocks[0] as any).label, "A");
+  assert.ok(parts.some((p) => p.kind === "md" && (p as any).text.includes("middle")));
+});
+
+// The turn planner must use the same scanner, or live streaming and history
+// reload disagree about whether a long fence is closed.
+test("the turn planner honours a 4-backtick fence split across segments", () => {
+  const body = JSON.stringify({ v: 1, blocks: [{ type: "code", code: "a ``` b" }] });
+  const plan = planTurnCanvases([
+    "intro ````astra-canvas\n" + body.slice(0, 20),
+    body.slice(20) + "\n```` tail",
+  ]);
+  assert.equal(plan.canvases.length, 1);
+  assert.equal((plan.canvases[0].spec.blocks[0] as any).code.includes("```"), true);
+});
+
 // Fail-soft must survive the new paths: nonsense still degrades, never throws.
 test("the coercer never turns junk into a canvas", () => {
   assert.equal(parseCanvasSpec("not json at all"), null);

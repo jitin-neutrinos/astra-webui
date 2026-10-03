@@ -116,9 +116,12 @@ export type CanvasPart =
   | { kind: "md"; text: string }
   | { kind: "canvas"; spec: CanvasSpec };
 
-const FENCE_RE = /```astra-canvas[^\n]*\n([\s\S]*?)```/g;
-// trailing UNTERMINATED fence (streaming in progress)
-const OPEN_FENCE_RE = /```astra-canvas[^\n]*\n([\s\S]*)$/;
+// Fence discovery lives in scanFences() — a regex cannot respect the author's
+// fence length, which a `code` block containing ``` requires.
+// A still-open fence at the tail (streaming in progress). NO `^` anchor: the open
+// fence is usually mid-message ("done. ```astra-canvas"), and an anchored pattern
+// silently fails to strip it — raw JSON then streams to the user.
+const OPEN_FENCE_RE = /`{3,}astra-canvas[^\n]*\n[\s\S]*$/;
 
 const BLOCK_TYPES = new Set([
   "kpi", "chart", "table", "diagram", "checklist", "steps", "callout",
@@ -515,6 +518,58 @@ export function parseCanvasSpec(raw: string): CanvasSpec | null {
   return { v: 1, title, blocks };
 }
 
+interface FenceMatch { start: number; end: number; body: string; }
+
+/**
+ * Find canvas fences, respecting the authorable fence LENGTH.
+ *
+ * A regex cannot do this: `/```astra-canvas…```/` closes on the first ``` inside
+ * the body, so a `code` block whose content contains triple backticks (a markdown
+ * example, a template literal, a regex) truncated the JSON and the whole card
+ * degraded to raw text. Verified against a real emitted card.
+ *
+ * The fence is markdown's own rule: the opener declares its length and it closes
+ * on a run of AT LEAST that many backticks **on its own line**. That line anchor
+ * is load-bearing — a 4-backtick run sitting mid-line inside a JSON string
+ * (```` ```` ```` in the directive text) must NOT close a 3-backtick fence, or
+ * real cards stop parsing. Anchoring was what made the first attempt break.
+ */
+function scanFences(text: string): FenceMatch[] {
+  const out: FenceMatch[] = [];
+  const re = /(`{3,})astra-canvas[^\n]*\n/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const bodyStart = m.index + m[0].length;
+    // Candidate closers, in the order they OCCUR. The closer is any run of >= 3
+    // backticks; the one that wins is the FIRST whose BODY PARSES. That single
+    // rule satisfies every case at once:
+    //   • the canonical "\n```\n" closes immediately;
+    //   • "\n``` outro" (trailing prose) still closes;
+    //   • a ```` ```` ```` run sitting INSIDE the JSON is skipped, because the
+    //     body cut there does not parse while the real closer's does;
+    //   • two canvases in one message each close at their own run;
+    //   • a mismatched opener (replaying history, the model emitted a SEVEN-backtick
+    //     opener closed by three) still parses, because the opener's length is
+    //     not used to gate the closer.
+    // Preferring a "lone line" closer instead let a LATER run swallow an earlier
+    // legitimate one and ate the following canvas.
+    const anyRe = /`{3,}/g;
+    anyRe.lastIndex = bodyStart;
+    let close: RegExpExecArray | null = null;
+    let fallback: RegExpExecArray | null = null; // earliest lone-line run
+    for (let c = anyRe.exec(text); c; c = anyRe.exec(text)) {
+      if (/^[ \t]*(?=\r?$)/.test(text.slice(c.index + c[0].length)) && !fallback) fallback = c;
+      if (parseCanvasSpec(text.slice(bodyStart, c.index))) { close = c; break; }
+    }
+    if (!close) close = fallback;
+    if (!close) continue; // unterminated — caller decides (stream vs finalized)
+    const end = close.index + close[0].length;
+    out.push({ start: m.index, end, body: text.slice(bodyStart, close.index) });
+    re.lastIndex = end;
+  }
+  return out;
+}
+
 /**
  * Split message text into ordered md/canvas parts.
  * streaming=true: a trailing unterminated canvas fence is OMITTED (hidden
@@ -527,21 +582,19 @@ export function splitCanvasBlocks(text: string, streaming = false): CanvasPart[]
   text = healMisnestedFence(text);
   const parts: CanvasPart[] = [];
   let last = 0;
-  FENCE_RE.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = FENCE_RE.exec(text)) !== null) {
-    const spec = parseCanvasSpec(m[1]);
+  for (const f of scanFences(text)) {
+    const spec = parseCanvasSpec(f.body);
     if (!spec) {
       // Surface WHY a card silently became a code block — this used to fail
       // invisibly, which cost a debugging round every time.
       if (import.meta.env?.DEV) {
-        console.warn("[canvas] fence failed to parse, rendering as code block:", m[1].slice(0, 160));
+        console.warn("[canvas] fence failed to parse, rendering as code block:", f.body.slice(0, 160));
       }
       continue;
     }
-    if (m.index > last) parts.push({ kind: "md", text: text.slice(last, m.index) });
+    if (f.start > last) parts.push({ kind: "md", text: text.slice(last, f.start) });
     parts.push({ kind: "canvas", spec });
-    last = m.index + m[0].length;
+    last = f.end;
   }
 
   let tail = text.slice(last);
@@ -557,12 +610,7 @@ export function splitCanvasBlocks(text: string, streaming = false): CanvasPart[]
 /** True when the text contains at least one VALID closed canvas (mount gate for lazy chunk). */
 export function hasCanvas(text: string): boolean {
   text = healMisnestedFence(text);
-  FENCE_RE.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = FENCE_RE.exec(text)) !== null) {
-    if (parseCanvasSpec(m[1])) return true;
-  }
-  return false;
+  return scanFences(text).some((f) => parseCanvasSpec(f.body) !== null);
 }
 
 export interface TurnCanvasPlan {
@@ -625,13 +673,11 @@ export function planTurnCanvases(segTexts: string[], streaming = false): TurnCan
   //   SPANNING (opens in one segment, closes in another) → cannot be parsed
   //     from either half, so cut it out and anchor it to the closing segment.
   const cuts: number[][] = texts.map(() => []);
-  FENCE_RE.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = FENCE_RE.exec(total)) !== null) {
-    const spec = parseCanvasSpec(m[1]);
+  for (const f of scanFences(total)) {
+    const spec = parseCanvasSpec(f.body);
     if (!spec) continue; // invalid → leave the fence in the markdown
-    const s = m.index;
-    const e = m.index + m[0].length;
+    const s = f.start;
+    const e = f.end;
     const startSeg = segOf(s);
     const endSeg = segOf(e - 1);
     if (startSeg === endSeg) continue; // contained → inline, no cut

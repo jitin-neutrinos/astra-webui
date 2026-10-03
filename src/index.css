@@ -2876,16 +2876,19 @@ html.theme-fading body * {
   background: rgba(248, 113, 113, 0.1);
 }
 
-/* Chart */
+/* Chart — plot floats, no grid. Owner 2026-10-03: the old box grid + axis
+   lines read as a spreadsheet; the data now carries the chart alone. Depth
+   comes from the surface and a hairline top edge, never a gradient. */
 .ast-cv-chart {
   margin: 0;
-  padding: 12px 14px 4px;
+  padding: 14px 16px 10px;
   border: 1px solid rgb(var(--c-89) / 0.08);
-  border-radius: 10px;
+  border-radius: 12px;
   background: rgb(var(--c-65) / 0.02);
+  overflow: hidden;
 }
 .ast-cv-chart-title {
-  margin: 0 0 8px;
+  margin: 0 0 10px;
   font: 500 11.5px/1.2 var(--font-sans);
   color: var(--color-brandtext);
 }
