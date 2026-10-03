@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { splitCanvasBlocks, parseCanvasSpec, hasCanvas, planTurnCanvases } from "./canvas-schema";
+import { splitCanvasBlocks, parseCanvasSpec, hasCanvas, planTurnCanvases } from "./canvas-schema.ts";
 
 const VALID = JSON.stringify({
   v: 1, title: "Usage",
@@ -266,4 +266,68 @@ test("streaming withholds a fence that is still open at the tail", () => {
 test("no segments / empty input is safe", () => {
   assert.deepEqual(planTurnCanvases([]), { mdPerSeg: [], canvases: [] });
   assert.deepEqual(planTurnCanvases(["", ""]).mdPerSeg, ["", ""]);
+});
+
+// ---- robustness: a bad block must not sink the whole card -----------------
+
+test("one invalid block does NOT sink the canvas (per-block tolerance)", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, title: "Mixed", blocks: [
+    { type: "kpi", label: "Good", value: 1 },
+    { type: "hologram", spin: true },            // unknown
+    { type: "callout", tone: "warn", body: "ok" },
+  ] }));
+  assert.ok(spec, "canvas still parses");
+  assert.equal(spec!.blocks.length, 2, "the two valid blocks survive");
+  assert.equal((spec!.blocks[0] as any).label, "Good");
+});
+
+test("a canvas where EVERY block is invalid still degrades", () => {
+  assert.equal(parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "x" }, { type: "y" }] })), null);
+});
+
+test("lenient JSON: trailing commas and comments still parse", () => {
+  const messy = `{
+    // the headline numbers
+    "v": 1,
+    "title": "Messy",
+    "blocks": [
+      { "type": "kpi", "label": "A", "value": 2, },  /* inline note */
+    ],
+  }`;
+  const spec = parseCanvasSpec(messy);
+  assert.ok(spec, "repaired JSON parses");
+  assert.equal(spec!.title, "Messy");
+  assert.equal(spec!.blocks.length, 1);
+});
+
+test("alias: metric/stat → kpi", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "metric", label: "M", value: 5 }] }));
+  assert.equal((spec!.blocks[0] as any).type, "kpi");
+});
+
+test("alias: donut/columns/gauge chart kinds normalize", () => {
+  const donut = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "chart", chart: "donut", series: [{ name: "s", points: [1] }] }] }));
+  assert.equal((donut!.blocks[0] as any).chart, "pie");
+  const bars = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "graph", chart: "columns", series: [{ name: "s", points: [1] }] }] }));
+  assert.equal((bars!.blocks[0] as any).type, "chart");
+  assert.equal((bars!.blocks[0] as any).chart, "bar");
+});
+
+test("alias: flowchart without layout defaults to flow", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "flowchart", nodes: [{ id: "a", label: "A" }], edges: [] },
+  ] }));
+  assert.ok(spec);
+  assert.equal((spec!.blocks[0] as any).type, "diagram");
+  assert.equal((spec!.blocks[0] as any).layout, "flow");
+});
+
+test("alias: sources/note/meter/snippet map to their blocks", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "sources", items: [{ title: "S" }] },
+    { type: "note", tone: "info", body: "n" },
+    { type: "meter", label: "M", value: 3 },
+    { type: "snippet", code: "x" },
+  ] }));
+  assert.deepEqual(spec!.blocks.map((b: any) => b.type), ["references", "callout", "progress", "code"]);
 });

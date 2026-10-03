@@ -132,6 +132,33 @@ function isStrArr(v: unknown): v is string[] { return Array.isArray(v) && v.ever
 /** Validate one parsed block object; null = invalid. */
 function validateBlock(b: any): CanvasBlock | null {
   if (!b || typeof b !== "object" || !isStr(b.type)) return null;
+  // Aliases: models reach for near-miss names. Accept the obvious ones instead
+  // of dropping the block (and, before per-block tolerance, the whole card).
+  const T = b.type;
+  if (T === "metric" || T === "stat" || T === "kpis") b.type = "kpi";
+  else if (T === "graph" || T === "plot") b.type = "chart";
+  else if (T === "flowchart" || T === "flow" || T === "map" || T === "graph-map") b.type = "diagram";
+  else if (T === "list" || T === "todo" || T === "tasks") b.type = "checklist";
+  else if (T === "ordered-list" || T === "process") b.type = "steps";
+  else if (T === "note" || T === "warning" || T === "insight") b.type = "callout";
+  else if (T === "meter" || T === "bar" || T === "gauge") b.type = "progress";
+  else if (T === "sources" || T === "citations" || T === "links") b.type = "references";
+  else if (T === "snippet") b.type = "code";
+
+  // chart kind aliases + `type` used instead of `chart`
+  if (b.type === "chart" && !CHART_KINDS.has(b.chart)) {
+    const kind = b.chart ?? b.kind ?? b.chartType;
+    if (kind === "donut" || kind === "doughnut" || kind === "circular") b.chart = "pie";
+    else if (kind === "bars" || kind === "columns") b.chart = "bar";
+    else if (kind === "lines") b.chart = "line";
+    else if (kind === "areas") b.chart = "area";
+    else if (kind === "gauge" || kind === "circular-bar") b.chart = "radial";
+  }
+  // diagram layout alias: a `flowchart` block usually omits `layout`
+  if (b.type === "diagram" && b.layout == null) {
+    b.layout = b.kind === "relationship" || b.kind === "map" ? "relationship" : "flow";
+  }
+
   switch (b.type) {
     case "kpi":
       if (!isStr(b.label) || (!isStr(b.value) && !isNum(b.value))) return null;
@@ -279,18 +306,33 @@ function validateBlock(b: any): CanvasBlock | null {
   }
 }
 
+/** Strip comments + trailing commas before JSON.parse (models emit both). */
+function lenientJson(raw: string): unknown {
+  const attempt = (s: string) => JSON.parse(s);
+  try { return attempt(raw); } catch { /* fall through to repair */ }
+  const repaired = raw
+    .replace(/\/\*[\s\S]*?\*\//g, "")      // block comments
+    .replace(/(^|[^:"'\\])\/\/.*$/gm, "$1") // line comments (not inside strings)
+    .replace(/,(\s*[}\]])/g, "$1");         // trailing commas
+  return attempt(repaired);
+}
+
 /** Parse fence content into a spec; null = invalid → degrade to markdown. */
 export function parseCanvasSpec(raw: string): CanvasSpec | null {
   let data: any;
-  try { data = JSON.parse(raw); } catch { return null; }
+  try { data = lenientJson(raw); } catch { return null; }
   if (!data || typeof data !== "object") return null;
   if (!Array.isArray(data.blocks) || data.blocks.length === 0) return null;
+  // PER-BLOCK tolerance: one malformed block must not sink a whole card. Keep
+  // every block that validates; degrade to markdown only if NONE do (otherwise
+  // a single unexpected block shape silently turned the entire canvas into a
+  // wall of raw JSON in the chat).
   const blocks: CanvasBlock[] = [];
   for (const b of data.blocks) {
     const v = validateBlock(b);
-    if (!v) return null;
-    blocks.push(v);
+    if (v) blocks.push(v);
   }
+  if (blocks.length === 0) return null;
   return { v: 1, title: isStr(data.title) ? data.title : undefined, blocks };
 }
 
@@ -309,7 +351,14 @@ export function splitCanvasBlocks(text: string, streaming = false): CanvasPart[]
   let m: RegExpExecArray | null;
   while ((m = FENCE_RE.exec(text)) !== null) {
     const spec = parseCanvasSpec(m[1]);
-    if (!spec) continue; // invalid → leave the fence inside the md flow
+    if (!spec) {
+      // Surface WHY a card silently became a code block — this used to fail
+      // invisibly, which cost a debugging round every time.
+      if (import.meta.env?.DEV) {
+        console.warn("[canvas] fence failed to parse, rendering as code block:", m[1].slice(0, 160));
+      }
+      continue;
+    }
     if (m.index > last) parts.push({ kind: "md", text: text.slice(last, m.index) });
     parts.push({ kind: "canvas", spec });
     last = m.index + m[0].length;
