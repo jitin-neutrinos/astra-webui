@@ -212,26 +212,38 @@ test("a fence split across THREE segments renders", () => {
   assert.ok(!plan.mdPerSeg.join("").includes("astra-canvas"));
 });
 
-test("multiple canvases across segments keep document order", () => {
-  const plan = planTurnCanvases([
-    "a ```astra-canvas\n" + SPEC1 + "\n``` b",
-    "c ```astra-canvas\n" + SPEC2 + "\n``` d",
-  ]);
-  assert.equal(plan.canvases.length, 2);
-  assert.equal(plan.canvases[0].spec.title, "Split");
-  assert.equal(plan.canvases[1].spec.title, "Second");
-  assert.equal(plan.canvases[0].afterSeg, 0);
-  assert.equal(plan.canvases[1].afterSeg, 1);
-  assert.equal(plan.mdPerSeg[0], "a  b");
-  assert.equal(plan.mdPerSeg[1], "c  d");
+test("a CONTAINED fence stays in the markdown (renders inline, prose stays below)", () => {
+  // Common case: the whole fence lives in one segment, with prose after it.
+  // It must NOT be hoisted to the end of the segment — RichText renders it
+  // where it sits, so `md` keeps the fence and the planner returns no canvas.
+  const md = "before\n```astra-canvas\n" + SPEC1 + "\n```\nAFTER THE CARD";
+  const plan = planTurnCanvases([md]);
+  assert.equal(plan.canvases.length, 0);
+  assert.equal(plan.mdPerSeg[0], md);
 });
 
-test("two canvases inside ONE segment both anchor to it", () => {
-  const plan = planTurnCanvases(["x ```astra-canvas\n" + SPEC1 + "\n``` y ```astra-canvas\n" + SPEC2 + "\n``` z"]);
-  assert.equal(plan.canvases.length, 2);
-  assert.equal(plan.canvases[0].afterSeg, 0);
-  assert.equal(plan.canvases[1].afterSeg, 0);
-  assert.ok(!plan.mdPerSeg[0].includes("astra-canvas"));
+test("multiple canvases inside ONE segment all stay inline, in order", () => {
+  const md = "a ```astra-canvas\n" + SPEC1 + "\n``` b ```astra-canvas\n" + SPEC2 + "\n``` c";
+  const plan = planTurnCanvases([md]);
+  assert.equal(plan.canvases.length, 0);
+  assert.equal(plan.mdPerSeg[0], md);
+});
+
+test("a mixed message: contained inline, spanning extracted", () => {
+  const plan = planTurnCanvases([
+    "intro\n```astra-canvas\n" + SPEC1 + "\n```\nmid prose",
+    "```astra-canvas\n" + SPEC2.slice(0, 12),
+    SPEC2.slice(12) + "\n```\ntail",
+  ]);
+  // only the SPANNING one is extracted; the contained one stays inline
+  assert.equal(plan.canvases.length, 1);
+  assert.equal(plan.canvases[0].spec.title, "Second");
+  assert.equal(plan.canvases[0].afterSeg, 2);
+  assert.ok(plan.mdPerSeg[0].includes("astra-canvas"), "contained fence stays in md");
+  assert.ok(plan.mdPerSeg[0].includes("mid prose"));
+  assert.ok(!plan.mdPerSeg[1].includes("astra-canvas"), "spanning head cut");
+  assert.ok(!plan.mdPerSeg[2].includes("astra-canvas"), "spanning tail cut");
+  assert.ok(plan.mdPerSeg[2].includes("tail"));
 });
 
 test("an INVALID fence split across segments stays markdown (fail-soft)", () => {
@@ -243,10 +255,12 @@ test("an INVALID fence split across segments stays markdown (fail-soft)", () => 
 test("streaming withholds a fence that is still open at the tail", () => {
   const open = planTurnCanvases(["done. ```astra-canvas\n" + SPEC1.slice(0, 15)], true);
   assert.equal(open.canvases.length, 0);
-  assert.ok(!open.mdPerSeg[0].includes("astra-canvas"));
+  assert.ok(!open.mdPerSeg[0].includes("astra-canvas"), "open fence withheld while streaming");
   assert.ok(open.mdPerSeg[0].includes("done."));
+  // finalized: the fence is closed and CONTAINED, so it stays inline for RichText
   const closed = planTurnCanvases(["done. ```astra-canvas\n" + SPEC1 + "\n```"], false);
-  assert.equal(closed.canvases.length, 1);
+  assert.equal(closed.canvases.length, 0);
+  assert.ok(closed.mdPerSeg[0].includes("astra-canvas"), "closed fence left inline");
 });
 
 test("no segments / empty input is safe", () => {

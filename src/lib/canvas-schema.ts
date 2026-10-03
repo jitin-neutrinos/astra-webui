@@ -387,8 +387,13 @@ export function planTurnCanvases(segTexts: string[], streaming = false): TurnCan
     return ans;
   };
 
-  // Collect removals per segment first, then apply RIGHT-TO-LEFT so earlier
-  // splices cannot shift the offsets of later ones.
+  // Classify every valid fence:
+  //   CONTAINED (opens and closes inside one segment) → leave it in the
+  //     markdown. RichText splits and renders it INLINE, so prose that follows
+  //     the canvas stays BELOW it — this is the common case and it must not be
+  //     hoisted to the end of the segment.
+  //   SPANNING (opens in one segment, closes in another) → cannot be parsed
+  //     from either half, so cut it out and anchor it to the closing segment.
   const cuts: number[][] = texts.map(() => []);
   FENCE_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
@@ -397,14 +402,17 @@ export function planTurnCanvases(segTexts: string[], streaming = false): TurnCan
     if (!spec) continue; // invalid → leave the fence in the markdown
     const s = m.index;
     const e = m.index + m[0].length;
-    for (let i = 0; i < texts.length; i++) {
+    const startSeg = segOf(s);
+    const endSeg = segOf(e - 1);
+    if (startSeg === endSeg) continue; // contained → inline, no cut
+    for (let i = startSeg; i <= endSeg; i++) {
       const ss = starts[i];
       const se = ss + texts[i].length;
       const cs = Math.max(s, ss);
       const ce = Math.min(e, se);
       if (cs < ce) cuts[i].push(cs - ss, ce - ss);
     }
-    canvases.push({ spec, afterSeg: segOf(e - 1) });
+    canvases.push({ spec, afterSeg: endSeg });
   }
 
   for (let i = 0; i < texts.length; i++) {
