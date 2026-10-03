@@ -345,9 +345,9 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
           {type === "boolean" ? (
             <button
               onClick={() => updateVal(path, !val)}
-              className={cn("w-10 h-5 rounded-[5px] transition-colors relative", val ? "bg-cyanx" : "bg-white/10")}
+              className={cn("w-12 h-6 rounded-lg transition-colors relative shrink-0", val ? "bg-cyanx" : "bg-white/10")}
             >
-              <span className={cn("absolute top-0.5 left-0.5 bg-void w-4 h-4 rounded-[3px] transition-transform", val && "translate-x-5")} />
+              <span className={cn("absolute top-0.5 left-0.5 bg-void w-5 h-5 rounded-md transition-transform", val && "translate-x-6")} />
             </button>
           ) : type === "select" || (options && options.length > 0) ? (
             options.length > 0 ? (
@@ -439,7 +439,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
   };
 
   return (
-    <div className="flex-1 overflow-auto bg-void text-brandtext font-sans p-4 lg:p-10 relative">
+    <div className="flex-1 overflow-auto bg-void text-brandtext font-sans px-3 py-4 sm:px-6 lg:p-10 relative">
       <div className="max-w-4xl mx-auto mb-8 flex items-center gap-4">
         <button type="button" onClick={onBack} className="p-2 -ml-2 rounded-lg hover:bg-white/5 text-slate-400 transition lg:hidden" aria-label="Back to chat">
           <ArrowLeft className="w-5 h-5" />
@@ -541,16 +541,21 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
                 </div>
                 <div className="space-y-2">
                   {(getVal("fallback_providers") || []).map((entry: any, i: number) => (
-                    <div key={i} className="flex items-center gap-2 bg-void/50 rounded-lg px-3 py-2">
-                      <span className="text-[10px] font-mono text-slate-500 w-4">{i + 1}.</span>
-                      <select
-                        value={entry.provider || ""}
-                        onChange={(e) => updateFallbackEntry(i, "provider", e.target.value)}
-                        className="bg-midnight border border-white/10 rounded px-2 py-1 text-xs focus:outline-none focus:border-cyanx/50 appearance-none cursor-pointer"
-                      >
-                        <option value="">Provider</option>
-                        {providerOptions.map(p => <option key={p.slug} value={p.slug}>{p.name}</option>)}
-                      </select>
+                    <div key={i} className="flex flex-col sm:flex-row sm:items-center gap-2 bg-void/50 rounded-lg px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono text-slate-500 w-4">{i + 1}.</span>
+                        <select
+                          value={entry.provider || ""}
+                          onChange={(e) => updateFallbackEntry(i, "provider", e.target.value)}
+                          className="flex-1 sm:flex-none bg-midnight border border-white/10 rounded px-2 py-1 text-xs focus:outline-none focus:border-cyanx/50 appearance-none cursor-pointer"
+                        >
+                          <option value="">Provider</option>
+                          {providerOptions.map(p => <option key={p.slug} value={p.slug}>{p.name}</option>)}
+                        </select>
+                        <button onClick={() => removeFallbackEntry(i)} className="p-1 rounded hover:bg-redx/20 text-slate-500 hover:text-redx transition-colors shrink-0" title="Remove">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                       <select
                         value={entry.model || ""}
                         onChange={(e) => updateFallbackEntry(i, "model", e.target.value)}
@@ -565,9 +570,6 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
                           });
                         })()}
                       </select>
-                      <button onClick={() => removeFallbackEntry(i)} className="p-1 rounded hover:bg-redx/20 text-slate-500 hover:text-redx transition-colors" title="Remove">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
                     </div>
                   ))}
                   {(!getVal("fallback_providers") || getVal("fallback_providers").length === 0) && (
