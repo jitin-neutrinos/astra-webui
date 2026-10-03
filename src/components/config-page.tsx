@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from "react";
-import { ArrowLeft, Check, Loader2, Undo, Download, Upload, AlertTriangle, Search, ChevronDown, ChevronRight, RefreshCw, Brain, Cpu, Zap, Shield, Database } from "lucide-react";
+import { ArrowLeft, Check, Loader2, Undo, Download, Upload, AlertTriangle, Search, ChevronDown, ChevronRight, RefreshCw, Brain, Cpu, Zap, Shield, Database, Plus, X, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type SchemaField = {
@@ -20,9 +20,16 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
   const [config, setConfig] = useState<any>(null);
   const [schema, setSchema] = useState<Schema | null>(null);
   const [modelOptions, setModelOptions] = useState<string[]>([]);
+  const [providerOptions, setProviderOptions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [search, setSearch] = useState("");
+  const [showAddProvider, setShowAddProvider] = useState(false);
+  const [showAddModel, setShowAddModel] = useState(false);
+  const [newProviderName, setNewProviderName] = useState("");
+  const [newProviderSlug, setNewProviderSlug] = useState("");
+  const [newModelName, setNewModelName] = useState("");
+  const [newModelProvider, setNewModelProvider] = useState("");
   
   // Pending saves map: dotpath -> status ("saving" | "saved" | "error")
   const [saves, setSaves] = useState<Record<string, string>>({});
@@ -83,7 +90,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
       setSchema(sch);
       
       if (opt.providers && Array.isArray(opt.providers)) {
-        // Catalog shape: {providers: [{slug, models: [...]}]} — flatten model ids/names.
+        setProviderOptions(opt.providers);
         const mods = opt.providers.flatMap((p: any) =>
           (Array.isArray(p.models) ? p.models : []).map((m: any) => typeof m === "string" ? m : m.id || m.name)
         ).filter(Boolean);
@@ -190,6 +197,58 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
     }
     if (undoState.timer) clearTimeout(undoState.timer);
     setUndoState(null);
+  };
+
+  // Derived: models filtered by selected provider
+  const filteredModels = useMemo(() => {
+    const prov = getVal("provider");
+    if (!prov) return modelOptions;
+    const p = providerOptions.find((x: any) => x.slug === prov);
+    if (!p) return modelOptions;
+    return (p.models || []).map((m: any) => typeof m === "string" ? m : m.id || m.name).filter(Boolean);
+  }, [getVal("provider"), providerOptions, modelOptions]);
+
+  // Fallback chain helpers
+  const addFallbackEntry = () => {
+    const chain = [...(getVal("fallback_providers") || [])];
+    chain.push({ provider: "", model: "" });
+    updateVal("fallback_providers", chain);
+  };
+
+  const updateFallbackEntry = (index: number, field: string, value: string) => {
+    const chain = [...(getVal("fallback_providers") || [])];
+    chain[index] = { ...chain[index], [field]: value };
+    updateVal("fallback_providers", chain);
+  };
+
+  const removeFallbackEntry = (index: number) => {
+    const chain = [...(getVal("fallback_providers") || [])];
+    chain.splice(index, 1);
+    updateVal("fallback_providers", chain);
+  };
+
+  // Add provider/model helpers
+  const addProvider = () => {
+    if (!newProviderSlug.trim()) return;
+    const newProv = { slug: newProviderSlug.trim(), name: newProviderName.trim() || newProviderSlug.trim(), models: [] };
+    setProviderOptions((prev: any[]) => [...prev, newProv]);
+    setShowAddProvider(false);
+    setNewProviderName("");
+    setNewProviderSlug("");
+  };
+
+  const addModel = () => {
+    if (!newModelName.trim() || !newModelProvider) return;
+    setProviderOptions((prev: any[]) =>
+      prev.map((p: any) =>
+        p.slug === newModelProvider
+          ? { ...p, models: [...(p.models || []), newModelName.trim()] }
+          : p
+      )
+    );
+    setShowAddModel(false);
+    setNewModelName("");
+    setNewModelProvider("");
   };
 
   const exportConfig = () => {
@@ -383,16 +442,86 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
               <Cpu className="w-3.5 h-3.5 text-cyanx/70" />
               <h4 className="text-xs font-mono uppercase tracking-[0.15em] text-slate-400">Model & Provider</h4>
             </div>
-            <div className="space-y-1">
-              {renderField("model", "Default Model", "select", modelOptions)}
-              {renderField("model_context_length", "Context Length", "number")}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3 border-b border-white/[0.04]">
-                <div className="flex-1 min-w-0">
-                  <label className="text-sm text-slate-200 font-medium font-mono">Fallback Chain</label>
-                  <p className="text-xs text-slate-500 mt-0.5">Read-only view of fallback_providers</p>
+            <div className="space-y-3">
+              {/* Provider & Model Row */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-slate-500 font-mono mb-1 block">Provider</label>
+                  <div className="flex gap-2">
+                    <select
+                      value={getVal("provider") || ""}
+                      onChange={(e) => updateVal("provider", e.target.value)}
+                      className="flex-1 bg-midnight border border-white/10 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-cyanx/50 appearance-none cursor-pointer"
+                    >
+                      <option value="">Select provider</option>
+                      {providerOptions.map(p => <option key={p.slug} value={p.slug}>{p.name}</option>)}
+                    </select>
+                    <button onClick={() => setShowAddProvider(true)} className="p-1.5 rounded-md bg-cyanx/10 hover:bg-cyanx/20 text-cyanx transition-colors" title="Add provider">
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-                <div className="text-xs font-mono text-slate-400 max-w-[50%] text-right truncate">
-                  {(getVal("fallback_providers") || []).join(" → ") || "None"}
+                <div>
+                  <label className="text-xs text-slate-500 font-mono mb-1 block">Model</label>
+                  <div className="flex gap-2">
+                    <select
+                      value={getVal("model") || ""}
+                      onChange={(e) => updateVal("model", e.target.value)}
+                      className="flex-1 bg-midnight border border-white/10 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-cyanx/50 appearance-none cursor-pointer"
+                    >
+                      <option value="">Select model</option>
+                      {filteredModels.map((m: string) => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                    <button onClick={() => setShowAddModel(true)} className="p-1.5 rounded-md bg-cyanx/10 hover:bg-cyanx/20 text-cyanx transition-colors" title="Add model">
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+              {renderField("model_context_length", "Context Length", "number")}
+              
+              {/* Fallback Chain - Editable */}
+              <div className="py-3 border-b border-white/[0.04]">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <label className="text-sm text-slate-200 font-medium font-mono">Fallback Chain</label>
+                    <p className="text-xs text-slate-500 mt-0.5">Ordered failover sequence</p>
+                  </div>
+                  <button onClick={addFallbackEntry} className="flex items-center gap-1 px-2 py-1 rounded-md bg-cyanx/10 hover:bg-cyanx/20 text-cyanx text-xs font-mono transition-colors">
+                    <Plus className="w-3 h-3" /> Add
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {(getVal("fallback_providers") || []).map((entry: any, i: number) => (
+                    <div key={i} className="flex items-center gap-2 bg-void/50 rounded-lg px-3 py-2">
+                      <span className="text-[10px] font-mono text-slate-500 w-4">{i + 1}.</span>
+                      <select
+                        value={entry.provider || ""}
+                        onChange={(e) => updateFallbackEntry(i, "provider", e.target.value)}
+                        className="bg-midnight border border-white/10 rounded px-2 py-1 text-xs focus:outline-none focus:border-cyanx/50 appearance-none cursor-pointer"
+                      >
+                        <option value="">Provider</option>
+                        {providerOptions.map(p => <option key={p.slug} value={p.slug}>{p.name}</option>)}
+                      </select>
+                      <select
+                        value={entry.model || ""}
+                        onChange={(e) => updateFallbackEntry(i, "model", e.target.value)}
+                        className="flex-1 bg-midnight border border-white/10 rounded px-2 py-1 text-xs focus:outline-none focus:border-cyanx/50 appearance-none cursor-pointer"
+                      >
+                        <option value="">Model</option>
+                        {providerOptions.find((p: any) => p.slug === entry.provider)?.models?.map((m: any) => {
+                          const mid = typeof m === "string" ? m : m.id || m.name;
+                          return <option key={mid} value={mid}>{mid}</option>;
+                        }) || []}
+                      </select>
+                      <button onClick={() => removeFallbackEntry(i)} className="p-1 rounded hover:bg-redx/20 text-slate-500 hover:text-redx transition-colors" title="Remove">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                  {(!getVal("fallback_providers") || getVal("fallback_providers").length === 0) && (
+                    <p className="text-xs text-slate-500 font-mono py-2">No fallback providers configured</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -566,6 +695,83 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
           >
             <Undo className="w-3.5 h-3.5" /> Undo
           </button>
+        </div>
+      )}
+
+      {/* Add Provider Modal */}
+      {showAddProvider && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowAddProvider(false)}>
+          <div className="bg-midnight border border-white/10 rounded-2xl p-6 w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-display text-lg text-brandtext">Add Provider</h3>
+              <button onClick={() => setShowAddProvider(false)} className="p-1 rounded hover:bg-white/10 text-slate-400"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-slate-500 font-mono mb-1 block">Provider Slug</label>
+                <input
+                  type="text"
+                  value={newProviderSlug}
+                  onChange={e => setNewProviderSlug(e.target.value)}
+                  placeholder="e.g. openai"
+                  className="w-full bg-void border border-white/10 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-cyanx/50"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 font-mono mb-1 block">Display Name</label>
+                <input
+                  type="text"
+                  value={newProviderName}
+                  onChange={e => setNewProviderName(e.target.value)}
+                  placeholder="e.g. OpenAI"
+                  className="w-full bg-void border border-white/10 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-cyanx/50"
+                />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button onClick={() => setShowAddProvider(false)} className="flex-1 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-sm transition-colors">Cancel</button>
+                <button onClick={addProvider} className="flex-1 px-4 py-2 rounded-lg bg-cyanx hover:bg-cyanx/80 text-void text-sm font-medium transition-colors">Add</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Model Modal */}
+      {showAddModel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowAddModel(false)}>
+          <div className="bg-midnight border border-white/10 rounded-2xl p-6 w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-display text-lg text-brandtext">Add Model</h3>
+              <button onClick={() => setShowAddModel(false)} className="p-1 rounded hover:bg-white/10 text-slate-400"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-slate-500 font-mono mb-1 block">Provider</label>
+                <select
+                  value={newModelProvider}
+                  onChange={e => setNewModelProvider(e.target.value)}
+                  className="w-full bg-void border border-white/10 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-cyanx/50 appearance-none cursor-pointer"
+                >
+                  <option value="">Select provider</option>
+                  {providerOptions.map(p => <option key={p.slug} value={p.slug}>{p.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 font-mono mb-1 block">Model ID</label>
+                <input
+                  type="text"
+                  value={newModelName}
+                  onChange={e => setNewModelName(e.target.value)}
+                  placeholder="e.g. gpt-4o"
+                  className="w-full bg-void border border-white/10 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-cyanx/50"
+                />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button onClick={() => setShowAddModel(false)} className="flex-1 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-sm transition-colors">Cancel</button>
+                <button onClick={addModel} className="flex-1 px-4 py-2 rounded-lg bg-cyanx hover:bg-cyanx/80 text-void text-sm font-medium transition-colors">Add</button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
