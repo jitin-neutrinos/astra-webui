@@ -1319,7 +1319,18 @@ html.theme-fading body * {
 [data-theme="light"] .ai-sec::before { background:rgb(var(--light-c-50)); box-shadow: none }
 [data-theme="light"] .ai-sec:has(.ai-sec-pill.err)::before { background:linear-gradient(180deg, rgb(var(--light-c-51) / 0.45), rgb(var(--light-c-52) / 0.05)); }
 /* terminal window */
+/* Terminal window, human-readable form (owner 2026-10-03). The body is no longer a <pre>:
+   it is a stack of tone-tagged lines with a gutter, so errors/warnings/successes are scannable
+   and long logs have a visual anchor. Colours are all role tokens so every theme works. */
 .ai-term { border:1px solid rgb(var(--c-133) / 0.09); border-radius: 10px; background: var(--color-void); overflow: hidden; }
+.ai-term-summary { flex: none; font: 400 9px/1 var(--font-mono); letter-spacing: .04em; color: var(--color-muted); opacity: .75; padding: 0 6px; border-right:1px solid rgb(var(--c-96) / 0.12); }
+.ai-term-status { flex: none; font: 500 9px/1 var(--font-mono); letter-spacing: .05em; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; }
+.ai-term-status.is-ok  { color: var(--color-emerald); background: color-mix(in srgb, var(--color-emerald) 12%, transparent); }
+.ai-term-status.is-err { color: var(--color-redx); background: color-mix(in srgb, var(--color-redx) 14%, transparent); }
+.ai-term-status.is-run { color: var(--color-cyanx); background: color-mix(in srgb, var(--color-cyanx) 12%, transparent); }
+.ai-term-empty { padding: 10px 12px; font: 400 11.5px/1.4 var(--font-mono); color: var(--color-muted); opacity: .8; }
+.ai-term-more { padding: 6px 12px; font: 400 10.5px/1.4 var(--font-mono); color: var(--color-muted); opacity: .8; border-top:1px solid rgb(var(--c-96) / 0.08); }
+
 .ai-term-bar { display: flex; align-items: center; gap: 6px; padding: 3px 6px 3px 7px; background:rgb(var(--c-145) / 0.03); border-bottom:1px solid rgb(var(--c-96) / 0.07); }
 .ai-term-dots { display: inline-flex; gap: 3px; flex: none; }
 .ai-term-dots i { width: 6px; height: 6px; border-radius: 9999px; background:rgb(var(--c-146) / 0.16); }
@@ -1329,7 +1340,20 @@ html.theme-fading body * {
 .ai-term-copy:hover { color: var(--color-cyanx); border-color:rgb(var(--c-4) / 0.4); background:rgb(var(--c-19) / 0.08); }
 .ai-term-copy:active { transform: scale(0.92); }
 .ai-term-copy.is-copied { color:rgb(var(--c-23)); border-color:rgb(var(--c-151) / 0.4); background:rgb(var(--c-152) / 0.08); }
-.ai-term-body { margin: 0; padding: 9px 11px; font: 400 11.5px/1.6 var(--font-mono); color:rgb(var(--c-94)); white-space: pre-wrap; word-break: break-word; overflow-y: auto; }
+.ai-term-body { margin: 0; padding: 6px 0; font: 400 11.5px/1.65 var(--font-mono); color: rgb(var(--c-94)); overflow-y: auto; overflow-x: auto; }
+/* One row per output line: gutter + text. Tints come from role tokens so every theme works. */
+.ai-term-line { display: flex; align-items: flex-start; gap: 8px; padding: 0 11px; min-width: max-content; }
+.ai-term-line:hover { background: color-mix(in srgb, var(--color-brandtext) 4%, transparent); }
+.ai-term-ln { flex: none; width: 2.4em; text-align: right; user-select: none; color: var(--color-muted); opacity: .38; font-variant-numeric: tabular-nums; }
+.ai-term-tx { flex: 1 1 auto; white-space: pre-wrap; word-break: break-word; }
+.ai-term-line.tone-cmd  .ai-term-tx { color: var(--color-brandtext); font-weight: 500; }
+.ai-term-line.tone-cmd  { background: color-mix(in srgb, var(--color-cyanx) 6%, transparent); }
+.ai-term-line.tone-ok   .ai-term-tx { color: var(--color-emerald); }
+.ai-term-line.tone-warn .ai-term-tx { color: var(--color-amber); }
+.ai-term-line.tone-err  .ai-term-tx { color: var(--color-redx); }
+.ai-term-line.tone-dim  .ai-term-tx { color: var(--color-muted); opacity: .7; }
+/* Long tokens (paths, URLs, hashes) get their own scroll rather than splitting mid-token. */
+.ai-term-line.tone-plain .ai-term-tx { overflow-wrap: anywhere; }
 .ai-term-body:focus-visible { outline:1px solid rgb(var(--c-4) / 0.4); outline-offset: -1px; }
 [data-theme="light"] .ai-term { border-color:rgb(var(--light-c-53) / 0.11); background:rgb(var(--light-c-3)); }
 [data-theme="light"] .ai-term-bar { background:rgb(var(--light-c-54) / 0.03); border-bottom-color:rgb(var(--light-c-55) / 0.07); }

@@ -9,6 +9,7 @@
 
 import * as React from "react";
 import { useEffect, useMemo, useRef } from "react";
+import { formatTerminal } from "../../lib/term-format";
 
 import * as CollapsiblePrimitive from "@radix-ui/react-collapsible";
 import {
@@ -325,26 +326,59 @@ function AiToolCallFields({ label, fields, err }: { label: string; fields: IOFie
 // Terminal window (owner 2026-09-30 revamp): command + output live inside a
 // mac-style window with traffic lights, a title, and a copy button — replaces
 // the old stacked grey <pre> blocks.
-function TerminalWindow({ title, text, maxHeight }: { title?: string; text: string; maxHeight?: string }) {
+/**
+ * Terminal output, made readable for a person.
+ *
+ * The raw result string used to be dropped straight into a <pre>: ANSI colour escapes rendered
+ * as glyph soup, ISO timestamps stayed machine-formatted, single-line JSON blobs ran hundreds of
+ * characters wide, and a command looked identical to its output.
+ *
+ * Now the text goes through formatTerminal() (src/lib/term-format.ts): escapes stripped, CR
+ * progress lines collapsed, timestamps humanized, deep paths shortened, whole-JSON results
+ * pretty-printed with a count summary, and every line tone-tagged so errors/warnings/successes
+ * are scannable. Line numbers give a visual anchor for long logs.
+ */
+function TerminalWindow({ title, text, maxHeight, exitCode, status }: {
+  title?: string; text: string; maxHeight?: string;
+  exitCode?: number | null; status?: "running" | "completed" | "error";
+}) {
   const [copied, setCopied] = React.useState(false);
+  // Copy the SANITIZED text: pasting escape codes into another terminal is a different bug.
+  const { lines, omitted, summary, clean } = React.useMemo(() => {
+    const r = formatTerminal(text || "", { maxLines: 400 });
+    return { lines: r.lines, omitted: r.omitted, summary: r.summary, clean: r.lines.map((l) => l.text).join("\n") };
+  }, [text]);
   const onCopy = () => {
-    void copyText(text).then((ok) => {
+    void copyText(clean).then((ok) => {
       if (!ok) return;
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1600);
     });
   };
+  const shown = status === "error" ? "error" : (exitCode != null && exitCode !== 0) ? `exit ${exitCode}` : status === "running" ? "running" : null;
   return (
-    <div className="ai-term" data-slot="ai-terminal">
+    <div className="ai-term" data-slot="ai-terminal" data-status={status || undefined}>
       <div className="ai-term-bar">
         <span className="ai-term-dots" aria-hidden="true"><i /><i /><i /></span>
         <span className="ai-term-title">{title || "terminal"}</span>
+        {summary && <span className="ai-term-summary" title="result size">{summary}</span>}
+        {shown && <span className={cn("ai-term-status", status === "error" || (exitCode != null && exitCode !== 0) ? "is-err" : status === "running" ? "is-run" : "is-ok")}>{shown}</span>}
         <button type="button" className={cn("ai-term-copy", copied && "is-copied")} onClick={onCopy}
-          aria-label={copied ? "Copied" : "Copy"} title={copied ? "Copied" : "Copy"}>
+          aria-label={copied ? "Copied" : "Copy output"} title={copied ? "Copied" : "Copy output"}>
           {copied ? <Check className="size-2.5" /> : <Copy className="size-2.5" />}
         </button>
       </div>
-      <pre className="ai-term-body" style={maxHeight ? { maxHeight } : undefined} tabIndex={0}>{text}</pre>
+      <div className="ai-term-body" style={maxHeight ? { maxHeight } : undefined} tabIndex={0} role="region" aria-label={title || "terminal output"}>
+        {lines.length === 0 ? (
+          <div className="ai-term-empty">no output</div>
+        ) : lines.map((l) => (
+          <div key={l.n} className={`ai-term-line tone-${l.tone}`}>
+            <span className="ai-term-ln" aria-hidden="true">{l.n}</span>
+            <span className="ai-term-tx">{l.text || "\u00a0"}</span>
+          </div>
+        ))}
+        {omitted > 0 && <div className="ai-term-more">{omitted} more lines omitted</div>}
+      </div>
     </div>
   );
 }

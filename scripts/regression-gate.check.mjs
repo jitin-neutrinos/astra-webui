@@ -370,6 +370,13 @@ export const REGRESSIONS = [
       "Canvas fences emitted in a real-world shape (bare block, `blocks` as an item list, NDJSON, misnested ```kpi fence, unquoted keys) degraded to raw JSON instead of rendering as a card.",
     guard: "src/lib/canvas-replay.check.ts",
   },
+  {
+    id: "RG-057",
+    found: "2026-10-03",
+    symptom:
+      "Terminal/tool output rendered raw: ANSI escape codes showed as glyph soup, ISO timestamps stayed machine-formatted, and a single-line JSON result ran hundreds of characters wide. The formatter's own ISO pattern also omitted the seconds field, so EVERY real timestamp failed to humanize (caught by this check).",
+    guard: "src/lib/term-format.check.ts",
+  },
 ];
 
 // ---- gate -----------------------------------------------------------------
