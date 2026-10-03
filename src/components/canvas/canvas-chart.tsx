@@ -21,7 +21,11 @@ import {
 } from "recharts";
 import type { ChartBlock } from "../../lib/canvas-schema";
 
-export const SERIES_COLORS = ["var(--color-cyanx)", "var(--color-violetx)", "var(--color-fuchsiax)"];
+export const SERIES_COLORS = [
+  "var(--color-cyanx)",
+  "color-mix(in srgb, var(--color-cyanx) 72%, transparent)",
+  "color-mix(in srgb, var(--color-cyanx) 48%, transparent)",
+];
 
 type AnyTooltip = TooltipProps<number, string> & { payload?: any[] };
 

@@ -249,9 +249,9 @@ export function StepsView({ block }: { block: StepsBlock }) {
 // leading dot — the callout still reads info/warn/danger at a glance.
 const CALLOUT_TONE: Record<string, string> = {
   info: "var(--color-cyanx)",
-  success: "#34d399",
-  warn: "#fbbf24",
-  danger: "#f87171",
+  success: "var(--color-cyanx)",
+  warn: "var(--color-cyanx)",
+  danger: "var(--color-cyanx)",
 };
 
 export function CalloutView({ block }: { block: CalloutBlock }) {
@@ -592,8 +592,8 @@ export function AccordionView({ block }: { block: AccordionBlock }) {
 // ---- Terminal -----------------------------------------------------------------
 
 const TERM_TONE: Record<string, string | undefined> = {
-  stdout: undefined, info: "var(--color-cyanx)", success: "#34d399",
-  stderr: "#f87171", dim: "var(--color-muted)",
+  stdout: undefined, info: "var(--color-cyanx)", success: "var(--color-cyanx)",
+  stderr: "var(--color-cyanx)", dim: "var(--color-muted)",
 };
 
 export function TerminalView({ block }: { block: TerminalBlock }) {

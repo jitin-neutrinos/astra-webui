@@ -2965,12 +2965,12 @@ html.theme-fading body * {
   letter-spacing: 0.04em;
 }
 .ast-cv-kpi-delta.up {
-  color: #34d399;
-  background: rgba(52, 211, 153, 0.1);
+  color: var(--color-cyanx);
+  background: color-mix(in srgb, var(--color-cyanx) 10%, transparent);
 }
 .ast-cv-kpi-delta.down {
-  color: #f87171;
-  background: rgba(248, 113, 113, 0.1);
+  color: var(--color-cyanx);
+  background: color-mix(in srgb, var(--color-cyanx) 10%, transparent);
 }
 
 /* Chart — plot floats, no grid. Owner 2026-10-03: the old box grid + axis
@@ -3143,8 +3143,8 @@ html.theme-fading body * {
   text-align: center;
   flex: none;
 }
-.ast-cv-check.done .ast-cv-check-glyph { color: #34d399; }
-.ast-cv-check.fail .ast-cv-check-glyph { color: #f87171; }
+.ast-cv-check.done .ast-cv-check-glyph { color: var(--color-cyanx); }
+.ast-cv-check.fail .ast-cv-check-glyph { color: var(--color-cyanx); }
 .ast-cv-check.open .ast-cv-check-glyph { color: var(--color-muted); }
 .ast-cv-check-text { color: var(--color-brandtext); }
 
@@ -3177,9 +3177,9 @@ html.theme-fading body * {
   color: var(--color-cyanx);
   flex: none;
 }
-.ast-cv-step.done .ast-cv-step-marker { background: rgba(52, 211, 153, 0.15); color: #34d399; }
+.ast-cv-step.done .ast-cv-step-marker { background: color-mix(in srgb, var(--color-cyanx) 15%, transparent); color: var(--color-cyanx); }
 .ast-cv-step.active .ast-cv-step-marker { background: color-mix(in srgb, var(--color-cyanx) 20.0%, transparent); color: var(--color-cyanx); }
-.ast-cv-step.fail .ast-cv-step-marker { background: rgba(248, 113, 113, 0.15); color: #f87171; }
+.ast-cv-step.fail .ast-cv-step-marker { background: color-mix(in srgb, var(--color-cyanx) 15%, transparent); color: var(--color-cyanx); }
 .ast-cv-step-body { flex: 1; }
 .ast-cv-step-title {
   display: block;
@@ -3219,9 +3219,9 @@ html.theme-fading body * {
 .ast-cv-callout.success { border-color: rgb(var(--c-89) / 0.1); }
 .ast-cv-callout.warn { border-color: rgb(var(--c-89) / 0.1); }
 .ast-cv-callout.danger { border-color: rgb(var(--c-89) / 0.1); }
-.ast-cv-callout.warn .ast-cv-callout-title { color: #fbbf24; }
-.ast-cv-callout.danger .ast-cv-callout-title { color: #f87171; }
-.ast-cv-callout.success .ast-cv-callout-title { color: #34d399; }
+.ast-cv-callout.warn .ast-cv-callout-title { color: var(--color-cyanx); }
+.ast-cv-callout.danger .ast-cv-callout-title { color: var(--color-cyanx); }
+.ast-cv-callout.success .ast-cv-callout-title { color: var(--color-cyanx); }
 .ast-cv-callout-title {
   margin: 0 0 4px;
   font: 600 11.5px/1.3 var(--font-sans);
@@ -3309,8 +3309,8 @@ html.theme-fading body * {
   background: var(--color-cyanx);
   transition: width 600ms var(--ease-brand);
 }
-.ast-cv-progress.warn .ast-cv-progress-fill { background: #fbbf24; }
-.ast-cv-progress.fail .ast-cv-progress-fill { background: #f87171; }
+.ast-cv-progress.warn .ast-cv-progress-fill { background: var(--color-cyanx); }
+.ast-cv-progress.fail .ast-cv-progress-fill { background: var(--color-cyanx); }
 .ast-cv-progress-detail {
   display: block;
   margin-top: 6px;
@@ -3358,9 +3358,9 @@ html.theme-fading body * {
   background: rgb(var(--c-89) / 0.12);
 }
 .ast-cv-tl-item:last-child .ast-cv-tl-rail::before { bottom: 50%; }
-.ast-cv-tl-item.done .ast-cv-tl-dot { background: #34d399; }
+.ast-cv-tl-item.done .ast-cv-tl-dot { background: var(--color-cyanx); }
 .ast-cv-tl-item.active .ast-cv-tl-dot { background: var(--color-cyanx); }
-.ast-cv-tl-item.fail .ast-cv-tl-dot { background: #f87171; }
+.ast-cv-tl-item.fail .ast-cv-tl-dot { background: var(--color-cyanx); }
 .ast-cv-tl-body {
   padding-bottom: 14px;
   flex: 1;
@@ -3457,8 +3457,8 @@ html.theme-fading body * {
   flex: none;
   width: 10px;
 }
-.ast-cv-cmp-point.pro .ast-cv-cmp-mark { color: #34d399; }
-.ast-cv-cmp-point.con .ast-cv-cmp-mark { color: #f87171; }
+.ast-cv-cmp-point.pro .ast-cv-cmp-mark { color: var(--color-cyanx); }
+.ast-cv-cmp-point.con .ast-cv-cmp-mark { color: var(--color-cyanx); }
 .ast-cv-cmp-point.neutral .ast-cv-cmp-mark { color: var(--color-muted); }
 
 /* Tree ---------------------------------------------------------------------- */
@@ -3762,8 +3762,8 @@ a.ast-cv-ref-link:hover { border-bottom-color: var(--color-cyanx); }
   font: 600 10px/1 var(--font-mono);
   flex: none;
 }
-.ast-cv-diff-stats .add { color: #34d399; }
-.ast-cv-diff-stats .del { color: #f87171; }
+.ast-cv-diff-stats .add { color: var(--color-cyanx); }
+.ast-cv-diff-stats .del { color: var(--color-cyanx); }
 .ast-cv-diff-body { overflow-x: auto; }
 .ast-cv-diff-hunk + .ast-cv-diff-hunk { margin-top: 2px; }
 .ast-cv-diff-hdr {
@@ -3789,10 +3789,10 @@ a.ast-cv-ref-link:hover { border-bottom-color: var(--color-cyanx); }
   border-right: 1px solid rgb(var(--c-89) / 0.05);
 }
 .ast-cv-dl-text { padding-left: 8px; min-width: 0; }
-.ast-cv-dl.add { background: rgba(52, 211, 153, 0.08); }
-.ast-cv-dl.add .ast-cv-dl-mark { color: #34d399; }
-.ast-cv-dl.del { background: rgba(248, 113, 113, 0.07); }
-.ast-cv-dl.del .ast-cv-dl-mark { color: #f87171; }
+.ast-cv-dl.add { background: color-mix(in srgb, var(--color-cyanx) 8%, transparent); }
+.ast-cv-dl.add .ast-cv-dl-mark { color: var(--color-cyanx); }
+.ast-cv-dl.del { background: color-mix(in srgb, var(--color-cyanx) 7%, transparent); }
+.ast-cv-dl.del .ast-cv-dl-mark { color: var(--color-cyanx); }
 .ast-cv-dl.ctx .ast-cv-dl-mark { color: var(--color-muted); }
 
 /* Heatmap ------------------------------------------------------------------- */
@@ -3927,8 +3927,8 @@ a.ast-cv-ref-link:hover { border-bottom-color: var(--color-cyanx); }
 [data-theme="light"] .ast-cv-diff { background: #f8fafc; border-color: color-mix(in srgb, var(--color-brandtext) 10.0%, transparent); }
 [data-theme="light"] .ast-cv-heat { background: #f8fafc; border-color: color-mix(in srgb, var(--color-brandtext) 9.0%, transparent); }
 [data-theme="light"] .ast-cv-diff-head { background: color-mix(in srgb, var(--color-brandtext) 4.0%, transparent); }
-[data-theme="light"] .ast-cv-dl.add { background: rgba(52, 211, 153, 0.1); }
-[data-theme="light"] .ast-cv-dl.del { background: rgba(248, 113, 113, 0.09); }
+[data-theme="light"] .ast-cv-dl.add { background: color-mix(in srgb, var(--color-cyanx) 10%, transparent); }
+[data-theme="light"] .ast-cv-dl.del { background: color-mix(in srgb, var(--color-cyanx) 9%, transparent); }
 [data-theme="light"] .ast-cv-tab.on { color: var(--color-cyanx); }
 
 /* ---- Layout hardening: nothing hangs or clips, desktop → 360px ----------- */
@@ -4079,8 +4079,8 @@ a.ast-cv-ref-link:hover { border-bottom-color: var(--color-cyanx); }
   border-radius: 5px;
   font: 600 10px/1.4 var(--font-mono);
 }
-.ast-cv-term-exit.ok { color: #34d399; background: rgba(52, 211, 153, 0.12); }
-.ast-cv-term-exit.bad { color: #f87171; background: rgba(248, 113, 113, 0.12); }
+.ast-cv-term-exit.ok { color: var(--color-cyanx); background: color-mix(in srgb, var(--color-cyanx) 12%, transparent); }
+.ast-cv-term-exit.bad { color: var(--color-cyanx); background: color-mix(in srgb, var(--color-cyanx) 12%, transparent); }
 
 /* Badges ---------------------------------------------------------------- */
 .ast-cv-badges {
@@ -4104,9 +4104,9 @@ a.ast-cv-ref-link:hover { border-bottom-color: var(--color-cyanx); }
 }
 .ast-cv-badge.neutral { color: var(--color-muted); border-color: rgb(var(--c-89) / 0.16); }
 .ast-cv-badge.info { color: var(--color-cyanx); background: color-mix(in srgb, var(--color-cyanx) 12%, transparent); }
-.ast-cv-badge.success { color: #34d399; background: rgba(52, 211, 153, 0.1); }
-.ast-cv-badge.warn { color: #fbbf24; background: rgba(251, 191, 36, 0.1); }
-.ast-cv-badge.danger { color: #f87171; background: rgba(248, 113, 113, 0.1); }
+.ast-cv-badge.success { color: var(--color-cyanx); background: color-mix(in srgb, var(--color-cyanx) 10%, transparent); }
+.ast-cv-badge.warn { color: var(--color-cyanx); background: color-mix(in srgb, var(--color-cyanx) 10%, transparent); }
+.ast-cv-badge.danger { color: var(--color-cyanx); background: color-mix(in srgb, var(--color-cyanx) 10%, transparent); }
 
 /* Divider --------------------------------------------------------------- */
 .ast-cv-divider {
@@ -4134,9 +4134,9 @@ a.ast-cv-ref-link:hover { border-bottom-color: var(--color-cyanx); }
 [data-theme="light"] .ast-cv-term { background: #f8fafc; border-color: color-mix(in srgb, var(--color-brandtext) 9.0%, transparent); }
 [data-theme="light"] .ast-cv-acc-trigger:hover { background: color-mix(in srgb, var(--color-brandtext) 4.0%, transparent); }
 [data-theme="light"] .ast-cv-term-head { background: color-mix(in srgb, var(--color-brandtext) 4.0%, transparent); }
-[data-theme="light"] .ast-cv-badge.success { background: rgba(52, 211, 153, 0.14); }
-[data-theme="light"] .ast-cv-badge.warn { background: rgba(251, 191, 36, 0.14); }
-[data-theme="light"] .ast-cv-badge.danger { background: rgba(248, 113, 113, 0.12); }
+[data-theme="light"] .ast-cv-badge.success { background: color-mix(in srgb, var(--color-cyanx) 14%, transparent); }
+[data-theme="light"] .ast-cv-badge.warn { background: color-mix(in srgb, var(--color-cyanx) 14%, transparent); }
+[data-theme="light"] .ast-cv-badge.danger { background: color-mix(in srgb, var(--color-cyanx) 12%, transparent); }
 [data-theme="light"] .ast-cv-div-line { background: color-mix(in srgb, var(--color-brandtext) 12.0%, transparent); }
 [data-theme="light"] .ast-cv-divider.bare { border-top-color: color-mix(in srgb, var(--color-brandtext) 12.0%, transparent); }
 
