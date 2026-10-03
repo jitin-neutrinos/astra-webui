@@ -63,6 +63,13 @@ function syncThemeColorMeta(mode: ThemeMode) {
   for (const [name, keep] of ramp) {
     root.style.setProperty(name, `color-mix(in oklab, ${ink} ${keep}%, ${ground})`);
   }
+  // Skeleton greys. Same idea as the slate ramp — re-derived from the ACTIVE palette so a
+  // skeleton is never left carrying the previous theme's grey (and never carries the accent,
+  // which is what made some of them orange and others blue). Set here rather than in the
+  // stylesheet so a palette swap that only rewrites inline --color-* props still moves them.
+  const pct = SKEL_PCT[mode];
+  root.style.setProperty("--ast-sk-fill", neutralGrey(ink, ground, pct.fill));
+  root.style.setProperty("--ast-sk-sweep", neutralGrey(ink, ground, pct.sweep));
 }
 
 // hex -> [r,g,b]
@@ -79,6 +86,45 @@ function deriveShade(oldChannels: string, oldAccent: [number, number, number], n
   if (ch.length !== 3 || ch.some((x) => !Number.isFinite(x))) return newAccent.join(" ");
   return [0, 1, 2].map((i) => Math.max(0, Math.min(255, Math.round(newAccent[i] * (ch[i] / (oldAccent[i] || 1)))))).join(" ");
 }
+
+/** A hue-free grey at a given fraction of the way from a palette's ground to its ink.
+ *
+ *  WHY THIS EXISTS (owner 2026-10-03): every skeleton loader painted its shimmer from `--c-69`,
+ *  which the tokenizer annotates `cyanx` — the theme ACCENT. So one skeleton was cyan under
+ *  Astra, sky blue under Water and ORANGE under Fire (#ff5c1f): exactly the "some orange, some
+ *  blue" report. The fills were already neutral; only the sweep carried hue.
+ *
+ *  WHY NOT color-mix ALONE: mixing void with brandtext still leaves each palette's cast
+ *  (measured sat 0.13 Fire, 0.29 Water in dark). So interpolate in oklab, take ONLY the
+ *  lightness component, and rebuild as an achromatic colour of that lightness (chroma pinned 0).
+ *  The result is a true neutral that still sits at the right contrast against that palette's
+ *  ground — see SKEL_PCT for the tuned percentages and .ast-sk in index.css for the measured ratios. */
+function neutralGrey(inkHex: string, groundHex: string, pct: number): string {
+  const lin = (v: number) => {
+    const c = v / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  const unlin = (c: number) => (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055);
+  // oklab cone lightness = cbrt(linear RGB . LMS matrix)
+  const lightness = (hex: string) => {
+    const [r, g, b] = rgbOfHex(hex).map(lin) as [number, number, number];
+    return Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  };
+  const L = lightness(groundHex) + (lightness(inkHex) - lightness(groundHex)) * pct;
+  // Rebuild as achromatic: for a grey all three cone responses are equal, so feed L^3 back
+  // through the linear-RGB matrix on every channel. That pins chroma to exactly 0.
+  const k = L * L * L;
+  const ch = [
+    0.4122214708 * k + 0.5363325363 * k + 0.0514459929 * k,
+    0.2119034982 * k + 0.6806995451 * k + 0.1073969566 * k,
+    0.0883024619 * k + 0.2817188376 * k + 0.6299787005 * k,
+  ];
+  return "#" + ch.map((v) => Math.max(0, Math.min(255, Math.round(unlin(v) * 255))).toString(16).padStart(2, "0")).join("");
+}
+
+// Ink percentages for the skeleton scale. Dark needs more ink than light to reach the same
+// visual weight; the sweep is a fixed step further along the same axis.
+const SKEL_PCT = { dark: { fill: 0.22, sweep: 0.34 }, light: { fill: 0.10, sweep: 0.26 } } as const;
 
 export function applyPalette(p: Palette, mode: ThemeMode = getMode()) {
   const source = mode === "light" ? p.variants.light : p.variants.dark;

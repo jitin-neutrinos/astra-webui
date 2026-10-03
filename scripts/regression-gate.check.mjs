@@ -377,6 +377,20 @@ export const REGRESSIONS = [
       "Terminal/tool output rendered raw: ANSI escape codes showed as glyph soup, ISO timestamps stayed machine-formatted, and a single-line JSON result ran hundreds of characters wide. The formatter's own ISO pattern also omitted the seconds field, so EVERY real timestamp failed to humanize (caught by this check).",
     guard: "src/lib/term-format.check.ts",
   },
+  {
+    id: "RG-058",
+    found: "2026-10-03",
+    symptom:
+      "Terminal / code-execute / edit-file cards duplicated the word 'output': tool results are persisted as a JSON envelope ({\"output\": \"...\", \"exit_code\": 0}) and the terminal window rendered the ENVELOPE — a `\"output\":` key line, the escaped payload on the next line, and `exit_code` as if it were output. Also pins the chat feed memo's dependency list, which is what keeps a keystroke from rebuilding the whole transcript.",
+    guard: "src/lib/term-envelope.check.ts",
+  },
+  {
+    id: "RG-059",
+    found: "2026-10-03",
+    symptom:
+      "Skeletal loaders were theme-coloured instead of grey: the shimmer sweep painted from --c-69 (annotated cyanx, i.e. the theme ACCENT), so one skeleton read cyan under Astra, sky blue under Water and ORANGE under Fire; the canvas doc placeholder painted from --c-89 (annotated redx) and went red under Fire; the config page hardcoded bg-white/5, invisible in light mode. All skeleton fills/sweeps now read --ast-sk-fill / --ast-sk-sweep, which theme-store re-derives per palette as a chroma-free grey.",
+    guard: "src/lib/skeleton-grey.check.ts",
+  },
 ];
 
 // ---- gate -----------------------------------------------------------------

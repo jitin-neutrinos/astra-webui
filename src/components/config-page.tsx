@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { ArrowLeft, Check, Loader2, Undo, Download, Upload, AlertTriangle, Search, ChevronDown, ChevronRight, RefreshCw, Brain, Cpu, Zap, Shield, Database, Plus, X, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type SchemaField = {
   type: string;
@@ -325,9 +326,9 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
     return (
       <div className="flex-1 overflow-auto bg-void text-brandtext p-6 lg:p-10 font-sans">
         <div className="max-w-3xl mx-auto space-y-6">
-          <div className="h-8 bg-white/5 rounded w-48 animate-pulse mb-8" />
+          <Skeleton className="h-8 w-48 rounded" />
           {[1, 2, 3, 4].map(i => (
-            <div key={i} className="h-32 bg-white/5 rounded-2xl animate-pulse" />
+            <Skeleton key={i} className="h-32 w-full rounded-2xl" />
           ))}
         </div>
       </div>
