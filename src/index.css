@@ -616,7 +616,11 @@ html.theme-fading body * {
 
 /* shell root: dvh so composer + sidebar bottoms stick to the real viewport
    (100vh overhangs on mobile browsers with collapsing URL bars) */
-.app-shell { height: 100vh; padding-top: var(--native-inset-top); padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--kb, 0px)); box-sizing: border-box; }
+/* Content bounds: the interactive chrome is inset by the injected --native-inset-* (set from
+   env(safe-area-inset-*) by shell-theme.ts, with a measured fallback). The env() fallbacks here
+   mean the content is already inside its bounds on the FIRST paint, before that JS runs —
+   without them a cold start briefly bleeds under the bars. */
+.app-shell { height: 100vh; padding-top: var(--native-inset-top, env(safe-area-inset-top, 0px)); padding-bottom: calc(var(--native-inset-bottom, env(safe-area-inset-bottom, 0px)) + var(--kb, 0px)); box-sizing: border-box; }
 @supports (height: 100dvh) { .app-shell { height: 100dvh; } }
 
 /* Non-chat page headers live inside .app-shell — covered by the shell's top pad. */
