@@ -3615,3 +3615,370 @@ a.ast-cv-ref-link:hover { border-bottom-color: var(--color-cyanx); }
   .ast-canvas-spin { animation: none; }
   .ast-canvas-live .ast-cv-item { animation: none; }
 }
+
+/* ==========================================================================
+   CANVAS v3 — quote · keyvalue · diff · heatmap · tabs · sparkline · donut/stack
+   + layout hardening (no hanging/cut-off text at any width). Same laws:
+   rounded rectangles, brand tokens, dark glows only, DM Sans + JetBrains Mono.
+   ========================================================================== */
+
+/* Sparkline (KPI tail) ------------------------------------------------------ */
+.ast-cv-spark {
+  display: block;
+  width: 68px;
+  height: 22px;
+  margin-top: 6px;
+  color: var(--color-cyanx);
+}
+.ast-cv-spark.down { color: var(--color-redx); }
+[data-theme="light"] .ast-cv-spark { color: var(--color-cyanx); }
+[data-theme="light"] .ast-cv-spark.down { color: var(--color-redx); }
+
+/* Donut center readout ------------------------------------------------------ */
+.ast-cv-donut { position: relative; }
+.ast-cv-donut-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  pointer-events: none;
+}
+.ast-cv-donut-total {
+  font: 700 17px/1 var(--font-sans);
+  color: var(--color-brandtext);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.ast-cv-donut-caption {
+  font: 500 9px/1 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-muted);
+}
+
+/* Quote --------------------------------------------------------------------- */
+.ast-cv-quote {
+  margin: 0;
+  padding: 12px 14px 10px;
+  border: 1px solid rgb(var(--c-89) / 0.08);
+  border-radius: 10px;
+  background: rgb(var(--c-65) / 0.03);
+}
+.ast-cv-quote-text {
+  margin: 0;
+  font: 400 13px/1.55 var(--font-sans);
+  color: var(--color-brandtext);
+}
+.ast-cv-quote-text::before { content: "“"; color: var(--color-cyanx); font-weight: 700; }
+.ast-cv-quote-text::after { content: "”"; color: var(--color-cyanx); font-weight: 700; }
+.ast-cv-quote-cite {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 7px;
+  font-size: 10.5px;
+  color: var(--color-muted);
+}
+.ast-cv-quote-att { font-weight: 600; color: var(--color-brandtext); }
+.ast-cv-quote-role::before { content: "· "; opacity: 0.6; }
+.ast-cv-quote-ctx { font-style: italic; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* Key/value ----------------------------------------------------------------- */
+.ast-cv-kv {
+  border: 1px solid rgb(var(--c-89) / 0.08);
+  border-radius: 10px;
+  padding: 4px 14px;
+}
+.ast-cv-kv-title {
+  display: block;
+  margin: 8px 0 2px;
+  font: 600 11px/1.2 var(--font-sans);
+  color: var(--color-brandtext);
+}
+.ast-cv-kv-list { margin: 0; }
+.ast-cv-kv-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid rgb(var(--c-89) / 0.05);
+}
+.ast-cv-kv-row:last-child { border-bottom: none; }
+.ast-cv-kv-key {
+  font: 400 11.5px/1.4 var(--font-sans);
+  color: var(--color-muted);
+  flex: none;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ast-cv-kv-val {
+  margin: 0;
+  font: 600 12px/1.4 var(--font-sans);
+  color: var(--color-brandtext);
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ast-cv-kv-val.mono {
+  font: 600 11px/1.4 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Diff ---------------------------------------------------------------------- */
+.ast-cv-diff {
+  margin: 0;
+  border: 1px solid rgb(var(--c-89) / 0.1);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bubble-ai-code-bg);
+}
+.ast-cv-diff-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 12px;
+  background: rgb(var(--c-89) / 0.05);
+  border-bottom: 1px solid rgb(var(--c-89) / 0.08);
+}
+.ast-cv-diff-name {
+  font: 500 11px/1 var(--font-mono);
+  color: var(--color-brandtext);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.ast-cv-diff-stats {
+  display: inline-flex;
+  gap: 8px;
+  font: 600 10px/1 var(--font-mono);
+  flex: none;
+}
+.ast-cv-diff-stats .add { color: #34d399; }
+.ast-cv-diff-stats .del { color: #f87171; }
+.ast-cv-diff-body { overflow-x: auto; }
+.ast-cv-diff-hunk + .ast-cv-diff-hunk { margin-top: 2px; }
+.ast-cv-diff-hdr {
+  display: block;
+  padding: 5px 12px;
+  font: 500 10px/1.4 var(--font-mono);
+  color: var(--color-muted);
+  background: rgb(var(--c-89) / 0.04);
+  border-bottom: 1px solid rgb(var(--c-89) / 0.05);
+}
+.ast-cv-dl {
+  display: flex;
+  gap: 0;
+  font: 400 11px/1.55 var(--font-mono);
+  white-space: pre;
+}
+.ast-cv-dl-mark {
+  flex: none;
+  width: 22px;
+  text-align: center;
+  user-select: none;
+  opacity: 0.85;
+  border-right: 1px solid rgb(var(--c-89) / 0.05);
+}
+.ast-cv-dl-text { padding-left: 8px; min-width: 0; }
+.ast-cv-dl.add { background: rgba(52, 211, 153, 0.08); }
+.ast-cv-dl.add .ast-cv-dl-mark { color: #34d399; }
+.ast-cv-dl.del { background: rgba(248, 113, 113, 0.07); }
+.ast-cv-dl.del .ast-cv-dl-mark { color: #f87171; }
+.ast-cv-dl.ctx .ast-cv-dl-mark { color: var(--color-muted); }
+
+/* Heatmap ------------------------------------------------------------------- */
+.ast-cv-heat {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid rgb(var(--c-89) / 0.08);
+  border-radius: 10px;
+  overflow-x: auto;
+}
+.ast-cv-heat-title {
+  display: block;
+  margin: 0 0 10px;
+  font: 500 11.5px/1.2 var(--font-sans);
+  color: var(--color-brandtext);
+}
+.ast-cv-heat-grid {
+  display: grid;
+  gap: 2px;
+  min-width: max-content;
+  margin: 0 auto;
+}
+.ast-cv-heat-col {
+  font: 500 9px/1.2 var(--font-mono);
+  text-align: center;
+  color: var(--color-muted);
+  padding-bottom: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ast-cv-heat-row {
+  font: 500 10px/1.2 var(--font-mono);
+  color: var(--color-muted);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 7px;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ast-cv-heat-cell {
+  height: 24px;
+  min-width: 26px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ast-cv-heat-val {
+  font: 600 9.5px/1 var(--font-mono);
+  color: var(--color-brandtext);
+  font-variant-numeric: tabular-nums;
+}
+.ast-cv-heat-scale {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  margin-top: 9px;
+}
+.ast-cv-heat-scale-label {
+  font: 500 8.5px/1 var(--font-mono);
+  color: var(--color-muted);
+  margin: 0 3px;
+  text-transform: uppercase;
+}
+.ast-cv-heat-step {
+  width: 10px;
+  height: 8px;
+  border-radius: 2px;
+}
+@media (max-width: 640px) {
+  .ast-cv-heat-row { max-width: 72px; }
+  .ast-cv-heat-cell { min-width: 22px; height: 22px; }
+}
+
+/* Tabs ---------------------------------------------------------------------- */
+.ast-cv-tabs {
+  border: 1px solid rgb(var(--c-89) / 0.08);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.ast-cv-tablist {
+  display: flex;
+  gap: 2px;
+  padding: 6px 6px 0;
+  border-bottom: 1px solid rgb(var(--c-89) / 0.07);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.ast-cv-tablist::-webkit-scrollbar { display: none; }
+.ast-cv-tab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 7px 12px 8px;
+  border-radius: 7px 7px 0 0;
+  font: 600 11px/1 var(--font-sans);
+  color: var(--color-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  position: relative;
+  transition: color 140ms var(--ease-brand), background 140ms var(--ease-brand);
+}
+.ast-cv-tab::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: transparent;
+  transition: background 140ms var(--ease-brand);
+}
+.ast-cv-tab:hover { color: var(--color-brandtext); }
+.ast-cv-tab.on { color: var(--color-cyanx); }
+.ast-cv-tab.on::after { background: var(--color-cyanx); }
+.ast-cv-tabpanel { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 12px; }
+.ast-cv-tabpanel > * { margin: 0; width: 100%; }
+.ast-cv-tabpanel > .ast-cv-group.rows { width: 100%; }
+
+/* Light mode: v3 surfaces get the same neutral elevation --------------------- */
+[data-theme="light"] .ast-cv-quote,
+[data-theme="light"] .ast-cv-kv,
+[data-theme="light"] .ast-cv-tabs {
+  background: #f8fafc;
+  border-color: color-mix(in srgb, var(--color-brandtext) 9.0%, transparent);
+}
+[data-theme="light"] .ast-cv-diff { background: #f8fafc; border-color: color-mix(in srgb, var(--color-brandtext) 10.0%, transparent); }
+[data-theme="light"] .ast-cv-heat { background: #f8fafc; border-color: color-mix(in srgb, var(--color-brandtext) 9.0%, transparent); }
+[data-theme="light"] .ast-cv-diff-head { background: color-mix(in srgb, var(--color-brandtext) 4.0%, transparent); }
+[data-theme="light"] .ast-cv-dl.add { background: rgba(52, 211, 153, 0.1); }
+[data-theme="light"] .ast-cv-dl.del { background: rgba(248, 113, 113, 0.09); }
+[data-theme="light"] .ast-cv-tab.on { color: var(--color-cyanx); }
+
+/* ---- Layout hardening: nothing hangs or clips, desktop → 360px ----------- */
+/* Value+unit pairs and label:value rows must wrap as ONE unit, never split. */
+.ast-cv-kpi-value, .ast-cv-kpi-delta, .ast-cv-progress-value, .ast-cv-donut-total {
+  white-space: nowrap;
+}
+/* Long unbroken values (paths, hashes, URLs) break instead of overflowing. */
+.ast-cv-kv-val, .ast-cv-dl-text, .ast-cv-code-body, .ast-cv-heat-row,
+.ast-cv-diff-name, .ast-cv-quote-ctx {
+  overflow-wrap: anywhere;
+}
+/* KPI rows: hold 4 tiles on desktop, collapse 2-up on phones, 1-up on 360px.
+   CRITICAL: the flex/grid chain down to the tile must allow shrinking
+   (min-width:0 at every level), or a nowrap label forces the grid column
+   open and the whole document scrolls sideways on phones. */
+.ast-cv-item { min-width: 0; }
+.ast-cv-group.rows {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+@media (max-width: 480px) {
+  .ast-cv-group.rows { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ast-cv-kpi { min-width: 0; }
+  .ast-cv-kpi-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ast-cv-kpi-row { flex-wrap: wrap; }
+}
+@media (max-width: 400px) {
+  .ast-cv-group.rows { grid-template-columns: 1fr; }
+}
+/* Baseline alignment keeps delta chips from hanging below the number. */
+.ast-cv-kpi-row { align-items: baseline; }
+.ast-cv-kpi-delta { flex: none; max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Table cells never clip mid-glyph: wrap long content instead. */
+.ast-cv-table td, .ast-cv-table th { overflow-wrap: anywhere; }
+/* Timeline/compare heads keep their time/badge on the line's end; long titles wrap first. */
+.ast-cv-tl-title { min-width: 0; overflow-wrap: anywhere; }
+.ast-cv-cmp-name { overflow-wrap: anywhere; }
+/* Diagram nodes wrap long labels instead of exploding the column. */
+.ast-cv-node-label, .ast-cv-node-detail { overflow-wrap: anywhere; }
+/* References notes wrap; long titles break words rather than overflow the card. */
+.ast-cv-ref-link { overflow-wrap: anywhere; }
+/* Canvas body top gap: cards never kiss the header rule. */
+.ast-canvas-body { padding-top: 2px; }
+/* Tree detail takes the remaining width only; long details ellipsize on one row. */
+.ast-cv-tree-row { flex-wrap: wrap; }
+.ast-cv-tree-detail { flex: 1 1 100%; min-width: 0; }
+@media (min-width: 641px) {
+  .ast-cv-tree-row { flex-wrap: nowrap; }
+  .ast-cv-tree-detail { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+/* Heatmap keeps its grid centred and scrolls horizontally when wide. */
+.ast-cv-heat-grid { max-width: 100%; }
+

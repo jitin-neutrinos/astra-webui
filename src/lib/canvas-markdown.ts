@@ -6,7 +6,8 @@ function blockToMd(b: CanvasBlock): string {
   switch (b.type) {
     case "kpi": {
       const d = b.delta != null ? ` (${b.trend === "up" ? "↑" : b.trend === "down" ? "↓" : ""} ${b.delta})` : "";
-      return `- **${b.label}:** ${b.value}${d}`;
+      const s = b.spark && b.spark.length >= 3 ? ` · trend: ${b.spark.map((x) => Math.round(x * 10) / 10).join(", ")}` : "";
+      return `- **${b.label}:** ${b.value}${d}${s}`;
     }
     case "chart": {
       const head = `**${b.title || b.chart + " chart"}**`;
@@ -48,6 +49,20 @@ function blockToMd(b: CanvasBlock): string {
       return `\`\`\`${b.language || ""}\n${b.code}\n\`\`\``;
     case "references":
       return b.items.map((it, i) => `${i + 1}. [${it.title}](${it.href || ""})${it.note ? ` — ${it.note}` : ""}`).join("\n");
+    case "quote":
+      return `> ${b.text}${b.attribution ? `\n> — **${b.attribution}**${b.role ? `, ${b.role}` : ""}` : ""}`;
+    case "keyvalue":
+      return `${b.title ? `**${b.title}**\n` : ""}${b.items.map((it) => `- **${it.key}:** ${it.value}`).join("\n")}`;
+    case "diff":
+      return `${b.filename ? `**${b.filename}**\n\n` : ""}${b.hunks.map((h) => `${h.header ? `${h.header}\n` : ""}${h.lines.map((l) => `${l.op === "add" ? "+" : l.op === "del" ? "-" : " "} ${l.text}`).join("\n")}`).join("\n\n")}`;
+    case "heatmap": {
+      const head = `| ${["", ...b.cols].join(" | ")} |`;
+      const sep = `|${["", ...b.cols].map(() => "---").join("|")}|`;
+      const rows = b.rows.map((r, i) => `| ${[r, ...b.values[i]].join(" | ")} |`);
+      return [head, sep, ...rows].join("\n");
+    }
+    case "tabs":
+      return b.items.map((it) => `**${it.label}**\n\n${it.blocks.map(blockToMd).join("\n\n")}`).join("\n\n---\n\n");
   }
 }
 

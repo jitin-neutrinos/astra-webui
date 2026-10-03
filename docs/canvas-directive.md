@@ -36,12 +36,12 @@ answer. 2–4 cards in one reply is normal. The anti-slop rule is about
 *fragmenting a single idea* across five blocks, never about *using enough
 cards*.
 
-### Block types (closed set — 13)
+### Block types (closed set — 18)
 
 | type | shape | use for |
 |---|---|---|
-| `kpi` | `{label, value, delta?, trend?:"up"\|"down"\|"flat"}` | headline metrics, counts, deltas |
-| `chart` | `{chart:"line"\|"area"\|"bar"\|"radial"\|"pie", title?, labels?, series:[{name, points:number[]}]}` | trends, distributions, compositions, before/after |
+| `kpi` | `{label, value, delta?, trend?:"up"\|"down"\|"flat", spark?:number[3..24]}` | headline metrics, counts, deltas; `spark` adds an inline trend line |
+| `chart` | `{chart:"line"\|"area"\|"bar"\|"radial"\|"pie"\|"donut"\|"stack", title?, labels?, series:[{name, points:number[]}]}` | trends, distributions, compositions, before/after; `donut` shows the total in the hole |
 | `table` | `{columns:string[], rows:string[][]}` | comparisons, matrices, option tables, findings |
 | `diagram` | `{layout:"flow"\|"relationship", direction?:"tb"\|"lr", nodes:[{id,label,detail?}], edges:[{from,to,label?}]}` | workflows, pipelines, dependency and relationship maps |
 | `checklist` | `{items:[{text, status?:"done"\|"open"\|"fail"}]}` | status, audit results, done/not-done |
@@ -53,6 +53,11 @@ cards*.
 | `tree` | `{nodes:[{id, label, detail?, children?}]}` | file trees, hierarchies, ownership |
 | `code` | `{language?, filename?, code}` | snippets, commands, config |
 | `references` | `{items:[{title, href?, note?}]}` | citations and source links |
+| `quote` | `{text, attribution?, role?, context?}` | a quotation worth its own surface (an expert line, a user's words, a doc excerpt) |
+| `keyvalue` | `{title?, items:[{key, value, mono?}]}` | property/fact lists: version facts, config summaries, object readouts; `mono:true` renders a value in monospace |
+| `diff` | `{language?, filename?, hunks:[{header?, lines:[{op:"add"\|"del"\|"ctx", text}]}]}` | a change worth reading line by line; also accepts raw unified-diff `lines:["+ added","- removed"," kept"]` |
+| `heatmap` | `{title?, rows:string[], cols:string[], values:number[][]}` | intensity grids: usage by day×hour, commit activity, coverage maps |
+| `tabs` | `{items:[{label, blocks:[…]}]}` | multiple views of one subject; each tab holds other blocks |
 
 Run consecutive `kpi` blocks together (up to 4) and they render as a single
 KPI row; `progress` blocks group the same way. Anything invalid degrades to a
@@ -138,6 +143,15 @@ Here is where the time went last week.
 - **A command or snippet the reader may run** → `code`; add a `callout` when it
   is destructive or needs consent.
 - **What happened, in order** → `timeline` with `time` and `status` per entry.
+- **A property/fact list** (version facts, config readouts, object summaries)
+  → `keyvalue`; set `mono:true` on hashes, versions and paths.
+- **A change worth reading line by line** → `diff` with `hunks` (or raw
+  unified-diff `lines`); pair with a `code` block only when the full file helps.
+- **Intensity grids** (usage by day×hour, activity maps) → `heatmap`.
+- **Multiple views of one subject** (before/after + detail, per-option detail)
+  → `tabs`, each tab holding its own blocks.
+- **A quotation** (an expert line, a user's words, a doc excerpt) → `quote`
+  with `attribution` and `role`.
 
 Prefer 1–3 canvases per *idea*. Multiple canvases are fine when the answer has
 genuinely distinct sections — and 2–4 cards in one reply is normal. Do not

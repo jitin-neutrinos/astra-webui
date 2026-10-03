@@ -1,14 +1,14 @@
 // Canvas block renderers — the individual generative-UI surfaces. Pure
 // presentational; data contracts live in canvas-schema.ts. Lazy-loaded as a
 // chunk with CanvasView (recharts never enters the main bundle).
-import { useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
+import { useEffect, useMemo, useRef, useState, lazy, Suspense, Fragment } from "react";
 import { useReducedMotion, useSpring, motion } from "motion/react";
 import { cn } from "../../lib/utils";
 
 // recharts lives behind this boundary: chart blocks defer-load the engine, every
 // other block type (and the whole gate path) stays sync and dependency-free.
 const ChartBlockView = lazy(() => import("./canvas-chart").then((m) => ({ default: m.ChartBlockView })));
-import type { CanvasBlock, KpiBlock, TableBlock, DiagramBlock, ChecklistBlock, StepsBlock, CalloutBlock, ProgressBlock, TimelineBlock, CompareBlock, TreeBlock, CodeBlock, ReferencesBlock } from "../../lib/canvas-schema";
+import type { CanvasBlock, KpiBlock, TableBlock, DiagramBlock, ChecklistBlock, StepsBlock, CalloutBlock, ProgressBlock, TimelineBlock, CompareBlock, TreeBlock, CodeBlock, ReferencesBlock, QuoteBlock, KeyValueBlock, DiffBlock, HeatmapBlock, TabsBlock } from "../../lib/canvas-schema";
 
 
 // ---- KPI ---------------------------------------------------------------------
@@ -39,6 +39,38 @@ function CountUpInner({ value, display }: { value: number; display: string }) {
   return <span className="ast-cv-kpi-value">{shown}</span>;
 }
 
+// Hand-rolled SVG sparkline for KPI tiles. No library: three points, one path,
+// an end dot for "where it ended". Tone follows the KPI trend when present.
+function Sparkline({ points, trend }: { points: number[]; trend?: string }) {
+  const W = 68;
+  const H = 22;
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const span = max - min || 1;
+  const step = points.length > 1 ? W / (points.length - 1) : W;
+  let d = "";
+  points.forEach((p, i) => {
+    const x = +(i * step).toFixed(1);
+    const y = +(H - 2.5 - ((p - min) / span) * (H - 5)).toFixed(1);
+    d += `${i === 0 ? "M" : " L"} ${x} ${y}`;
+  });
+  const lastX = +((points.length - 1) * step).toFixed(1);
+  const lastY = +(H - 2.5 - ((points[points.length - 1] - min) / span) * (H - 5)).toFixed(1);
+  return (
+    <svg
+      className={cn("ast-cv-spark", trend === "down" && "down")}
+      viewBox={`0 0 ${W} ${H}`}
+      width={W}
+      height={H}
+      aria-hidden="true"
+      preserveAspectRatio="none"
+    >
+      <path d={d} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+      <circle cx={lastX} cy={lastY} r={2} fill="currentColor" />
+    </svg>
+  );
+}
+
 export function KpiTile({ block }: { block: KpiBlock }) {
   const glyph = block.trend === "up" ? "↑" : block.trend === "down" ? "↓" : "";
   const cls = block.trend === "up" ? "up" : block.trend === "down" ? "down" : "";
@@ -51,6 +83,7 @@ export function KpiTile({ block }: { block: KpiBlock }) {
           <span className={cn("ast-cv-kpi-delta", cls)}>{glyph} {block.delta}</span>
         )}
       </div>
+      {block.spark && block.spark.length >= 3 && <Sparkline points={block.spark} trend={block.trend} />}
     </div>
   );
 }
@@ -370,6 +403,159 @@ export function ReferencesView({ block }: { block: ReferencesBlock }) {
   );
 }
 
+// ---- Quote --------------------------------------------------------------------
+
+export function QuoteView({ block }: { block: QuoteBlock }) {
+  return (
+    <figure className="ast-cv-quote">
+      <blockquote className="ast-cv-quote-text">{block.text}</blockquote>
+      {(block.attribution || block.role || block.context) && (
+        <figcaption className="ast-cv-quote-cite">
+          {block.attribution && <span className="ast-cv-quote-att">{block.attribution}</span>}
+          {block.role && <span className="ast-cv-quote-role">{block.role}</span>}
+          {block.context && <span className="ast-cv-quote-ctx">{block.context}</span>}
+        </figcaption>
+      )}
+    </figure>
+  );
+}
+
+// ---- Key/value ----------------------------------------------------------------
+
+export function KeyValueView({ block }: { block: KeyValueBlock }) {
+  return (
+    <div className="ast-cv-kv">
+      {block.title && <span className="ast-cv-kv-title">{block.title}</span>}
+      <dl className="ast-cv-kv-list">
+        {block.items.map((it, i) => (
+          <div key={i} className="ast-cv-kv-row">
+            <dt className="ast-cv-kv-key">{it.key}</dt>
+            <dd className={cn("ast-cv-kv-val", it.mono && "mono")}>{String(it.value)}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+// ---- Diff ---------------------------------------------------------------------
+
+const DIFF_MARK: Record<string, string> = { add: "+", del: "−", ctx: "" };
+
+export function DiffView({ block }: { block: DiffBlock }) {
+  const adds = block.hunks.reduce((n, h) => n + h.lines.filter((l) => l.op === "add").length, 0);
+  const dels = block.hunks.reduce((n, h) => n + h.lines.filter((l) => l.op === "del").length, 0);
+  return (
+    <figure className="ast-cv-diff">
+      <figcaption className="ast-cv-diff-head">
+        <span className="ast-cv-diff-name">{block.filename || "changes"}</span>
+        <span className="ast-cv-diff-stats">
+          <span className="add">+{adds}</span>
+          <span className="del">−{dels}</span>
+        </span>
+      </figcaption>
+      <div className="ast-cv-diff-body">
+        {block.hunks.map((h, i) => (
+          <div key={i} className="ast-cv-diff-hunk">
+            {h.header && <span className="ast-cv-diff-hdr">{h.header}</span>}
+            {h.lines.map((l, j) => (
+              <div key={j} className={cn("ast-cv-dl", l.op)}>
+                <span className="ast-cv-dl-mark" aria-hidden="true">{DIFF_MARK[l.op]}</span>
+                <span className="ast-cv-dl-text">{l.text || " "}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </figure>
+  );
+}
+
+// ---- Heatmap ------------------------------------------------------------------
+
+/** Compact number for heatmap cells (keeps cells from being cut off). */
+function compactNum(n: number): string {
+  const a = Math.abs(n);
+  if (a >= 1e9) return (n / 1e9).toFixed(1).replace(/\.0$/, "") + "B";
+  if (a >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, "") + "M";
+  if (a >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, "") + "k";
+  return String(n);
+}
+
+export function HeatmapView({ block }: { block: HeatmapBlock }) {
+  const flat = block.values.flat();
+  const max = Math.max(...flat);
+  const min = Math.min(...flat);
+  const span = max - min || 1;
+  // Normalise to the grid's own range so a flat grid is not all-max.
+  const t = (v: number) => (max === min ? 0.5 : (v - min) / span);
+  const pct = (v: number) => Math.round(t(v) * 78) + 5;
+  const wide = block.cols.length > 10;
+  return (
+    <figure className="ast-cv-heat">
+      {block.title && <figcaption className="ast-cv-heat-title">{block.title}</figcaption>}
+      <div className="ast-cv-heat-grid" style={{ gridTemplateColumns: `auto repeat(${block.cols.length}, minmax(0, 1fr))` }}>
+        <span className="ast-cv-heat-corner" aria-hidden="true" />
+        {block.cols.map((c) => <span key={c} className="ast-cv-heat-col">{c}</span>)}
+        {block.rows.map((r, ri) => (
+          <Fragment key={r}>
+            <span className="ast-cv-heat-row">{r}</span>
+            {block.cols.map((c, ci) => {
+              const v = block.values[ri][ci];
+              return (
+                <span
+                  key={c + ci}
+                  className="ast-cv-heat-cell"
+                  style={{ background: `color-mix(in srgb, var(--color-cyanx) ${pct(v)}%, transparent)` }}
+                  title={`${r} · ${c}: ${v}`}
+                >
+                  {!wide && <span className="ast-cv-heat-val">{compactNum(v)}</span>}
+                </span>
+              );
+            })}
+          </Fragment>
+        ))}
+      </div>
+      <div className="ast-cv-heat-scale" aria-hidden="true">
+        <span className="ast-cv-heat-scale-label">low</span>
+        {[6, 25, 44, 63, 83].map((p) => (
+          <span key={p} className="ast-cv-heat-step" style={{ background: `color-mix(in srgb, var(--color-cyanx) ${p}%, transparent)` }} />
+        ))}
+        <span className="ast-cv-heat-scale-label">high</span>
+      </div>
+    </figure>
+  );
+}
+
+// ---- Tabs ---------------------------------------------------------------------
+
+export function TabsView({ block }: { block: TabsBlock }) {
+  const [active, setActive] = useState(0);
+  const idx = Math.min(active, block.items.length - 1);
+  const cur = block.items[idx];
+  return (
+    <div className="ast-cv-tabs">
+      <div role="tablist" className="ast-cv-tablist" aria-label="Canvas tabs">
+        {block.items.map((it, i) => (
+          <button
+            key={it.label + i}
+            type="button"
+            role="tab"
+            aria-selected={i === idx}
+            className={cn("ast-cv-tab", i === idx && "on")}
+            onClick={() => setActive(i)}
+          >
+            {it.label}
+          </button>
+        ))}
+      </div>
+      <div role="tabpanel" className="ast-cv-tabpanel">
+        <Blocks blocks={cur.blocks} />
+      </div>
+    </div>
+  );
+}
+
 // ---- Grouping (KPI rows + single blocks) ----------------------------------------
 
 export function Blocks({ blocks, animate = true }: { blocks: CanvasBlock[]; animate?: boolean }) {
@@ -427,6 +613,11 @@ function renderOne(b: CanvasBlock) {
     case "tree": return <TreeView block={b} />;
     case "code": return <CodeView block={b} />;
     case "references": return <ReferencesView block={b} />;
+    case "quote": return <QuoteView block={b} />;
+    case "keyvalue": return <KeyValueView block={b} />;
+    case "diff": return <DiffView block={b} />;
+    case "heatmap": return <HeatmapView block={b} />;
+    case "tabs": return <TabsView block={b} />;
     case "table": return <TableBlockView block={b} />;
     case "diagram": return <DiagramBlockView block={b} />;
     case "checklist": return <ChecklistView block={b} />;

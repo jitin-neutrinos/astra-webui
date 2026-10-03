@@ -306,8 +306,9 @@ test("alias: metric/stat → kpi", () => {
 });
 
 test("alias: donut/columns/gauge chart kinds normalize", () => {
+  // v3: `donut` is now its own kind (center-total donut), no longer aliased to pie
   const donut = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "chart", chart: "donut", series: [{ name: "s", points: [1] }] }] }));
-  assert.equal((donut!.blocks[0] as any).chart, "pie");
+  assert.equal((donut!.blocks[0] as any).chart, "donut");
   const bars = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "graph", chart: "columns", series: [{ name: "s", points: [1] }] }] }));
   assert.equal((bars!.blocks[0] as any).type, "chart");
   assert.equal((bars!.blocks[0] as any).chart, "bar");
@@ -553,4 +554,170 @@ test("parseStreamingCanvas pulls partial title + blocks from an open fence", () 
 
 test("parseStreamingCanvas returns null before any block completes", () => {
   assert.equal(parseStreamingCanvas("```astra-canvas\n{ \"v\": 1, \"blocks\": [ { \"type\": \"kp"), null);
+});
+
+// ---- v3 block types ---------------------------------------------------------
+
+test("v3: quote block validates, author→attribution alias", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "quote", text: "Taste is trained, not innate.", author: "Emil Kowalski", role: "design engineer", context: "animations.dev" },
+  ] }));
+  assert.ok(spec);
+  const q = spec!.blocks[0] as any;
+  assert.equal(q.type, "quote");
+  assert.equal(q.attribution, "Emil Kowalski", "author field aliases to attribution");
+  assert.equal(q.role, "design engineer");
+});
+
+test("v3: quote without text is invalid", () => {
+  assert.equal(parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "quote", attribution: "x" }] })), null);
+});
+
+test("v3: keyvalue validates + mono flag, alias kv", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "kv", title: "Build", items: [
+      { key: "Version", value: "3.7.0", mono: true },
+      { key: "Passes", value: 43 },
+    ] },
+  ] }));
+  assert.ok(spec);
+  const kv = spec!.blocks[0] as any;
+  assert.equal(kv.type, "keyvalue");
+  assert.equal(kv.items.length, 2);
+  assert.equal(kv.items[0].mono, true);
+  assert.equal(kv.items[1].value, 43);
+});
+
+test("v3: keyvalue item without value is invalid", () => {
+  assert.equal(parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "keyvalue", items: [{ key: "x" }] }] })), null);
+});
+
+test("v3: diff hunks validate, op aliases (+, added)", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "diff", filename: "a.ts", hunks: [
+      { header: "@@ -1,3 +1,4 @@", lines: [
+        { op: "ctx", text: "line one" },
+        { op: "+", text: "line two" },
+        { op: "removed", text: "line three" },
+      ] },
+    ] },
+  ] }));
+  assert.ok(spec);
+  const d = spec!.blocks[0] as any;
+  assert.equal(d.type, "diff");
+  assert.equal(d.hunks[0].lines[1].op, "add");
+  assert.equal(d.hunks[0].lines[2].op, "del");
+});
+
+test("v3: diff accepts raw unified-diff string lines", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "diff", filename: "x.css", lines: [
+      "@@ -10,3 +10,4 @@",
+      " old line",
+      "+new line",
+      "-gone line",
+    ] },
+  ] }));
+  assert.ok(spec);
+  const d = spec!.blocks[0] as any;
+  assert.equal(d.hunks.length, 1, "@@ starts a new hunk");
+  assert.equal(d.hunks[0].lines.length, 3);
+  assert.equal(d.hunks[0].lines[1].op, "add");
+  assert.equal(d.hunks[0].lines[1].text, "new line");
+});
+
+test("v3: diff with empty hunks is invalid", () => {
+  assert.equal(parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "diff", hunks: [] }] })), null);
+});
+
+test("v3: heatmap validates a rectangular grid, alias heat-map", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "heat-map", title: "Commits", rows: ["Mon", "Tue"], cols: ["am", "pm"], values: [[1, 2], [3, 4]] },
+  ] }));
+  assert.ok(spec);
+  const h = spec!.blocks[0] as any;
+  assert.equal(h.type, "heatmap");
+  assert.equal(h.values.length, 2);
+});
+
+test("v3: heatmap with a ragged row is invalid", () => {
+  assert.equal(parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "heatmap", rows: ["a", "b"], cols: ["x", "y"], values: [[1, 2], [3]] },
+  ] })), null);
+});
+
+test("v3: tabs validate with inner blocks; empty tab invalid", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "tabs", items: [
+      { label: "Before", blocks: [{ type: "kpi", label: "A", value: 1 }] },
+      { label: "After", blocks: [{ type: "callout", tone: "info", body: "better" }, { type: "bad" }] },
+    ] },
+  ] }));
+  assert.ok(spec);
+  const t = spec!.blocks[0] as any;
+  assert.equal(t.items.length, 2);
+  assert.equal(t.items[1].blocks.length, 1, "invalid inner block dropped, tab kept");
+  assert.equal(parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "tabs", items: [{ label: "x", blocks: [] }] }] })), null);
+});
+
+test("v3: kpi spark validates (3-24 points) and degrades silently", () => {
+  const ok = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "kpi", label: "Lat", value: 42, spark: [1, 5, 3, 9] }] }));
+  assert.ok(ok);
+  assert.deepEqual((ok!.blocks[0] as any).spark, [1, 5, 3, 9]);
+  const bad = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "kpi", label: "Lat", value: 42, spark: [1, "x"] }] }));
+  assert.ok(bad, "kpi stays valid");
+  assert.equal((bad!.blocks[0] as any).spark, undefined, "bad spark dropped, tile kept");
+});
+
+test("v3: chart donut + stack kinds pass through", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "chart", chart: "donut", labels: ["a", "b"], series: [{ name: "s", points: [3, 7] }] },
+    { type: "chart", chart: "stacked", labels: ["q1", "q2"], series: [{ name: "x", points: [1, 2] }, { name: "y", points: [2, 1] }] },
+  ] }));
+  assert.ok(spec);
+  assert.equal((spec!.blocks[0] as any).chart, "donut");
+  assert.equal((spec!.blocks[1] as any).chart, "stack", "stacked aliases to stack");
+});
+
+test("v3: donut alias (doughnut) coerces", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "chart", chart: "doughnut", labels: ["a"], series: [{ name: "s", points: [9] }] },
+  ] }));
+  assert.ok(spec);
+  assert.equal((spec!.blocks[0] as any).chart, "donut");
+});
+
+test("v3: streaming parse repairs a lenient element mid-stream (trailing comma + bare keys)", () => {
+  // element 1 is bare-key + trailing-comma (needs the repair pass); element 2 is
+  // half-written so it must NOT appear yet.
+  const body = `{\n  "blocks": [\n    { type: "kpi", label: "A", value: 1, },\n    { "type": "kpi", "label"\n`;
+  const blocks = parseStreamingBlocks(body);
+  assert.equal(blocks.length, 1, "lenient element joins mid-stream; the half-written one waits");
+  assert.equal((blocks[0] as any).label, "A");
+});
+
+test("v3: a full v3 canvas (all 18 block types) parses in order", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, title: "v3", blocks: [
+    { type: "kpi", label: "K", value: 1, spark: [1, 2, 3] },
+    { type: "chart", chart: "line", series: [{ name: "s", points: [1] }] },
+    { type: "chart", chart: "donut", labels: ["a"], series: [{ name: "s", points: [1] }] },
+    { type: "table", columns: ["c"], rows: [["r"]] },
+    { type: "diagram", layout: "flow", nodes: [{ id: "n", label: "N" }], edges: [] },
+    { type: "checklist", items: [{ text: "t" }] },
+    { type: "steps", items: [{ title: "s1" }] },
+    { type: "callout", tone: "info", body: "b" },
+    { type: "progress", label: "p", value: 50 },
+    { type: "timeline", items: [{ title: "t" }] },
+    { type: "compare", items: [{ name: "a", points: [{ text: "p" }] }] },
+    { type: "tree", nodes: [{ id: "r", label: "root" }] },
+    { type: "code", code: "x = 1" },
+    { type: "references", items: [{ title: "r" }] },
+    { type: "quote", text: "q" },
+    { type: "keyvalue", items: [{ key: "k", value: "v" }] },
+    { type: "diff", hunks: [{ lines: [{ op: "add", text: "+" }] }] },
+    { type: "heatmap", rows: ["r"], cols: ["c"], values: [[1]] },
+    { type: "tabs", items: [{ label: "T", blocks: [{ type: "kpi", label: "i", value: 0 }] }] },
+  ] }));
+  assert.ok(spec);
+  assert.equal(spec!.blocks.length, 19);
 });

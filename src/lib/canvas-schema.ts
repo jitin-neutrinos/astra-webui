@@ -17,11 +17,13 @@ export interface KpiBlock {
   value: string | number;
   delta?: string;
   trend?: Trend;
+  /** Optional inline sparkline (3-24 finite points). Degrades silently if bad. */
+  spark?: number[];
 }
 
 export interface ChartBlock {
   type: "chart";
-  chart: "line" | "area" | "bar" | "radial" | "pie";
+  chart: "line" | "area" | "bar" | "radial" | "pie" | "donut" | "stack";
   title?: string;
   labels?: string[];
   series: { name: string; points: number[] }[];
@@ -100,11 +102,50 @@ export interface ReferencesBlock {
   items: { title: string; href?: string; note?: string }[];
 }
 
+export interface QuoteBlock {
+  type: "quote";
+  text: string;
+  attribution?: string;
+  role?: string;
+  context?: string;
+}
+
+export interface KeyValueBlock {
+  type: "keyvalue";
+  title?: string;
+  items: { key: string; value: string | number; mono?: boolean }[];
+}
+
+export type DiffOp = "add" | "del" | "ctx";
+
+export interface DiffBlock {
+  type: "diff";
+  language?: string;
+  filename?: string;
+  /** One hunk = one titled change. `lines` carries the unified-diff rows. */
+  hunks: { header?: string; lines: { op: DiffOp; text: string }[] }[];
+}
+
+export interface HeatmapBlock {
+  type: "heatmap";
+  title?: string;
+  rows: string[];
+  cols: string[];
+  /** values[r][c] — must match rows×cols; numbers are scaled to the grid max. */
+  values: number[][];
+}
+
+export interface TabsBlock {
+  type: "tabs";
+  items: { label: string; blocks: CanvasBlock[] }[];
+}
+
 export type CanvasBlock =
   | KpiBlock | ChartBlock | TableBlock | DiagramBlock
   | ChecklistBlock | StepsBlock | CalloutBlock
   | ProgressBlock | TimelineBlock | CompareBlock | TreeBlock
-  | CodeBlock | ReferencesBlock;
+  | CodeBlock | ReferencesBlock
+  | QuoteBlock | KeyValueBlock | DiffBlock | HeatmapBlock | TabsBlock;
 
 export interface CanvasSpec {
   v: 1;
@@ -126,8 +167,9 @@ const OPEN_FENCE_RE = /`{3,}astra-canvas[^\n]*\n([\s\S]*)$/;
 const BLOCK_TYPES = new Set([
   "kpi", "chart", "table", "diagram", "checklist", "steps", "callout",
   "progress", "timeline", "compare", "tree", "code", "references",
+  "quote", "keyvalue", "diff", "heatmap", "tabs",
 ]);
-const CHART_KINDS = new Set(["line", "area", "bar", "radial", "pie"]);
+const CHART_KINDS = new Set(["line", "area", "bar", "radial", "pie", "donut", "stack"]);
 const TONES = new Set(["info", "warn", "success", "danger"]);
 const TRENDS = new Set(["up", "down", "flat"]);
 
@@ -144,6 +186,11 @@ const TYPE_ALIASES: Record<string, string> = {
   meter: "progress", bar: "progress", gauge: "progress",
   sources: "references", citations: "references", links: "references",
   snippet: "code",
+  quotation: "quote", testimonial: "quote",
+  kv: "keyvalue", "key-value": "keyvalue", "keyvalue-pairs": "keyvalue", fields: "keyvalue",
+  patch: "diff", "code-diff": "diff", "unified-diff": "diff", changeset: "diff",
+  "heat-map": "heatmap", heat: "heatmap",
+  "tab-group": "tabs", tabbed: "tabs",
 };
 
 // kpi `trend` is a DIRECTION. Models reuse severity/status words for it
@@ -175,7 +222,8 @@ export function validateBlock(b: any): CanvasBlock | null {
   // chart kind aliases + `type` used instead of `chart`
   if (b.type === "chart" && !CHART_KINDS.has(b.chart)) {
     const kind = b.chart ?? b.kind ?? b.chartType;
-    if (kind === "donut" || kind === "doughnut" || kind === "circular") b.chart = "pie";
+    if (kind === "donut" || kind === "doughnut" || kind === "circular") b.chart = "donut";
+    else if (kind === "stack" || kind === "stacked" || kind === "stacked-bar") b.chart = "stack";
     else if (kind === "bars" || kind === "columns") b.chart = "bar";
     else if (kind === "lines") b.chart = "line";
     else if (kind === "areas") b.chart = "area";
@@ -197,7 +245,12 @@ export function validateBlock(b: any): CanvasBlock | null {
           b.trend = mapped;
         }
       }
-      return { type: "kpi", label: b.label, value: b.value, delta: b.delta, trend: b.trend };
+      // spark: 3-24 finite points, else silently dropped (the tile stays useful)
+      let spark: number[] | undefined;
+      if (b.spark != null) {
+        if (Array.isArray(b.spark) && b.spark.length >= 3 && b.spark.length <= 24 && b.spark.every(isNum)) spark = b.spark;
+      }
+      return { type: "kpi", label: b.label, value: b.value, delta: b.delta, trend: b.trend, spark };
     case "chart": {
       if (!CHART_KINDS.has(b.chart)) return null;
       if (!Array.isArray(b.series) || b.series.length === 0) return null;
@@ -333,6 +386,102 @@ export function validateBlock(b: any): CanvasBlock | null {
         items.push({ title: it.title, href: isStr(it.href) ? it.href : undefined, note: isStr(it.note) ? it.note : undefined });
       }
       return { type: "references", items };
+    }
+    case "quote": {
+      if (!isStr(b.text) || b.text.trim() === "") return null;
+      return {
+        type: "quote",
+        text: b.text,
+        attribution: isStr(b.attribution) ? b.attribution : isStr(b.author) ? b.author : undefined,
+        role: isStr(b.role) ? b.role : undefined,
+        context: isStr(b.context) ? b.context : isStr(b.source) ? b.source : undefined,
+      };
+    }
+    case "keyvalue": {
+      if (!Array.isArray(b.items) || b.items.length === 0) return null;
+      const items: KeyValueBlock["items"] = [];
+      for (const it of b.items) {
+        if (!it || !isStr(it.key)) return null;
+        if (!isStr(it.value) && !isNum(it.value)) return null;
+        items.push({ key: it.key, value: it.value, mono: it.mono === true ? true : undefined });
+      }
+      return { type: "keyvalue", title: isStr(b.title) ? b.title : undefined, items };
+    }
+    case "diff": {
+      // Accept either the structured `hunks` shape or a raw `lines` array
+      // (models paste unified diffs as flat lines: "+ added", "- removed").
+      let hunks: DiffBlock["hunks"] | null = null;
+      if (Array.isArray(b.hunks) && b.hunks.length > 0) {
+        hunks = [];
+        for (const h of b.hunks) {
+          if (!h || !Array.isArray(h.lines) || h.lines.length === 0) return null;
+          const lines: DiffBlock["hunks"][number]["lines"] = [];
+          for (const l of h.lines) {
+            if (!l || !isStr(l.text) || !isStr(l.op)) return null;
+            if (l.op !== "add" && l.op !== "del" && l.op !== "ctx") {
+              // alias the near-miss op names; unknown ops reject the hunk
+              if (l.op === "+" || l.op === "added" || l.op === "insert") l.op = "add";
+              else if (l.op === "-" || l.op === "removed" || l.op === "delete") l.op = "del";
+              else if (l.op === " " || l.op === "context" || l.op === "same") l.op = "ctx";
+              else return null;
+            }
+            lines.push({ op: l.op as DiffOp, text: l.text });
+          }
+          hunks.push({ header: isStr(h.header) ? h.header : undefined, lines });
+        }
+      } else if (Array.isArray(b.lines) && b.lines.length > 0) {
+        hunks = [{ header: isStr(b.header) ? b.header : undefined, lines: [] }];
+        for (const l of b.lines) {
+          if (!l) return null;
+          if (isStr(l)) {
+            // raw unified-diff row: "+foo", "-foo", " foo", "@@ hunk header @@"
+            if (l.startsWith("@@")) { hunks.push({ header: l, lines: [] }); continue; }
+            const op = l[0] === "+" ? "add" : l[0] === "-" ? "del" : "ctx";
+            hunks[hunks.length - 1].lines.push({ op, text: l.replace(/^[+-]?[ \t]?/, "") });
+          } else if (typeof l === "object" && isStr(l.text) && isStr(l.op)) {
+            if (!["add", "del", "ctx", "+", "-", " "].includes(l.op)) return null;
+            hunks[hunks.length - 1].lines.push({
+              op: (l.op === "+" || l.op === "add" ? "add" : l.op === "-" || l.op === "del" ? "del" : "ctx") as DiffOp,
+              text: l.text,
+            });
+          } else return null;
+        }
+        if (hunks[0].lines.length === 0) hunks.shift();
+      }
+      if (!hunks || hunks.length === 0) return null;
+      return {
+        type: "diff",
+        language: isStr(b.language) ? b.language : undefined,
+        filename: isStr(b.filename) ? b.filename : undefined,
+        hunks,
+      };
+    }
+    case "heatmap": {
+      if (!isStrArr(b.rows) || b.rows.length === 0) return null;
+      if (!isStrArr(b.cols) || b.cols.length === 0) return null;
+      if (!Array.isArray(b.values) || b.values.length !== b.rows.length) return null;
+      const values: number[][] = [];
+      for (const row of b.values) {
+        if (!Array.isArray(row) || row.length !== b.cols.length || !row.every(isNum)) return null;
+        values.push(row);
+      }
+      return { type: "heatmap", title: isStr(b.title) ? b.title : undefined, rows: b.rows, cols: b.cols, values };
+    }
+    case "tabs": {
+      if (!Array.isArray(b.items) || b.items.length === 0) return null;
+      const items: TabsBlock["items"] = [];
+      for (const it of b.items) {
+        if (!it || !isStr(it.label)) return null;
+        // tabs contain other blocks; keep every valid one, drop bad ones
+        const inner: CanvasBlock[] = [];
+        for (const x of Array.isArray(it.blocks) ? it.blocks : Array.isArray(it.items) ? it.items : []) {
+          const v = validateBlock(x);
+          if (v) inner.push(v);
+        }
+        if (inner.length === 0) return null; // a tab with nothing to show is not a tab
+        items.push({ label: it.label, blocks: inner });
+      }
+      return { type: "tabs", items };
     }
     default:
       return null;
@@ -624,7 +773,7 @@ export interface TurnCanvasPlan {
 /**
  * Streaming incremental parse of an OPEN canvas fence body.
  *
- * The body is partial JSON (`{ "blocks": [ {...}, {...}, {`half`). We walk it
+ * The body is partial JSON (`{ "blocks": [ {...}, {...}, {`half). We walk it
  * brace-by-brace, tracking string/escape state, and validate every COMPLETE
  * top-level element of `blocks` as soon as its closing brace lands. That lets
  * the UI paint each block the moment it finishes instead of waiting for the
@@ -632,6 +781,12 @@ export interface TurnCanvasPlan {
  *
  * Returns only blocks that are fully formed AND valid; a half-written block is
  * skipped until more text arrives (its next render picks it up).
+ *
+ * v3: an element that fails strict JSON.parse gets the lenient repair pass
+ * (comments, trailing commas, bare keys) before being dropped — the model
+ * streams the same sloppy shapes it writes closed, and a mid-stream element
+ * ending in `,` would otherwise wait for the closing fence. The repair never
+ * touches a well-formed element: it only runs after strict parse throws.
  */
 export function parseStreamingBlocks(body: string): CanvasBlock[] {
   const blocksKey = body.indexOf('"blocks"');
@@ -663,11 +818,16 @@ export function parseStreamingBlocks(body: string): CanvasBlock[] {
       depth--;
       if (depth === 0 && elemStart !== -1) {
         const raw = body.slice(elemStart, i + 1);
+        let parsed: unknown;
         try {
-          const parsed = JSON.parse(raw);
+          parsed = JSON.parse(raw);
+        } catch {
+          try { parsed = lenientJson(raw); } catch { parsed = null; }
+        }
+        if (parsed) {
           const v = validateBlock(parsed);
           if (v) out.push(v);
-        } catch { /* incomplete or malformed element — skip until it completes */ }
+        }
         elemStart = -1;
       }
       if (depth < 0) break; // the blocks array closed

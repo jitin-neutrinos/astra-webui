@@ -76,7 +76,11 @@ export function ChartBlockView({ block }: { block: ChartBlock }) {
     </>
   );
 
-  const H = block.chart === "radial" || block.chart === "pie" ? 210 : 180;
+  const H = block.chart === "radial" || block.chart === "pie" || block.chart === "donut" ? 210 : 180;
+
+  // Donut: single-series composition with the total in the hole. Slice colours
+  // follow the LABELS (one colour per slice), not the series.
+  const donutTotal = block.series.reduce((n, s) => n + (s.points[0] ?? 0), 0);
 
   return (
     <figure className="ast-cv-chart">
@@ -117,7 +121,7 @@ export function ChartBlockView({ block }: { block: ChartBlock }) {
               />
             ))}
           </AreaChart>
-        ) : block.chart === "bar" ? (
+        ) : block.chart === "bar" || block.chart === "stack" ? (
           <BarChart data={data} margin={{ top: 6, right: 6, bottom: 0, left: 0 }} barCategoryGap="22%">
             {axis}
             {block.series.map((s, i) => (
@@ -125,11 +129,38 @@ export function ChartBlockView({ block }: { block: ChartBlock }) {
                 key={s.name}
                 dataKey={s.name}
                 fill={SERIES_COLORS[i % SERIES_COLORS.length]}
-                radius={[5, 5, 2, 2]}
+                radius={block.chart === "stack" ? [0, 0, 0, 0] : [5, 5, 2, 2]}
+                stackId={block.chart === "stack" ? "s" : undefined}
                 isAnimationActive={false}
               />
             ))}
           </BarChart>
+        ) : block.chart === "donut" ? (
+          <div className="ast-cv-donut">
+            <ResponsiveContainer width="100%" height={H}>
+              <PieChart>
+                <Pie
+                  data={data}
+                  dataKey={block.series[0].name}
+                  nameKey="name"
+                  innerRadius="64%"
+                  outerRadius="92%"
+                  paddingAngle={2}
+                  stroke="none"
+                  isAnimationActive={false}
+                >
+                  {data.map((_, j) => (
+                    <Cell key={j} fill={SERIES_COLORS[j % SERIES_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip content={<TT />} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="ast-cv-donut-center">
+              <span className="ast-cv-donut-total">{fmt(donutTotal)}</span>
+              <span className="ast-cv-donut-caption">total</span>
+            </div>
+          </div>
         ) : block.chart === "radial" ? (
           <RadialBarChart
             data={data}
