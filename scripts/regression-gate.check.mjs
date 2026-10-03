@@ -1,0 +1,434 @@
+// regression-gate.check.mjs — the permanent pin.
+//
+// Every entry below is a bug that actually shipped to astra.jitinnair.com and
+// was fixed. This file does two jobs:
+//
+//   1. MANIFEST — each row names the bug, the check that guards it, and the
+//      date it was found. If someone deletes or renames the guarding check,
+//      this gate fails. That is the whole point: the check must not be
+//      quietly droppable.
+//   2. LIVE RE-RUN — for each guarded check that this process can execute,
+//      spawn it and assert it passes. A pinned bug that has regressed fails
+//      here even if nobody ran the full suite.
+//
+// Run: node scripts/regression-gate.check.mjs
+// Convention: assert-based, no framework (see ARCHITECTURE.md).
+
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const ROOT = resolve(fileURLToPath(import.meta.url), "..", "..");
+
+/**
+ * @typedef {object} Regression
+ * @property {string} id       stable id, never reused
+ * @property {string} found    ISO date the bug was found
+ * @property {string} symptom  what the owner saw
+ * @property {string} guard    check file that must exist and pass
+ * @property {boolean} [live]  run it here (false = needs env, verified in its own suite)
+ */
+
+/** @type {Regression[]} */
+export const REGRESSIONS = [
+  {
+    id: "RG-001",
+    found: "2026-09-29",
+    symptom: "Duplicated assistant replies / greet rows after session resume or reconnect replay.",
+    guard: "src/lib/replay-dedup.check.ts",
+  },
+  {
+    id: "RG-002",
+    found: "2026-09-29",
+    symptom: "text-final re-rendered content that had already streamed, double-printing the answer.",
+    guard: "src/lib/chat-dedup.check.ts",
+  },
+  {
+    id: "RG-003",
+    found: "2026-09-29",
+    symptom: "Text reconciliation appended instead of replacing when deltas matched the final string.",
+    guard: "src/lib/no-dup.check.ts",
+  },
+  {
+    id: "RG-004",
+    found: "2026-09-29",
+    symptom: "Answer disappeared when re-pulled history supplied its own final text.",
+    guard: "src/lib/final-text.check.ts",
+  },
+  {
+    id: "RG-005",
+    found: "2026-09-30",
+    symptom: "Approval and clarify cards leaked into the wrong chat — the proxy broadcast every frame to every socket.",
+    guard: "src/lib/request-ownership.check.ts",
+  },
+  {
+    id: "RG-006",
+    found: "2026-09-30",
+    symptom: "One tab adopted a sibling tab's chat session from a legacy origin-wide storage key.",
+    guard: "src/lib/tab-isolation.check.ts",
+  },
+  {
+    id: "RG-007",
+    found: "2026-09-30",
+    symptom: "Two tabs shared one prompt queue, so concurrent chats split or lost messages.",
+    guard: "src/lib/concurrent-queue.check.ts",
+  },
+  {
+    id: "RG-008",
+    found: "2026-10-01",
+    symptom: "A stale orphan overlay inflated the unread pill total past the visible session list.",
+    guard: "src/lib/unread.check.ts",
+  },
+  {
+    id: "RG-009",
+    found: "2026-10-02",
+    symptom: "A chat focused on the phone still went unread on the web; focus was one value per device.",
+    guard: "src/lib/unread.check.ts",
+  },
+  {
+    id: "RG-010",
+    found: "2026-10-02",
+    symptom: "Second tab's focus erased its sibling's — one focus per device collapsed to last-writer-wins.",
+    guard: "src/lib/unread.check.ts",
+  },
+  {
+    id: "RG-011",
+    found: "2026-10-02",
+    symptom: "Reconnect backoff, liveness recycle and turn watchdog math drifted; wire died silently.",
+    guard: "src/lib/streaming-resilience.check.ts",
+  },
+  {
+    id: "RG-012",
+    found: "2026-10-02",
+    symptom: "Engine could not wake a dead socket after the Android WebView was frozen.",
+    guard: "src/lib/wake-probe.check.ts",
+  },
+  {
+    id: "RG-013",
+    found: "2026-10-03",
+    symptom: "Slash command routed to the wrong surface / command surface misrouted curated commands.",
+    guard: "src/lib/command-exec.check.ts",
+  },
+  {
+    id: "RG-014",
+    found: "2026-10-03",
+    symptom: "Live session id did not bridge to the stored chat key, so push and deep links used a stale key.",
+    guard: "server/sid-bridge.check.mjs",
+  },
+  {
+    id: "RG-015",
+    found: "2026-10-03",
+    symptom: "Canvas blocks mis-parsed: a malformed block dropped data instead of degrading to text.",
+    guard: "src/lib/canvas-schema.check.ts",
+  },
+  {
+    id: "RG-016",
+    found: "2026-10-03",
+    symptom: "Gate canvas (approval/clarify/report) rendered the wrong shape or lost its severity.",
+    guard: "src/lib/canvas-gates.check.ts",
+  },
+  {
+    id: "RG-017",
+    found: "2026-10-03",
+    symptom: "Tool I/O showed raw JSON to the owner instead of a human-readable summary.",
+    guard: "src/lib/tool-io.check.ts",
+  },
+  {
+    id: "RG-018",
+    found: "2026-10-03",
+    symptom: "Theme artwork / wipe transitions rendered the wrong palette during a theme change.",
+    guard: "src/lib/theme-wipe.check.ts",
+  },
+  {
+    id: "RG-019",
+    found: "2026-10-03",
+    symptom: "Transcript tail could be cut mid-segment (safe-tail regression).",
+    guard: "src/lib/safe-tail.check.ts",
+  },
+  {
+    id: "RG-020",
+    found: "2026-10-03",
+    symptom: "Unread counts included tool calls, thinking blocks and auto-greet rows.",
+    guard: "src/lib/unread.check.ts",
+  },
+  {
+    id: "RG-021",
+    found: "2026-10-03",
+    symptom: "Reveal pacing streamed tokens at a rate that janked the composer.",
+    guard: "src/lib/reveal-pace.check.ts",
+  },
+  {
+    id: "RG-022",
+    found: "2026-10-03",
+    symptom: "Scroll intent failed to stick to bottom during streaming inserts.",
+    guard: "src/lib/scroll-intent.check.ts",
+  },
+  {
+    id: "RG-023",
+    found: "2026-10-03",
+    symptom: "Model switch left the composer showing the previous provider/model/effort.",
+    guard: "src/lib/model-switch.check.ts",
+  },
+  {
+    id: "RG-024",
+    found: "2026-10-03",
+    symptom: "Media transcode path-safety or cache-key determinism regressed.",
+    guard: "server/transcode.check.mjs",
+  },
+  {
+    id: "RG-025",
+    found: "2026-10-03",
+    symptom: "Vault leaked a value while locked, or returned plaintext after TTL expiry.",
+    guard: "server/vault.check.mjs",
+  },
+  {
+    id: "RG-026",
+    found: "2026-10-03",
+    symptom: "WebSocket frame filter let a foreign frame through to a chat socket.",
+    guard: "server/ws-filter.check.mjs",
+  },
+  {
+    id: "RG-027",
+    found: "2026-10-03",
+    symptom: "Read markers went backwards or double-counted across devices.",
+    guard: "server/read-state.check.mjs",
+  },
+  {
+    id: "RG-028",
+    found: "2026-10-03",
+    symptom: "Training delete-after-review retried the whole review instead of only the delete.",
+    guard: "scripts/training-pipeline.check.mjs",
+  },
+  {
+    id: "RG-029",
+    found: "2026-10-03",
+    symptom: "Strict chronological rendering grouped segments by kind instead of arrival order.",
+    guard: "scripts/verify-chronology.check.ts",
+  },
+  {
+    id: "RG-030",
+    found: "2026-10-03",
+    symptom: "Chat surface CSS lost the bottom-anchored landing card or accent scrollbars.",
+    guard: "scripts/css-chat-surface.check.mjs",
+  },
+  {
+    id: "RG-031",
+    found: "2026-10-03",
+    symptom: "Background (/bg) replies landed in the chat feed instead of the dock.",
+    guard: "src/lib/bg-routing.check.ts",
+  },
+  {
+    id: "RG-032",
+    found: "2026-10-03",
+    symptom: "Connection banner showed the wrong state during reconnect.",
+    guard: "src/lib/connection-banner.check.ts",
+  },
+  {
+    id: "RG-033",
+    found: "2026-10-03",
+    symptom: "pdf-view limit() ran synchronously inside the Promise executor (TDZ on run).",
+    guard: "src/components/doc-previews/pdf-limit.check.ts",
+  },
+  {
+    id: "RG-034",
+    found: "2026-10-03",
+    symptom: "Chat history retry policy retried forever or not at all.",
+    guard: "src/lib/history-retry.check.ts",
+  },
+  {
+    id: "RG-035",
+    found: "2026-10-03",
+    symptom: "Harness agent cards showed a stale status instead of live progress.",
+    guard: "src/lib/harness-agents.check.ts",
+  },
+  {
+    id: "RG-036",
+    found: "2026-10-03",
+    symptom: "Session row rendered the wrong unread/preview state in the sidebar.",
+    guard: "src/lib/session-row.check.ts",
+  },
+  {
+    id: "RG-037",
+    found: "2026-10-03",
+    symptom: "Slash-command palette matched the wrong command for a partial slug.",
+    guard: "src/lib/command-registry.check.ts",
+  },
+  {
+    id: "RG-038",
+    found: "2026-10-03",
+    symptom: "Source filter dropped or duplicated frames from the gateway.",
+    guard: "src/lib/source-filter.check.ts",
+  },
+  {
+    id: "RG-039",
+    found: "2026-10-03",
+    symptom: "Chat backdrop resolved a media path against the origin and 404'd.",
+    guard: "src/components/chat-backdrop.src.check.ts",
+  },
+  {
+    id: "RG-040",
+    found: "2026-10-03",
+    symptom: "Media overhaul assertions (formats, limits, previews) regressed.",
+    guard: "scripts/verify-media.check.ts",
+  },
+  {
+    id: "RG-041",
+    found: "2026-10-03",
+    symptom: "Slash-command parser mis-split a command with arguments.",
+    guard: "src/lib/slash-commands.check.ts",
+  },
+  {
+    id: "RG-042",
+    found: "2026-10-03",
+    symptom: "Background dock items did not reconcile with the server, or failed to restore on reload.",
+    guard: "src/lib/bg-dock.check.ts",
+  },
+  {
+    id: "RG-043",
+    found: "2026-10-03",
+    symptom: "Theme artwork resolved the wrong asset for a palette.",
+    guard: "src/lib/theme-artwork.check.ts",
+  },
+  {
+    id: "RG-044",
+    found: "2026-10-03",
+    symptom: "Training page tiles or retry countdown rendered stale values.",
+    guard: "src/lib/training-page.check.ts",
+  },
+  {
+    id: "RG-045",
+    found: "2026-10-03",
+    symptom: "Gate registry failed to capture an approval or clarify frame.",
+    guard: "server/gate-api.check.mjs",
+  },
+  {
+    id: "RG-046",
+    found: "2026-10-03",
+    symptom: "Gate enrichment dropped fields when enriching a ledger row.",
+    guard: "server/gate-enrich.check.mjs",
+  },
+  {
+    id: "RG-047",
+    found: "2026-10-03",
+    symptom: "last-reply cache returned a stale answer for a session.",
+    guard: "server/last-reply.check.mjs",
+  },
+  {
+    id: "RG-048",
+    found: "2026-10-03",
+    symptom: "Server command registry served a stale command list.",
+    guard: "server/command-registry.check.mjs",
+  },
+  {
+    id: "RG-049",
+    found: "2026-10-03",
+    symptom: "sysinfo classifier, timeout or ranking mis-reported host state.",
+    guard: "server/sysinfo.check.mjs",
+  },
+  {
+    id: "RG-050",
+    found: "2026-10-03",
+    symptom: "Transcode capability probe reported the wrong limit.",
+    guard: "scripts/transcode-cap.check.mjs",
+  },
+  {
+    id: "RG-051",
+    found: "2026-10-03",
+    symptom: "Training dump/retry math regressed (schema, upsert idempotence, retry schedule).",
+    guard: "scripts/training.check.mjs",
+  },
+  {
+    id: "RG-052",
+    found: "2026-10-03",
+    symptom: "Wired /api/media/transcode route lost its guards or path-safety.",
+    guard: "server/transcode-route.check.mjs",
+  },
+  {
+    id: "RG-053",
+    found: "2026-10-03",
+    symptom: "Ops pages failed their DOM/auth assertions in a live browser.",
+    guard: "scripts/ops-pages.dom.check.mjs",
+    live: false, // needs live server + ASTRA_WEBUI_PASSWORD + playwright
+  },
+  {
+    id: "RG-054",
+    found: "2026-10-03",
+    symptom: "History pagination re-fetched already-held rows (order/offset mismatch) or duplicated the boundary row when prepending an older page.",
+    guard: "src/lib/pagination.check.ts",
+  },
+  {
+    id: "RG-055",
+    found: "2026-10-03",
+    symptom: "Rich canvas blocks (rich-blocks) rendered or validated incorrectly.",
+    guard: "src/lib/rich-blocks.check.ts",
+  },
+  {
+    id: "RG-056",
+    found: "2026-10-03",
+    symptom:
+      "Canvas fences emitted in a real-world shape (bare block, `blocks` as an item list, NDJSON, misnested ```kpi fence, unquoted keys) degraded to raw JSON instead of rendering as a card.",
+    guard: "src/lib/canvas-replay.check.ts",
+  },
+];
+
+// ---- gate -----------------------------------------------------------------
+
+let failures = 0;
+const fail = (msg) => {
+  failures++;
+  console.error("FAIL:", msg);
+};
+
+// 1. manifest integrity: unique ids, guarded files exist.
+const seen = new Set();
+const liveChecks = new Set();
+
+for (const r of REGRESSIONS) {
+  if (seen.has(r.id)) fail(`duplicate regression id ${r.id}`);
+  seen.add(r.id);
+  if (!existsSync(join(ROOT, r.guard))) {
+    fail(`${r.id}: guarding check is missing — ${r.guard}. A pinned bug lost its pin.`);
+    continue;
+  }
+  if (r.live !== false) liveChecks.add(r.guard);
+}
+
+// 2. every *.check.* file in the repo must be reachable from the manifest,
+//    otherwise a new check silently escapes the gate.
+const { execSync } = await import("node:child_process");
+let discovered = [];
+try {
+  discovered = execSync(
+    "find src server scripts -name '*.check.*' -not -path '*/node_modules/*'",
+    { cwd: ROOT, encoding: "utf8" }
+  ).split("\n").map((s) => s.trim()).filter(Boolean);
+} catch { /* find unavailable: manifest integrity still checked above */ }
+
+for (const file of discovered) {
+  if (file === "scripts/regression-gate.check.mjs") continue;
+  if (!REGRESSIONS.some((r) => r.guard === file)) {
+    fail(`${file} is not in the regression manifest — add a row or it is unpinned.`);
+  }
+}
+
+// 3. live re-run of every guarded check that can run here.
+for (const file of [...liveChecks].sort()) {
+  const isTs = /\.check\.(ts|tsx)$/.test(file);
+  const args = isTs
+    ? ["--import", "./scripts/ts-resolve.mjs", file]
+    : [file];
+  const r = spawnSync(process.execPath, args, { cwd: ROOT, encoding: "utf8", timeout: 120_000 });
+  if (r.status !== 0) {
+    const last = (r.stderr || r.stdout || "").trim().split("\n").filter(Boolean).pop() || "";
+    fail(`REGRESSED: ${file} — ${last.slice(0, 140)}`);
+  }
+}
+
+console.log(
+  `regression-gate: ${REGRESSIONS.length} pinned bugs, ${liveChecks.size} re-run live, ${discovered.length} checks discovered`
+);
+if (failures) {
+  console.error(`${failures} regression-gate failure(s)`);
+  process.exit(1);
+}
