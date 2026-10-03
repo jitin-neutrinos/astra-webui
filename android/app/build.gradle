@@ -14,6 +14,24 @@ android {
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            //
+            // R6 (perf audit 2026-10-03): the bundled web copy is NOT packaged.
+            //
+            // capacitor.config.ts sets server.url = https://astra.jitinnair.com,
+            // so the WebView loads the network copy and never reads
+            // assets/public/**. That copy measured 4,491,728 bytes — 26% of the
+            // APK (pdf-view 1.6 MB, pptx-view 1.2 MB, xlsx 331 KB, jszip 96 KB,
+            // docx 76 KB, media-viewer 56 KB) plus a STALE index.html dated
+            // 2026-09-30 against a live dist/ of 2026-10-03.
+            //
+            // It is not merely size: the moment anyone flips server.url off to
+            // ship an offline build, that stale bundle silently shadows the live
+            // site. Excluding it at packaging time (see stripBundledWebAssets)
+            // keeps that from ever being reachable by accident.
+            //
+            // If you ever DO want a bundled/offline build: drop the
+            // stripBundledWebAssets task below AND run `npx cap copy android`
+            // first so the assets come from a current dist/.
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
@@ -33,8 +51,20 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // Signed with the same keystore as debug so the release APK can be
+            // sideloaded over an existing install without an uninstall (a
+            // signature mismatch forces a full data wipe otherwise).
+            signingConfig signingConfigs.debug
+            // R3 (perf audit 2026-10-03): R8 was OFF, so the release APK shipped
+            // 8 unminified dex files (16.8 MB) for ~2k lines of our own Kotlin.
+            // Android's R8 docs are explicit that proguard-android.txt is NOT
+            // sufficient — the *-optimize.txt base file is required for full
+            // optimization. Keep rules for the reflective Capacitor bridge live
+            // in proguard-rules.pro; without them a minified build loses the
+            // plugin map and NativeNtfy.* fails silently from JS.
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 }
@@ -43,6 +73,51 @@ repositories {
     flatDir{
         dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
     }
+}
+
+// R6 (perf audit 2026-10-03): the bundled web copy is NOT packaged.
+//
+// capacitor.config.ts sets server.url = https://astra.jitinnair.com, so the
+// WebView loads the network copy and never reads assets/public/**. That copy
+// measured 4,491,728 bytes = 26% of the APK (pdf-view 1.6 MB, pptx-view 1.2 MB,
+// xlsx 331 KB, jszip 96 KB, docx 76 KB, media-viewer 56 KB, index 797 KB) plus
+// a STALE index.html dated 2026-09-30 against a live dist/ of 2026-10-03.
+//
+// It is not only size: the moment anyone flips server.url off to ship an
+// offline build, that stale bundle silently shadows the live site. Keeping it
+// out of the APK makes that unreachable by accident.
+//
+// The source dir is MOVED aside before packaging and restored afterwards, so a
+// failed build still leaves `npx cap copy android` and a future bundled build
+// working. Stash lives under app/build/ and is wiped on the next run.
+def bundledWebDir = file('src/main/assets/public')
+def bundledWebStash = file("${project.buildDir}/bundled-web-stash")
+
+tasks.register('stripBundledWebAssets') {
+    doLast {
+        if (bundledWebDir.exists()) {
+            delete bundledWebStash
+            bundledWebDir.renameTo(bundledWebStash)
+            logger.lifecycle("stripBundledWebAssets: set aside ${bundledWebDir} (unused — server.url loads the live site)")
+        }
+    }
+}
+
+tasks.register('restoreBundledWebAssets') {
+    doLast {
+        if (bundledWebStash.exists()) {
+            bundledWebDir.parentFile.mkdirs()
+            bundledWebStash.renameTo(bundledWebDir)
+            logger.lifecycle("restoreBundledWebAssets: restored ${bundledWebDir}")
+        }
+    }
+}
+
+// Strip as the first action of packaging (after inputs merge, before the
+// archive is written), and always restore afterwards — even on failure.
+tasks.matching { it.name.startsWith('package') }.configureEach {
+    dependsOn 'stripBundledWebAssets'
+    finalizedBy 'restoreBundledWebAssets'
 }
 
 dependencies {

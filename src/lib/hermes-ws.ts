@@ -45,7 +45,12 @@ export function setLastSessionInfo(info: SessionInfo | null) { lastSessionInfo =
 
 export function useHermesWS(onEvent: (ev: EventPayload) => void) {
   const conn = useWsStore((s) => s.conn);
-  const nextRetryInMs = useWsStore((s) => s.nextRetryIn);
+  // PERF: `nextRetryIn` is deliberately NOT subscribed here. It ticks 1 Hz
+  // during an outage, and a subscription at this level re-rendered the entire
+  // chat tree once a second to feed a countdown that lives in ConnectionBanner.
+  // Zustand bails out on equal values, so the idle case was already free —
+  // the cost was outage-time only. ConnectionBanner subscribes directly; the
+  // getter below stays for non-React callers. See references/perf-r1-timer.md.
   const isStreaming = useWsStore((s) => s.turnRunning);
   const liveSessionId = useWsStore((s) => s.liveSessionId);
   const storedSessionId = useWsStore((s) => s.storedSessionId);
@@ -92,7 +97,9 @@ export function useHermesWS(onEvent: (ev: EventPayload) => void) {
     submitSteer,
     retryConnection: engineRetry,
     conn: conn as ConnState,
-    nextRetryIn: () => nextRetryInMs,
+    // Non-reactive getter: reads the store on demand. React callers that need
+    // to re-render on this value subscribe via useWsStore directly.
+    nextRetryIn: () => wsGet().nextRetryIn,
     interrupt,
     storedSessionId,
     setStoredSessionId,

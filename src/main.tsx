@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
+import './fonts.css'
 import App from './App.tsx'
 // Native-shell bootstrap (push service, resume repair, gate events).
 // Native-only inside; inert no-op in regular browsers.

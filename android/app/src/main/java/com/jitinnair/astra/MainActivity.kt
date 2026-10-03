@@ -6,19 +6,97 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.util.Log
 import android.webkit.CookieManager
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.URLUtil
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import com.getcapacitor.BridgeActivity
 
 public class MainActivity : BridgeActivity() {
+    companion object {
+        private const val TAG = "AstraWebView"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         registerPlugin(NativeNtfy::class.java)
         registerPlugin(CookieEncryptPlugin::class.java)
         super.onCreate(savedInstanceState)
         installDownloadListener()
         installBackHandler()
+        installRenderProcessHandler()
+    }
+
+    // R2 (perf audit 2026-10-03): recover from renderer death instead of dying.
+    //
+    // WebView runs its page in a SEPARATE sandboxed renderer process. Android
+    // kills that process under memory pressure — routine on a loaded phone, and
+    // near-certain once a PDF/PPTX viewer has been resident. Google's own docs
+    // (developer.android.com/develop/ui/views/layout/webapps/handle-termination)
+    // are explicit: without onRenderProcessGone returning true, the renderer
+    // exit takes OUR process down with it, and the user sees the app vanish
+    // when they switch back to it. Returning true lets us rebuild the WebView
+    // and keep them where they were.
+    //
+    // Contract when this fires (per the same doc):
+    //   1. Never reuse the dead WebView — remove, destroy, drop every reference.
+    //   2. Build a fresh instance.
+    //   3. Return true.
+    // Returning false (or not implementing this) lets WebView kill the app.
+    private fun installRenderProcessHandler() {
+        val wv = bridge?.webView ?: return
+        // Chain to Capacitor's own client so plugin routing + navigation
+        // interception keep working; we only add the termination callback.
+        val delegate = wv.webViewClient
+        wv.webViewClient = object : WebViewClient() {
+            override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                Log.e(
+                    TAG,
+                    if (detail.didCrash()) "WebView renderer CRASHED — rebuilding"
+                    else "WebView renderer KILLED for memory — rebuilding",
+                )
+                // 1. Detach and destroy the dead instance. Any later call on it
+                //    is a use-after-free; Capacitor's bridge still holds a
+                //    reference, so null out the view it would call into.
+                try { view.stopLoading() } catch (_: Throwable) { /* already gone */ }
+                try {
+                    (view.parent as? android.view.ViewGroup)?.removeView(view)
+                } catch (_: Throwable) { /* no parent */ }
+                try { view.destroy() } catch (_: Throwable) { /* already destroyed */ }
+
+                // 2. Recreate. setContentView re-inflates from activity_main,
+                //    and the Capacitor bridge reloads server.url on its own.
+                //    Persisted WebView state (if any) is restored in
+                //    onRestoreInstanceState via WebView.restoreState.
+                runOnUiThread {
+                    try {
+                        setContentView(R.layout.activity_main)
+                        // The fresh WebView also needs the renderer-death
+                        // handler, or the next kill takes the app down again.
+                        installRenderProcessHandler()
+                    } catch (e: Throwable) {
+                        Log.e(TAG, "rebuild after renderer death failed", e)
+                    }
+                }
+                // 3. Handled — do not kill the app.
+                return true
+            }
+
+            // Preserve Capacitor's behaviour for everything else.
+            override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean =
+                delegate?.shouldOverrideUrlLoading(view, request) ?: false
+
+            override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+                delegate?.onPageStarted(view, url, favicon)
+            }
+
+            override fun onPageFinished(view: WebView, url: String?) {
+                delegate?.onPageFinished(view, url)
+            }
+        }
     }
 
     // Downloads: the WebView turns anchor navigations with content-disposition
@@ -99,11 +177,49 @@ public class MainActivity : BridgeActivity() {
     // connection needs.
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
+        val wv = bridge?.webView
         if (level == TRIM_MEMORY_UI_HIDDEN) {
-            bridge?.webView?.let { wv ->
-                wv.pauseTimers()
-                wv.onPause()
+            wv?.let {
+                it.pauseTimers()
+                it.onPause()
             }
+            return
+        }
+        // R2 (perf audit 2026-10-03): react to REAL memory pressure, not just
+        // "UI hidden". WebView memory is native, not Java heap — it is not
+        // capped by maxHeap, never throws OOM, and silently grows into swap
+        // until the Low Memory Killer steps in (Android's "Manage WebView
+        // memory" guide). So the only lever is to shed on the signal.
+        if (level >= TRIM_MEMORY_RUNNING_LOW) {
+            Log.w(TAG, "trim memory level=$level — clearing WebView caches")
+            wv?.let {
+                try { it.clearCache(false) } catch (_: Throwable) { /* gone */ }
+                try {
+                    // Only when backgrounded — flush while visible would drop
+                    // the page the user is looking at.
+                    if (!it.isShown) CookieManager.getInstance().flush()
+                } catch (_: Throwable) { /* ignore */ }
+            }
+        }
+        // TRIM_MEMORY_COMPLETE means the process is a kill candidate. Stop the
+        // renderer's own churn so whatever survives starts from a quiet state.
+        if (level >= TRIM_MEMORY_COMPLETE) {
+            Log.w(TAG, "trim memory level=$level — backgrounding WebView")
+            wv?.let {
+                try { it.onPause() } catch (_: Throwable) { /* gone */ }
+            }
+        }
+    }
+
+    // R2: persist WebView state across process death so a renderer rebuild (or
+    // an OS kill) restores the user's place instead of dropping them on the
+    // landing page. Android pairs this with onRenderProcessGone recovery.
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        try {
+            bridge?.webView?.saveState(outState)
+        } catch (e: Throwable) {
+            Log.w(TAG, "WebView.saveState failed", e)
         }
     }
 

@@ -6,6 +6,7 @@ import { AnimatedCopyButton } from "@/lib/animated-copy";
 import { cn } from "@/lib/utils";
 import { useHermesWS } from "@/lib/hermes-ws";
 import type { EventPayload } from "@/lib/hermes-ws";
+import { useWsStore } from "@/lib/ws-store";
 import { RESTORED_MS, fmtSeconds, bannerVisible, type ConnState } from "@/lib/connection-state";
 import { parseCommand } from "@/lib/slash-commands";
 import { ChatBackdrop } from "./chat-backdrop";
@@ -22,6 +23,9 @@ import AITextLoading from "@/components/ui/ai-text-loading";
 import { ChatFeedSkeleton, NewChatGreetSkeleton } from "@/components/ui/skeletons";
 import { getHermesHome, getCatalog } from "@/lib/session-files";
 import { histBackoffMs, histFailureTransient, HIST_MAX_ATTEMPTS } from "@/lib/history-retry";
+import {
+  PAGE_SIZE, LOAD_OLDER_THRESHOLD_PX, pageOffset, prependOlder, hasMore,
+} from "@/lib/pagination";
 import {
 applySegmentOps, finalizeSegments, findNewestCollapsedToolSeg, expandKeyBlocked, TurnTimeline,
 usePrefersReducedMotion,
@@ -155,9 +159,14 @@ function textOf(payload: any): string {
 // Dynamic connection banner: offline → live retry countdown + manual Retry;
 // restored → green "Connected" that auto-dismisses (RESTORED_MS) and slides
 // away on the next frame drop. Glassmorphic, both themes (see .conn-banner CSS).
-function ConnectionBanner({ state, onRetry, nextRetryIn }: { state: ConnState; onRetry: () => void; nextRetryIn: () => number }) {
+function ConnectionBanner({ state, onRetry }: { state: ConnState; onRetry: () => void }) {
   const [tick, setTick] = useState(0);
   const [leaving, setLeaving] = useState(false);
+  // PERF: subscribe to the countdown HERE, not in useHermesWS. The value ticks
+  // 1 Hz during an outage; subscribed at the top level it re-rendered the whole
+  // chat tree once a second to feed this one label. This component already
+  // re-renders on its own 1 s `tick` below, so the subscription is free here.
+  const nextRetryInMs = useWsStore((s) => s.nextRetryIn);
   // Banner only after 60s down. Reconnect is unchanged — this only hides chrome.
   const disconnectAtRef = useRef<number | null>(null);
   if (state === "online") disconnectAtRef.current = null;
@@ -190,7 +199,7 @@ function ConnectionBanner({ state, onRetry, nextRetryIn }: { state: ConnState; o
           <WifiOff className="conn-banner-icon" aria-hidden="true" />
           <span className="conn-banner-title">Connection lost</span>
           <span className="conn-banner-sub">
-            Auto-retrying in <span className="conn-banner-mono">{fmtSeconds(nextRetryIn())}</span> — your messages queue in the background.
+            Auto-retrying in <span className="conn-banner-mono">{fmtSeconds(nextRetryInMs)}</span> — your messages queue in the background.
           </span>
           <button type="button" className="conn-banner-retry" onClick={onRetry}>
             <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" /> Retry now
@@ -325,7 +334,9 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   //   scroll-up     → order=latest&limit=PAGE&offset=<held count>
   // Never .reverse() the result — that rotates the chat (first message sinks
   // to the bottom, newest work renders on top) on every reload.
-  const HIST_PAGE = 200;
+  // PAGE_SIZE lives in lib/pagination.ts so the request shape and the dedupe
+  // rules are checkable in one place (pagination.check.ts).
+  const HIST_PAGE = PAGE_SIZE;
   const rawRowsRef = useRef<any[]>([]); // RAW rows, oldest-first ascending
   const histDoneRef = useRef(false);
   const loadingOlderRef = useRef(false);
@@ -369,17 +380,22 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     const el = listRef.current;
     const prevHeight = el?.scrollHeight ?? 0;
     try {
-      const offset = rawRowsRef.current.length;
-      // order=latest&offset skips BACK from the newest row — the window just
-      // above what we already hold. (order=oldest&offset skips from the START
-      // and would re-fetch rows we already have, dead-ending pagination.)
-      const res = await fetch(`/api/hx/sessions/${encodeURIComponent(sid)}/messages?order=latest&limit=${HIST_PAGE}&offset=${offset}`);
+      const offset = pageOffset({ held: rawRowsRef.current.length });
+      // order=latest&offset walks BACK from the newest row — the window just
+      // above what we already hold. (order=oldest&offset walks from the START
+      // and would re-fetch rows we already have, dead-ending pagination.
+      // The contract that guarantees this lives in lib/pagination.ts.)
+      const res = await fetch(`/api/hx/sessions/${encodeURIComponent(sid)}/messages?order=latest&limit=${PAGE_SIZE}&offset=${offset}`);
       if (!res.ok) return;
       const data = await res.json();
-      const page = (data.messages || []).filter((r: any) => r && r.id != null && !rawRowsRef.current.some((x) => x.id === r.id));
-      if (page.length === 0) { histDoneRef.current = true; return; }
-      rawRowsRef.current = [...page, ...rawRowsRef.current];
-      if (page.length < HIST_PAGE) histDoneRef.current = true;
+      const older = (data.messages || []).filter((r: any) => r && r.id != null);
+      const before = rawRowsRef.current.length;
+      // Id-keyed dedupe: the server commonly re-sends the boundary row.
+      const merged = prependOlder({ held: rawRowsRef.current, older });
+      const added = merged.length - before;
+      if (added <= 0) { histDoneRef.current = true; return; }
+      rawRowsRef.current = merged;
+      if (!hasMore({ returned: older.length })) histDoneRef.current = true;
       await applyHistoryRows(rawRowsRef.current, sid);
       // Keep the reader anchored: restore the scroll offset over the prepended content.
       requestAnimationFrame(() => {
@@ -766,7 +782,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     }
   }, [ensureActive, pushOp, finalizeActive, resolveApproval, resolveClarify, resolveGate, noteHarness, applyTitle, refreshTitle]);
 
-  const { isStreaming, submitPrompt, submitBg, submitSteer, retryConnection, conn, nextRetryIn, interrupt, storedSessionId, setStoredSessionId, sendApprovalResponse, sendServerResponse, sessionInfo, setSessionInfo, rpc, liveSessionId, resetSession } = useHermesWS(handleEvent);
+  const { isStreaming, submitPrompt, submitBg, submitSteer, retryConnection, conn, interrupt, storedSessionId, setStoredSessionId, sendApprovalResponse, sendServerResponse, sessionInfo, setSessionInfo, rpc, liveSessionId, resetSession } = useHermesWS(handleEvent);
   // Per-session drafts (R8f): keyed astra:draft:<sid>, debounced 400ms. The old
   // scheme wrote the SENT text at send time — it reappeared on history reload.
   const draftSidRef = useRef<string | null>(null);
@@ -1009,7 +1025,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
             // (reversing rotates the feed: newest work on top, first message last).
             const rows = data.messages || [];
             rawRowsRef.current = rows;
-            histDoneRef.current = rows.length < HIST_PAGE;
+            histDoneRef.current = !hasMore({ returned: rows.length });
             await applyHistoryRows(rows, storedSessionId);
             break;
           }
@@ -1569,7 +1585,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     const el = listRef.current;
     if (!el) return;
     // Scroll-up pagination (owner 2026-10-01): near the top, pull older rows.
-    if (el.scrollTop < 240) void loadOlder();
+    if (el.scrollTop < LOAD_OLDER_THRESHOLD_PX) void loadOlder();
     const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
     const prevTop = lastScrollTopRef.current;
     lastScrollTopRef.current = el.scrollTop;
@@ -1738,7 +1754,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
           </div>
         );
       })()}
-      <ConnectionBanner state={conn} onRetry={retryConnection} nextRetryIn={nextRetryIn} />
+      <ConnectionBanner state={conn} onRetry={retryConnection} />
 
       <header className={cn("mobile-accent-header relative z-10 flex items-center justify-between border-b border-white/[0.07] px-3 lg:px-6", errorBanner && "mt-7")}>
         <span className="flex min-w-0 items-center gap-2">
