@@ -30,10 +30,12 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
   const [newProviderSlug, setNewProviderSlug] = useState("");
   const [newModelName, setNewModelName] = useState("");
   const [newModelProvider, setNewModelProvider] = useState("");
-  
+  const [brainOpen, setBrainOpen] = useState(true);
+  const [behaviorOpen, setBehaviorOpen] = useState(true);
+
   // Pending saves map: dotpath -> status ("saving" | "saved" | "error")
   const [saves, setSaves] = useState<Record<string, string>>({});
-  
+
   // Undo state
   const [undoState, setUndoState] = useState<{ path: string; oldVal: any; newVal: any; timer?: number } | null>(null);
 
@@ -79,16 +81,16 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
         fetch("/api/hx/config/schema"),
         fetch("/api/hx/model/options").catch(() => ({ json: () => ({ models: [] }) } as any))
       ]);
-      
+
       if (!cfgRes.ok) throw new Error("Failed to load config");
-      
+
       const cfg = await cfgRes.json();
       const sch = await schRes.json();
       const opt = await optRes.json();
-      
+
       setConfig(cfg);
       setSchema(sch);
-      
+
       if (opt.providers && Array.isArray(opt.providers)) {
         setProviderOptions(opt.providers);
         const mods = opt.providers.flatMap((p: any) =>
@@ -109,7 +111,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
 
   const getVal = (path: string) => {
     if (!config) return undefined;
-    const parts = path.split('.');
+    const parts = path.split(".");
     let curr = config;
     for (const p of parts) {
       if (curr === undefined || curr === null) return undefined;
@@ -126,7 +128,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
     // Optimistic UI update
     setConfig((prev: any) => {
       const next = JSON.parse(JSON.stringify(prev));
-      const parts = path.split('.');
+      const parts = path.split(".");
       let curr = next;
       for (let i = 0; i < parts.length - 1; i++) {
         if (!curr[parts[i]]) curr[parts[i]] = {};
@@ -140,7 +142,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
 
     // Construct deep update payload (single dotpath change per PUT)
     const payloadConfig: any = {};
-    const parts = path.split('.');
+    const parts = path.split(".");
     let curr = payloadConfig;
     for (let i = 0; i < parts.length - 1; i++) {
       curr[parts[i]] = {};
@@ -199,14 +201,24 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
     setUndoState(null);
   };
 
-  // Derived: models filtered by selected provider
+  // Derive current provider from model name (persists across reloads)
+  const currentProvider = useMemo(() => {
+    const model = getVal("model");
+    if (!model) return "";
+    for (const p of providerOptions) {
+      const models = (p.models || []).map((m: any) => typeof m === "string" ? m : m.id || m.name);
+      if (models.includes(model)) return p.slug;
+    }
+    return "";
+  }, [getVal("model"), providerOptions]);
+
+  // Models filtered by selected provider
   const filteredModels = useMemo(() => {
-    const prov = getVal("provider");
-    if (!prov) return modelOptions;
-    const p = providerOptions.find((x: any) => x.slug === prov);
+    if (!currentProvider) return modelOptions;
+    const p = providerOptions.find((x: any) => x.slug === currentProvider);
     if (!p) return modelOptions;
     return (p.models || []).map((m: any) => typeof m === "string" ? m : m.id || m.name).filter(Boolean);
-  }, [getVal("provider"), providerOptions, modelOptions]);
+  }, [currentProvider, providerOptions, modelOptions]);
 
   // Fallback chain helpers
   const addFallbackEntry = () => {
@@ -305,8 +317,8 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
 
   const renderField = (path: string, label?: string, typeOverride?: string, optionsOverride?: string[]) => {
     const fieldSchema = schema?.fields?.[path];
-    if (!fieldSchema && !label) return null; // Wait, some curated fields might not be in schema, like agent.reasoning_effort. R2 says to render it anyway.
-    
+    if (!fieldSchema && !label) return null;
+
     const type = typeOverride || fieldSchema?.type || "string";
     const options = optionsOverride || fieldSchema?.options || [];
     const val = getVal(path);
@@ -347,7 +359,6 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
                 {options.map((opt: string) => <option key={opt} value={opt}>{opt || "off"}</option>)}
               </select>
             ) : (
-              // Fallback to text input if select has no options in schema
               <input
                 type="text"
                 value={drafts[path] ?? val ?? ""}
@@ -383,10 +394,49 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
   };
 
   const ttsProvider = getVal("tts.provider") || "openai";
-  // Ponytail: keep only real voice keys — piper has voice but no speed; guard by schema presence.
   const ttsVoiceKey = schema?.fields?.[`tts.${ttsProvider}.voice`] ? `tts.${ttsProvider}.voice`
     : schema?.fields?.[`tts.${ttsProvider}.voice_id`] ? `tts.${ttsProvider}.voice_id` : null;
   const ttsSpeedKey = schema?.fields?.[`tts.${ttsProvider}.speed`] ? `tts.${ttsProvider}.speed` : null;
+
+  // Custom dropdown component
+  const DropdownSelect = ({ value, onChange, options, placeholder = "Select...", className = "" }: {
+    value: string;
+    onChange: (v: string) => void;
+    options: { value: string; label: string }[];
+    placeholder?: string;
+    className?: string;
+  }) => {
+    const [open, setOpen] = useState(false);
+    const ref = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+      const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+      document.addEventListener("mousedown", handler);
+      return () => document.removeEventListener("mousedown", handler);
+    }, []);
+    const selected = options.find(o => o.value === value);
+    return (
+      <div ref={ref} className={`relative ${className}`}>
+        <button type="button" onClick={() => setOpen(!open)}
+          className="w-full flex items-center justify-between gap-2 bg-midnight border border-white/10 rounded-lg px-3 py-2 text-sm text-left hover:border-cyanx/30 focus:border-cyanx/50 focus:outline-none transition-colors cursor-pointer"
+        >
+          <span className={cn("truncate", !selected && "text-slate-500")}>{selected?.label || placeholder}</span>
+          <ChevronDown className={cn("w-4 h-4 text-slate-500 shrink-0 transition-transform", open && "rotate-180")} />
+        </button>
+        {open && (
+          <div className="absolute z-50 mt-1 w-full bg-midnight border border-white/10 rounded-lg shadow-2xl max-h-60 overflow-y-auto">
+            {options.map(o => (
+              <button key={o.value} type="button" onClick={() => { onChange(o.value); setOpen(false); }}
+                className={cn("w-full text-left px-3 py-2 text-sm hover:bg-cyanx/10 transition-colors truncate",
+                  o.value === value ? "text-cyanx bg-cyanx/5" : "text-slate-300")}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="flex-1 overflow-auto bg-void text-brandtext font-sans p-4 lg:p-10 relative">
@@ -401,21 +451,22 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
       </div>
 
       <div className="max-w-4xl mx-auto space-y-6">
-        
-        {/* Curated Sections */}
-        
-        {/* Brain Section - Enriched */}
-        <section className="rounded-2xl border border-white/[0.08] bg-midnight/50 p-6 backdrop-blur-md">
-          <div className="flex items-center gap-3 mb-4 border-b border-white/[0.04] pb-3">
-            <div className="w-8 h-8 rounded-lg bg-cyanx/10 flex items-center justify-center">
+
+        {/* Brain Section - Collapsible */}
+        <section className="rounded-2xl border border-white/[0.08] bg-midnight/50 backdrop-blur-md overflow-hidden">
+          <button type="button" onClick={() => setBrainOpen(!brainOpen)} className="w-full flex items-center gap-3 p-6 pb-4 text-left hover:bg-white/[0.02] transition-colors">
+            <div className="w-8 h-8 rounded-lg bg-cyanx/10 flex items-center justify-center shrink-0">
               <Brain className="w-4 h-4 text-cyanx" />
             </div>
-            <div>
+            <div className="flex-1 min-w-0">
               <h3 className="font-display text-lg text-brandtext">Brain</h3>
               <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Core AI Configuration</p>
             </div>
-          </div>
-          
+            <ChevronDown className={cn("w-5 h-5 text-slate-500 transition-transform shrink-0", !brainOpen && "-rotate-90")} />
+          </button>
+          {brainOpen && (
+          <div className="px-6 pb-6 space-y-6">
+
           {/* Quick Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
             <div className="bg-void/50 rounded-lg p-3">
@@ -435,7 +486,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
               <div className="text-sm font-mono text-brandtext">{getVal("streaming.enabled") ? "On" : "Off"}</div>
             </div>
           </div>
-          
+
           {/* Model & Provider */}
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3">
@@ -443,20 +494,18 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
               <h4 className="text-xs font-mono uppercase tracking-[0.15em] text-slate-400">Model & Provider</h4>
             </div>
             <div className="space-y-3">
-              {/* Provider & Model Row */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-slate-500 font-mono mb-1 block">Provider</label>
                   <div className="flex gap-2">
-                    <select
-                      value={getVal("provider") || ""}
-                      onChange={(e) => updateVal("provider", e.target.value)}
-                      className="flex-1 bg-midnight border border-white/10 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-cyanx/50 appearance-none cursor-pointer"
-                    >
-                      <option value="">Select provider</option>
-                      {providerOptions.map(p => <option key={p.slug} value={p.slug}>{p.name}</option>)}
-                    </select>
-                    <button onClick={() => setShowAddProvider(true)} className="p-1.5 rounded-md bg-cyanx/10 hover:bg-cyanx/20 text-cyanx transition-colors" title="Add provider">
+                    <DropdownSelect
+                      value={currentProvider}
+                      onChange={(v) => updateVal("provider", v)}
+                      options={providerOptions.map(p => ({ value: p.slug, label: p.name }))}
+                      placeholder="Select provider"
+                      className="flex-1"
+                    />
+                    <button onClick={() => setShowAddProvider(true)} className="p-2 rounded-lg bg-cyanx/10 hover:bg-cyanx/20 text-cyanx transition-colors shrink-0" title="Add provider">
                       <Plus className="w-4 h-4" />
                     </button>
                   </div>
@@ -464,22 +513,21 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
                 <div>
                   <label className="text-xs text-slate-500 font-mono mb-1 block">Model</label>
                   <div className="flex gap-2">
-                    <select
+                    <DropdownSelect
                       value={getVal("model") || ""}
-                      onChange={(e) => updateVal("model", e.target.value)}
-                      className="flex-1 bg-midnight border border-white/10 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-cyanx/50 appearance-none cursor-pointer"
-                    >
-                      <option value="">Select model</option>
-                      {filteredModels.map((m: string) => <option key={m} value={m}>{m}</option>)}
-                    </select>
-                    <button onClick={() => setShowAddModel(true)} className="p-1.5 rounded-md bg-cyanx/10 hover:bg-cyanx/20 text-cyanx transition-colors" title="Add model">
+                      onChange={(v) => updateVal("model", v)}
+                      options={filteredModels.map((m: string) => ({ value: m, label: m }))}
+                      placeholder="Select model"
+                      className="flex-1"
+                    />
+                    <button onClick={() => setShowAddModel(true)} className="p-2 rounded-lg bg-cyanx/10 hover:bg-cyanx/20 text-cyanx transition-colors shrink-0" title="Add model">
                       <Plus className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
               </div>
               {renderField("model_context_length", "Context Length", "number")}
-              
+
               {/* Fallback Chain - Editable */}
               <div className="py-3 border-b border-white/[0.04]">
                 <div className="flex items-center justify-between mb-2">
@@ -509,10 +557,13 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
                         className="flex-1 bg-midnight border border-white/10 rounded px-2 py-1 text-xs focus:outline-none focus:border-cyanx/50 appearance-none cursor-pointer"
                       >
                         <option value="">Model</option>
-                        {providerOptions.find((p: any) => p.slug === entry.provider)?.models?.map((m: any) => {
-                          const mid = typeof m === "string" ? m : m.id || m.name;
-                          return <option key={mid} value={mid}>{mid}</option>;
-                        }) || []}
+                        {(() => {
+                          const models: any[] = providerOptions.find((p: any) => p.slug === entry.provider)?.models || [];
+                          return models.map((m: any) => {
+                            const mid = typeof m === "string" ? m : m.id || m.name || "";
+                            return <option key={mid} value={mid}>{mid}</option>;
+                          });
+                        })()}
                       </select>
                       <button onClick={() => removeFallbackEntry(i)} className="p-1 rounded hover:bg-redx/20 text-slate-500 hover:text-redx transition-colors" title="Remove">
                         <Trash2 className="w-3.5 h-3.5" />
@@ -526,7 +577,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
               </div>
             </div>
           </div>
-          
+
           {/* Reasoning & Thinking */}
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3">
@@ -540,7 +591,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
               {renderField("agent.reasoning_echo", "Reasoning Echo", "boolean")}
             </div>
           </div>
-          
+
           {/* Memory & Context */}
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3">
@@ -555,7 +606,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
               {renderField("memory.user_profile_enabled", "User Profile", "boolean")}
             </div>
           </div>
-          
+
           {/* Streaming & Output */}
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3">
@@ -568,7 +619,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
               {renderField("streaming.cursor", "Cursor Character")}
             </div>
           </div>
-          
+
           {/* Agent Behavior */}
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3">
@@ -583,7 +634,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
               {renderField("agent.environment_probe", "Environment Probe", "boolean")}
             </div>
           </div>
-          
+
           {/* Safety & Guards */}
           <div>
             <div className="flex items-center gap-2 mb-3">
@@ -596,14 +647,62 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
               {renderField("agent.bot_mode_protocol", "Bot Mode Protocol", "boolean")}
             </div>
           </div>
+          </div>
+          )}
         </section>
 
-        <section className="rounded-2xl border border-white/[0.08] bg-midnight/50 p-6 backdrop-blur-md">
-          <h3 className="font-display text-lg text-brandtext mb-4 border-b border-white/[0.04] pb-2">Behavior</h3>
-          <div className="space-y-1">
-            {renderField("approvals.mode", "Approval Mode", "select", ["manual", "smart", "off"])}
-            {renderField("memory.memory_enabled", "Memory System", "boolean")}
+        {/* Behavior Section - Collapsible */}
+        <section className="rounded-2xl border border-white/[0.08] bg-midnight/50 backdrop-blur-md overflow-hidden">
+          <button type="button" onClick={() => setBehaviorOpen(!behaviorOpen)} className="w-full flex items-center gap-3 p-6 pb-4 text-left hover:bg-white/[0.02] transition-colors">
+            <div className="w-8 h-8 rounded-lg bg-violetx/10 flex items-center justify-center shrink-0">
+              <Shield className="w-4 h-4 text-violetx" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-display text-lg text-brandtext">Behavior</h3>
+              <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Interaction & Safety</p>
+            </div>
+            <ChevronDown className={cn("w-5 h-5 text-slate-500 transition-transform shrink-0", !behaviorOpen && "-rotate-90")} />
+          </button>
+          {behaviorOpen && (
+          <div className="px-6 pb-6 space-y-6">
+            {/* Approvals */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Shield className="w-3.5 h-3.5 text-violetx/70" />
+                <h4 className="text-xs font-mono uppercase tracking-[0.15em] text-slate-400">Approvals</h4>
+              </div>
+              <div className="space-y-1">
+                {renderField("approvals.mode", "Approval Mode", "select", ["manual", "smart", "off"])}
+                {renderField("approvals.timeout", "Approval Timeout (s)", "number")}
+                {renderField("approvals.destructive_slash_confirm", "Confirm Destructive Commands", "boolean")}
+              </div>
+            </div>
+            {/* Memory */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Database className="w-3.5 h-3.5 text-violetx/70" />
+                <h4 className="text-xs font-mono uppercase tracking-[0.15em] text-slate-400">Memory</h4>
+              </div>
+              <div className="space-y-1">
+                {renderField("memory.memory_enabled", "Memory System", "boolean")}
+                {renderField("memory.write_approval", "Memory Write Approval", "boolean")}
+                {renderField("memory.nudge_interval", "Nudge Interval", "number")}
+              </div>
+            </div>
+            {/* Interaction */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Zap className="w-3.5 h-3.5 text-violetx/70" />
+                <h4 className="text-xs font-mono uppercase tracking-[0.15em] text-slate-400">Interaction</h4>
+              </div>
+              <div className="space-y-1">
+                {renderField("agent.text_verbosity", "Text Verbosity")}
+                {renderField("agent.coding_context", "Coding Context")}
+                {renderField("agent.image_input_mode", "Image Input Mode")}
+              </div>
+            </div>
           </div>
+          )}
         </section>
 
         {(ttsVoiceKey || ttsSpeedKey) && (
@@ -641,7 +740,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
 
         {/* Advanced Toggle */}
         <div className="pt-4 pb-12">
-          <button 
+          <button
             onClick={() => setShowAdvanced(!showAdvanced)}
             className="flex items-center justify-center w-full gap-2 py-3 rounded-xl border border-white/[0.04] bg-white/[0.01] hover:bg-white/[0.03] transition-colors text-sm font-mono text-slate-400"
           >
@@ -653,9 +752,9 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
             <div className="mt-6 space-y-6 animate-in fade-in slide-in-from-top-4 duration-300">
               <div className="relative">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input 
-                  type="text" 
-                  placeholder="Search settings..." 
+                <input
+                  type="text"
+                  placeholder="Search settings..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="w-full bg-midnight/50 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-cyanx/50 font-mono"
@@ -673,7 +772,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
                   </section>
                 );
               })}
-              
+
               {Object.keys(categories).length === 0 && (
                 <div className="text-center py-10 text-slate-500 text-sm font-mono">No settings match your search.</div>
               )}
@@ -689,7 +788,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
             <p className="text-sm font-medium text-slate-200">Setting updated</p>
             <p className="text-xs font-mono text-slate-500 mt-0.5 max-w-[200px] truncate">{undoState.path}</p>
           </div>
-          <button 
+          <button
             onClick={handleUndo}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-cyanx/10 text-cyanx hover:bg-cyanx/20 transition-colors text-xs font-mono uppercase tracking-wider font-bold"
           >
