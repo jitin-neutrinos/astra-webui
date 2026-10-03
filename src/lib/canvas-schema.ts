@@ -58,9 +58,53 @@ export interface CalloutBlock {
   body: string;
 }
 
+export interface ProgressBlock {
+  type: "progress";
+  label: string;
+  value: number;
+  max?: number;
+  unit?: string;
+  status?: "ok" | "warn" | "fail";
+  detail?: string;
+}
+
+export interface TimelineBlock {
+  type: "timeline";
+  items: { title: string; detail?: string; time?: string; status?: "done" | "active" | "todo" | "fail" }[];
+}
+
+export interface CompareBlock {
+  type: "compare";
+  items: {
+    name: string;
+    caption?: string;
+    badge?: string;
+    points: { text: string; tone?: "pro" | "con" | "neutral" }[];
+  }[];
+}
+
+export interface TreeBlock {
+  type: "tree";
+  nodes: { id: string; label: string; detail?: string; children?: string[] }[];
+}
+
+export interface CodeBlock {
+  type: "code";
+  language?: string;
+  filename?: string;
+  code: string;
+}
+
+export interface ReferencesBlock {
+  type: "references";
+  items: { title: string; href?: string; note?: string }[];
+}
+
 export type CanvasBlock =
   | KpiBlock | ChartBlock | TableBlock | DiagramBlock
-  | ChecklistBlock | StepsBlock | CalloutBlock;
+  | ChecklistBlock | StepsBlock | CalloutBlock
+  | ProgressBlock | TimelineBlock | CompareBlock | TreeBlock
+  | CodeBlock | ReferencesBlock;
 
 export interface CanvasSpec {
   v: 1;
@@ -149,6 +193,87 @@ function validateBlock(b: any): CanvasBlock | null {
     case "callout":
       if (!TONES.has(b.tone) || !isStr(b.body)) return null;
       return { type: "callout", tone: b.tone, title: isStr(b.title) ? b.title : undefined, body: b.body };
+    case "progress":
+      if (!isStr(b.label) || !isNum(b.value)) return null;
+      if (b.max != null && !isNum(b.max)) return null;
+      if (b.unit != null && !isStr(b.unit)) return null;
+      if (b.detail != null && !isStr(b.detail)) return null;
+      return {
+        type: "progress",
+        label: b.label,
+        value: b.value,
+        max: isNum(b.max) ? b.max : undefined,
+        unit: isStr(b.unit) ? b.unit : undefined,
+        status: b.status === "warn" || b.status === "fail" ? b.status : "ok",
+        detail: isStr(b.detail) ? b.detail : undefined,
+      };
+    case "timeline": {
+      if (!Array.isArray(b.items) || b.items.length === 0) return null;
+      const items: TimelineBlock["items"] = [];
+      for (const it of b.items) {
+        if (!it || !isStr(it.title)) return null;
+        items.push({
+          title: it.title,
+          detail: isStr(it.detail) ? it.detail : undefined,
+          time: isStr(it.time) ? it.time : undefined,
+          status: it.status === "done" || it.status === "active" || it.status === "fail" ? it.status : "todo",
+        });
+      }
+      return { type: "timeline", items };
+    }
+    case "compare": {
+      if (!Array.isArray(b.items) || b.items.length === 0) return null;
+      const items: CompareBlock["items"] = [];
+      for (const it of b.items) {
+        if (!it || !isStr(it.name) || !Array.isArray(it.points) || it.points.length === 0) return null;
+        const points: CompareBlock["items"][number]["points"] = [];
+        for (const p of it.points) {
+          if (!p || !isStr(p.text)) return null;
+          points.push({ text: p.text, tone: p.tone === "pro" || p.tone === "con" ? p.tone : "neutral" });
+        }
+        items.push({
+          name: it.name,
+          caption: isStr(it.caption) ? it.caption : undefined,
+          badge: isStr(it.badge) ? it.badge : undefined,
+          points,
+        });
+      }
+      return { type: "compare", items };
+    }
+    case "tree": {
+      if (!Array.isArray(b.nodes) || b.nodes.length === 0) return null;
+      const ids = new Set<string>();
+      const nodes: TreeBlock["nodes"] = [];
+      for (const n of b.nodes) {
+        if (!n || !isStr(n.id) || !isStr(n.label)) return null;
+        ids.add(n.id);
+        nodes.push({
+          id: n.id,
+          label: n.label,
+          detail: isStr(n.detail) ? n.detail : undefined,
+          children: Array.isArray(n.children) ? n.children.filter(isStr) : undefined,
+        });
+      }
+      for (const n of nodes) {
+        for (const c of n.children || []) if (!ids.has(c)) return null; // dangling child = invalid
+      }
+      return { type: "tree", nodes };
+    }
+    case "code":
+      if (!isStr(b.code) || b.code.trim() === "") return null;
+      if (b.language != null && !isStr(b.language)) return null;
+      if (b.filename != null && !isStr(b.filename)) return null;
+      return { type: "code", code: b.code, language: isStr(b.language) ? b.language : undefined, filename: isStr(b.filename) ? b.filename : undefined };
+    case "references": {
+      if (!Array.isArray(b.items) || b.items.length === 0) return null;
+      const items: ReferencesBlock["items"] = [];
+      for (const it of b.items) {
+        if (!it || !isStr(it.title)) return null;
+        if (it.href != null && !isStr(it.href)) return null;
+        items.push({ title: it.title, href: isStr(it.href) ? it.href : undefined, note: isStr(it.note) ? it.note : undefined });
+      }
+      return { type: "references", items };
+    }
     default:
       return null;
   }

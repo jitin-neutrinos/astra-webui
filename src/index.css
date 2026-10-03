@@ -3126,3 +3126,320 @@ html.theme-fading body * {
 @media (prefers-reduced-motion: reduce) {
   .ast-canvas { animation: none !important; }
 }
+
+/* ==========================================================================
+   CANVAS v2 — expanded block library (progress, timeline, compare, tree,
+   code, references) + composition polish. Same laws: rounded rectangles,
+   dark-mode-only glows, DM Sans + JetBrains Mono, brand palette.
+   ========================================================================== */
+
+.ast-cv-group.rows {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+/* Progress ------------------------------------------------------------------ */
+.ast-cv-progress {
+  padding: 12px 14px;
+  border: 1px solid rgb(var(--c-89) / 0.08);
+  border-radius: 10px;
+  background: rgb(var(--c-65) / 0.03);
+}
+.ast-cv-progress-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.ast-cv-progress-label {
+  font: 500 11px/1.3 var(--font-sans);
+  color: var(--color-brandtext);
+}
+.ast-cv-progress-value {
+  font: 700 15px/1 var(--font-mono);
+  color: var(--color-brandtext);
+  font-variant-numeric: tabular-nums;
+}
+.ast-cv-progress-track {
+  height: 6px;
+  border-radius: 3px;
+  background: rgb(var(--c-89) / 0.08);
+  overflow: hidden;
+}
+.ast-cv-progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--color-cyanx);
+  transition: width 600ms var(--ease-brand);
+}
+.ast-cv-progress.warn .ast-cv-progress-fill { background: #fbbf24; }
+.ast-cv-progress.fail .ast-cv-progress-fill { background: #f87171; }
+.ast-cv-progress-detail {
+  display: block;
+  margin-top: 6px;
+  font-size: 10.5px;
+  color: var(--color-muted);
+}
+
+/* Timeline ------------------------------------------------------------------ */
+.ast-cv-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ast-cv-tl-item {
+  display: flex;
+  gap: 12px;
+}
+.ast-cv-tl-rail {
+  position: relative;
+  width: 10px;
+  flex: none;
+  display: flex;
+  justify-content: center;
+}
+.ast-cv-tl-dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 2px; /* rounded rect, not a circle */
+  background: rgb(var(--c-89) / 0.25);
+  z-index: 1;
+}
+.ast-cv-tl-item::after {
+  content: "";
+  position: absolute;
+}
+.ast-cv-tl-rail::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-0.5px);
+  background: rgb(var(--c-89) / 0.12);
+}
+.ast-cv-tl-item:last-child .ast-cv-tl-rail::before { bottom: 50%; }
+.ast-cv-tl-item.done .ast-cv-tl-dot { background: #34d399; }
+.ast-cv-tl-item.active .ast-cv-tl-dot { background: var(--color-cyanx); }
+.ast-cv-tl-item.fail .ast-cv-tl-dot { background: #f87171; }
+.ast-cv-tl-body {
+  padding-bottom: 14px;
+  flex: 1;
+  min-width: 0;
+}
+.ast-cv-tl-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.ast-cv-tl-title {
+  font: 600 12.5px/1.35 var(--font-sans);
+  color: var(--color-brandtext);
+}
+.ast-cv-tl-time {
+  font: 500 10px/1 var(--font-mono);
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+.ast-cv-tl-detail {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--color-muted);
+}
+
+/* Compare ------------------------------------------------------------------- */
+.ast-cv-compare {
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
+  gap: 10px;
+}
+@media (max-width: 620px) {
+  .ast-cv-compare { grid-template-columns: 1fr; }
+}
+.ast-cv-cmp-card {
+  padding: 13px 14px;
+  border: 1px solid rgb(var(--c-89) / 0.09);
+  border-radius: 12px;
+  background: rgb(var(--c-65) / 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color var(--motion-fast) var(--ease-brand), transform var(--motion-fast) var(--ease-brand);
+}
+.ast-cv-cmp-card:hover {
+  border-color: rgb(var(--c-89) / 0.2);
+  transform: translateY(-1px);
+}
+.ast-cv-cmp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ast-cv-cmp-name {
+  font: 700 13px/1.2 var(--font-sans);
+  color: var(--color-brandtext);
+  letter-spacing: -0.01em;
+}
+.ast-cv-cmp-badge {
+  font: 600 9px/1 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 3px 6px;
+  border-radius: 4px;
+  color: var(--color-cyanx);
+  background: color-mix(in oklab, var(--color-cyanx) 14%, transparent);
+  white-space: nowrap;
+}
+.ast-cv-cmp-caption {
+  font-size: 11px;
+  color: var(--color-muted);
+}
+.ast-cv-cmp-points {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.ast-cv-cmp-point {
+  display: flex;
+  gap: 7px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--color-brandtext);
+}
+.ast-cv-cmp-mark {
+  font: 700 11px/1.4 var(--font-mono);
+  flex: none;
+  width: 10px;
+}
+.ast-cv-cmp-point.pro .ast-cv-cmp-mark { color: #34d399; }
+.ast-cv-cmp-point.con .ast-cv-cmp-mark { color: #f87171; }
+.ast-cv-cmp-point.neutral .ast-cv-cmp-mark { color: var(--color-muted); }
+
+/* Tree ---------------------------------------------------------------------- */
+.ast-cv-tree, .ast-cv-tree-kids {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ast-cv-tree-kids {
+  margin-left: 10px;
+  padding-left: 12px;
+  border-left: 1px solid rgb(var(--c-89) / 0.12);
+}
+.ast-cv-tree-node { padding: 3px 0; }
+.ast-cv-tree-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 10px;
+  border-radius: 7px;
+  background: rgb(var(--c-89) / 0.03);
+}
+.ast-cv-tree-label {
+  font: 600 12px/1.35 var(--font-sans);
+  color: var(--color-brandtext);
+}
+.ast-cv-tree-detail {
+  font-size: 10.5px;
+  color: var(--color-muted);
+}
+
+/* Code ---------------------------------------------------------------------- */
+.ast-cv-code {
+  margin: 0;
+  border: 1px solid rgb(var(--c-89) / 0.1);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bubble-ai-code-bg);
+}
+.ast-cv-code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 12px;
+  background: rgb(var(--c-89) / 0.05);
+  border-bottom: 1px solid rgb(var(--c-89) / 0.08);
+}
+.ast-cv-code-name {
+  font: 500 11px/1 var(--font-mono);
+  color: var(--color-brandtext);
+}
+.ast-cv-code-lang {
+  font: 600 9px/1 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-muted);
+}
+.ast-cv-code-body {
+  margin: 0;
+  padding: 11px 13px;
+  overflow-x: auto;
+  font: 400 11.5px/1.6 var(--font-mono);
+  color: var(--color-brandtext);
+  white-space: pre;
+}
+
+/* References --------------------------------------------------------------- */
+.ast-cv-refs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  counter-reset: ref;
+}
+.ast-cv-ref {
+  display: flex;
+  gap: 9px;
+  align-items: baseline;
+}
+.ast-cv-ref-index {
+  font: 600 10px/1.5 var(--font-mono);
+  color: var(--color-cyanx);
+  flex: none;
+}
+.ast-cv-ref-body { min-width: 0; }
+.ast-cv-ref-link {
+  font: 500 12px/1.45 var(--font-sans);
+  color: var(--color-brandtext);
+  text-decoration: none;
+  border-bottom: 1px solid rgb(var(--c-89) / 0.2);
+}
+a.ast-cv-ref-link:hover { border-bottom-color: var(--color-cyanx); }
+.ast-cv-ref-note {
+  display: block;
+  font-size: 11px;
+  color: var(--color-muted);
+}
+
+/* Chart skeleton keeps layout stable while the lazy chart chunk loads */
+.ast-cv-chart-skeleton { height: 232px; }
+
+/* Light mode: neutral surfaces, no glows */
+[data-theme="light"] .ast-cv-progress,
+[data-theme="light"] .ast-cv-cmp-card,
+[data-theme="light"] .ast-cv-kpi,
+[data-theme="light"] .ast-cv-chart,
+[data-theme="light"] .ast-cv-table-wrap,
+[data-theme="light"] .ast-cv-diagram {
+  background: #f8fafc;
+  border-color: rgba(15, 23, 42, 0.09);
+}
+[data-theme="light"] .ast-cv-progress-track { background: rgba(15, 23, 42, 0.08); }
+[data-theme="light"] .ast-cv-code { background: #f8fafc; border-color: rgba(15, 23, 42, 0.1); }
+[data-theme="light"] .ast-cv-code-head { background: rgba(15, 23, 42, 0.04); }
+[data-theme="light"] .ast-cv-cmp-card:hover { border-color: rgba(15, 23, 42, 0.18); }
+[data-theme="light"] .ast-cv-tree-kids { border-left-color: rgba(15, 23, 42, 0.14); }

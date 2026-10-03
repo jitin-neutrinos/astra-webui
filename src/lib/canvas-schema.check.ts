@@ -95,3 +95,87 @@ test("trend/tone/status enums normalize, junk falls back", () => {
   ] }));
   assert.equal(spec, null); // invalid enum values reject (fail-soft, no silent lie)
 });
+
+// ---- expanded block library (v2) ------------------------------------------
+
+test("progress block validates + clamps defaults", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "progress", label: "Coverage", value: 82 }] }));
+  assert.equal((spec!.blocks[0] as any).status, "ok");
+  assert.equal((spec!.blocks[0] as any).max, undefined);
+  const bad = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "progress", label: "L", value: "82" }] }));
+  assert.equal(bad, null); // value must be numeric
+});
+
+test("timeline block validates with status + time", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "timeline", items: [{ title: "Recon", time: "07:22", status: "done" }, { title: "Build" }] },
+  ] }));
+  const tl = spec!.blocks[0] as any;
+  assert.equal(tl.items[0].time, "07:22");
+  assert.equal(tl.items[1].status, "todo");
+});
+
+test("compare block keeps point tones, rejects empty points", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "compare", items: [
+      { name: "SQLite", badge: "simple", points: [{ text: "zero deps", tone: "pro" }, { text: "no writes" }] },
+      { name: "Postgres", points: [{ text: "concurrent", tone: "con" }] },
+    ] },
+  ] }));
+  const cmp = spec!.blocks[0] as any;
+  assert.equal(cmp.items[0].badge, "simple");
+  assert.equal(cmp.items[0].points[1].tone, "neutral");
+  assert.equal(parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "compare", items: [{ name: "X", points: [] }] }] })), null);
+});
+
+test("tree block rejects a dangling child id", () => {
+  const ok = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "tree", nodes: [{ id: "a", label: "A", children: ["b"] }, { id: "b", label: "B" }] },
+  ] }));
+  assert.equal((ok!.blocks[0] as any).nodes.length, 2);
+  const dangling = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "tree", nodes: [{ id: "a", label: "A", children: ["zzz"] }] },
+  ] }));
+  assert.equal(dangling, null);
+});
+
+test("code block requires non-empty code, optional lang/file", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "code", language: "ts", filename: "a.ts", code: "const x = 1;" },
+  ] }));
+  assert.equal((spec!.blocks[0] as any).language, "ts");
+  assert.equal(parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "code", code: "   " }] })), null);
+});
+
+test("references block validates titles + optional href/note", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "references", items: [{ title: "Docs", href: "https://x.dev", note: "primary" }] },
+  ] }));
+  assert.equal((spec!.blocks[0] as any).items[0].href, "https://x.dev");
+  assert.equal(parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "references", items: [{ href: "https://x.dev" }] }] })), null);
+});
+
+test("a full v2 canvas (all 13 block types) parses in order", () => {
+  const all = {
+    v: 1, title: "Everything",
+    blocks: [
+      { type: "kpi", label: "A", value: 1 },
+      { type: "chart", chart: "bar", series: [{ name: "s", points: [1, 2] }] },
+      { type: "table", columns: ["c"], rows: [["v"]] },
+      { type: "diagram", layout: "flow", nodes: [{ id: "a", label: "A" }], edges: [] },
+      { type: "checklist", items: [{ text: "t" }] },
+      { type: "steps", items: [{ title: "s" }] },
+      { type: "callout", tone: "info", body: "b" },
+      { type: "progress", label: "p", value: 5 },
+      { type: "timeline", items: [{ title: "t" }] },
+      { type: "compare", items: [{ name: "n", points: [{ text: "p" }] }] },
+      { type: "tree", nodes: [{ id: "a", label: "A" }] },
+      { type: "code", code: "x" },
+      { type: "references", items: [{ title: "r" }] },
+    ],
+  };
+  const spec = parseCanvasSpec(JSON.stringify(all));
+  assert.equal(spec!.blocks.length, 13);
+  const parts = splitCanvasBlocks("```astra-canvas\n" + JSON.stringify(all) + "\n```");
+  assert.equal((parts[0] as any).spec.blocks.length, 13);
+});

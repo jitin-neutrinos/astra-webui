@@ -30,6 +30,24 @@ function blockToMd(b: CanvasBlock): string {
       return b.items.map((it, i) => `${i + 1}. **${it.title}**${it.status ? ` _(${it.status})_` : ""}${it.detail ? ` — ${it.detail}` : ""}`).join("\n");
     case "callout":
       return `> ${b.title ? `**${b.title}** — ` : ""}${b.body}`;
+    case "progress":
+      return `- **${b.label}:** ${b.value}${b.unit || ""}${b.detail ? ` (${b.detail})` : ""}`;
+    case "timeline":
+      return b.items.map((it) => `- ${it.time ? `**${it.time}** — ` : ""}**${it.title}**${it.detail ? ` — ${it.detail}` : ""}`).join("\n");
+    case "compare":
+      return b.items.map((it) => `**${it.name}**${it.badge ? ` _(${it.badge})_` : ""}\n${it.points.map((p) => `- ${p.text}`).join("\n")}`).join("\n\n");
+    case "tree": {
+      const byId = new Map(b.nodes.map((n) => [n.id, n]));
+      const roots = b.nodes.filter((n) => !b.nodes.some((o) => (o.children || []).includes(n.id)));
+      const walk = (n: (typeof b.nodes)[number], depth: number): string =>
+        `${"  ".repeat(depth)}- **${n.label}**${n.detail ? ` — ${n.detail}` : ""}\n` +
+        (n.children || []).map((c) => { const k = byId.get(c); return k ? walk(k, depth + 1) : ""; }).join("");
+      return roots.map((n) => walk(n, 0)).join("");
+    }
+    case "code":
+      return `\`\`\`${b.language || ""}\n${b.code}\n\`\`\``;
+    case "references":
+      return b.items.map((it, i) => `${i + 1}. [${it.title}](${it.href || ""})${it.note ? ` — ${it.note}` : ""}`).join("\n");
   }
 }
 

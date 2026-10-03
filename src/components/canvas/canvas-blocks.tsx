@@ -8,7 +8,7 @@ import { cn } from "../../lib/utils";
 // recharts lives behind this boundary: chart blocks defer-load the engine, every
 // other block type (and the whole gate path) stays sync and dependency-free.
 const ChartBlockView = lazy(() => import("./canvas-chart").then((m) => ({ default: m.ChartBlockView })));
-import type { CanvasBlock, KpiBlock, TableBlock, DiagramBlock, ChecklistBlock, StepsBlock, CalloutBlock } from "../../lib/canvas-schema";
+import type { CanvasBlock, KpiBlock, TableBlock, DiagramBlock, ChecklistBlock, StepsBlock, CalloutBlock, ProgressBlock, TimelineBlock, CompareBlock, TreeBlock, CodeBlock, ReferencesBlock } from "../../lib/canvas-schema";
 
 
 // ---- KPI ---------------------------------------------------------------------
@@ -220,16 +220,158 @@ export function CalloutView({ block }: { block: CalloutBlock }) {
   );
 }
 
+// ---- Progress ----------------------------------------------------------------
+
+export function ProgressView({ block }: { block: ProgressBlock }) {
+  const max = block.max ?? 100;
+  const pct = Math.max(0, Math.min(100, (block.value / (max || 1)) * 100));
+  const shown = `${round1(pct)}${block.unit || "%"}`;
+  return (
+    <div className={cn("ast-cv-progress", block.status)}>
+      <div className="ast-cv-progress-head">
+        <span className="ast-cv-progress-label">{block.label}</span>
+        <span className="ast-cv-progress-value">{shown}</span>
+      </div>
+      <div
+        className="ast-cv-progress-track"
+        role="progressbar"
+        aria-valuenow={Math.round(pct)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={block.label}
+      >
+        <div className="ast-cv-progress-fill" style={{ width: `${pct}%` }} />
+      </div>
+      {block.detail && <span className="ast-cv-progress-detail">{block.detail}</span>}
+    </div>
+  );
+}
+
+function round1(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+// ---- Timeline ----------------------------------------------------------------
+
+export function TimelineView({ block }: { block: TimelineBlock }) {
+  return (
+    <ol className="ast-cv-timeline">
+      {block.items.map((it, i) => (
+        <li key={i} className={cn("ast-cv-tl-item", it.status)}>
+          <span className="ast-cv-tl-rail" aria-hidden="true">
+            <span className="ast-cv-tl-dot" />
+          </span>
+          <div className="ast-cv-tl-body">
+            <div className="ast-cv-tl-head">
+              <span className="ast-cv-tl-title">{it.title}</span>
+              {it.time && <span className="ast-cv-tl-time">{it.time}</span>}
+            </div>
+            {it.detail && <span className="ast-cv-tl-detail">{it.detail}</span>}
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+// ---- Compare -----------------------------------------------------------------
+
+export function CompareView({ block }: { block: CompareBlock }) {
+  return (
+    <div className="ast-cv-compare" style={{ ["--cols" as any]: block.items.length }}>
+      {block.items.map((it, i) => (
+        <div key={i} className="ast-cv-cmp-card">
+          <div className="ast-cv-cmp-head">
+            <span className="ast-cv-cmp-name">{it.name}</span>
+            {it.badge && <span className="ast-cv-cmp-badge">{it.badge}</span>}
+          </div>
+          {it.caption && <span className="ast-cv-cmp-caption">{it.caption}</span>}
+          <ul className="ast-cv-cmp-points">
+            {it.points.map((p, j) => (
+              <li key={j} className={cn("ast-cv-cmp-point", p.tone)}>
+                <span className="ast-cv-cmp-mark" aria-hidden="true">
+                  {p.tone === "pro" ? "+" : p.tone === "con" ? "−" : "·"}
+                </span>
+                <span>{p.text}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---- Tree --------------------------------------------------------------------
+
+export function TreeView({ block }: { block: TreeBlock }) {
+  const roots = block.nodes.filter((n) => !block.nodes.some((o) => (o.children || []).includes(n.id)));
+  const byId = new Map(block.nodes.map((n) => [n.id, n]));
+  const render = (n: (typeof block.nodes)[number], depth: number): React.ReactNode => (
+    <li key={n.id} className="ast-cv-tree-node" style={{ ["--depth" as any]: depth }}>
+      <div className="ast-cv-tree-row">
+        <span className="ast-cv-tree-label">{n.label}</span>
+        {n.detail && <span className="ast-cv-tree-detail">{n.detail}</span>}
+      </div>
+      {(n.children || []).length > 0 && (
+        <ul className="ast-cv-tree-kids">{n.children!.map((cid) => { const c = byId.get(cid); return c ? render(c, depth + 1) : null; })}</ul>
+      )}
+    </li>
+  );
+  return <ul className="ast-cv-tree">{roots.map((n) => render(n, 0))}</ul>;
+}
+
+// ---- Code --------------------------------------------------------------------
+
+export function CodeView({ block }: { block: CodeBlock }) {
+  return (
+    <figure className="ast-cv-code">
+      <figcaption className="ast-cv-code-head">
+        <span className="ast-cv-code-name">{block.filename || block.language || "code"}</span>
+        {block.language && <span className="ast-cv-code-lang">{block.language}</span>}
+      </figcaption>
+      <pre className="ast-cv-code-body"><code>{block.code}</code></pre>
+    </figure>
+  );
+}
+
+// ---- References ---------------------------------------------------------------
+
+export function ReferencesView({ block }: { block: ReferencesBlock }) {
+  return (
+    <ol className="ast-cv-refs">
+      {block.items.map((it, i) => (
+        <li key={i} className="ast-cv-ref">
+          <span className="ast-cv-ref-index">{i + 1}</span>
+          <span className="ast-cv-ref-body">
+            {it.href ? (
+              <a className="ast-cv-ref-link" href={it.href} target="_blank" rel="noopener noreferrer">{it.title}</a>
+            ) : (
+              <span className="ast-cv-ref-link">{it.title}</span>
+            )}
+            {it.note && <span className="ast-cv-ref-note">{it.note}</span>}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 // ---- Grouping (KPI rows + single blocks) ----------------------------------------
 
 export function Blocks({ blocks, animate = true }: { blocks: CanvasBlock[]; animate?: boolean }) {
   const groups: CanvasBlock[][] = [];
-  let kpiRun: CanvasBlock[] = [];
-  const flush = () => { if (kpiRun.length > 0) { groups.push(kpiRun); kpiRun = []; } };
+  let rowRun: CanvasBlock[] = [];
+  const flush = () => { if (rowRun.length > 0) { groups.push(rowRun); rowRun = []; } };
+  // KPI and progress blocks read as ROWS; everything else stands alone.
+  const ROWY = new Set(["kpi", "progress"]);
   for (const b of blocks) {
-    if (b.type === "kpi") {
-      kpiRun.push(b);
-      if (kpiRun.length === 4) flush();
+    if (ROWY.has(b.type)) {
+      rowRun.push(b);
+      // a KPI row is 4 tiles; progress bars read best stacked 1-wide or 2-wide
+      const cap = b.type === "kpi" ? 4 : 1;
+      if (rowRun.filter((x) => x.type === "kpi").length >= 4 || (b.type === "progress" && rowRun.length >= 1)) flush();
+      else if (cap === 1) flush();
     } else {
       flush();
       groups.push([b]);
@@ -240,22 +382,11 @@ export function Blocks({ blocks, animate = true }: { blocks: CanvasBlock[]; anim
   return (
     <>
       {groups.map((g, gi) => {
-        const isKpi = g[0].type === "kpi";
+        const rowKind = g[0].type;
         return (
-          <div key={gi} className={cn("ast-cv-group", isKpi && "kpis")}>
+          <div key={gi} className={cn("ast-cv-group", (rowKind === "kpi" || rowKind === "progress") && "rows")}>
             {g.map((b, bi) => {
-              const inner =
-                b.type === "kpi" ? <KpiTile block={b} /> :
-                b.type === "chart" ? (
-                  <Suspense fallback={<div className="ast-cv-chart ast-cv-chart-skeleton" aria-busy="true" />}>
-                    <ChartBlockView block={b} />
-                  </Suspense>
-                ) :
-                b.type === "table" ? <TableBlockView block={b} /> :
-                b.type === "diagram" ? <DiagramBlockView block={b} /> :
-                b.type === "checklist" ? <ChecklistView block={b} /> :
-                b.type === "steps" ? <StepsView block={b} /> :
-                <CalloutView block={b as CalloutBlock} />;
+              const inner = renderOne(b);
               if (!animate) return <div key={bi} className="ast-cv-item">{inner}</div>;
               return (
                 <motion.div key={bi}
@@ -272,4 +403,27 @@ export function Blocks({ blocks, animate = true }: { blocks: CanvasBlock[]; anim
       })}
     </>
   );
+}
+
+function renderOne(b: CanvasBlock) {
+  switch (b.type) {
+    case "kpi": return <KpiTile block={b} />;
+    case "progress": return <ProgressView block={b} />;
+    case "timeline": return <TimelineView block={b} />;
+    case "compare": return <CompareView block={b} />;
+    case "tree": return <TreeView block={b} />;
+    case "code": return <CodeView block={b} />;
+    case "references": return <ReferencesView block={b} />;
+    case "table": return <TableBlockView block={b} />;
+    case "diagram": return <DiagramBlockView block={b} />;
+    case "checklist": return <ChecklistView block={b} />;
+    case "steps": return <StepsView block={b} />;
+    case "chart":
+      return (
+        <Suspense fallback={<div className="ast-cv-chart ast-cv-chart-skeleton" aria-busy="true" />}>
+          <ChartBlockView block={b} />
+        </Suspense>
+      );
+    case "callout": return <CalloutView block={b} />;
+  }
 }

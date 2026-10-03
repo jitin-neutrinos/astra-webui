@@ -6,7 +6,7 @@
 import { useMemo } from "react";
 import {
   ResponsiveContainer, AreaChart, Area, LineChart, Line, BarChart, Bar,
-  RadialBarChart, RadialBar, PieChart, Pie, Cell, CartesianGrid, XAxis, YAxis,
+  RadialBarChart, RadialBar, PieChart, Pie, Cell, XAxis, YAxis,
   Tooltip, Legend, type TooltipProps,
 } from "recharts";
 import type { ChartBlock } from "../../lib/canvas-schema";
@@ -40,7 +40,6 @@ export function ChartBlockView({ block }: { block: ChartBlock }) {
 
   const axis = (
     <>
-      <CartesianGrid stroke="rgb(var(--c-89) / 0.08)" vertical={false} />
       <XAxis dataKey="name" tick={{ fill: "var(--color-muted)", fontSize: 10, fontFamily: "var(--font-mono)" }} axisLine={false} tickLine={false} />
       <YAxis width={34} tick={{ fill: "var(--color-muted)", fontSize: 10, fontFamily: "var(--font-mono)" }} axisLine={false} tickLine={false} />
       <Tooltip content={<TT />} cursor={{ fill: "rgb(var(--c-89) / 0.05)" }} />
