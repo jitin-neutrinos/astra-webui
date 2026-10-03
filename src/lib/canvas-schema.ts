@@ -120,10 +120,41 @@ const FENCE_RE = /```astra-canvas[^\n]*\n([\s\S]*?)```/g;
 // trailing UNTERMINATED fence (streaming in progress)
 const OPEN_FENCE_RE = /```astra-canvas[^\n]*\n([\s\S]*)$/;
 
-const BLOCK_TYPES = new Set(["kpi", "chart", "table", "diagram", "checklist", "steps", "callout"]);
+const BLOCK_TYPES = new Set([
+  "kpi", "chart", "table", "diagram", "checklist", "steps", "callout",
+  "progress", "timeline", "compare", "tree", "code", "references",
+]);
 const CHART_KINDS = new Set(["line", "area", "bar", "radial", "pie"]);
 const TONES = new Set(["info", "warn", "success", "danger"]);
 const TRENDS = new Set(["up", "down", "flat"]);
+
+// Alias table shared by validateBlock AND the top-level coercer, so "is this a
+// block type" can never drift from "what does it normalize to". Replay of 27
+// real fences showed the model reaches for these near-miss names constantly.
+const TYPE_ALIASES: Record<string, string> = {
+  metric: "kpi", stat: "kpi", kpis: "kpi",
+  graph: "chart", plot: "chart",
+  flowchart: "diagram", flow: "diagram", map: "diagram", "graph-map": "diagram",
+  list: "checklist", todo: "checklist", tasks: "checklist",
+  "ordered-list": "steps", process: "steps",
+  note: "callout", warning: "callout", insight: "callout",
+  meter: "progress", bar: "progress", gauge: "progress",
+  sources: "references", citations: "references", links: "references",
+  snippet: "code",
+};
+
+// kpi `trend` is a DIRECTION. Models reuse severity/status words for it
+// (observed live: "good", "warn"). Map the near-misses; a genuinely unknown
+// word still rejects the block rather than inventing a direction.
+const TREND_ALIASES: Record<string, Trend> = {
+  good: "up", ok: "up", positive: "up", success: "up", improved: "up", increase: "up", higher: "up",
+  bad: "down", negative: "down", poor: "down", fail: "down", decrease: "down", lower: "down", worse: "down",
+  warn: "flat", neutral: "flat", same: "flat", stable: "flat", none: "flat",
+};
+
+function looksLikeBlockType(v: unknown): boolean {
+  return isStr(v) && (TYPE_ALIASES[v] !== undefined || BLOCK_TYPES.has(v));
+}
 
 function isStr(v: unknown): v is string { return typeof v === "string"; }
 function isNum(v: unknown): v is number { return typeof v === "number" && Number.isFinite(v); }
@@ -135,15 +166,7 @@ function validateBlock(b: any): CanvasBlock | null {
   // Aliases: models reach for near-miss names. Accept the obvious ones instead
   // of dropping the block (and, before per-block tolerance, the whole card).
   const T = b.type;
-  if (T === "metric" || T === "stat" || T === "kpis") b.type = "kpi";
-  else if (T === "graph" || T === "plot") b.type = "chart";
-  else if (T === "flowchart" || T === "flow" || T === "map" || T === "graph-map") b.type = "diagram";
-  else if (T === "list" || T === "todo" || T === "tasks") b.type = "checklist";
-  else if (T === "ordered-list" || T === "process") b.type = "steps";
-  else if (T === "note" || T === "warning" || T === "insight") b.type = "callout";
-  else if (T === "meter" || T === "bar" || T === "gauge") b.type = "progress";
-  else if (T === "sources" || T === "citations" || T === "links") b.type = "references";
-  else if (T === "snippet") b.type = "code";
+  b.type = TYPE_ALIASES[T] ?? T;
 
   // chart kind aliases + `type` used instead of `chart`
   if (b.type === "chart" && !CHART_KINDS.has(b.chart)) {
@@ -163,7 +186,13 @@ function validateBlock(b: any): CanvasBlock | null {
     case "kpi":
       if (!isStr(b.label) || (!isStr(b.value) && !isNum(b.value))) return null;
       if (b.delta != null && !isStr(b.delta)) return null;
-      if (b.trend != null && !TRENDS.has(b.trend)) return null;
+      if (b.trend != null) {
+        if (!TRENDS.has(b.trend)) {
+          const mapped = TREND_ALIASES[b.trend];
+          if (!mapped) return null; // genuinely unknown direction → no silent lie
+          b.trend = mapped;
+        }
+      }
       return { type: "kpi", label: b.label, value: b.value, delta: b.delta, trend: b.trend };
     case "chart": {
       if (!CHART_KINDS.has(b.chart)) return null;
@@ -306,6 +335,48 @@ function validateBlock(b: any): CanvasBlock | null {
   }
 }
 
+/**
+ * Quote bare object keys: `{label:"x",value:1}` → `{"label":"x","value":1}`.
+ *
+ * Observed live: when the model writes a canvas under a type-tagging inner fence
+ * (```kpi) it emits JS-object-literal keys, not JSON keys. JSON.parse rejects
+ * the whole line, so the card degraded.
+ *
+ * String-aware on purpose: a regex alone would also rewrite text INSIDE string
+ * values (`"see { a: 1 }"`), silently corrupting displayed data. This tracks
+ * string/escape state, so only real keys are touched.
+ */
+function quoteBareKeys(s: string): string {
+  let out = "";
+  let i = 0;
+  let inStr = false;
+  let esc = false;
+  while (i < s.length) {
+    const c = s[i];
+    if (inStr) {
+      out += c;
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+      i++;
+      continue;
+    }
+    if (c === '"') { inStr = true; out += c; i++; continue; }
+    const prev = out.replace(/\s+$/, "").slice(-1);
+    if (prev === "{" || prev === ",") {
+      const m = /^\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*:/.exec(s.slice(i));
+      if (m) {
+        out += m[0].replace(m[1], `"${m[1]}"`);
+        i += m[0].length;
+        continue;
+      }
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
 /** Strip comments + trailing commas before JSON.parse (models emit both). */
 function lenientJson(raw: string): unknown {
   const attempt = (s: string) => JSON.parse(s);
@@ -314,26 +385,134 @@ function lenientJson(raw: string): unknown {
     .replace(/\/\*[\s\S]*?\*\//g, "")      // block comments
     .replace(/(^|[^:"'\\])\/\/.*$/gm, "$1") // line comments (not inside strings)
     .replace(/,(\s*[}\]])/g, "$1");         // trailing commas
-  return attempt(repaired);
+  try { return attempt(repaired); } catch { /* try bare-key quoting */ }
+  return attempt(quoteBareKeys(repaired));
+}
+
+/**
+ * Coerce whatever the fence contained into `{ blocks: [...] }`.
+ *
+ * Replay of every real fence in the DB (27 attempts) found the parser was fine
+ * and the EMISSION shape was wrong in four recurring ways, each of which used
+ * to render as raw JSON:
+ *
+ *   A. bare block          { "type":"kpi", "label":… }            → 1 block
+ *   B. block with `blocks` { "type":"kpi", "blocks":[{label,value}] } → N blocks
+ *                          (the model used `blocks` as the ITEM list of one
+ *                           logical block, not as the envelope)
+ *   C. bare `items`        { "type":"steps", "items":[…] }         → 1 block
+ *   D. NDJSON body         one {…} object per line, no envelope
+ *
+ * B is the ambiguous one and the alias table resolves it: the inner objects
+ * have NO `type`, so they cannot be blocks on their own — they are items of
+ * the outer `type`. When the inner objects DO carry a type, the envelope
+ * reading wins.
+ */
+/** Stamp a default `type` on items that carry none (see the misnested fence). */
+function applyHint(list: any[], hint?: string): any[] {
+  if (!hint) return list;
+  return list.map((x) =>
+    x && typeof x === "object" && !Array.isArray(x) && !isStr(x.type) ? { ...x, type: hint } : x,
+  );
+}
+
+function coerceToBlocks(data: any): any[] {
+  if (Array.isArray(data)) return applyHint(data, markerHint(data));
+  if (!data || typeof data !== "object") return [];
+
+  const hint = isStr(data.__defaultType) ? data.__defaultType : undefined;
+
+  if (Array.isArray(data.blocks)) {
+    // B: `blocks` as the item list of a single logical block. The inner objects
+    // have no `type` of their own → they are items, and the outer type applies.
+    if (looksLikeBlockType(data.type) && data.blocks.every((x: any) => x && typeof x === "object" && !isStr(x.type))) {
+      return data.blocks.map((x: any) => ({ ...x, type: data.type }));
+    }
+    return applyHint(data.blocks, hint);
+  }
+  // A / C: one bare block, or a bare `items` collection.
+  if (looksLikeBlockType(data.type)) return [{ ...data, __defaultType: undefined }];
+  // D: a wrapper whose only content is a known collection field.
+  for (const field of ["items", "nodes", "series", "rows"]) {
+    if (Array.isArray(data[field]) && data[field].length > 0) return [{ ...data, items: data[field] }];
+  }
+  return [];
+}
+
+/** A healed misnested fence leaves its type as a lone marker object. */
+function markerHint(list: any[]): string | undefined {
+  for (const x of list) {
+    if (x && typeof x === "object" && !Array.isArray(x) && isStr(x.__defaultType) && Object.keys(x).length === 1) {
+      return x.__defaultType;
+    }
+  }
+  return undefined;
+}
+
+/** NDJSON body (one JSON object per line, no envelope). */
+function parseNdjson(raw: string): any[] | null {
+  const objs: any[] = [];
+  for (const line of raw.split("\n")) {
+    const t = line.trim().replace(/,$/, "");
+    if (!t || (t[0] !== "{" && t[0] !== "[")) continue;
+    try {
+      const v = JSON.parse(t);
+      if (v && typeof v === "object") { if (Array.isArray(v)) objs.push(...v); else objs.push(v); }
+    } catch {
+      // Bare keys (JS-object-literal style) are the common case here — retry
+      // with the same repair lenientJson uses before giving up on the line.
+      try {
+        const v = lenientJson(t);
+        if (v && typeof v === "object") { if (Array.isArray(v)) objs.push(...v); else objs.push(v); continue; }
+      } catch { /* fall through */ }
+      return null; // a line we cannot read → not NDJSON
+    }
+  }
+  return objs.length ? objs : null;
+}
+
+/**
+ * The model sometimes opens ```astra-canvas and then IMMEDIATELY another fence
+ * (```kpi) before writing its objects. The outer fence then closes on the empty
+ * first line, the payload lands OUTSIDE the fence, and the body handed to the
+ * parser is "" — the card is lost with no way to recover it downstream.
+ *
+ * Runs on the WHOLE message text before the fence regex, because the damage is
+ * to the fence delimiters, not to the payload.
+ */
+function healMisnestedFence(text: string): string {
+  return text.replace(
+    /```astra-canvas[^\n]*\n```([a-zA-Z0-9_-]*)\n/g,
+    (_m, lang: string) => "```astra-canvas\n" + (lang ? `{ "__defaultType": "${lang}" }\n` : ""),
+  );
 }
 
 /** Parse fence content into a spec; null = invalid → degrade to markdown. */
 export function parseCanvasSpec(raw: string): CanvasSpec | null {
   let data: any;
-  try { data = lenientJson(raw); } catch { return null; }
+  try { data = lenientJson(raw); } catch { data = null; }
+  if (data == null) {
+    // Last resort before degrading: NDJSON. Never reached for a well-formed
+    // envelope, so it cannot change the behaviour of any spec that already parsed.
+    const nd = parseNdjson(raw);
+    if (!nd) return null;
+    data = nd;
+  }
   if (!data || typeof data !== "object") return null;
-  if (!Array.isArray(data.blocks) || data.blocks.length === 0) return null;
+  const list = coerceToBlocks(data);
+  if (list.length === 0) return null;
   // PER-BLOCK tolerance: one malformed block must not sink a whole card. Keep
   // every block that validates; degrade to markdown only if NONE do (otherwise
   // a single unexpected block shape silently turned the entire canvas into a
   // wall of raw JSON in the chat).
   const blocks: CanvasBlock[] = [];
-  for (const b of data.blocks) {
+  for (const b of list) {
     const v = validateBlock(b);
     if (v) blocks.push(v);
   }
   if (blocks.length === 0) return null;
-  return { v: 1, title: isStr(data.title) ? data.title : undefined, blocks };
+  const title = isStr(data.title) ? data.title : undefined;
+  return { v: 1, title, blocks };
 }
 
 /**
@@ -345,6 +524,7 @@ export function parseCanvasSpec(raw: string): CanvasSpec | null {
  * Invalid closed canvases degrade to markdown (rendered as code blocks).
  */
 export function splitCanvasBlocks(text: string, streaming = false): CanvasPart[] {
+  text = healMisnestedFence(text);
   const parts: CanvasPart[] = [];
   let last = 0;
   FENCE_RE.lastIndex = 0;
@@ -376,6 +556,7 @@ export function splitCanvasBlocks(text: string, streaming = false): CanvasPart[]
 
 /** True when the text contains at least one VALID closed canvas (mount gate for lazy chunk). */
 export function hasCanvas(text: string): boolean {
+  text = healMisnestedFence(text);
   FENCE_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = FENCE_RE.exec(text)) !== null) {
@@ -409,7 +590,7 @@ export interface TurnCanvasPlan {
  * streaming a still-open fence is withheld rather than flashed as raw JSON.
  */
 export function planTurnCanvases(segTexts: string[], streaming = false): TurnCanvasPlan {
-  const texts = segTexts.map((t) => t ?? "");
+  const texts = segTexts.map((t) => healMisnestedFence(t ?? ""));
   const mdPerSeg = texts.slice();
   const canvases: TurnCanvasPlan["canvases"] = [];
   if (texts.length === 0) return { mdPerSeg, canvases };

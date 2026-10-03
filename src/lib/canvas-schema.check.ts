@@ -331,3 +331,129 @@ test("alias: sources/note/meter/snippet map to their blocks", () => {
   ] }));
   assert.deepEqual(spec!.blocks.map((b: any) => b.type), ["references", "callout", "progress", "code"]);
 });
+
+// ---- emission shapes the model actually produced ---------------------------
+// Replaying every real astra-canvas fence in the Hermes DB (27 attempts, only 6
+// of which rendered) showed the parser was fine and the EMISSION shape was
+// wrong. Each case below is a shape taken verbatim from that replay. Before the
+// coercer these all degraded to a raw-JSON code block.
+
+// A. one bare block, no envelope at all
+test("a bare block object parses as a single-block canvas", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ type: "kpi", label: "Stars", value: "18.7k", delta: "+2.7k", trend: "up" }));
+  assert.ok(spec);
+  assert.equal(spec!.blocks.length, 1);
+  assert.equal((spec!.blocks[0] as any).label, "Stars");
+});
+
+// B. `blocks` used as the ITEM list of one logical block — the most common miss
+test("`blocks` as an item list becomes N blocks of the outer type", () => {
+  const spec = parseCanvasSpec(JSON.stringify({
+    type: "kpi",
+    blocks: [
+      { label: "Stars", value: "18.7k" },
+      { label: "Commits", value: "9,110" },
+      { label: "Contributors", value: "373" },
+    ],
+  }));
+  assert.ok(spec);
+  assert.equal(spec!.blocks.length, 3);
+  assert.deepEqual(spec!.blocks.map((b: any) => b.type), ["kpi", "kpi", "kpi"]);
+  assert.equal((spec!.blocks[2] as any).value, "373");
+});
+
+// B must NOT hijack a real envelope whose inner blocks carry their own types
+test("a real envelope with typed blocks is never re-read as an item list", () => {
+  const spec = parseCanvasSpec(JSON.stringify({
+    type: "kpi",
+    blocks: [{ type: "callout", tone: "warn", body: "b" }],
+  }));
+  assert.ok(spec);
+  assert.equal((spec!.blocks[0] as any).type, "callout");
+});
+
+// C. bare `items` collection, and the other block shapes seen bare in the replay
+test("a bare table / diagram / steps / callout object parses", () => {
+  const t = parseCanvasSpec(JSON.stringify({ type: "table", columns: ["A"], rows: [["1"]] }));
+  assert.equal((t!.blocks[0] as any).type, "table");
+  const d = parseCanvasSpec(JSON.stringify({ type: "diagram", layout: "flow", nodes: [{ id: "a", label: "A" }], edges: [] }));
+  assert.equal((d!.blocks[0] as any).type, "diagram");
+  const s = parseCanvasSpec(JSON.stringify({ type: "steps", direction: "lr", items: [{ title: "1" }] }));
+  assert.equal((s!.blocks[0] as any).type, "steps");
+  const c = parseCanvasSpec(JSON.stringify({ type: "callout", tone: "info", title: "T", body: "B" }));
+  assert.equal((c!.blocks[0] as any).type, "callout");
+});
+
+// D. NDJSON: one object per line, no envelope, no array
+test("an NDJSON body parses into one canvas", () => {
+  const body = ['{"type":"kpi","label":"Files changed","value":"0"}',
+    '{"type":"kpi","label":"APK","value":"6.35 MB"}'].join("\n");
+  const spec = parseCanvasSpec(body);
+  assert.ok(spec);
+  assert.equal(spec!.blocks.length, 2);
+});
+
+// trend near-misses observed live ("good", "warn") map to a direction; a word
+// with no direction still rejects rather than inventing one.
+test("kpi trend aliases map to a direction, unknown still rejects", () => {
+  const good = parseCanvasSpec(JSON.stringify({ type: "kpi", label: "A", value: 1, trend: "good" }));
+  assert.equal((good!.blocks[0] as any).trend, "up");
+  const warn = parseCanvasSpec(JSON.stringify({ type: "kpi", label: "A", value: 1, trend: "warn" }));
+  assert.equal((warn!.blocks[0] as any).trend, "flat");
+  const bad = parseCanvasSpec(JSON.stringify({ type: "kpi", label: "A", value: 1, trend: "sideways" }));
+  assert.equal(bad, null);
+});
+
+// The misnested fence: ```astra-canvas immediately followed by ```kpi. The outer
+// fence used to close on the empty first line and the payload fell outside it.
+// NOTE: the real payload uses UNQUOTED keys (JS-object-literal style) — the
+// first version of this test used quoted keys and passed while the live case
+// still failed. Keep this one byte-faithful to the DB.
+const MISNESTED_BODY =
+  '{label:"Release APK",value:"6.35 MB",delta:"−10.6 MB",trend:"down"}\n' +
+  '{label:"Checks",value:"52 / 52",delta:"0 failed",trend:"flat"}\n';
+
+test("a misnested fence still renders its payload", () => {
+  const text = "done.\n```astra-canvas\n```kpi\n" + MISNESTED_BODY + "```\n```\nafter";
+  const parts = splitCanvasBlocks(text);
+  const canvases = parts.filter((p) => p.kind === "canvas") as any[];
+  assert.equal(canvases.length, 1, "the card is not lost");
+  assert.equal(canvases[0].spec.blocks.length, 2);
+  assert.equal((canvases[0].spec.blocks[0] as any).label, "Release APK");
+  assert.equal((canvases[0].spec.blocks[0] as any).type, "kpi", "inner fence tag supplies the type");
+  assert.ok(parts.some((p) => p.kind === "md" && (p as any).text.includes("done.")));
+  assert.equal(hasCanvas(text), true, "mount gate agrees with the parser");
+});
+
+test("bare keys parse, and bare keys inside STRING values are left alone", () => {
+  // bare keys + a type (the realistic shape) → parses, and trend still aliases
+  const ok = parseCanvasSpec('{type:"kpi",label:"A",value:1,trend:"good"}');
+  assert.equal((ok!.blocks[0] as any).trend, "up");
+  const bare = parseCanvasSpec('{type:"kpi",label:"B",value:2}');
+  assert.equal((bare!.blocks[0] as any).label, "B");
+  // a value that looks like a key must NOT be rewritten — it is displayed text
+  const s = parseCanvasSpec(JSON.stringify({ type: "callout", tone: "info", body: "see { a: 1 } and http://x/y" }));
+  assert.equal((s!.blocks[0] as any).body, "see { a: 1 } and http://x/y");
+  // No type anywhere → nothing to validate a block from. Degrades, by design.
+  assert.equal(parseCanvasSpec('{label:"A",value:1}'), null);
+});
+
+// The planner path must heal too, or live streaming + history reload disagree.
+test("the turn planner heals a misnested fence in a split segment", () => {
+  const body = '{"label":"A","value":1}\n{"label":"B","value":2}\n';
+  const plan = planTurnCanvases([
+    "intro ```astra-canvas\n```kpi\n" + body.slice(0, 18),
+    body.slice(18) + "```\n``` tail",
+  ]);
+  assert.equal(plan.canvases.length, 1);
+  assert.equal(plan.canvases[0].spec.blocks.length, 2);
+});
+
+// Fail-soft must survive the new paths: nonsense still degrades, never throws.
+test("the coercer never turns junk into a canvas", () => {
+  assert.equal(parseCanvasSpec("not json at all"), null);
+  assert.equal(parseCanvasSpec('{"type":"hologram"}'), null);
+  assert.equal(parseCanvasSpec('{"v":1,"blocks":[]}'), null);
+  assert.equal(parseCanvasSpec(""), null);
+  assert.equal(parseCanvasSpec("[]"), null);
+});
