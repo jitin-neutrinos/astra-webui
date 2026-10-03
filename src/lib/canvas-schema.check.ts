@@ -721,3 +721,102 @@ test("v3: a full v3 canvas (all 18 block types) parses in order", () => {
   assert.ok(spec);
   assert.equal(spec!.blocks.length, 19);
 });
+
+// ---- v4 block types (accordion, terminal, badges, divider) ------------------
+
+test("v4: accordion validates, defaults first item open, nests blocks", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "accordion", items: [
+      { title: "Methodology", body: "How the numbers were computed." },
+      { title: "Data caveats", body: "Two sources lag by a quarter.", blocks: [{ type: "kpi", label: "Lag", value: "1 qtr" }] },
+      { title: "Third section", body: "Context here." },
+    ] },
+  ] }));
+  assert.ok(spec);
+  const a = spec!.blocks[0] as any;
+  assert.equal(a.type, "accordion");
+  assert.equal(a.items.length, 3);
+  assert.equal(a.items[0].open, true, "first item defaults open");
+  assert.equal(a.items[1].open, undefined);
+  assert.equal(a.items[1].blocks[0].type, "kpi");
+});
+
+test("v4: accordion item with neither body nor blocks is invalid", () => {
+  assert.equal(parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "accordion", items: [{ title: "Nothing inside" }, { title: "Also nothing" }] },
+  ] })), null);
+});
+
+test("v4: terminal accepts objects and plain strings; bare string lines split", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "terminal", title: "Deploy check", command: "kubectl get pods", exitCode: 0, lines: [
+      { text: "NAME   READY", tone: "dim" },
+      { text: "api    1/1  Running", tone: "success" },
+    ] },
+  ] }));
+  assert.ok(spec);
+  const t = spec!.blocks[0] as any;
+  assert.equal(t.type, "terminal");
+  assert.equal(t.lines[1].tone, "success");
+  assert.equal(t.exitCode, 0);
+  const obj = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "console", lines: ["plain a", "plain b"] },
+  ] }));
+  assert.ok(obj, "alias console→terminal");
+  assert.equal((obj!.blocks[0] as any).lines.length, 2);
+  assert.equal((obj!.blocks[0] as any).lines[0].tone, undefined, "plain strings default to stdout tone");
+  const raw = parseCanvasSpec('{ "v": 1, "blocks": [ { "type": "terminal", "lines": "one\\ntwo\\nthree" } ] }');
+  assert.ok(raw);
+  assert.equal((raw!.blocks[0] as any).lines.length, 3, "a bare string value splits on newline");
+});
+
+test("v4: badges validate with tone fallback to neutral", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "chips", items: [{ label: "API · healthy", tone: "success" }, { label: "Queue backlog", tone: "weird" }] },
+  ] }));
+  assert.ok(spec);
+  const b = spec!.blocks[0] as any;
+  assert.equal(b.type, "badges");
+  assert.equal(b.items[0].tone, "success");
+  assert.equal(b.items[1].tone, "neutral", "unknown tone falls back, does not drop");
+});
+
+test("v4: divider validates with optional label", () => {
+  const withLabel = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "separator", label: "Risks" }] }));
+  assert.ok(withLabel);
+  assert.equal((withLabel!.blocks[0] as any).type, "divider");
+  assert.equal((withLabel!.blocks[0] as any).label, "Risks");
+  const bare = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "divider" }, { type: "kpi", label: "K", value: 1 }] }));
+  assert.ok(bare, "divider groups with siblings");
+  assert.equal(bare!.blocks.length, 2);
+});
+
+test("v4: a full 22-type canvas parses in order", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "kpi", label: "K", value: 1, spark: [1, 2, 3] },
+    { type: "chart", chart: "line", series: [{ name: "s", points: [1] }] },
+    { type: "chart", chart: "donut", labels: ["a"], series: [{ name: "s", points: [1] }] },
+    { type: "table", columns: ["c"], rows: [["r"]] },
+    { type: "diagram", layout: "flow", nodes: [{ id: "n", label: "N" }], edges: [] },
+    { type: "checklist", items: [{ text: "t" }] },
+    { type: "steps", items: [{ title: "s1" }] },
+    { type: "callout", tone: "info", body: "b" },
+    { type: "progress", label: "p", value: 50 },
+    { type: "timeline", items: [{ title: "t" }] },
+    { type: "compare", items: [{ name: "a", points: [{ text: "p" }] }] },
+    { type: "tree", nodes: [{ id: "r", label: "root" }] },
+    { type: "code", code: "x = 1" },
+    { type: "references", items: [{ title: "r" }] },
+    { type: "quote", text: "q" },
+    { type: "keyvalue", items: [{ key: "k", value: "v" }] },
+    { type: "diff", hunks: [{ lines: [{ op: "add", text: "+" }] }] },
+    { type: "heatmap", rows: ["r"], cols: ["c"], values: [[1]] },
+    { type: "tabs", items: [{ label: "T", blocks: [{ type: "kpi", label: "i", value: 0 }] }] },
+    { type: "accordion", items: [{ title: "A", body: "b" }] },
+    { type: "terminal", lines: [{ text: "out", tone: "stdout" }] },
+    { type: "badges", items: [{ label: "ok", tone: "success" }] },
+    { type: "divider", label: "end" },
+  ] }));
+  assert.ok(spec);
+  assert.equal(spec!.blocks.length, 23);
+});

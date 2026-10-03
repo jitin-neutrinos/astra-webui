@@ -36,7 +36,7 @@ answer. 2–4 cards in one reply is normal. The anti-slop rule is about
 *fragmenting a single idea* across five blocks, never about *using enough
 cards*.
 
-### Block types (closed set — 18)
+### Block types (closed set — 22)
 
 | type | shape | use for |
 |---|---|---|
@@ -58,6 +58,10 @@ cards*.
 | `diff` | `{language?, filename?, hunks:[{header?, lines:[{op:"add"\|"del"\|"ctx", text}]}]}` | a change worth reading line by line; also accepts raw unified-diff `lines:["+ added","- removed"," kept"]` |
 | `heatmap` | `{title?, rows:string[], cols:string[], values:number[][]}` | intensity grids: usage by day×hour, commit activity, coverage maps |
 | `tabs` | `{items:[{label, blocks:[…]}]}` | multiple views of one subject; each tab holds other blocks |
+| `accordion` | `{items:[{title, body?, blocks?, open?}]}` | collapsible detail sections; first item defaults open; aliases: `collapsible`, `details`, `faq` |
+| `terminal` | `{title?, command?, lines:[{text, tone?:"stdout"\|"stderr"\|"info"\|"success"\|"dim"}], exitCode?}` | command + output evidence card; also accepts plain-string `lines` |
+| `badges` | `{items:[{label, tone?:"info"\|"warn"\|"success"\|"danger"\|"neutral"}]}` | status chip row: service health, entity tags, quick triage |
+| `divider` | `{label?}` | labeled section separator inside a long card |
 
 Run consecutive `kpi` blocks together (up to 4) and they render as a single
 KPI row; `progress` blocks group the same way. Anything invalid degrades to a
@@ -152,6 +156,12 @@ Here is where the time went last week.
   → `tabs`, each tab holding its own blocks.
 - **A quotation** (an expert line, a user's words, a doc excerpt) → `quote`
   with `attribution` and `role`.
+- **Long detail sections** (methodology, caveats, appendix) → `accordion`,
+  first item open.
+- **Command + output evidence** (what was run, what came back) → `terminal`
+  with `command`, `lines`, `exitCode`.
+- **Service health / status chips** → `badges` with tones.
+- **A labeled section break** inside a long card → `divider`.
 
 Prefer 1–3 canvases per *idea*. Multiple canvases are fine when the answer has
 genuinely distinct sections — and 2–4 cards in one reply is normal. Do not

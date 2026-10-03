@@ -8,7 +8,7 @@ import { cn } from "../../lib/utils";
 // recharts lives behind this boundary: chart blocks defer-load the engine, every
 // other block type (and the whole gate path) stays sync and dependency-free.
 const ChartBlockView = lazy(() => import("./canvas-chart").then((m) => ({ default: m.ChartBlockView })));
-import type { CanvasBlock, KpiBlock, TableBlock, DiagramBlock, ChecklistBlock, StepsBlock, CalloutBlock, ProgressBlock, TimelineBlock, CompareBlock, TreeBlock, CodeBlock, ReferencesBlock, QuoteBlock, KeyValueBlock, DiffBlock, HeatmapBlock, TabsBlock } from "../../lib/canvas-schema";
+import type { CanvasBlock, KpiBlock, TableBlock, DiagramBlock, ChecklistBlock, StepsBlock, CalloutBlock, ProgressBlock, TimelineBlock, CompareBlock, TreeBlock, CodeBlock, ReferencesBlock, QuoteBlock, KeyValueBlock, DiffBlock, HeatmapBlock, TabsBlock, AccordionBlock, TerminalBlock, BadgesBlock, DividerBlock } from "../../lib/canvas-schema";
 
 
 // ---- KPI ---------------------------------------------------------------------
@@ -556,6 +556,93 @@ export function TabsView({ block }: { block: TabsBlock }) {
   );
 }
 
+// ---- Accordion ----------------------------------------------------------------
+
+export function AccordionView({ block }: { block: AccordionBlock }) {
+  const [open, setOpen] = useState<Record<number, boolean>>(() => {
+    const init: Record<number, boolean> = {};
+    block.items.forEach((it, i) => { if (it.open) init[i] = true; });
+    return init;
+  });
+  return (
+    <div className="ast-cv-acc">
+      {block.items.map((it, i) => (
+        <div key={i} className={cn("ast-cv-acc-item", open[i] && "open")}>
+          <button
+            type="button"
+            className="ast-cv-acc-trigger"
+            aria-expanded={!!open[i]}
+            onClick={() => setOpen((o) => ({ ...o, [i]: !o[i] }))}
+          >
+            <span className="ast-cv-acc-chev" aria-hidden="true">›</span>
+            <span className="ast-cv-acc-title">{it.title}</span>
+          </button>
+          {open[i] && (
+            <div className="ast-cv-acc-body">
+              {it.body && <p className="ast-cv-acc-text">{it.body}</p>}
+              {it.blocks && it.blocks.length > 0 && <Blocks blocks={it.blocks} animate={false} />}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---- Terminal -----------------------------------------------------------------
+
+const TERM_TONE: Record<string, string | undefined> = {
+  stdout: undefined, info: "var(--color-cyanx)", success: "#34d399",
+  stderr: "#f87171", dim: "var(--color-muted)",
+};
+
+export function TerminalView({ block }: { block: TerminalBlock }) {
+  return (
+    <figure className="ast-cv-term">
+      {(block.title || block.command) && (
+        <figcaption className="ast-cv-term-head">
+          <span className="ast-cv-term-title">{block.title || "terminal"}</span>
+          {block.command && <code className="ast-cv-term-cmd">$ {block.command}</code>}
+        </figcaption>
+      )}
+      <pre className="ast-cv-term-body">
+        {block.lines.map((l, i) => (
+          <span key={i} className="ast-cv-term-line" style={{ color: TERM_TONE[l.tone || "stdout"] }}>{l.text || " "}</span>
+        ))}
+      </pre>
+      {block.exitCode != null && (
+        <span className={cn("ast-cv-term-exit", block.exitCode === 0 ? "ok" : "bad")}>exit {block.exitCode}</span>
+      )}
+    </figure>
+  );
+}
+
+// ---- Badges -------------------------------------------------------------------
+
+export function BadgesView({ block }: { block: BadgesBlock }) {
+  return (
+    <div className="ast-cv-badges">
+      {block.items.map((it, i) => (
+        <span key={i} className={cn("ast-cv-badge", it.tone || "neutral")}>{it.label}</span>
+      ))}
+    </div>
+  );
+}
+
+// ---- Divider ------------------------------------------------------------------
+
+export function DividerView({ block }: { block: DividerBlock }) {
+  return block.label ? (
+    <div className="ast-cv-divider" role="separator">
+      <span className="ast-cv-div-line" aria-hidden="true" />
+      <span className="ast-cv-div-label">{block.label}</span>
+      <span className="ast-cv-div-line" aria-hidden="true" />
+    </div>
+  ) : (
+    <hr className="ast-cv-divider bare" />
+  );
+}
+
 // ---- Grouping (KPI rows + single blocks) ----------------------------------------
 
 export function Blocks({ blocks, animate = true }: { blocks: CanvasBlock[]; animate?: boolean }) {
@@ -618,6 +705,10 @@ function renderOne(b: CanvasBlock) {
     case "diff": return <DiffView block={b} />;
     case "heatmap": return <HeatmapView block={b} />;
     case "tabs": return <TabsView block={b} />;
+    case "accordion": return <AccordionView block={b} />;
+    case "terminal": return <TerminalView block={b} />;
+    case "badges": return <BadgesView block={b} />;
+    case "divider": return <DividerView block={b} />;
     case "table": return <TableBlockView block={b} />;
     case "diagram": return <DiagramBlockView block={b} />;
     case "checklist": return <ChecklistView block={b} />;

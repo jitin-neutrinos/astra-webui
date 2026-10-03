@@ -63,6 +63,20 @@ function blockToMd(b: CanvasBlock): string {
     }
     case "tabs":
       return b.items.map((it) => `**${it.label}**\n\n${it.blocks.map(blockToMd).join("\n\n")}`).join("\n\n---\n\n");
+    case "accordion":
+      return b.items.map((it) => {
+        const inner = it.blocks && it.blocks.length ? `\n\n${it.blocks.map(blockToMd).join("\n\n")}` : "";
+        return `<details${it.open ? " open" : ""}><summary>${it.title}</summary>\n\n${it.body || ""}${inner}\n\n</details>`;
+      }).join("\n\n");
+    case "terminal": {
+      const head = b.command ? `$ ${b.command}\n` : b.title ? `${b.title}\n` : "";
+      const exit = b.exitCode != null ? `\n\n(exit ${b.exitCode})` : "";
+      return "```\n" + head + b.lines.map((l) => l.text).join("\n") + exit + "\n```";
+    }
+    case "badges":
+      return b.items.map((it) => `\`${it.label}\``).join(" · ");
+    case "divider":
+      return b.label ? `--- ${b.label} ---` : "---";
   }
 }
 

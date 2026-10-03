@@ -34,6 +34,15 @@ function deriveTitle(spec: { title?: string; blocks: CanvasBlock[] }): string {
       case "callout": return blk.title || (blk.tone ? blk.tone.charAt(0).toUpperCase() + blk.tone.slice(1) : "Note");
       case "code": return blk.filename || (blk.language ? `${blk.language} snippet` : "Snippet");
       case "references": return "References";
+      case "quote": return blk.attribution ? `Quote — ${blk.attribution}` : "Quote";
+      case "keyvalue": return blk.title || (blk.items?.[0]?.key ? `${blk.items[0].key}: ${blk.items[0].value}` : "Facts");
+      case "diff": return blk.filename ? `Diff — ${blk.filename}` : "Changes";
+      case "heatmap": return blk.title || (blk.rows?.length ? `${blk.rows.length}×${blk.cols?.length ?? 0} intensity grid` : "Heatmap");
+      case "tabs": return blk.items?.[0]?.label ? `Tabs — ${blk.items[0].label}` : "Tabs";
+      case "accordion": return blk.items?.[0]?.title ? `Details — ${blk.items[0].title}` : "Details";
+      case "terminal": return blk.command ? blk.command.slice(0, 60) : blk.title || "Terminal";
+      case "badges": return "Status";
+      case "divider": return blk.label || "—";
       default: return null;
     }
   };

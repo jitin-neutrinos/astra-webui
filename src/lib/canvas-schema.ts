@@ -140,12 +140,40 @@ export interface TabsBlock {
   items: { label: string; blocks: CanvasBlock[] }[];
 }
 
+export interface AccordionBlock {
+  type: "accordion";
+  /** Collapsed by default unless `open: true`; first item defaults open. */
+  items: { title: string; body?: string; blocks?: CanvasBlock[]; open?: boolean }[];
+}
+
+export type TermTone = "stdout" | "stderr" | "info" | "success" | "dim";
+
+export interface TerminalBlock {
+  type: "terminal";
+  title?: string;
+  command?: string;
+  /** Raw output lines; accept {text, tone} objects or plain strings. */
+  lines: { text: string; tone?: TermTone }[];
+  exitCode?: number;
+}
+
+export interface BadgesBlock {
+  type: "badges";
+  items: { label: string; tone?: "info" | "warn" | "success" | "danger" | "neutral" }[];
+}
+
+export interface DividerBlock {
+  type: "divider";
+  label?: string;
+}
+
 export type CanvasBlock =
   | KpiBlock | ChartBlock | TableBlock | DiagramBlock
   | ChecklistBlock | StepsBlock | CalloutBlock
   | ProgressBlock | TimelineBlock | CompareBlock | TreeBlock
   | CodeBlock | ReferencesBlock
-  | QuoteBlock | KeyValueBlock | DiffBlock | HeatmapBlock | TabsBlock;
+  | QuoteBlock | KeyValueBlock | DiffBlock | HeatmapBlock | TabsBlock
+  | AccordionBlock | TerminalBlock | BadgesBlock | DividerBlock;
 
 export interface CanvasSpec {
   v: 1;
@@ -168,6 +196,7 @@ const BLOCK_TYPES = new Set([
   "kpi", "chart", "table", "diagram", "checklist", "steps", "callout",
   "progress", "timeline", "compare", "tree", "code", "references",
   "quote", "keyvalue", "diff", "heatmap", "tabs",
+  "accordion", "terminal", "badges", "divider",
 ]);
 const CHART_KINDS = new Set(["line", "area", "bar", "radial", "pie", "donut", "stack"]);
 const TONES = new Set(["info", "warn", "success", "danger"]);
@@ -191,6 +220,10 @@ const TYPE_ALIASES: Record<string, string> = {
   patch: "diff", "code-diff": "diff", "unified-diff": "diff", changeset: "diff",
   "heat-map": "heatmap", heat: "heatmap",
   "tab-group": "tabs", tabbed: "tabs",
+  accordion: "accordion", collapsible: "accordion", collapse: "accordion", details: "accordion", faq: "accordion",
+  term: "terminal", console: "terminal", shell: "terminal", cli: "terminal", output: "terminal",
+  badge: "badges", chips: "badges", "status-badges": "badges", tags: "badges",
+  separator: "divider", rule: "divider", hr: "divider",
 };
 
 // kpi `trend` is a DIRECTION. Models reuse severity/status words for it
@@ -483,6 +516,67 @@ export function validateBlock(b: any): CanvasBlock | null {
       }
       return { type: "tabs", items };
     }
+    case "accordion": {
+      if (!Array.isArray(b.items) || b.items.length === 0) return null;
+      const items: AccordionBlock["items"] = [];
+      for (const it of b.items) {
+        if (!it || !isStr(it.title)) return null;
+        let blocks: CanvasBlock[] | undefined;
+        if (Array.isArray(it.blocks) && it.blocks.length > 0) {
+          blocks = [];
+          for (const x of it.blocks) {
+            const v = validateBlock(x);
+            if (v) blocks.push(v);
+          }
+          if (blocks.length === 0) blocks = undefined;
+        }
+        const hasBody = isStr(it.body) && it.body.trim() !== "";
+        if (!hasBody && !blocks) return null; // an item with nothing to reveal
+        items.push({
+          title: it.title,
+          body: hasBody ? it.body! : undefined,
+          blocks,
+          open: it.open === true ? true : undefined,
+        });
+      }
+      // nothing open by default → open the first, so the block is not a wall of headers
+      if (!items.some((x) => x.open)) items[0].open = true;
+      return { type: "accordion", items };
+    }
+    case "terminal": {
+      const lines: TerminalBlock["lines"] = [];
+      const rawLines = Array.isArray(b.lines) ? b.lines : isStr(b.lines) ? b.lines.split("\n") : null;
+      if (!rawLines || rawLines.length === 0) return null;
+      const toneOk = new Set(["stdout", "stderr", "info", "success", "dim"]);
+      for (const l of rawLines) {
+        if (isStr(l)) { lines.push({ text: l }); continue; }
+        if (l && typeof l === "object" && isStr(l.text)) {
+          lines.push({ text: l.text, tone: toneOk.has(l.tone) ? (l.tone as TermTone) : undefined });
+          continue;
+        }
+        return null;
+      }
+      if (b.exitCode != null && !isNum(b.exitCode)) return null;
+      return {
+        type: "terminal",
+        title: isStr(b.title) ? b.title : undefined,
+        command: isStr(b.command) ? b.command : undefined,
+        lines,
+        exitCode: isNum(b.exitCode) ? b.exitCode : undefined,
+      };
+    }
+    case "badges": {
+      if (!Array.isArray(b.items) || b.items.length === 0) return null;
+      const toneOk = new Set(["info", "warn", "success", "danger", "neutral"]);
+      const items: BadgesBlock["items"] = [];
+      for (const it of b.items) {
+        if (!it || !isStr(it.label)) return null;
+        items.push({ label: it.label, tone: toneOk.has(it.tone) ? it.tone as any : "neutral" });
+      }
+      return { type: "badges", items };
+    }
+    case "divider":
+      return { type: "divider", label: isStr(b.label) ? b.label : undefined };
     default:
       return null;
   }
