@@ -345,19 +345,18 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
           {type === "boolean" ? (
             <button
               onClick={() => updateVal(path, !val)}
-              className={cn("w-12 h-6 rounded-lg transition-colors relative shrink-0", val ? "bg-cyanx" : "bg-white/10")}
+              className={cn("w-12 h-6 rounded-lg transition-colors relative shrink-0 min-w-0", val ? "bg-cyanx" : "bg-white/10")}
             >
               <span className={cn("absolute top-0.5 left-0.5 bg-void w-5 h-5 rounded-md transition-transform", val && "translate-x-6")} />
             </button>
           ) : type === "select" || (options && options.length > 0) ? (
             options.length > 0 ? (
-              <select
+              <DropdownSelect
                 value={val ?? ""}
-                onChange={(e) => updateVal(path, e.target.value)}
-                className="bg-midnight border border-white/10 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-cyanx/50 min-w-[140px] appearance-none cursor-pointer"
-              >
-                {options.map((opt: string) => <option key={opt} value={opt}>{opt || "off"}</option>)}
-              </select>
+                onChange={(v) => updateVal(path, v)}
+                options={options.map((opt: string) => ({ value: opt, label: opt || "off" }))}
+                placeholder="Select..."
+              />
             ) : (
               <input
                 type="text"
@@ -541,35 +540,32 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
                 </div>
                 <div className="space-y-2">
                   {(getVal("fallback_providers") || []).map((entry: any, i: number) => (
-                    <div key={i} className="flex flex-col sm:flex-row sm:items-center gap-2 bg-void/50 rounded-lg px-3 py-2">
+                    <div key={i} className="flex flex-col sm:flex-row sm:items-center gap-2 bg-void/50 rounded-lg px-3 py-2 overflow-hidden">
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] font-mono text-slate-500 w-4">{i + 1}.</span>
-                        <select
+                        <DropdownSelect
                           value={entry.provider || ""}
-                          onChange={(e) => updateFallbackEntry(i, "provider", e.target.value)}
-                          className="flex-1 sm:flex-none bg-midnight border border-white/10 rounded px-2 py-1 text-xs focus:outline-none focus:border-cyanx/50 appearance-none cursor-pointer"
-                        >
-                          <option value="">Provider</option>
-                          {providerOptions.map(p => <option key={p.slug} value={p.slug}>{p.name}</option>)}
-                        </select>
+                          onChange={(v) => updateFallbackEntry(i, "provider", v)}
+                          options={providerOptions.map(p => ({ value: p.slug, label: p.name }))}
+                          placeholder="Provider"
+                          className="flex-1 sm:flex-none"
+                        />
                         <button onClick={() => removeFallbackEntry(i)} className="p-1 rounded hover:bg-redx/20 text-slate-500 hover:text-redx transition-colors shrink-0" title="Remove">
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
-                      <select
+                      <DropdownSelect
                         value={entry.model || ""}
-                        onChange={(e) => updateFallbackEntry(i, "model", e.target.value)}
-                        className="flex-1 bg-midnight border border-white/10 rounded px-2 py-1 text-xs focus:outline-none focus:border-cyanx/50 appearance-none cursor-pointer"
-                      >
-                        <option value="">Model</option>
-                        {(() => {
+                        onChange={(v) => updateFallbackEntry(i, "model", v)}
+                        options={(() => {
                           const models: any[] = providerOptions.find((p: any) => p.slug === entry.provider)?.models || [];
                           return models.map((m: any) => {
                             const mid = typeof m === "string" ? m : m.id || m.name || "";
-                            return <option key={mid} value={mid}>{mid}</option>;
+                            return { value: mid, label: mid };
                           });
                         })()}
-                      </select>
+                        placeholder="Model"
+                      />
                     </div>
                   ))}
                   {(!getVal("fallback_providers") || getVal("fallback_providers").length === 0) && (
@@ -848,14 +844,13 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
             <div className="space-y-3">
               <div>
                 <label className="text-xs text-slate-500 font-mono mb-1 block">Provider</label>
-                <select
+                <DropdownSelect
                   value={newModelProvider}
-                  onChange={e => setNewModelProvider(e.target.value)}
-                  className="w-full bg-void border border-white/10 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-cyanx/50 appearance-none cursor-pointer"
-                >
-                  <option value="">Select provider</option>
-                  {providerOptions.map(p => <option key={p.slug} value={p.slug}>{p.name}</option>)}
-                </select>
+                  onChange={setNewModelProvider}
+                  options={providerOptions.map(p => ({ value: p.slug, label: p.name }))}
+                  placeholder="Select provider"
+                  className="w-full"
+                />
               </div>
               <div>
                 <label className="text-xs text-slate-500 font-mono mb-1 block">Model ID</label>
