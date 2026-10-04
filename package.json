@@ -32,6 +32,8 @@
     "@vidstack/react": "^1.15.6",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
+    "cytoscape": "^3.34.3",
+    "d3-force": "^3.0.0",
     "docx": "^9.8.1",
     "docx-preview": "^0.4.1",
     "dompurify": "^3.4.15",
@@ -56,6 +58,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
+    "@types/d3-force": "^3.0.10",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",

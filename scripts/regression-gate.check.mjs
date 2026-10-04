@@ -15,7 +15,7 @@
 // Convention: assert-based, no framework (see ARCHITECTURE.md).
 
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -433,6 +433,27 @@ export const REGRESSIONS = [
       "Accent was addressed by HUE NAME (--color-cyanx / text-cyanx), so any palette whose accent is not cyan read as 'Astra blue with a pink button'. All components now consume the role token --color-accent (theme-store repaints it per palette; the role annotation for channel vars reads `accent`, and the palette storage slot keeps its original key).",
     guard: "src/lib/canvas-theme.check.ts",
   },
+  {
+    id: "RG-066",
+    found: "2026-10-04",
+    symptom:
+      "The hand-rolled graph layout collapsed every graph into a tight cluster with overlapping labels and the owner rejected it outright. Replaced with a VERBATIM port of the comindash dashboard's forceGraph.js/cytoGraph.js/graphFilter.js plus its cytoscape renderer. This row runs the UPSTREAM self-check against the port, so any divergence in the physics or the deterministic seeding fails the build.",
+    guard: "src/lib/canvas-forcegraph.port.check.mjs",
+  },
+  {
+    id: "RG-067",
+    found: "2026-10-04",
+    symptom:
+      "Graph element adapter drift: a dangling edge must be dropped rather than fatal, and every node must get a FINITE preset position (cytoscape 3.34's constructor elements: option silently drops position fields — nodes land at 0,0).",
+    guard: "src/lib/canvas-cytograph.port.check.mjs",
+  },
+  {
+    id: "RG-068",
+    found: "2026-10-04",
+    symptom:
+      "Graph cross-filter drift in the ported graphFilter.js: facetAvailability must report the values that still leave a non-empty graph, and applyFilters must drop orphan nodes after edge survival.",
+    guard: "src/lib/canvas-filter.port.check.mjs",
+  },
 ];
 
 // ---- gate -----------------------------------------------------------------
@@ -477,7 +498,9 @@ for (const file of discovered) {
 
 // 3. live re-run of every guarded check that can run here.
 for (const file of [...liveChecks].sort()) {
-  const isTs = /\.check\.(ts|tsx)$/.test(file);
+  // A `.mjs` check can import a `.ts` module (the ported comindash self-checks
+  // do), so the resolver is applied on the SOURCE, not just the extension.
+  const isTs = /\.check\.(ts|tsx)$/.test(file) || /from ['"][^'"]+\.ts['"]/.test(readFileSync(join(ROOT, file), "utf8"));
   const args = isTs
     ? ["--import", "./scripts/ts-resolve.mjs", file]
     : [file];

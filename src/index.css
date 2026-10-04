@@ -4873,3 +4873,111 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
   outline-offset: 2px;
   border-radius: 6px;
 }
+
+/* ==========================================================================
+   DIAGRAM — mobile correctness (owner 2026-10-04).
+   The bug: edges and their labels rendered BEHIND the node cards, so on a phone
+   a flow diagram was a stack of boxes with invisible lines. Three fixes:
+     1. the whole diagram is laid out at a MIN WIDTH inside a horizontal
+        scroller — a narrow phone pans the diagram instead of crushing it;
+     2. edges stay UNDER the nodes (they should), but LABELS move to their own
+        overlay ABOVE them with a paper halo so a label is never lost;
+     3. under 560px the layout drops to a single readable column.
+   ========================================================================== */
+.ast-cv-diagram-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* horizontal scroll WITHOUT a document-level scrollbar; the scroller is the
+     intended escape for a wide diagram inside a chat card (owner law 7) */
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+.ast-cv-diagram-scroll.is-compact .ast-cv-diagram { min-width: 0; }
+.ast-cv-diagram { min-width: 560px; }
+@media (max-width: 560px) { .ast-cv-diagram { min-width: 0; } }
+
+/* Two edge layers: PATHS under the nodes (they should be), LABELS above them
+   (a label lost behind a card is the mobile bug the owner reported). The
+   component renders both; the label layer carries the halo so it stays legible
+   over a card fill in either theme. */
+.ast-cv-edges { z-index: 0; }
+.ast-cv-edges-labels { z-index: 2; }
+.ast-cv-edge-label {
+  font: 600 9.5px var(--font-mono);
+  paint-order: stroke;
+  stroke: var(--cv-paper);
+  stroke-width: 3.5px;
+  stroke-linejoin: round;
+  fill: var(--color-brandtext);
+}
+
+/* Compact: single column, full-width cards, no horizontal pan needed. */
+@media (max-width: 560px) {
+  .ast-cv-node-columns { flex-direction: column !important; gap: 14px; }
+  .ast-cv-node-col { width: 100%; }
+  .ast-cv-node { width: 100%; }
+  .ast-cv-diagram { padding: 14px 12px; }
+}
+
+/* ==========================================================================
+   v5 chart chrome — axes, legends, gauge readout, funnel conversion, graph
+   canvas + tooltip, table empty state. All values are theme tokens; every
+   surface is dark + light by construction (they read the tokens).
+   ========================================================================== */
+
+/* Chart axis chrome (owner 2026-10-04: every chart needs both axes). */
+.ast-cv-chart .recharts-cartesian-axis-tick-value { fill: var(--color-muted); }
+.ast-cv-chart .recharts-cartesian-axis-line { stroke: rgb(var(--c-89) / 0.16); }
+.ast-cv-chart .recharts-cartesian-axis-tick-line { stroke: rgb(var(--c-89) / 0.28); }
+.ast-cv-chart .recharts-polar-angle-axis-tick-value,
+.ast-cv-chart .recharts-polar-radius-axis-tick-value { fill: var(--color-muted); }
+/* A legend must not eat the plot on a 390px card: wrap, and keep 44px rows. */
+.ast-cv-chart .recharts-legend-wrapper { max-width: 100%; overflow-x: auto; }
+.ast-cv-chart .recharts-legend-item { min-height: 22px; }
+.ast-cv-chart .recharts-legend-item-text { color: var(--color-muted) !important; font-size: 10.5px !important; }
+
+/* Block legends (treemap/funnel/donut have no recharts legend worth reading). */
+.ast-cv-chart-legend-block {
+  display: flex; flex-wrap: wrap; gap: 6px 14px;
+  margin-top: 10px; padding-top: 8px;
+  border-top: 1px solid var(--cv-border-hairline);
+}
+.ast-cv-legend-item {
+  display: inline-flex; align-items: center; gap: 6px;
+  font: 400 11px/1.3 var(--font-sans); color: var(--color-brandtext);
+  min-height: 22px;
+}
+.ast-cv-legend-item .ast-cv-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.ast-cv-funnel-pct { font: 500 10.5px var(--font-mono); color: var(--color-muted); font-style: normal; }
+.ast-cv-legend-total { font: 500 10.5px var(--font-mono); color: var(--color-muted); margin-left: auto; }
+
+/* Graph: cytoscape mounts into this box. */
+.ast-cv-graph-canvas { width: 100%; height: 100%; display: block; touch-action: pan-y; cursor: grab; }
+.ast-cv-graph-canvas:active { cursor: grabbing; }
+.ast-cv-graph-tip {
+  position: fixed; z-index: 60; pointer-events: none; opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-brand);
+  border-radius: 8px; padding: 6px 10px;
+  font: 400 12px/1.45 var(--font-sans);
+  border: 1px solid transparent;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+  max-width: 260px; white-space: nowrap;
+}
+.ast-cv-graph-hint {
+  position: absolute; left: 10px; bottom: 10px;
+  padding: 4px 8px; border-radius: 6px;
+  background: var(--cv-paper);
+  border: 1px solid var(--cv-border-hairline);
+  font: 400 10px var(--font-mono); color: var(--color-muted);
+  pointer-events: none;
+}
+@media (max-width: 560px) { .ast-cv-graph-hint { display: none; } }
+
+/* Table: the explicit empty state (a header with no body can no longer reach
+   here, but a defensive state beats a blank shell if a future shape slips past). */
+.ast-cv-table-empty { margin: 0; padding: 14px 4px; font: 400 12px/1.5 var(--font-sans); color: var(--color-muted); }
+/* Sticky header + per-column alignment (design critique C10/C11). */
+.ast-cv-table th { position: sticky; top: 0; z-index: 1; background: var(--cv-paper); }
+.ast-cv-table th.num, .ast-cv-table td.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--font-mono); }

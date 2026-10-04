@@ -4,8 +4,11 @@
 // imported by the gate path, so gates render synchronously while the main
 // bundle never carries the chart library.
 //
-// Design rules this file obeys (owner 2026-10-03):
-//   • NO gridlines and no axis lines. The plot floats; the data carries it.
+// Design rules this file obeys:
+//   • AXES + LEGEND ON EVERY CHART (owner 2026-10-04 — this SUPERSEDES the
+//     2026-10-03 "no axis lines" law). Both axes carry labels and tick values;
+//     the legend names every series. They are drawn as hairlines in the theme's
+//     muted ink so they read as chrome, not as data.
 //   • NO gradients (brand is gradientless) — depth comes from a hairline top
 //     edge on the series and a soft surface, not a fill wash.
 //   • Every colour is a THEME TOKEN (`var(--color-*)` / `rgb(var(--c-N) / a)`),
@@ -34,6 +37,56 @@ export const SERIES_COLORS = [
 ];
 
 type AnyTooltip = TooltipProps<number, string> & { payload?: any[] };
+
+// ── axis/legend chrome (owner 2026-10-04) ────────────────────────────────────
+const AXIS_TICK = {
+  fontSize: 10,
+  fontFamily: "var(--font-sans)",
+  fill: "var(--color-muted)",
+} as const;
+const AXIS_LINE = "rgb(var(--c-89) / 0.16)";
+const AXIS_TICKS = "rgb(var(--c-89) / 0.28)";
+const LEGEND_STYLE = {
+  fontSize: 10.5,
+  fontFamily: "var(--font-sans)",
+  color: "var(--color-muted)",
+  paddingTop: 8,
+} as const;
+
+/** Numeric x/y axes with hairline rules — the readable default. */
+const axes = (opts?: { xType?: "number" | "category"; yLabel?: string; xLabel?: string; height?: number }) => (
+  <>
+    <XAxis
+      dataKey="name"
+      tick={AXIS_TICK}
+      tickLine={false}
+      axisLine={{ stroke: AXIS_LINE }}
+      height={opts?.height ?? 24}
+      type={opts?.xType ?? "category"}
+      label={opts?.xLabel ? { value: opts.xLabel, position: "insideBottom", offset: -12, fill: "var(--color-muted)", fontSize: 10 } : undefined}
+      min={opts?.xType === "number" ? "dataMin" : undefined}
+      max={opts?.xType === "number" ? "dataMax" : undefined}
+    />
+    <YAxis
+      tick={AXIS_TICK}
+      tickFormatter={(v: number) => fmt(v)}
+      tickLine={false}
+      axisLine={{ stroke: AXIS_LINE }}
+      width={44}
+      label={opts?.yLabel ? { value: opts.yLabel, angle: -90, position: "insideLeft", fill: "var(--color-muted)", fontSize: 10, offset: 12 } : undefined}
+    />
+  </>
+);
+
+const legend = (icon: "plainline" | "circle" | "square" = "plainline") => (
+  <Legend
+    iconType={icon}
+    iconSize={icon === "plainline" ? 10 : 8}
+    align="left"
+    verticalAlign="bottom"
+    wrapperStyle={{ ...LEGEND_STYLE }}
+  />
+);
 
 function fmt(n: unknown): string {
   const v = typeof n === "number" ? n : Number(n);
@@ -178,20 +231,13 @@ export function ChartBlockView({ block }: { block: ChartBlock }) {
     );
   };
 
-  // No grid, no axis lines, no ticks: the marks are the message. Y width is
-  // trimmed to nothing so the plot uses the full card.
+  // Axes + legend on every kind (owner 2026-10-04). The old shared fragment hid
+  // both axes entirely, which is why every chart read as an unlabelled smear.
   const axis = (
     <>
-      <XAxis dataKey="name" hide />
-      <YAxis hide domain={[0, "auto"]} />
+      {axes()}
       <Tooltip content={<TT />} cursor={{ fill: "rgb(var(--c-89) / 0.04)" }} />
-      <Legend
-        iconType="plainline"
-        iconSize={8}
-        align="left"
-        verticalAlign="bottom"
-        wrapperStyle={{ fontSize: 10.5, fontFamily: "var(--font-sans)", paddingTop: 10, color: "var(--color-muted)" }}
-      />
+      {legend()}
     </>
   );
 
@@ -284,6 +330,19 @@ export function ChartBlockView({ block }: { block: ChartBlock }) {
               <span className="ast-cv-donut-total">{fmt(donutTotal)}</span>
               <span className="ast-cv-donut-caption">total</span>
             </div>
+            {/* recharts renders no per-slice marker for a donut legend, so the
+                slice names + shares are named here (owner 2026-10-04). */}
+            <div className="ast-cv-chart-legend ast-cv-chart-legend-block">
+              {data.map((r, i) => (
+                <span key={i} className="ast-cv-legend-item">
+                  <span className="ast-cv-dot" style={{ background: SERIES_COLORS[i % SERIES_COLORS.length] }} />
+                  {r.name} · {fmt(r[block.series[0].name])}
+                  <em className="ast-cv-funnel-pct">
+                    {donutTotal > 0 ? `${((Number(r[block.series[0].name]) / donutTotal) * 100).toFixed(0)}%` : ""}
+                  </em>
+                </span>
+              ))}
+            </div>
           </div>
         ) : block.chart === "radial" ? (
           <RadialBarChart
@@ -305,6 +364,13 @@ export function ChartBlockView({ block }: { block: ChartBlock }) {
               fill={SERIES_COLORS[0]}
               isAnimationActive={false}
             />
+            {/* Gauge readout in the hole (owner 2026-10-04: every chart element). */}
+            <text x="50%" y="52%" textAnchor="middle" dominantBaseline="middle"
+              fontSize="22" fontFamily="var(--font-sans)" fontWeight="700" fill="var(--color-brandtext)">
+              {fmt(block.series[0].points[0] ?? 0)}{block.title && /pct|%/i.test(block.title) ? "%" : ""}
+            </text>
+            <text x="50%" y="66%" textAnchor="middle"
+              fontSize="9.5" fontFamily="var(--font-mono)" fill="var(--color-muted)">of max</text>
             <Tooltip content={<TT />} isAnimationActive={false} />
           </RadialBarChart>
         ) : block.chart === "sankey" ? (
@@ -320,48 +386,96 @@ export function ChartBlockView({ block }: { block: ChartBlock }) {
             <Tooltip content={<TT />} />
           </Sankey>
         ) : block.chart === "treemap" ? (
-          <Treemap
-            data={treemapData}
-            dataKey="value"
-            aspectRatio={4 / 3}
-            stroke="none"
-            content={<TreemapCell />}
-          >
-            <Tooltip content={<TT />} />
-          </Treemap>
-        ) : block.chart === "funnel" ? (
-          <FunnelChart>
-            <Tooltip content={<TT />} />
-            <Funnel dataKey="value" data={funnelData} isAnimationActive={false} stroke="none">
-              {funnelData.map((_, i) => (
-                <Cell key={i} fill={SERIES_COLORS[i % SERIES_COLORS.length]} />
+          <>
+            <Treemap
+              data={treemapData}
+              dataKey="value"
+              aspectRatio={4 / 3}
+              stroke="none"
+              content={<TreemapCell />}
+            >
+              <Tooltip content={<TT />} />
+            </Treemap>
+            {/* A treemap has no axes, so it gets a legend row + total instead —
+                the same "name the data" job the legend does elsewhere. */}
+            <div className="ast-cv-chart-legend ast-cv-chart-legend-block">
+              {treemapData.slice(0, 6).map((d: any, i: number) => (
+                <span key={i} className="ast-cv-legend-item">
+                  <span className="ast-cv-dot" style={{ background: SERIES_COLORS[i % SERIES_COLORS.length] }} />
+                  {d.name} · {fmt(d.value)}
+                </span>
               ))}
-            </Funnel>
-          </FunnelChart>
+              <span className="ast-cv-legend-total">total {fmt(treemapData.reduce((n: number, d: any) => n + (d.value ?? 0), 0))}</span>
+            </div>
+          </>
+        ) : block.chart === "funnel" ? (
+          <>
+            <FunnelChart margin={{ top: 8, right: 12, bottom: 8, left: 12 }}>
+              <Tooltip content={<TT />} />
+              <Funnel dataKey="value" data={funnelData} isAnimationActive={false} stroke="none">
+                {funnelData.map((_, i) => (
+                  <Cell key={i} fill={SERIES_COLORS[i % SERIES_COLORS.length]} />
+                ))}
+              </Funnel>
+            </FunnelChart>
+            {/* Stage-to-stage conversion — the number a funnel exists to show. */}
+            <div className="ast-cv-chart-legend ast-cv-chart-legend-block">
+              {funnelData.map((d: any, i: number) => {
+                const prev = i === 0 ? d.value : funnelData[i - 1].value;
+                const pct = prev > 0 ? (d.value / prev) * 100 : 0;
+                return (
+                  <span key={i} className="ast-cv-legend-item">
+                    <span className="ast-cv-dot" style={{ background: SERIES_COLORS[i % SERIES_COLORS.length] }} />
+                    {d.name} · {fmt(d.value)}
+                    {i > 0 && <em className="ast-cv-funnel-pct">{pct.toFixed(1)}%</em>}
+                  </span>
+                );
+              })}
+            </div>
+          </>
         ) : block.chart === "scatter" ? (
-          <ScatterChart margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
-            <XAxis dataKey="x" hide type="number" domain={["dataMin", "dataMax"]} />
-            <YAxis hide type="number" domain={["dataMin", "dataMax"]} />
-            <ZAxis type="number" dataKey="z" range={[42, 220]} />
-            <Tooltip content={<TT />} cursor={{ stroke: "rgb(var(--c-89) / 0.2)" }} />
-            <Legend
-              iconType="circle" iconSize={7} align="left" verticalAlign="bottom"
-              wrapperStyle={{ fontSize: 10.5, fontFamily: "var(--font-sans)", paddingTop: 10, color: "var(--color-muted)" }}
+          <ScatterChart margin={{ top: 10, right: 16, bottom: 8, left: 0 }}>
+            {/* REAL numeric axes. The old pair was `hide` with no domain and the
+                series carried no ZAxis-scoped size, so the plot rendered as an
+                empty box — the "Latency vs payload is blank" report. */}
+            <XAxis
+              dataKey="x" type="number" domain={["dataMin", "dataMax"]} allowDecimals={false}
+              tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: AXIS_LINE }} height={24}
+              label={{ value: "request (index)", position: "insideBottom", offset: -12, fill: "var(--color-muted)", fontSize: 10 }}
             />
+            <YAxis
+              dataKey="y" type="number" domain={["dataMin - 10%", "dataMax + 10%"]}
+              tick={AXIS_TICK} tickFormatter={(v: number) => fmt(v)}
+              tickLine={false} axisLine={{ stroke: AXIS_LINE }} width={48}
+              label={{ value: "p95 (ms)", angle: -90, position: "insideLeft", offset: 14, fill: "var(--color-muted)", fontSize: 10 }}
+            />
+            <ZAxis type="number" dataKey="z" range={[60, 260]} />
+            <Tooltip cursor={{ stroke: "rgb(var(--c-89) / 0.25)" }} content={<TT />} />
+            {legend("circle")}
             {block.series.map((sr, i) => (
-              <Scatter key={sr.name} name={sr.name} data={scatterOf(sr, block.labels ?? [])} fill={SERIES_COLORS[i % SERIES_COLORS.length]} isAnimationActive={false} />
+              <Scatter
+                key={sr.name}
+                name={sr.name}
+                data={scatterOf(sr, block.labels ?? [])}
+                fill={SERIES_COLORS[i % SERIES_COLORS.length]}
+                fillOpacity={0.75}
+                isAnimationActive={false}
+              />
             ))}
           </ScatterChart>
         ) : block.chart === "radar" ? (
-          <RadarChart data={radarData} outerRadius="72%">
-            <PolarAngleAxis dataKey="axis" tick={{ fontSize: 9.5, fill: "var(--color-muted)" }} />
-            <PolarGrid stroke="rgb(var(--c-89) / 0.08)" />
-            <PolarRadiusAxis hide domain={[0, "auto"]} />
-            <Tooltip content={<TT />} />
-            <Legend
-              iconType="circle" iconSize={7} align="left" verticalAlign="bottom"
-              wrapperStyle={{ fontSize: 10.5, fontFamily: "var(--font-sans)", paddingTop: 10, color: "var(--color-muted)" }}
+          <RadarChart data={radarData} outerRadius="70%">
+            <PolarAngleAxis dataKey="axis" tick={{ ...AXIS_TICK, fontSize: 9.5 }} />
+            <PolarGrid stroke={AXIS_TICKS} />
+            {/* The radial scale was hidden too — a radar with no scale is a web. */}
+            <PolarRadiusAxis
+              angle={90} domain={[0, "auto"]}
+              tick={{ ...AXIS_TICK, fontSize: 9 }}
+              tickFormatter={(v: number) => fmt(v)}
+              axisLine={false} tickCount={4}
             />
+            <Tooltip content={<TT />} />
+            {legend("circle")}
             {block.series.map((sr, i) => (
               <Radar key={sr.name} name={sr.name} dataKey={sr.name} stroke={SERIES_COLORS[i % SERIES_COLORS.length]} fill={SERIES_COLORS[i % SERIES_COLORS.length]} fillOpacity={0.14} isAnimationActive={false} />
             ))}

@@ -90,18 +90,57 @@ export function KpiTile({ block }: { block: KpiBlock }) {
 
 // ---- Table -------------------------------------------------------------------
 
+// OWNER 2026-10-04: "the table gets mangled, only the headers are displayed with
+// the table body missing". Root cause found by replaying the real corpus: the
+// model emits `{"columns":[…], "rows":[]}` (2 of 51 real cards), which passed
+// validation because `[].every(…)` is vacuously true — so the card rendered as a
+// bare header row. Fixed at the schema (an empty table degrades) and hardened
+// here so no future shape can produce a header with no body again.
 export function TableBlockView({ block }: { block: TableBlock }) {
+  const cols = block.columns ?? [];
+  const rawRows = Array.isArray(block.rows) ? block.rows : [];
+  // Pad/trim every row to the header width: a ragged row renders as blanks
+  // rather than shifting every column after it.
+  const rows = rawRows
+    .filter((r) => Array.isArray(r) && r.length > 0)
+    .map((r) => Array.from({ length: cols.length }, (_, j) => r[j] ?? ""));
+
+  // Per-COLUMN numeric detection (design critique C10): the old per-CELL regex
+  // mixed alignments inside one visual column ("n/a" beside "9").
+  const numCols = useMemo(
+    () =>
+      cols.map(
+        (_, j) =>
+          rows.length > 0 &&
+          rows.filter((r) => r[j] && r[j].trim() !== "").length >= Math.ceil(rows.length * 0.7) &&
+          rows.every((r) => !r[j] || r[j].trim() === "" || /^[\d.,%+\-$€£₹¥\s]+$/.test(r[j].trim())),
+      ),
+    [cols, rows],
+  );
+
+  if (rows.length === 0) {
+    return (
+      <div className="ast-cv-table-wrap" role="status">
+        <p className="ast-cv-table-empty">No rows — this table arrived with headers only.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="ast-cv-table-wrap">
       <table className="ast-cv-table">
         <thead>
-          <tr>{block.columns.map((c) => <th key={c} scope="col">{c}</th>)}</tr>
+          <tr>
+            {cols.map((c, j) => (
+              <th key={c} scope="col" className={numCols[j] ? "num" : undefined}>{c}</th>
+            ))}
+          </tr>
         </thead>
         <tbody>
-          {block.rows.map((r, i) => (
+          {rows.map((r, i) => (
             <tr key={i}>
               {r.map((cell, j) => (
-                <td key={j} className={/^[\d.,%\s\-+]+$/.test(cell) ? "num" : undefined}>{cell}</td>
+                <td key={j} className={numCols[j] ? "num" : undefined}>{cell}</td>
               ))}
             </tr>
           ))}
@@ -183,27 +222,45 @@ export function DiagramBlockView({ block }: { block: DiagramBlock }) {
     return () => { ro.disconnect(); window.removeEventListener("resize", measure); };
   }, [block]);
 
+  // OWNER 2026-10-04: on mobile the edges and their labels rendered BEHIND the
+  // node cards, so a flow diagram was a stack of boxes with invisible lines.
+  // Three structural fixes, in order of impact:
+  //   1. a scrollable canvas — the whole diagram is laid out at a MIN width, so
+  //      a narrow phone pans the diagram instead of crushing it;
+  //   2. the SVG edge layer sits UNDER the nodes (z-index) but the LABELS sit
+  //      ABOVE them, with a paper-coloured halo so they read over a card edge;
+  //   3. on a coarse pointer the layout flips to a single column (tb) because a
+  //      3-column side-by-side flow is unreadable under 400px.
+  const compact = typeof matchMedia === "function" && matchMedia("(max-width: 560px)").matches;
+
   return (
-    <div className={cn("ast-cv-diagram", block.direction === "lr" && "lr")} ref={wrapRef}>
-      <svg className="ast-cv-edges" aria-hidden="true">
-        {edges.map((e, i) => (
-          <g key={i}>
-            <path d={e.d} fill="none" stroke="var(--color-accent)" strokeOpacity={0.5} strokeWidth={1.6} />
-            {e.label && <text x={e.x} y={e.y} className="ast-cv-edge-label">{e.label}</text>}
-          </g>
-        ))}
-      </svg>
-      <div className="ast-cv-node-columns">
-        {layers.map((col, ci) => (
-          <div key={ci} className="ast-cv-node-col">
-            {col.map((n) => (
-              <div key={n.id} data-node={n.id} className="ast-cv-node">
-                <span className="ast-cv-node-label">{n.label}</span>
-                {n.detail && <span className="ast-cv-node-detail">{n.detail}</span>}
-              </div>
-            ))}
-          </div>
-        ))}
+    <div className={cn("ast-cv-diagram-scroll", compact && "is-compact")}>
+      <div className={cn("ast-cv-diagram", block.direction === "lr" && !compact && "lr")} ref={wrapRef}>
+        {/* PATHS sit under the node cards… */}
+        <svg className="ast-cv-edges" aria-hidden="true">
+          {edges.map((e, i) => (
+            <path key={i} d={e.d} fill="none" stroke="var(--color-accent)" strokeOpacity={0.62} strokeWidth={1.8} />
+          ))}
+        </svg>
+        {/* …and LABELS above them, with a paper halo. One layer is why the
+            labels vanished behind the cards on a phone. */}
+        <svg className="ast-cv-edges ast-cv-edges-labels" aria-hidden="true">
+          {edges.map((e, i) => (
+            e.label ? <text key={i} x={e.x} y={e.y} className="ast-cv-edge-label">{e.label}</text> : null
+          ))}
+        </svg>
+        <div className="ast-cv-node-columns">
+          {layers.map((col, ci) => (
+            <div key={ci} className="ast-cv-node-col">
+              {col.map((n) => (
+                <div key={n.id} data-node={n.id} className="ast-cv-node">
+                  <span className="ast-cv-node-label">{n.label}</span>
+                  {n.detail && <span className="ast-cv-node-detail">{n.detail}</span>}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

@@ -18,7 +18,7 @@
 //     as SKIP, never as pass — see ENV_REQUIRED below.
 
 import { spawn } from "node:child_process";
-import { readdirSync, statSync, existsSync } from "node:fs";
+import { readdirSync, statSync, existsSync, readFileSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -65,7 +65,10 @@ const all = walk(ROOT)
 
 function runOne(rel, slot) {
   return new Promise((resolve) => {
-    const isTs = /check\.(ts|tsx)$/.test(rel);
+    // A `.mjs` check can still import a `.ts` module (the ported comindash
+    // self-checks do exactly that), so the TS resolver goes on for any check
+    // whose SOURCE mentions a .ts import — not only .ts/.tsx check files.
+    const isTs = /check\.(ts|tsx)$/.test(rel) || /from ['"][^'"]+\.ts['"]/.test(readFileSync(join(ROOT, rel), "utf8"));
     const args = isTs
       ? ["--import", "./scripts/ts-resolve.mjs", rel]
       : [rel];

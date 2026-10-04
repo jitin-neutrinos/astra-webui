@@ -584,9 +584,19 @@ export function validateBlock(b: any): CanvasBlock | null {
       }
       return { type: "chart", chart, title: isStr(b.title) ? b.title : undefined, labels: b.labels, series };
     }
-    case "table":
-      if (!isStrArr(b.columns) || !Array.isArray(b.rows) || !b.rows.every(isStrArr)) return null;
+    case "table": {
+      if (!isStrArr(b.columns) || b.columns.length === 0) return null;
+      if (!Array.isArray(b.rows) || b.rows.length === 0) return null;
+      // A header row with NO body is the "table looks mangled" report (measured:
+      // 2 of 51 real cards shipped exactly `{"columns":[…],"rows":[]}`). An empty
+      // array satisfies `.every()` so it passed validation and rendered as a
+      // bare header — a table with nothing in it is not a table, so it degrades
+      // like any other invalid block rather than showing an empty shell.
+      for (const r of b.rows) {
+        if (!isStrArr(r) || r.length === 0) return null;
+      }
       return { type: "table", columns: b.columns, rows: b.rows };
+    }
     case "diagram": {
       if (b.layout !== "flow" && b.layout !== "relationship") return null;
       if (!Array.isArray(b.nodes) || b.nodes.length === 0) return null;

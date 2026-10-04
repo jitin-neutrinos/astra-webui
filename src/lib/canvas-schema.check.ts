@@ -1035,3 +1035,34 @@ test("tier 3 never turns prose into an array of fragments", async () => {
   assert.equal((card as any).spec.blocks[0].type, "kpi");
   assert.ok(parts.some((p) => p.kind === "md"), "prose must survive as prose");
 });
+
+// OWNER 2026-10-04: "the table gets mangled, only the headers are displayed with
+// the table body missing". Corpus replay found the cause: `rows: []` passed
+// validation because `[].every(…)` is vacuously true, so 2 of 51 real cards
+// rendered as a bare header row.
+test("table: a header with no body degrades instead of rendering an empty shell", () => {
+  assert.equal(
+    parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "table", columns: ["Arc", "State"], rows: [] }] })),
+    null,
+    "rows: [] must not validate as a table",
+  );
+  assert.equal(
+    parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "table", columns: ["Arc", "State"] }] })),
+    null,
+    "a table with no rows key at all must not validate",
+  );
+  assert.equal(
+    parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "table", columns: [], rows: [["a"]] }] })),
+    null,
+    "no columns is not a table",
+  );
+  assert.equal(
+    parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "table", columns: ["a"], rows: [[]] }] })),
+    null,
+    "an empty row must not validate",
+  );
+  // …and the real shape still renders.
+  const okSpec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "table", columns: ["a", "b"], rows: [["1", "2"]] }] }));
+  assert.ok(okSpec, "a populated table still parses");
+  assert.equal((okSpec!.blocks[0] as any).rows.length, 1);
+});
