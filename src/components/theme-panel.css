@@ -130,3 +130,11 @@
 .tf-ratio-ok { color: var(--color-emerald); background: rgb(var(--c-10) / 0.14); }
 .tf-ratio-bad { color: var(--color-redx); background: rgb(var(--c-9) / 0.16); }
 .tf-mini-primary { color: var(--color-void); background: var(--color-cyanx); border-color: transparent; font-weight: 600; }
+/* A backdrop that only exists on one device must SAY so, rather than looking like a
+   normal background that quietly fails to appear on the iPad. */
+.tf-warn {
+  margin-top: 0.6rem; padding: 7px 9px; border-radius: 8px;
+  font: 400 11px/1.45 var(--font-sans);
+  color: var(--color-amber); background: rgb(var(--c-11) / 0.12);
+  border: 1px solid rgb(var(--c-11) / 0.28);
+}

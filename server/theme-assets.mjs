@@ -31,6 +31,37 @@ export function handleBgUpload(req, res, validToken) {
   if (!authed(req, validToken)) { res.writeHead(401, { "content-type": "application/json" }); return res.end('{"error":"unauthenticated"}'); }
   const ct = req.headers["content-type"] || "";
   const m = ct.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
+  // RAW upload: the client sends the file as the whole body with its real
+  // content-type plus the filename in a header. FormData's multipart encoding
+  // is ~30% overhead on a 95MB video and forces the server into a hand-rolled
+  // parser, so a single-file upload takes the simpler path. Multipart is still
+  // accepted so nothing that already posts FormData breaks.
+  const rawName = decodeURIComponent(req.headers["x-file-name"] || "");
+  if (!m && rawName) {
+    const chunks = [];
+    let size = 0;
+    let tooBig = false;
+    req.on("data", (c) => {
+      size += c.length;
+      if (size > MAX_BYTES) { tooBig = true; req.destroy(); return; }
+      chunks.push(c);
+    });
+    req.on("error", () => { if (!res.headersSent) { res.writeHead(400); res.end(); } });
+    req.on("end", () => {
+      if (tooBig) { res.writeHead(413, { "content-type": "application/json" }); return res.end('{"error":"file too large (95MB cap)"}'); }
+      const ext = extname(rawName).toLowerCase();
+      if (!ALLOWED.has(ext)) { res.writeHead(415, { "content-type": "application/json" }); return res.end('{"error":"unsupported type"}'); }
+      const content = Buffer.concat(chunks);
+      mkdirSync(BG_DIR, { recursive: true });
+      const stamp = Date.now().toString(36);
+      const safe = basename(rawName).replace(/[^\w.\- ]+/g, "_");
+      const stored = `${stamp}-${safe}`;
+      createWriteStream(join(BG_DIR, stored)).end(content);
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ url: `/api/theme/bg/${stored}`, bytes: content.length }));
+    });
+    return;
+  }
   if (!m) { res.writeHead(400, { "content-type": "application/json" }); return res.end('{"error":"multipart boundary missing"}'); }
   const boundary = "--" + (m[1] || m[2]);
   const chunks = [];

@@ -47,13 +47,17 @@ const TOKEN_LABEL: Record<string, string> = {
   "--color-amber": "Warning",
 };
 
-export function ThemePanel({ onUpload }: { onUpload?: (file: File) => Promise<string> }) {
+// `onUpload` is retained for API compatibility but intentionally unused: uploads now
+// go straight to POST /api/theme/bg so the result is a real, cross-device URL. See
+// upload() below for why the previous indirection produced phone-only backgrounds.
+export function ThemePanel({ onUpload: _legacyOnUpload }: { onUpload?: (file: File) => Promise<string> }) {
   const [active, setActive] = useState(currentPaletteId());
   const [mode, setMode] = useState<ThemeMode>(getMode());
   const [customTick, setCustomTick] = useState(0);
   const [bg, setBg] = useState(readChatBg());
   const [bgUrl, setBgUrl] = useState("");
   const [busyUp, setBusyUp] = useState(false);
+  const [bgWarn, setBgWarn] = useState<string | null>(null);
   const [themeListTick, setThemeListTick] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -107,8 +111,39 @@ export function ThemePanel({ onUpload }: { onUpload?: (file: File) => Promise<st
   const upload = async (f: File) => {
     setBusyUp(true);
     try {
-      if (onUpload) { const path = await onUpload(f); applyBg({ kind: f.type.startsWith("video") ? "video" : "image", src: path }); }
-      else applyBg({ kind: f.type.startsWith("video") ? "video" : "image", src: URL.createObjectURL(f) });
+      // Upload to the SERVER so the file is a real URL every device can fetch.
+      //
+      // WHY THIS MATTERS (owner bug 2026-10-04): a background set on the phone was
+      // invisible on the iPad. The stored src was a `blob:` URL —
+      // `blob:https://astra.jitinnair.com/<uuid>` — which is a handle into ONE browser
+      // tab's memory. It renders on the tab that made it and is unresolvable anywhere
+      // else, so every other device and the sync layer received a dead string. The
+      // cause was that no `onUpload` was ever handed to this panel, so the local
+      // object-URL fallback below was taken and that session-local URL was synced
+      // server-side as if it were durable.
+      //
+      // The fallback still exists for offline use, but a blob is now only allowed
+      // when the upload genuinely failed — never silently persisted.
+      const res = await fetch("/api/theme/bg", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": f.type || "application/octet-stream", "x-file-name": encodeURIComponent(f.name) },
+        body: f,
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data && typeof data.url === "string") {
+          applyBg({ kind: f.type.startsWith("video") ? "video" : "image", src: data.url });
+          return;
+        }
+      }
+      // Upload failed (offline / auth). Keep it local so the CURRENT device still
+      // shows something — and warn, because this will not follow the owner anywhere.
+      applyBg({ kind: f.type.startsWith("video") ? "video" : "image", src: URL.createObjectURL(f) });
+      setBgWarn("Saved on this device only — the upload didn't reach the server, so it won't appear on your other devices.");
+    } catch {
+      applyBg({ kind: f.type.startsWith("video") ? "video" : "image", src: URL.createObjectURL(f) });
+      setBgWarn("Saved on this device only — you're offline, so this won't appear on your other devices.");
     } finally { setBusyUp(false); }
   };
 
@@ -387,6 +422,17 @@ export function ThemePanel({ onUpload }: { onUpload?: (file: File) => Promise<st
           Your background choice is stored on the server and follows you to every device and the app,
           updating live. YouTube plays muted and loops without the black gap.
         </p>
+        {bgWarn && (
+          <p className="tf-warn" role="status">{bgWarn}</p>
+        )}
+        {/* A blob: src is a per-tab handle. Surface it rather than let it look like a
+            normal background that mysteriously fails to appear elsewhere. */}
+        {bg && /^blob:/i.test(bg.src) && !bgWarn && (
+          <p className="tf-warn" role="status">
+            This background is stored on this device only (a temporary local file). Re-upload it
+            to make it appear on your iPad and other devices.
+          </p>
+        )}
       </div>
     </section>
   );

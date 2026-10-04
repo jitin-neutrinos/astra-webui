@@ -408,7 +408,14 @@ export function startThemeSync() {
   // A created/edited/deleted theme is broadcast so every other device and the
   // Android app gain it without a reload.
   window.addEventListener("astra-user-themes-change", () => schedulePush({ userThemes: readUserThemes() }));
-  window.addEventListener("astra-chat-bg-change", (e) => schedulePush({ bg: (e as CustomEvent).detail }));
+  window.addEventListener("astra-chat-bg-change", (e) => {
+    const detail = (e as CustomEvent<ChatBg | null>).detail;
+    // Never broadcast a per-tab blob: it would poison every other device with a
+    // value only this tab can resolve (owner bug: phone-only background, invisible
+    // on the iPad). A `null` (background OFF) is a global decision and does push.
+    if (detail && !isDurableBgSrc(detail.src)) return;
+    schedulePush({ bg: detail });
+  });
   window.addEventListener("astra-theme-change", (e) => {
     const m = (e as CustomEvent).detail;
     if (m === "light" || m === "dark") schedulePush({ mode: m });
@@ -429,6 +436,20 @@ export function writeChatBg(bg: ChatBg | null) {
     else localStorage.removeItem(LS_BG);
   } catch { /* private mode */ }
   window.dispatchEvent(new CustomEvent("astra-chat-bg-change", { detail: bg }));
+}
+
+/**
+ * Is this src durable, i.e. fetchable by another device?
+ *
+ * A `blob:` (or bare object-URL) src is a handle into ONE browser tab's memory. It
+ * renders on the tab that created it and is unresolvable everywhere else. Pushing one
+ * to the shared server makes every OTHER device adopt a dead value — which is exactly
+ * how a background set on the phone ended up invisible on the iPad (owner 2026-10-04).
+ * Local-only backdrops are kept on the device that owns them and never broadcast.
+ */
+export function isDurableBgSrc(src: string | undefined | null): boolean {
+  if (!src) return false;
+  return !/^(blob:|data:)/i.test(src.trim());
 }
 
 /** Parse a YouTube URL -> video id (watch, youtu.be, shorts, embed). */
