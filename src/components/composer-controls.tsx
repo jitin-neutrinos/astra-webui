@@ -87,7 +87,6 @@ export function ComposerControls({ setAttachments, disabled, sessionInfo, catalo
   const [open, setOpen] = useState(false);
   const [panel, setPanel] = useState<Panel>(null);
   const [menuProvider, setMenuProvider] = useState<string | null>(null);
-  const [dir, setDir] = useState<1 | -1>(1);
   const [kb, setKb] = useState(-1); // keyboard-highlighted row index within the live panel
   const [picked, setPicked] = useState<string | null>(null);
 
@@ -230,8 +229,8 @@ export function ComposerControls({ setAttachments, disabled, sessionInfo, catalo
   // Reset the keyboard cursor whenever the panel content changes.
   useEffect(() => { setKb(-1); }, [panel, open]);
 
-  const drill = (p: Panel) => { setDir(1); setPanel(p); };
-  const back = () => { setDir(-1); setPanel(panel === "model" ? "provider" : null); };
+  const drill = (p: Panel) => setPanel(p);;
+  const back = () => setPanel(panel === "model" ? "provider" : null);
 
   // Select-with-feedback: flash the row, then close — the menu visibly "heard" the pick.
   const pick = (key: string, act: () => void) => {
@@ -288,8 +287,6 @@ export function ComposerControls({ setAttachments, disabled, sessionInfo, catalo
     ? { opacity: 0 }
     : { opacity: 0, transform: "translateY(6px) scale(0.96)" };
 
-  const panelInit = reduce ? { opacity: 0 } : { opacity: 0, transform: `translateX(${dir * 16}px)`, filter: "blur(2px)" };
-  const panelIn = reduce ? { opacity: 1 } : { opacity: 1, transform: "translateX(0px)", filter: "blur(0px)" };
 
   const itemVariants = {
     hidden: reduce ? { opacity: 0 } : { opacity: 0, transform: "translateY(5px)" },
@@ -332,7 +329,15 @@ export function ComposerControls({ setAttachments, disabled, sessionInfo, catalo
         <button type="button" data-bar="effort" className="chat-chip chat-chip-icon"
           aria-label={`Reasoning effort: ${effortLabel}`}
           title={`Reasoning effort: ${effortLabel}`}
-          onClick={() => { if (!open) onOpen?.(); setOpen(true); setPanel("effort"); }}>
+          /* Toggle, so a second click closes it (owner 2026-10-04). This hardcoded
+             setOpen(true): once the menu was open, clicking the chip again re-opened it,
+             which the owner sees as "the second click does nothing". */
+          onClick={() => {
+            if (open) { closeAll(); return; }
+            onOpen?.();
+            setOpen(true);
+            setPanel("effort");
+          }}>
           <Gauge className="h-4 w-4" strokeWidth={1.5} />
         </button>
       )}
@@ -368,19 +373,20 @@ export function ComposerControls({ setAttachments, disabled, sessionInfo, catalo
           >
             <div className="cmenu-plate">
               <AnimatePresence mode="wait" initial={false}>
-                <motion.div
-                  key={panel ?? "root"}
-                  className="cmenu-body"
-                  initial={panelInit} animate={panelIn}
-                  exit={reduce ? { opacity: 0 } : { opacity: 0, transform: `translateX(${dir * -12}px)`, filter: "blur(2px)" }}
-                  transition={{ duration: 0.14, ease: EASE }}
-                >
-                  {/* ROOT PANEL — PROVIDER + MODEL ONLY (owner 2026-10-04).
-                      The trigger is a model switcher, not a settings bag. Attach, effort
-                      and yolo live on the bar and collapse into it as space runs out, so
-                      duplicating them here would put the same control in two places and
-                      give the owner two competing sources of truth. Their ONLY route into
-                      this menu is the overflow state itself. */}
+                {/* Each panel is its OWN keyed child of AnimatePresence (mode="wait").
+                    A single shared wrapper whose key never changes left every previously
+                    rendered panel MOUNTED — measured 9 stacked .cmenu-row nodes at identical
+                    coordinates, sitting over the composer bar and swallowing every click in
+                    the popup AND on the bar. AnimatePresence only unmounts direct children. */}
+<motion.div key="root" className="cmenu-body"
+  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+  transition={{ duration: reduce ? 0.1 : 0.14, ease: EASE }}
+  /* An exiting panel keeps its LAYOUT while it fades, and those leftovers sat on top
+     of the composer bar: measured, elementFromPoint over the effort chip returned
+     `.cmenu-plate` instead of the chip, so its own second click landed on a
+     departing panel and did nothing. Only the panel that is CURRENT may take
+     pointer events; everything fading out is inert. */
+  style={{ pointerEvents: panel === null ? "auto" : "none" }}>
                   {panel === null && (
                     <>
                       <header className="cmenu-head">
@@ -420,6 +426,16 @@ export function ComposerControls({ setAttachments, disabled, sessionInfo, catalo
                     </>
                   )}
 
+                </motion.div>
+<motion.div key="effort" className="cmenu-body"
+  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+  transition={{ duration: reduce ? 0.1 : 0.14, ease: EASE }}
+  /* An exiting panel keeps its LAYOUT while it fades, and those leftovers sat on top
+     of the composer bar: measured, elementFromPoint over the effort chip returned
+     `.cmenu-plate` instead of the chip, so its own second click landed on a
+     departing panel and did nothing. Only the panel that is CURRENT may take
+     pointer events; everything fading out is inert. */
+  style={{ pointerEvents: panel === "effort" ? "auto" : "none" }}>
                   {panel === "effort" && (
                     <>
                       <header className="cmenu-head">
@@ -443,6 +459,16 @@ export function ComposerControls({ setAttachments, disabled, sessionInfo, catalo
                     </>
                   )}
 
+                </motion.div>
+<motion.div key="provider" className="cmenu-body"
+  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+  transition={{ duration: reduce ? 0.1 : 0.14, ease: EASE }}
+  /* An exiting panel keeps its LAYOUT while it fades, and those leftovers sat on top
+     of the composer bar: measured, elementFromPoint over the effort chip returned
+     `.cmenu-plate` instead of the chip, so its own second click landed on a
+     departing panel and did nothing. Only the panel that is CURRENT may take
+     pointer events; everything fading out is inert. */
+  style={{ pointerEvents: panel === "provider" ? "auto" : "none" }}>
                   {panel === "provider" && (
                     <>
                       <header className="cmenu-head">
@@ -461,7 +487,7 @@ export function ComposerControls({ setAttachments, disabled, sessionInfo, catalo
                           <button key={p.slug} type="button"
                             className={cn("cmenu-row", picked === "prov:" + p.slug && "cmenu-row-picked")}
                             data-row={"prov:" + p.slug} aria-selected={p.slug === activeProvider}
-                            onClick={() => { setMenuProvider(p.slug); setDir(1); setPanel("model"); }}>
+                            onClick={() => { setMenuProvider(p.slug); setPanel("model"); }}>
                             <span className="flex min-w-0 flex-1 flex-col text-left">
                               <span className="truncate">{p.label}</span>
                               <small>{p.models.length} model{p.models.length === 1 ? "" : "s"}</small>
@@ -473,14 +499,31 @@ export function ComposerControls({ setAttachments, disabled, sessionInfo, catalo
                     </>
                   )}
 
+                </motion.div>
+<motion.div key="model" className="cmenu-body"
+  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+  transition={{ duration: reduce ? 0.1 : 0.14, ease: EASE }}
+  /* An exiting panel keeps its LAYOUT while it fades, and those leftovers sat on top
+     of the composer bar: measured, elementFromPoint over the effort chip returned
+     `.cmenu-plate` instead of the chip, so its own second click landed on a
+     departing panel and did nothing. Only the panel that is CURRENT may take
+     pointer events; everything fading out is inert. */
+  style={{ pointerEvents: panel === "model" ? "auto" : "none" }}>
                   {panel === "model" && (
                     <>
                       <header className="cmenu-head">
                         <button type="button" className="cmenu-back" onClick={back} aria-label="Back to provider">
                           <ChevronRight className="h-3.5 w-3.5 rotate-180" strokeWidth={1.5} />
                         </button>
-                        <span className="cmenu-title truncate">{providerLabel(activeProvider)}</span>
-                        <span className={cn("cmenu-sum truncate", pending && "cmenu-shimmer")}>{model || "—"}</span>
+                        {/* Title is the MODEL name (owner 2026-10-04) — the header used to
+                            name the provider, which duplicated the breadcrumb the back
+                            button already returns to and left the panel untitled. The
+                            provider moves to the trailing summary slot so it stays visible
+                            without stealing the heading. */}
+                        <span className="cmenu-title truncate">{model || "Select a model"}</span>
+                        <span className={cn("cmenu-sum truncate", pending && "cmenu-shimmer")}>
+                          {providerLabel(activeProvider)}
+                        </span>
                       </header>
                       {(() => {
                         const list = catalog?.providers.find((p) => p.slug === activeProvider)?.models || [];
