@@ -15,6 +15,15 @@ export class RootErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("[app] crashed", error, info.componentStack);
+    if (isStaleChunkErrorRoot(error)) {
+      try {
+        if (!sessionStorage.getItem("astra:chunk-reload")) {
+          sessionStorage.setItem("astra:chunk-reload", "1");
+          setTimeout(() => location.reload(), 350);
+          return; // skip the error UI; the reload lands first
+        }
+      } catch { /* storage blocked: show the error UI */ }
+    }
   }
 
   render() {
@@ -39,3 +48,10 @@ export class RootErrorBoundary extends Component<Props, State> {
 }
 
 export default RootErrorBoundary;
+
+
+// stale-deploy helpers (shared intent with canvas-error-boundary.tsx; duplicated to keep each file standalone)
+function isStaleChunkErrorRoot(e: unknown): boolean {
+  const s = String((e as Error)?.message || e);
+  return /dynamically imported module|Loading chunk \d+ failed|MIME incompatible/i.test(s);
+}

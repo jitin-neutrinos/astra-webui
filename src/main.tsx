@@ -17,6 +17,7 @@ import { RootErrorBoundary } from './components/root-error-boundary'
 // before first paint so a non-default palette never flashes the stock colors.
 import { restorePalette, startThemeSync } from './lib/theme-store'
 
+try { sessionStorage.removeItem('astra:chunk-reload'); } catch {}
 startThemeSync()   // listener first: restorePalette's broadcast must land on it
 restorePalette()
 initAndroidShell().catch(() => { /* never block app boot on shell glue */ })

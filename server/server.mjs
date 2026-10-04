@@ -543,15 +543,25 @@ const server = createServer(async (req, res) => {
   }
 
   // --- static dist, SPA fallback ---
+  // (owner 2026-10-04: "text/html is not a valid JavaScript MIME type" on the canvas) A stale tab asks for a
+  // hashed /assets chunk that this deploy no longer has; falling back to index.html answered JS requests with
+  // HTML. Asset requests must 404 — only true navigations get the SPA fallback.
   let file = join(DIST, normalize(path).replace(/^(\.\.[/\\])+/, ""));
+  const isAsset = path.startsWith("/assets/");
+  let missingAsset = false;
   try {
     const s = await stat(file);
     if (s.isDirectory()) file = join(file, "index.html");
   } catch {
-    file = join(DIST, "index.html"); // SPA fallback
+    if (isAsset) missingAsset = true;
+    else file = join(DIST, "index.html"); // SPA fallback
   }
   if (!file.startsWith(DIST + sep) && file !== join(DIST, "index.html")) {
     res.writeHead(403); return res.end();
+  }
+  if (missingAsset) {
+    res.writeHead(404, { "content-type": "text/plain", "cache-control": "no-store" });
+    return res.end("asset not found (stale index?)");
   }
   try {
     const body = await readFile(file);
@@ -561,7 +571,8 @@ const server = createServer(async (req, res) => {
     });
     res.end(body);
   } catch {
-    res.writeHead(404); res.end("not found");
+    res.writeHead(404, { "cache-control": "no-store" });
+    res.end("not found");
   }
 });
 
