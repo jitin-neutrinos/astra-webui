@@ -5490,7 +5490,17 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
 
 /* The left control cluster must never exceed the button's own height, or the bar card
    grows past the input card again. 34px is the send button's box. */
-.composer-bar-card .chat-composer-bar > .relative { max-height: 34px; align-items: center; }
+/* The cluster must NOT cap its height. A max-height here clipped the chips' 5px hit
+   extension: measured with elementFromPoint, they answered clicks 1-3px outside their own
+   edge but NOT at 5px, where the parent card was returned instead. The send button sits
+   outside this wrapper, which is exactly why it kept its full tap target. Card height is
+   governed by the bar's own padding plus its tallest child, so no cap is needed here —
+   and leaving overflow visible keeps the hit extension from being clipped. */
+.composer-bar-card .chat-composer-bar > .relative {
+  align-items: center;
+  max-height: none;
+  overflow: visible;
+}
 
 /* Touch target (corrected): this rule used to disable the send button's ::after hit area
    on the grounds that a 34px button IS its own target. That stopped being true when the
