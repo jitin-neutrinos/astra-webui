@@ -4068,7 +4068,7 @@ a.ast-cv-ref-link:hover { border-bottom-color: var(--color-accent); }
   right: 8px;
   bottom: 0;
   height: 2px;
-  border-radius: 2px;
+  border-radius: 9999px;
   background: transparent;
   transition: background 140ms var(--ease-brand);
 }
