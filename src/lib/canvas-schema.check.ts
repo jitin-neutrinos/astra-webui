@@ -1287,3 +1287,23 @@ test("diagram: summary/caption/note are capped at 400 characters", () => {
   assert.equal(d.nodes[0].note.length, 400);
   assert.equal(d.edges[0].note.length, 400);
 });
+
+
+// ── scatter data shapes (owner 2026-10-04: "Latency vs payload is blank") ───────────────────────────────────────────
+// A scatter's natural data is PAIRS. [[x,y],…] and [{x,y},…] used to fail the numeric-array test and DROP the whole
+// card, so the chart simply never appeared. They must parse to canonical [x, y] pairs; a flat list still works.
+test("scatter: [[x,y]] pairs and [{x,y}] objects parse to canonical pairs (no silent drop)", () => {
+  const mk = (points: unknown) => parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "chart", chart: "scatter", title: "t", labels: ["x: size", "y: ms"], series: [{ name: "runs", points }] }] }));
+  const pairs = mk([[10, 300], [40, 338], [90, 400]]);
+  assert.ok(pairs, "pairs must parse");
+  assert.deepEqual((pairs!.blocks[0] as any).series[0].points, [[10, 300], [40, 338], [90, 400]]);
+  const objs = mk([{ x: 10, y: 300 }, { x: 40, y: 338 }]);
+  assert.ok(objs, "objects must parse");
+  assert.deepEqual((objs!.blocks[0] as any).series[0].points, [[10, 300], [40, 338]]);
+  const flat = mk([300, 338, 400]);
+  assert.ok(flat, "a flat numeric series still parses");
+  assert.deepEqual((flat!.blocks[0] as any).series[0].points, [300, 338, 400]);
+  // pairs belong to a scatter ONLY: a bar chart must still reject non-numeric points
+  const bar = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "chart", chart: "bar", series: [{ name: "s", points: [[1, 2], [3, 4]] }] }] }));
+  assert.equal(bar, null, "pairs must not leak into non-scatter charts");
+});

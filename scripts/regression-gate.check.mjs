@@ -517,6 +517,13 @@ export const REGRESSIONS = [
       "A KPI delta was clipped mid-word with no ellipsis ('+38m' instead of '+38ms'), because src/index.css declared .ast-cv-kpi-delta TWICE — a stale `overflow:hidden; text-overflow:ellipsis; white-space:nowrap` and a newer wrapping rule — and four sibling selectors shared the trap through a `white-space: nowrap` group rule. Ellipsis is inert on the inline-flex chip, so the old pair could only ever clip. Measured in chromium: a KPI value of '412.8ms (trailing twelve months, all regions)' reported clientWidth 273 vs scrollWidth 447 at 768px (dx=174px of text silently gone) before, dx=0 after; the phone KPI label ellipsized 29px of itself away. Guards that every value surface has exactly ONE authoritative declaration which is never nowrap, that nothing on canvas hides a value with nowrap+hidden and no ellipsis, and that prose surfaces (legend names, reference titles and notes, timeline/compare titles, table cells, keyvalue values) wrap by word.",
     guard: "src/lib/canvas-text-integrity.check.ts",
   },
+  {
+    id: "RG-078",
+    found: "2026-10-04",
+    symptom:
+      "Three chart faults and a text-etiquette sweep, all measured in a real browser. (1) 'Where the request budget goes' (a sankey) rendered BLANK: the plot sat inside the fixed-height ResponsiveContainer built for recharts, so the self-sizing nivo plot measured 0px tall (svg 0x0) and painted nothing. (2) 'Latency vs payload' (a scatter) was dropped by the parser: its natural data is [[x,y]] pairs or [{x,y}] objects, which failed the numeric-array test and silently discarded the whole card; its axis titles were also hard-coded to 'request (index)' / 'p95 (ms)' for every scatter. (3) Sankey node labels rendered black on the dark card (1.1:1): nivo's default label colour is a darker shade of the node colour, the node colour is var(--color-accent), d3 cannot parse it and returns rgb(0,0,0); fixed by passing a theme-resolved concrete colour. (4) Text etiquette: KPI labels were nowrap+ellipsis, the delta chip was capped at 46% width, titles left a lone figure on its own line, tables and heatmap headers broke mid-word. Guards the source-level rules the browser audit proved matter: prose surfaces wrap by word with no ellipsis and no silent clip, the KPI row wraps, legends sit at the bottom, the self-sizing charts render OUTSIDE the fixed-height container and the sankey plot carries an explicit pixel height, scatter axis titles come from the data. The browser half lives in scratch/canvas-v6/etiquette-e2e.mjs (4 widths, 40 assertions).",
+    guard: "src/lib/etiquette.check.ts",
+  },
 ];
 
 // ---- gate -----------------------------------------------------------------

@@ -567,7 +567,7 @@ export function HeatmapView({ block }: { block: HeatmapBlock }) {
   return (
     <figure className="ast-cv-heat">
       {block.title && <figcaption className="ast-cv-heat-title">{block.title}</figcaption>}
-      <div className="ast-cv-heat-grid" style={{ gridTemplateColumns: `auto repeat(${block.cols.length}, minmax(0, 1fr))` }}>
+      <div className="ast-cv-heat-grid" style={{ gridTemplateColumns: `auto repeat(${block.cols.length}, minmax(min-content, 1fr))` }}>
         <span className="ast-cv-heat-corner" aria-hidden="true" />
         {block.cols.map((c) => <span key={c} className="ast-cv-heat-col">{c}</span>)}
         {block.rows.map((r, ri) => (

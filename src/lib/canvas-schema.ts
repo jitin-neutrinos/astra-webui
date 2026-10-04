@@ -34,7 +34,8 @@ export interface ChartBlock {
   labels?: string[];
   series: {
     name: string;
-    /** Reactive cards may author a BINDING here; it resolves at render time. */
+    /** Reactive cards may author a BINDING here; it resolves at render time.
+     *  A scatter series may carry [x, y] PAIRS (normalised below); every other chart is a flat number list. */
     points: number[];
     items?: { name: string; value: number }[];
     /** sankey only: the authored edges, preserved so the flow keeps its shape */
@@ -654,7 +655,19 @@ function validateBlockInner(b: any): CanvasBlock | null {
         // points: a numeric array (canonical) OR a binding — a bound series
         // keeps its binding in `points`, exactly where the renderer looks.
         const bound = isBind(s.points);
-        if (!bound && (!Array.isArray(s.points) || !s.points.every(isNum))) return null;
+        // SCATTER: the natural data is PAIRS. A model writes [[x, y], …] or [{x, y}, …]; both used to fail the
+        // numeric-array test below and silently DROP the whole card ("Latency vs payload is blank"). Normalise
+        // them to canonical [x, y] pairs, which the renderer reads. Every other chart still demands numbers.
+        let pts: unknown = s.points;
+        if (chart === "scatter" && !bound && Array.isArray(pts) && pts.length > 0) {
+          const pairs = pts.map((p: any) =>
+            Array.isArray(p) && p.length >= 2 && isNum(p[0]) && isNum(p[1]) ? [p[0], p[1]]
+            : p && typeof p === "object" && isNum(p.x) && isNum(p.y) ? [p.x, p.y]
+            : null);
+          if (pairs.every((p) => p !== null)) pts = pairs;
+        }
+        const isPairs = chart === "scatter" && Array.isArray(pts) && pts.length > 0 && (pts as unknown[]).every((p) => Array.isArray(p));
+        if (!bound && !isPairs && (!Array.isArray(pts) || !(pts as unknown[]).every(isNum))) return null;
         const kids = Array.isArray(s.items)
           ? s.items.filter((it: any) => it && (isStr(it.name) || isStr(it.label)) && isNum(it.value))
               .map((it: any) => ({ name: isStr(it.name) ? it.name : it.label, value: it.value }))
@@ -665,7 +678,7 @@ function validateBlockInner(b: any): CanvasBlock | null {
           : undefined;
         series.push({
           name: s.name,
-          points: bound ? (s.points as unknown as number[]) : s.points,
+          points: bound ? (s.points as unknown as number[]) : (pts as number[]),
           items: kids,
           links,
           visible: isBind(s.visible) ? s.visible : undefined,

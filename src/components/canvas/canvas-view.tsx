@@ -72,7 +72,7 @@ function deriveTitle(spec: { title?: string; blocks: CanvasBlock[] }): string {
   const derived = fromData(b);
   if (spec.title) {
     const first = b?.type === "kpi" ? figure(b.value) : null;
-    return first && !spec.title.includes(first) ? `${spec.title} · ${first}` : spec.title;
+    return first && !spec.title.includes(first) ? `${spec.title} ·\u00A0${first}` : spec.title;
   }
   return derived || "Canvas";
 }
