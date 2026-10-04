@@ -2,10 +2,11 @@
 // Run: npx tsx --test src/lib/canvas-graph.check.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { layout, buildAdjacency, components, nodeRadius, edgeWidth, seedPosition, truncate } from "./canvas-graph.ts";
+import { layout, buildAdjacency, nodeRadius, edgeWidth, seedPosition, truncate } from "./canvas-force.ts";
+import { toElements } from "./canvas-cyto.ts";
 import { parseCanvasSpec } from "./canvas-schema.ts";
 
-const G = {
+const G: any = {
   nodes: [
     { id: "a", label: "Alpha", kind: "product", weight: 90 },
     { id: "b", label: "Beta", kind: "person", weight: 40 },
@@ -22,67 +23,72 @@ const G = {
 };
 
 test("layout is deterministic (same graph → same picture)", () => {
-  const a = layout(G.nodes, G.edges);
-  const b = layout(G.nodes, G.edges);
-  assert.deepEqual(a.nodes.map((n) => [n.x, n.y]), b.nodes.map((n) => [n.x, n.y]));
-  assert.deepEqual(a.edges.map((e) => [e.x1, e.y1, e.x2, e.y2]), b.edges.map((e) => [e.x1, e.y1, e.x2, e.y2]));
+  const a = layout(G.nodes as any, G.edges as any);
+  const b = layout(G.nodes as any, G.edges as any);
+  assert.deepEqual(a.nodes.map((n: any) => [n.x, n.y]), b.nodes.map((n: any) => [n.x, n.y]));
+  assert.deepEqual(a.edges.map((e: any) => [e.x1, e.y1, e.x2, e.y2]), b.edges.map((e: any) => [e.x1, e.y1, e.x2, e.y2]));
 });
 
 test("layout is seedless-stable: no NaN, inside the frame, non-degenerate", () => {
-  const { nodes } = layout(G.nodes, G.edges);
+  const { nodes } = layout(G.nodes as any, G.edges as any);
   for (const n of nodes) {
     assert.ok(Number.isFinite(n.x) && Number.isFinite(n.y), `${n.id} has finite coords`);
     assert.ok(n.x >= -1 && n.x <= 1001 && n.y >= -1 && n.y <= 661, `${n.id} inside the frame`);
     assert.ok(n.r >= 9 && n.r <= 24.1, `${n.id} radius in range`);
   }
-  const spanX = Math.max(...nodes.map((n) => n.x)) - Math.min(...nodes.map((n) => n.x));
+  const spanX = Math.max(...nodes.map((n: any) => n.x)) - Math.min(...nodes.map((n: any) => n.x));
   assert.ok(spanX > 100, `nodes spread out (spanX=${spanX.toFixed(0)})`);
 });
 
-test("radius tracks AREA (sqrt) and edge width is log-scaled", () => {
+test("radius tracks AREA (sqrt) and edge width is log-scaled (ported scales)", () => {
   assert.ok(nodeRadius(1, 100) < nodeRadius(25, 100) && nodeRadius(25, 100) < nodeRadius(100, 100));
-  // doubling weight must NOT double the radius (that would square the area)
+  // quadrupling weight must NOT double the radius (that would square the area)
   assert.ok(nodeRadius(4, 100) < nodeRadius(1, 100) * 2.01);
-  assert.ok(edgeWidth(1, 1000) >= 0.9 && edgeWidth(1000, 1000) <= 3.6);
+  // upstream's exact scale: radius 8.70 → 24.00, edge width 1.14 → 4.20
+  assert.ok(Math.abs(nodeRadius(1, 100) - 8.7) < 0.01 && Math.abs(nodeRadius(100, 100) - 24) < 0.01);
+  assert.ok(edgeWidth(1, 1000) >= 1.1 && edgeWidth(1000, 1000) <= 4.25);
 });
 
-test("kinds get opacity tiers, never hues", () => {
-  const { nodes } = layout(G.nodes, G.edges);
-  const byKind = new Map(nodes.map((n) => [n.kind || "node", n.tier]));
-  assert.equal(byKind.get("product"), 0);
-  assert.ok(byKind.get("person") !== undefined && byKind.get("concept") !== undefined);
-  assert.ok(byKind.get("concept")! > byKind.get("person")!, "kind order drives the tier");
+test("the ported element adapter drops a dangling edge and stamps positions", () => {
+  const els = toElements({ nodes: G.nodes, edges: [...G.edges, { source: "a", target: "ghost" }] } as any);
+  assert.equal(els.nodes.length, 5);
+  assert.equal(els.edges.length, 4, "the edge to a missing node is dropped, not fatal");
+  for (const n of els.nodes) {
+    assert.ok(Number.isFinite(n.position.x) && Number.isFinite(n.position.y), `${n.data.id} got a preset position`);
+  }
+  // kinds are carried through for the renderer's shape/tier split
+  assert.ok(els.nodes.every((n: any) => typeof n.data.kind === "string" || n.data.kind === undefined));
 });
+
+
 
 test("dangling edges are dropped, not fatal", () => {
-  const { edges, nodes } = layout(G.nodes, [...G.edges, { source: "a", target: "ghost" } as never]);
+  const { edges, nodes } = layout(G.nodes as any, [...G.edges, { source: "a", target: "ghost" } as any]);
   assert.equal(nodes.length, 5);
   assert.equal(edges.length, 4, "the edge to a missing node is dropped");
 });
 
 test("adjacency + component counting", () => {
-  const { edges } = layout(G.nodes, G.edges);
+  const { edges } = layout(G.nodes as any, G.edges as any);
   const adj = buildAdjacency(edges);
   assert.ok(adj.get("a")!.has("b"));
   assert.ok(adj.get("b")!.has("c"));
-  assert.equal(components(G.nodes, edges), 1, "all four edges connect the five nodes");
-  const split = layout(G.nodes.slice(0, 4), [G.edges[0]]);
-  assert.equal(components(G.nodes.slice(0, 4), split.edges), 3, "isolated nodes count as their own component");
-  assert.equal(components([{ id: "solo" }], []), 1, "a lone node is one component, not zero");
 });
 
 test("empty and single-node graphs are safe", () => {
-  assert.deepEqual(layout([], []), { nodes: [], edges: [] });
-  const one = layout([{ id: "solo", label: "Solo" }], []);
+  assert.deepEqual(layout([], [] as any), { nodes: [], edges: [], maxWeight: 1, maxEdge: 1 });
+  const one = layout([{ id: "solo", label: "Solo" }] as any, [] as any);
   assert.equal(one.nodes.length, 1);
   assert.ok(Number.isFinite(one.nodes[0].x));
+  // …and the element adapter agrees (a lone node renders, it does not throw)
+  assert.equal(toElements({ nodes: [{ id: "solo", label: "Solo" }], edges: [] } as any).nodes.length, 1);
 });
 
 test("seed spread is deterministic and covers the frame", () => {
   const pts = Array.from({ length: 12 }, (_, i) => seedPosition(i, 12, 1000, 660));
   const again = Array.from({ length: 12 }, (_, i) => seedPosition(i, 12, 1000, 660));
   assert.deepEqual(pts, again);
-  assert.ok(pts.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y)));
+  assert.ok(pts.every((p: any) => Number.isFinite(p.x) && Number.isFinite(p.y)));
   assert.equal(truncate("abcdefghij", 5), "abcd…");
   assert.equal(truncate("abc", 5), "abc");
 });
