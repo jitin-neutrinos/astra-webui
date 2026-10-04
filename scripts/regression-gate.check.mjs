@@ -503,6 +503,20 @@ export const REGRESSIONS = [
       "A sharp rectangle crept back into the UI (owner law: every visible corner is a pill, a circle or a rounded rectangle). Guards index.css app-wide, with the scrollbar/bottom-attached/heat-cell exceptions documented in the check.",
     guard: "src/lib/rounding.check.ts",
   },
+  {
+    id: "RG-076",
+    found: "2026-10-04",
+    symptom:
+      "A sankey authored in the documented `sankey (alt)` form (labels + a flat series, NO links) rendered BLANK: the parser only synthesises links for form A, and the renderer showed its empty state for every form-B card ('Where the request budget goes shows blank'). Measured in chromium at 360/768/1280: before painted=0 ribbons=0 nodes=0 empty=true; after painted=6 ribbons=2 nodes=4. The same report said the chart LEGEND sat at the TOP / over the plot: recharts 2.15.4 hardcodes position:absolute on its legend wrapper (Legend.js:171), so it was laid out INSIDE the chart surface and overlapped the x-axis tick labels by 30px on every recharts kind. Guards the stage-chain derivation (form A still wins, ribbons never exceed their destination stage, an all-zero flow still renders its shape), and that the legend is ordinary DOM below the plot, present for a one-series chart, and never duplicated for the kinds that carry their own legend block.",
+    guard: "src/lib/canvas-chart-render.check.ts",
+  },
+  {
+    id: "RG-077",
+    found: "2026-10-04",
+    symptom:
+      "A KPI delta was clipped mid-word with no ellipsis ('+38m' instead of '+38ms'), because src/index.css declared .ast-cv-kpi-delta TWICE — a stale `overflow:hidden; text-overflow:ellipsis; white-space:nowrap` and a newer wrapping rule — and four sibling selectors shared the trap through a `white-space: nowrap` group rule. Ellipsis is inert on the inline-flex chip, so the old pair could only ever clip. Measured in chromium: a KPI value of '412.8ms (trailing twelve months, all regions)' reported clientWidth 273 vs scrollWidth 447 at 768px (dx=174px of text silently gone) before, dx=0 after; the phone KPI label ellipsized 29px of itself away. Guards that every value surface has exactly ONE authoritative declaration which is never nowrap, that nothing on canvas hides a value with nowrap+hidden and no ellipsis, and that prose surfaces (legend names, reference titles and notes, timeline/compare titles, table cells, keyvalue values) wrap by word.",
+    guard: "src/lib/canvas-text-integrity.check.ts",
+  },
 ];
 
 // ---- gate -----------------------------------------------------------------

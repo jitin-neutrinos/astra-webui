@@ -20,7 +20,7 @@ import { lazy, Suspense, useMemo } from "react";
 import {
   ResponsiveContainer, AreaChart, Area, LineChart, Line, BarChart, Bar,
   RadialBarChart, RadialBar, PieChart, Pie, Cell, XAxis, YAxis,
-  Tooltip, Legend, PolarAngleAxis, type TooltipProps,
+  Tooltip, PolarAngleAxis, type TooltipProps,
   // v5 — these four ship in the recharts build we ALREADY load; no new bytes,
   // no new dependency, just four more chart kinds for the same price.
   ScatterChart, Scatter, ZAxis, RadarChart, Radar,
@@ -52,22 +52,42 @@ const AXIS_TICK = {
 } as const;
 const AXIS_LINE = "rgb(var(--c-89) / 0.16)";
 const AXIS_TICKS = "rgb(var(--c-89) / 0.28)";
-const LEGEND_STYLE = {
-  fontSize: 10.5,
-  fontFamily: "var(--font-sans)",
-  color: "var(--color-muted)",
-  paddingTop: 8,
-} as const;
-
-const legend = (icon: "plainline" | "circle" | "square" = "plainline") => (
-  <Legend
-    iconType={icon}
-    iconSize={icon === "plainline" ? 10 : 8}
-    align="left"
-    verticalAlign="bottom"
-    wrapperStyle={{ ...LEGEND_STYLE }}
-  />
-);
+// ── legend: rendered OUTSIDE the plot, in normal flow (owner 2026-10-04) ───
+//
+// WHY NOT recharts' own <Legend>: recharts 2.15.4 renders the legend wrapper with
+// a hardcoded `position: 'absolute'` (node_modules/recharts/lib/component/
+// Legend.js:171, spread into outerStyle before wrapperStyle can override it), so
+// the legend is positioned INSIDE the chart surface no matter what we pass. Every
+// chart here also passes `margin={{ top: 6, right: 6, bottom: 0, left: 0 }}`, so
+// the absolutely-positioned row landed on the bottom edge of the plot box, ON TOP
+// of the x-axis tick labels. Measured in chromium at 360/768/1280
+// (scratch/canvas-v6/defects-e2e.mjs, getComputedStyle(legend).position ===
+// "absolute", legend.top < plot.bottom on EVERY recharts kind): before the fix
+// the 2-series line reported plot 250-430 vs legend 400-430, i.e. a 30px
+// overlap; bar 493-673 vs 643-673, 30px. Only `verticalAlign` moved it WITHIN the
+// absolutely-positioned box — on short viewports the box collapsed upward and the
+// row read as if it sat at the TOP of the plot.
+//
+// So the legend is ordinary DOM beneath the <ResponsiveContainer>, using the
+// block-legend presentation the native charts already use (`.ast-cv-chart-legend
+// -block` / `.ast-cv-legend-item` / `.ast-cv-dot`). That is the same rule the
+// diagram and graph surfaces follow: never overlay the drawing.
+//
+// A ONE-series chart still gets a legend — an explicit series name beats an
+// ambiguous chart (the 2026-10-04 design law in the header of this file).
+function ChartLegend({ series }: { series: { name: string }[] }) {
+  if (!series.length) return null;
+  return (
+    <div className="ast-cv-chart-legend ast-cv-chart-legend-block ast-cv-chart-legend-below">
+      {series.map((s, i) => (
+        <span key={s.name} className="ast-cv-legend-item">
+          <span className="ast-cv-dot" style={{ background: SERIES_COLORS[i % SERIES_COLORS.length] }} />
+          <span className="ast-cv-legend-name">{s.name}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
 
 function fmt(n: unknown): string {
   const v = typeof n === "number" ? n : Number(n);
@@ -89,9 +109,22 @@ function fmt(n: unknown): string {
 
 
 
-function scatterOf(s: { name: string; points: number[] }, labels: string[]) {
+function scatterOf(s: { name: string; points: unknown[] }, labels: string[]) {
   const lit = Array.isArray(s.points) ? s.points : [];
-  return lit.map((y, i) => ({ x: i + 1, y, z: Math.abs(y), label: labels[i] }));
+  // A scatter is the one chart whose natural data is PAIRS. Accept [x, y] and {x, y}; a flat number list
+  // falls back to (index, value) so the older shape keeps working.
+  return lit.map((p, i) => {
+    if (Array.isArray(p) && p.length >= 2) { const x = Number(p[0]), y = Number(p[1]); return { x, y, z: Math.abs(y), label: labels[i] }; }
+    if (p && typeof p === "object") { const o = p as { x?: unknown; y?: unknown }; const x = Number(o.x), y = Number(o.y); return { x: Number.isFinite(x) ? x : i + 1, y, z: Math.abs(y), label: labels[i] }; }
+    const y = Number(p);
+    return { x: i + 1, y, z: Math.abs(y), label: labels[i] };
+  }).filter((d) => Number.isFinite(d.x) && Number.isFinite(d.y));
+}
+
+/** Scatter axis titles: "x: batch size" / "y: p95 ms" in `labels`, else the series name for Y and nothing for X. */
+function scatterAxisTitles(labels: string[] | undefined, seriesName: string): { x: string; y: string } {
+  const pick = (re: RegExp) => labels?.find((l) => re.test(l))?.replace(re, "").trim();
+  return { x: pick(/^\s*x\s*[:=]\s*/i) || "", y: pick(/^\s*y\s*[:=]\s*/i) || seriesName };
 }
 
 
@@ -174,7 +207,11 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
   const X = <XAxis dataKey="name" tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: AXIS_LINE }} height={24} />;
   const Y = <YAxis tick={AXIS_TICK} tickFormatter={(v: number) => fmt(v)} tickLine={false} axisLine={{ stroke: AXIS_LINE }} width={46} />;
   const TIP = <Tooltip content={<TT />} cursor={{ fill: "rgb(var(--c-89) / 0.04)" }} />;
-  const LEG = legend();
+  // The legend is rendered by <ChartLegend> BELOW the ResponsiveContainer, never
+  // as a recharts child — see the comment on ChartLegend for the measurement.
+  const LEG_NAMES = activeSeries.map((s) => ({ name: s.name }));
+
+  const AX = scatterAxisTitles(block.labels, String(activeSeries[0]?.name ?? ""));
 
   const H = block.chart === "radial" || block.chart === "pie" || block.chart === "donut" ? 210
     : block.chart === "radar" ? 230
@@ -189,66 +226,18 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
   return (
     <figure className="ast-cv-chart">
       {block.title && <figcaption className="ast-cv-chart-title">{block.title}</figcaption>}
-      <ResponsiveContainer width="100%" height={H}>
-        {block.chart === "line" ? (
-          <LineChart data={data} margin={{ top: 6, right: 6, bottom: 0, left: 0 }}>
-            {X}
-            {Y}
-            {TIP}
-            {LEG}
-            {activeSeries.map((s, i) => (
-              <Line
-                key={s.name}
-                type="monotone"
-                dataKey={s.name}
-                stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
-                strokeWidth={2}
-                strokeLinecap="round"
-                dot={false}
-                activeDot={{ r: 3.5, strokeWidth: 0 }}
-                isAnimationActive={false}
-              />
-            ))}
-          </LineChart>
-        ) : block.chart === "area" ? (
-          <AreaChart data={data} margin={{ top: 6, right: 6, bottom: 0, left: 0 }}>
-            {X}
-            {Y}
-            {TIP}
-            {LEG}
-            {activeSeries.map((s, i) => (
-              <Area
-                key={s.name}
-                type="monotone"
-                dataKey={s.name}
-                stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
-                strokeWidth={2}
-                strokeLinecap="round"
-                fill={SERIES_COLORS[i % SERIES_COLORS.length]}
-                fillOpacity={0.12}
-                activeDot={{ r: 3.5, strokeWidth: 0 }}
-                isAnimationActive={false}
-              />
-            ))}
-          </AreaChart>
-        ) : block.chart === "bar" || block.chart === "stack" ? (
-          <BarChart data={data} margin={{ top: 6, right: 6, bottom: 0, left: 0 }} barCategoryGap="22%">
-            {X}
-            {Y}
-            {TIP}
-            {LEG}
-            {activeSeries.map((s, i) => (
-              <Bar
-                key={s.name}
-                dataKey={s.name}
-                fill={SERIES_COLORS[i % SERIES_COLORS.length]}
-                radius={block.chart === "stack" ? [0, 0, 0, 0] : [5, 5, 2, 2]}
-                stackId={block.chart === "stack" ? "s" : undefined}
-                isAnimationActive={false}
-              />
-            ))}
-          </BarChart>
-        ) : block.chart === "donut" ? (
+      {/* LAYOUT LAW (owner 2026-10-04: "Where the request budget goes shows blank", "legends at the bottom"):
+          the plot and its legend are SIBLINGS inside the figure. Self-sizing charts (sankey/treemap/funnel)
+          and the donut carry their own legend row, so they must NOT live inside a fixed-height
+          ResponsiveContainer — that box measured them 0x0 (blank) and let the legend spill out of the figure. */}
+      {NATIVE.has(block.chart) ? (
+        /* recharts 2.15 self-sizes Sankey/Treemap/Funnel; given a fixed-height container they measure 0×0 and
+           paint NOTHING. They are rendered natively with measured pixels instead:
+             sankey  → @nivo/sankey (recharts' own Sankey throws "e.split is not iterable" on our payload)
+             treemap → recharts Treemap, measured width
+             funnel  → recharts FunnelChart, measured width + conversion row */
+        <Suspense fallback={<div className="ast-cv-graph-skeleton" aria-busy="true" />}><NativeLazy block={block} labels={labels} H={H} /></Suspense>
+      ) : block.chart === "donut" ? (
           <div className="ast-cv-donut">
             <ResponsiveContainer width="100%" height={H}>
               <PieChart>
@@ -288,6 +277,63 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
               ))}
             </div>
           </div>
+      ) : (
+      <ResponsiveContainer width="100%" height={H}>
+        {block.chart === "line" ? (
+          <LineChart data={data} margin={{ top: 6, right: 6, bottom: 0, left: 0 }}>
+            {X}
+            {Y}
+            {TIP}
+            {activeSeries.map((s, i) => (
+              <Line
+                key={s.name}
+                type="monotone"
+                dataKey={s.name}
+                stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
+                strokeWidth={2}
+                strokeLinecap="round"
+                dot={false}
+                activeDot={{ r: 3.5, strokeWidth: 0 }}
+                isAnimationActive={false}
+              />
+            ))}
+          </LineChart>
+        ) : block.chart === "area" ? (
+          <AreaChart data={data} margin={{ top: 6, right: 6, bottom: 0, left: 0 }}>
+            {X}
+            {Y}
+            {TIP}
+            {activeSeries.map((s, i) => (
+              <Area
+                key={s.name}
+                type="monotone"
+                dataKey={s.name}
+                stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
+                strokeWidth={2}
+                strokeLinecap="round"
+                fill={SERIES_COLORS[i % SERIES_COLORS.length]}
+                fillOpacity={0.12}
+                activeDot={{ r: 3.5, strokeWidth: 0 }}
+                isAnimationActive={false}
+              />
+            ))}
+          </AreaChart>
+        ) : block.chart === "bar" || block.chart === "stack" ? (
+          <BarChart data={data} margin={{ top: 6, right: 6, bottom: 0, left: 0 }} barCategoryGap="22%">
+            {X}
+            {Y}
+            {TIP}
+            {activeSeries.map((s, i) => (
+              <Bar
+                key={s.name}
+                dataKey={s.name}
+                fill={SERIES_COLORS[i % SERIES_COLORS.length]}
+                radius={block.chart === "stack" ? [0, 0, 0, 0] : [5, 5, 2, 2]}
+                stackId={block.chart === "stack" ? "s" : undefined}
+                isAnimationActive={false}
+              />
+            ))}
+          </BarChart>
         ) : block.chart === "radial" ? (
           <RadialBarChart
             data={data}
@@ -317,16 +363,6 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
               fontSize="9.5" fontFamily="var(--font-mono)" fill="var(--color-muted)">of max</text>
             <Tooltip content={<TT />} isAnimationActive={false} />
           </RadialBarChart>
-        ) : NATIVE.has(block.chart) ? (
-          // recharts 2.15 self-sizes Sankey/Treemap/Funnel: inside a
-          // ResponsiveContainer they measure 0×0 and paint NOTHING (measured:
-          // `surfaces: 0`), so they are rendered natively with real pixels.
-          //   • sankey  → @nivo/sankey (MIT, React 19 peer) — recharts' Sankey
-          //     delegates to d3-sankey and THROWS on our own payload
-          //     ("e.split is not iterable"), which blanked the whole card.
-          //   • treemap → recharts Treemap, measured width.
-          //   • funnel  → recharts FunnelChart, measured width + conversion row.
-          <Suspense fallback={<div className="ast-cv-graph-skeleton" aria-busy="true" />}><NativeLazy block={block} labels={labels} H={H} /></Suspense>
         ) : block.chart === "scatter" ? (
           <ScatterChart margin={{ top: 10, right: 16, bottom: 8, left: 0 }}>
             {/* REAL numeric axes. The old pair was `hide` with no domain and the
@@ -335,17 +371,16 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
             <XAxis
               dataKey="x" type="number" domain={["dataMin", "dataMax"]} allowDecimals={false}
               tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: AXIS_LINE }} height={24}
-              label={{ value: "request (index)", position: "insideBottom", offset: -12, fill: "var(--color-muted)", fontSize: 10 }}
+              label={AX.x ? { value: AX.x, position: "insideBottom", offset: -12, fill: "var(--color-muted)", fontSize: 10 } : undefined}
             />
             <YAxis
               dataKey="y" type="number" domain={["dataMin - 10%", "dataMax + 10%"]}
               tick={AXIS_TICK} tickFormatter={(v: number) => fmt(v)}
               tickLine={false} axisLine={{ stroke: AXIS_LINE }} width={48}
-              label={{ value: "p95 (ms)", angle: -90, position: "insideLeft", offset: 14, fill: "var(--color-muted)", fontSize: 10 }}
+              label={AX.y ? { value: AX.y, angle: -90, position: "insideLeft", offset: 14, fill: "var(--color-muted)", fontSize: 10 } : undefined}
             />
             <ZAxis type="number" dataKey="z" range={[60, 260]} />
             <Tooltip cursor={{ stroke: "rgb(var(--c-89) / 0.25)" }} content={<TT />} />
-            {legend("circle")}
             {activeSeries.map((sr, i) => (
               <Scatter
                 key={sr.name}
@@ -369,7 +404,6 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
               axisLine={false} tickCount={4}
             />
             <Tooltip content={<TT />} />
-            {legend("circle")}
             {activeSeries.map((sr, i) => (
               <Radar key={sr.name} name={sr.name} dataKey={sr.name} stroke={SERIES_COLORS[i % SERIES_COLORS.length]} fill={SERIES_COLORS[i % SERIES_COLORS.length]} fillOpacity={0.14} isAnimationActive={false} />
             ))}
@@ -394,16 +428,18 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
               </Pie>
             ))}
             <Tooltip content={<TT />} />
-            <Legend
-              iconType="circle"
-              iconSize={7}
-              align="left"
-              verticalAlign="bottom"
-              wrapperStyle={{ fontSize: 10.5, fontFamily: "var(--font-sans)", paddingTop: 10, color: "var(--color-muted)" }}
-            />
           </PieChart>
         )}
       </ResponsiveContainer>
+      )}
+      {/* THE LEGEND SITS BELOW THE PLOT, IN NORMAL FLOW, ON EVERY KIND (measured —
+          see the comment on ChartLegend: recharts' <Legend> is position:absolute
+          inside the surface and overlapped the x-axis tick labels on every
+          recharts kind at 360/768/1280). Native charts (sankey/treemap/funnel) and
+          the donut already render their own `.ast-cv-chart-legend-block` row
+          directly beneath their own plot inside NativeChart / .ast-cv-donut, so
+          adding a second one here would duplicate it — those kinds are excluded. */}
+      {!NATIVE.has(block.chart) && block.chart !== "donut" && <ChartLegend series={LEG_NAMES} />}
     </figure>
   );
 }

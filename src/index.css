@@ -3716,10 +3716,16 @@ html.theme-fading body * {
   border-bottom: 1px solid rgb(var(--c-89) / 0.2);
 }
 a.ast-cv-ref-link:hover { border-bottom-color: var(--color-accent); }
+/* A reference NOTE is prose that follows its title; it wraps by word so a long
+   sentence is never cut mid-word or hidden with no ellipsis. */
 .ast-cv-ref-note {
   display: block;
   font-size: 11px;
   color: var(--color-muted);
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: normal;
+  hyphens: none;
 }
 
 /* Chart + doc skeletons — see the .ast-cv-doc-skeleton note further down; both live in one
@@ -3871,6 +3877,10 @@ a.ast-cv-ref-link:hover { border-bottom-color: var(--color-accent); }
   border-bottom: 1px solid rgb(var(--c-89) / 0.05);
 }
 .ast-cv-kv-row:last-child { border-bottom: none; }
+/* The KEY keeps a real ellipsis on purpose: it is the label half of a
+   label:value pair, and an ellipsis there is visible feedback ("there is more")
+   rather than a silent truncation — unlike a numeric value, where a clipped
+   tail is a wrong number. The VALUE beside it always shows in full. */
 .ast-cv-kv-key {
   font: 400 11.5px/1.4 var(--font-sans);
   color: var(--color-muted);
@@ -3888,9 +3898,19 @@ a.ast-cv-ref-link:hover { border-bottom-color: var(--color-accent); }
   min-width: 0;
   overflow-wrap: break-word;
 }
+/* A `mono: true` value is CODE (a path, a hash, a command): character position is
+   the information, so it must break like code. `overflow-wrap: break-word` does
+   exactly that here — a path/hash/command has no spaces, so it IS the unbreakable
+   token and it breaks only where it cannot fit. Deliberately NOT `anywhere`:
+   that changes the box's intrinsic min-content width and text-wrap.check.ts
+   correctly refuses it as a mid-word splitter for prose surfaces. Both the code
+   value and the prose value wrap, so neither can silently vanish. */
 .ast-cv-kv-val.mono {
   font: 600 11px/1.4 var(--font-mono);
   font-variant-numeric: tabular-nums;
+  overflow-wrap: break-word;
+  word-break: normal;
+  hyphens: none;
 }
 
 /* Diff ---------------------------------------------------------------------- */
@@ -4094,9 +4114,30 @@ a.ast-cv-ref-link:hover { border-bottom-color: var(--color-accent); }
 [data-theme="light"] .ast-cv-tab.on { color: var(--color-accent); }
 
 /* ---- Layout hardening: nothing hangs or clips, desktop → 360px ----------- */
-/* Value+unit pairs and label:value rows must wrap as ONE unit, never split. */
-.ast-cv-kpi-value, .ast-cv-kpi-delta, .ast-cv-progress-value, .ast-cv-donut-total {
-  white-space: nowrap;
+/* VALUE+UNIT PAIRS WRAP AS ONE UNIT, NEVER SPLIT.
+   This rule used to read `white-space: nowrap` on all four of
+   .ast-cv-kpi-value / .ast-cv-kpi-delta / .ast-cv-progress-value /
+   .ast-cv-donut-total, and .ast-cv-kpi-delta carried a SECOND, later rule that
+   re-opened wrapping. Two conflicting declarations of one selector in one
+   stylesheet is the defect (they can only be read by source order, and the
+   built asset shipped both). Measured in chromium at 360 and 768
+   (scratch/canvas-v6/nowrap-probe.mjs): with the stale `nowrap` in force, a KPI
+   value of "412.8ms (trailing twelve months, all regions)" reported
+   clientWidth 273 vs scrollWidth 447 — dx=174px of text silently GONE, with
+   computed text-overflow:clip and no ellipsis anywhere.
+
+   The owner's rule (no mid-word clip, ever) needs the value to WRAP BY WORD:
+   `nowrap` guarantees a clip the moment the string outgrows the tile, while
+   `normal` + `overflow-wrap: break-word` only breaks a token that cannot fit on
+   a line by itself — whole words move down first, and the numeric + unit stay
+   adjacent. Value+unit integrity is preserved by the UNIT being inside the same
+   text run, not by forbidding the wrap. Each surface now has exactly ONE
+   declaration; the four are grouped here so the next reader sees the family. */
+.ast-cv-kpi-value, .ast-cv-progress-value, .ast-cv-donut-total, .ast-cv-kpi-delta {
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: normal;
+  hyphens: none;
 }
 /* Long unbroken values (paths, hashes, URLs) break instead of overflowing. */
 .ast-cv-kv-val, .ast-cv-dl-text, .ast-cv-code-body, .ast-cv-heat-row,
@@ -4114,24 +4155,45 @@ a.ast-cv-ref-link:hover { border-bottom-color: var(--color-accent); }
 @media (max-width: 480px) {
   .ast-cv-group.rows { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ast-cv-kpi { min-width: 0; }
-  .ast-cv-kpi-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* The label WRAPS by word on a phone. It used to be nowrap+hidden+ellipsis,
+     which truncated "Net revenue retention, trailing twelve months" to
+     "Net revenue retention, trailing twe…" with no chance to show the rest on
+     a second line — measured dx=29px of a 136px label gone at 360px. An uppercase
+     mono eyebrow of 2-3 words fits two lines in a 1-up tile; an ellipsis would
+     throw away information the tile has room to show. A single unbreakable token
+     still breaks via overflow-wrap: break-word (below). */
+  .ast-cv-kpi-label { white-space: normal; overflow-wrap: break-word; overflow: visible; text-overflow: clip; }
   .ast-cv-kpi-row { flex-wrap: wrap; }
 }
 @media (max-width: 400px) {
   .ast-cv-group.rows { grid-template-columns: 1fr; }
 }
-/* Baseline alignment keeps delta chips from hanging below the number. */
+/** Baseline alignment keeps delta chips from hanging below the number. */
 .ast-cv-kpi-row { align-items: baseline; }
-.ast-cv-kpi-delta { flex: none; max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* Table cells never clip mid-glyph: wrap long content instead. */
-.ast-cv-table td, .ast-cv-table th { overflow-wrap: break-word; }
+/* The old `.ast-cv-kpi-delta { … overflow: hidden; text-overflow: ellipsis;
+   white-space: nowrap }` line is GONE. It was the stale half of the pair: on an
+   inline-flex chip `text-overflow: ellipsis` has no effect (ellipsis applies to a
+   block container), so `overflow: hidden` + `nowrap` clipped "+38ms" to "+38m"
+   with no ellipsis at all — the owner's Safari snapshot. The surviving
+   declaration is the single group rule above. The chip's geometry (flex, cap,
+   pill shape, font) stays in the ONE .ast-cv-kpi-delta block further down. */
+/* Table cells never clip mid-glyph: wrap long content instead. A long sentence
+   in a narrow phone column must break BETWEEN words — `overflow-wrap: break-word`
+   already guarantees that (it only breaks a token that cannot fit on a line by
+   itself); `word-break: normal` + `hyphens: none` make the intent explicit so a
+   later "tighten the column" edit cannot turn this into a mid-word splitter. */
+.ast-cv-table td, .ast-cv-table th {
+  overflow-wrap: break-word;
+  word-break: normal;
+  hyphens: none;
+}
 /* Timeline/compare heads keep their time/badge on the line's end; long titles wrap first. */
-.ast-cv-tl-title { min-width: 0; overflow-wrap: break-word; }
-.ast-cv-cmp-name { overflow-wrap: break-word; }
+.ast-cv-tl-title { min-width: 0; overflow-wrap: break-word; word-break: normal; hyphens: none; }
+.ast-cv-cmp-name { min-width: 0; overflow-wrap: break-word; word-break: normal; hyphens: none; }
 /* Diagram nodes wrap long labels instead of exploding the column. */
 .ast-cv-node-label, .ast-cv-node-detail { overflow-wrap: break-word; }
 /* References notes wrap; long titles break words rather than overflow the card. */
-.ast-cv-ref-link { overflow-wrap: break-word; }
+.ast-cv-ref-link { min-width: 0; overflow-wrap: break-word; word-break: normal; hyphens: none; }
 /* Canvas body top gap: cards never kiss the header rule. */
 .ast-canvas-body { padding-top: 2px; }
 /* Tree detail takes the remaining width only; long details ellipsize on one row. */
@@ -5015,11 +5077,22 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
   margin-top: 10px; padding-top: 8px;
   border-top: 1px solid var(--cv-border-hairline);
 }
+/* The legend lives BELOW the plot in normal flow (the recharts <Legend> it
+   replaced was position:absolute INSIDE the surface — measured overlap of 30px
+   against the plot at 360/768/1280; see canvas-chart.tsx ChartLegend). */
+.ast-cv-chart-legend-below { position: static; }
 .ast-cv-legend-item {
   display: inline-flex; align-items: center; gap: 6px;
   font: 400 11px/1.3 var(--font-sans); color: var(--color-brandtext);
   min-height: 22px;
+  /* A series name is PROSE: on a 360px card "Interactive queries · 12" must wrap
+     between words, never cut a word or hide the tail with no ellipsis. The name
+     needs min-width:0 so the flex item may shrink below its content width and
+     let the text WRAP rather than push the legend row wider than the card. */
+  min-width: 0; max-width: 100%;
+  overflow-wrap: break-word; word-break: normal; hyphens: none;
 }
+.ast-cv-legend-name { min-width: 0; overflow-wrap: break-word; }
 .ast-cv-legend-item .ast-cv-dot { width: 8px; height: 8px; border-radius: 9999px; flex: none; }
 .ast-cv-funnel-pct { font: 500 10.5px var(--font-mono); color: var(--color-muted); font-style: normal; }
 .ast-cv-legend-total { font: 500 10.5px var(--font-mono); color: var(--color-muted); margin-left: auto; }
@@ -5061,7 +5134,7 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
 }
 .ast-cv-chart-native .recharts-wrapper,
 .ast-cv-chart-native .recharts-surface { max-width: 100%; }
-.ast-cv-chart-native svg { max-width: 100%; height: auto; }
+.ast-cv-chart-native:not(.ast-cv-sankey) svg { max-width: 100%; height: auto; }
 @media (prefers-reduced-motion: reduce) { .ast-cv-chart-native * { transition: none !important; } }
 
 /* ==========================================================================
@@ -5125,10 +5198,12 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
   border-radius: 999px;
   font: 500 10.5px/1.25 var(--font-mono);
   font-variant-numeric: tabular-nums;
-  /* wrap BY WORD inside the chip; ellipsis is what clipped "+3 port che…" */
-  white-space: normal;
-  overflow-wrap: break-word;
-  word-break: normal;
+  /* white-space / overflow-wrap / word-break are NOT repeated here: the family
+     rule above (`.ast-cv-kpi-value, .ast-cv-progress-value, .ast-cv-donut-total,
+     .ast-cv-kpi-delta`) is their single authority. Declaring them twice with the
+     same value is the exact shape of the "+38m" bug — two rules for one selector,
+     separable only by source order — so the chip keeps only its own geometry
+     here and borrows its wrapping from the family. */
   text-align: right;
 }
 .ast-cv-kpi-delta-glyph { flex: none; }
@@ -5158,9 +5233,9 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
 /* Native (sankey/treemap/funnel) charts: their SVG is measured in pixels, so it
    must never exceed the card. */
 .ast-cv-chart-native { max-width: 100%; overflow: hidden; }
-.ast-cv-chart-native svg,
-.ast-cv-chart-native .recharts-wrapper,
-.ast-cv-chart-native .recharts-surface { max-width: 100%; height: auto; }
+.ast-cv-chart-native:not(.ast-cv-sankey) svg,
+.ast-cv-chart-native:not(.ast-cv-sankey) .recharts-wrapper,
+.ast-cv-chart-native:not(.ast-cv-sankey) .recharts-surface { max-width: 100%; height: auto; }
 .ast-cv-sankey { height: auto; }
 .ast-cv-sankey .nivo-tooltip { display: none; } /* our own legend carries the values */
 
@@ -5229,7 +5304,7 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
    scrollHeight past its height and cut the legend off (measured 339 vs 300). */
 .ast-cv-chart-native-plot { display: block; width: 100%; min-width: 0; }
 .ast-cv-chart-native-plot > * { max-width: 100%; }
-.ast-cv-sankey-plot { min-height: 220px; }
+.ast-cv-sankey-plot { min-height: 220px; position: relative; }   /* explicit px height comes from the component */
 
 /* nivo's sankey paints labels BELOW its plot box and overflows the wrapper by
    ~31px, which sliced the bottom row off. Reserve the room instead. */
@@ -5633,3 +5708,81 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
    width of the controls it already held (measured 164px), which made the budget
    self-fulfilling — every control always 'fit' and nothing ever collapsed. */
 .chat-composer-bar > .relative { flex: 1 1 100%; flex-wrap: nowrap; min-width: 0; }
+
+
+/* ── Chart legends live at the BOTTOM, in flow, inside the figure (owner 2026-10-04) ───────────────────────────
+   The plot is one sibling, the legend row another. Nothing nests a legend in a fixed-height box, so it can never be
+   cut off or pushed outside the card, and a blank plot can never hide behind a collapsed wrapper. */
+.ast-cv-chart { display: flex; flex-direction: column; min-width: 0; }
+.ast-cv-chart > .ast-cv-chart-title { order: 0; }
+.ast-cv-chart > :not(.ast-cv-chart-title) { order: 1; min-width: 0; }
+.ast-cv-donut { display: flex; flex-direction: column; }
+.ast-cv-donut > .ast-cv-donut-center { inset: 0 0 auto 0; height: 210px; }  /* centred on the PLOT, not on plot+legend */
+.ast-cv-chart-legend-block { margin-top: 12px; justify-content: flex-start; row-gap: 6px; column-gap: 14px; }
+.ast-cv-chart-native { overflow: visible; }
+
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+   WRITTEN ETIQUETTE — one law for every canvas text surface (owner 2026-10-04: "all text properly formatted and
+   structured, no awkwardly broken words or broken sentences, across all devices"; "the text in the data cards on
+   top seems broken").  Measured in a real browser by scratch/canvas-v6/etiquette-e2e.mjs at 320/390/768/1280px.
+     1. A WORD is never split.            (overflow-wrap: break-word; word-break: normal; hyphens: none — global)
+     2. A SENTENCE is never cut off.      Prose WRAPS BY WORD and the box grows; no ellipsis, no silent clip.
+     3. A paragraph never ends on a WIDOW. `text-wrap: pretty` for prose, `balance` for titles, labels and chips.
+   `text-wrap` is progressive enhancement (WebView 114+/117+): an older engine still wraps by word and never cuts.
+   This block supersedes the earlier single-line `white-space: nowrap` + `text-overflow: ellipsis` rules above it.
+   ══════════════════════════════════════════════════════════════════════════════════════════════════════════════ */
+.ast-canvas { text-wrap: pretty; }
+.ast-canvas-title, .ast-cv-chart-title, .ast-cv-heat-title, .ast-cv-kv-title, .ast-cv-graph-title,
+.ast-cv-callout-title, .ast-cv-acc-title, .ast-cv-step-title, .ast-cv-tl-title, .ast-cv-cmp-name, .ast-cv-cmp-caption,
+.ast-cv-kpi-label, .ast-cv-kpi-delta, .ast-cv-badge, .ast-cv-seg, .ast-cv-slider-label, .ast-cv-toggle-label,
+.ast-cv-term-title, .ast-cv-tree-label, .ast-cv-heat-col, .ast-cv-heat-row, .ast-cv-legend-item, .ast-cv-progress-label,
+.ast-cv-quote-att, .ast-cv-slide-heading, .ast-cv-code-name, .ast-cv-diff-name { text-wrap: balance; }
+
+/* sentences and labels wrap; nothing is clipped (the box grows instead) */
+.ast-cv-kpi-label, .ast-cv-kv-key, .ast-cv-tree-detail, .ast-cv-quote-ctx, .ast-cv-slider-label, .ast-cv-term-title,
+.ast-cv-term-cmd, .ast-cv-badge, .ast-cv-heat-row, .ast-cv-heat-col, .ast-cv-seg, .ast-cv-diff-name, .ast-cv-code-name {
+  white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: break-word; word-break: normal; hyphens: none;
+}
+.ast-cv-term-cmd { white-space: pre-wrap; }                      /* a command keeps its spacing, wraps instead of cutting */
+.ast-cv-kv-key { max-width: 55%; flex: 0 1 auto; }
+
+/* card title: the appended figure ("· $4.28M") is glued to its dot, and the title has leading */
+.ast-canvas-title { line-height: 1.35; min-width: 0; }
+
+/* KPI tiles: label wraps, the delta chip WRAPS BELOW the value instead of being squeezed beside it */
+.ast-cv-group.kpis { grid-template-columns: repeat(auto-fit, minmax(min(100%, 148px), 1fr)); }
+.ast-cv-kpi { min-width: 0; }
+.ast-cv-kpi-label { display: block; line-height: 1.3; }
+.ast-cv-kpi-row { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 8px; min-width: 0; }
+.ast-cv-kpi-value { flex: 0 0 auto; max-width: 100%; }
+/* The delta chip's GEOMETRY only — its wrap behaviour (white-space /
+   overflow-wrap / word-break) is declared ONCE, in the single authoritative
+   .ast-cv-kpi-delta block above. A third `white-space: normal` here is harmless
+   in value but is exactly the double-declaration pattern that caused the
+   "+38m" clip, so it is not repeated: canvas-text-integrity.check.ts fails on
+   more than one white-space declaration for any value surface.
+   The chip wraps BELOW the value rather than being squeezed beside it. */
+.ast-cv-kpi-delta { flex: 0 1 auto; max-width: 100%; border-radius: 12px; text-align: left;
+  overflow: visible; text-overflow: clip; line-height: 1.3; }
+
+/* segmented control: options wrap onto rows and each label wraps inside its own pill */
+.ast-cv-segmented { flex-wrap: wrap; }
+.ast-cv-seg { flex: 1 1 auto; min-width: min(100%, 7.5em); height: auto; min-height: 44px; padding: 8px 12px; line-height: 1.25; text-align: center; }
+
+/* control labels sit above their value, wrapping, not truncated beside it */
+.ast-cv-slider-head { flex-wrap: wrap; align-items: baseline; row-gap: 2px; }
+.ast-cv-slider-label { flex: 1 1 12em; line-height: 1.35; }
+
+/* heat map: tracks never narrower than their longest WORD (so no word is split); the figure scrolls if it must */
+.ast-cv-heat-row { max-width: 132px; min-width: min-content; line-height: 1.25; text-align: right; }
+.ast-cv-heat-col { line-height: 1.2; }
+.ast-cv-heat-cell { height: auto; min-height: 22px; }
+
+/* badges and chips are pills; a long one wraps inside its pill */
+.ast-cv-badge { text-align: center; line-height: 1.3; }
+
+/* tables: cells are prose — comfortable leading, wrap by word, never end on a widow; headers balance */
+.ast-cv-table td { line-height: 1.5; vertical-align: top; text-wrap: pretty; }
+.ast-cv-table th { line-height: 1.3; vertical-align: bottom; text-wrap: balance; }
+.ast-cv-table td.num, .ast-cv-table th.num { white-space: nowrap; }       /* a number is one token */

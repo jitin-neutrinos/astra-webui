@@ -21,6 +21,26 @@ import { SERIES_COLORS } from "./canvas-chart";
 
 export type NativeKind = "sankey" | "treemap" | "funnel";
 
+/** Resolve a CSS custom property to a concrete colour. nivo writes its theme into SVG presentation attributes,
+ *  where `var(--x)` is NOT resolved, so a themed fill silently fell back to black on a dark card (the node
+ *  labels were invisible). Re-resolved on a theme change via the `data-theme` attribute. */
+function useResolvedColor(name: string, fallback: string): string {
+  const read = () => {
+    if (typeof document === "undefined") return fallback;
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback;
+  };
+  const [c, setC] = useState(read);
+  useEffect(() => {
+    setC(read());
+    const mo = new MutationObserver(() => setC(read()));
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-scheme", "style", "class"] });
+    return () => mo.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [name]);
+  return c;
+}
+
 /** Measure the card so a self-sizing chart gets real pixels. */
 function useMeasuredWidth(fallback = 600): [React.RefObject<HTMLDivElement | null>, number] {
   const ref = useRef<HTMLDivElement>(null);
@@ -48,7 +68,7 @@ const fmt = (n: unknown): string => {
   return Number.isInteger(v) ? v.toLocaleString("en-US") : v.toLocaleString("en-US", { maximumFractionDigits: 2 });
 };
 
-const Legend = ({ rows, total }: { rows: { label: string; value: number }[]; total?: number }) => (
+const Legend = ({ rows, total, totalLabel = "total" }: { rows: { label: string; value: number }[]; total?: number; totalLabel?: string }) => (
   <div className="ast-cv-chart-legend ast-cv-chart-legend-block">
     {rows.map((r, i) => (
       <span key={i} className="ast-cv-legend-item">
@@ -56,7 +76,7 @@ const Legend = ({ rows, total }: { rows: { label: string; value: number }[]; tot
         {r.label} · {fmt(r.value)}
       </span>
     ))}
-    {total !== undefined && <span className="ast-cv-legend-total">total {fmt(total)}</span>}
+    {total !== undefined && <span className="ast-cv-legend-total">{totalLabel} {fmt(total)}</span>}
   </div>
 );
 
@@ -95,19 +115,61 @@ export default function NativeChart({
   H: number;
 }) {
   const [ref, w] = useMeasuredWidth();
+  const textColor = useResolvedColor("--color-brandtext", "#f8fafc");
+  const paperColor = useResolvedColor("--cv-paper", "#12121a");
   const first = block.series?.[0];
   const points = Array.isArray(first?.points) ? first!.points : [];
 
   // ── sankey ───────────────────────────────────────────────────────────────
-  const links = useMemo(
-    () =>
-      Array.isArray(first?.links)
-        ? (first!.links as { source: string; target: string; value: number }[])
-            .filter((l) => l && typeof l.source === "string" && typeof l.target === "string")
-            .map((l) => ({ source: l.source, target: l.target, value: Number(l.value) || 0 }))
-        : [],
-    [first],
-  );
+  // Form A (`nodes` + `links`) is authoritative and is left untouched. Form B —
+  // the `sankey (alt)` shape documented at docs/canvas-directive.md:127, `{labels,
+  // series:[{points}]}` — arrives with NO links at all: the parser only synthesises
+  // `links` for form A (canvas-schema.ts:593), so form B used to fall straight
+  // into the empty state below and the card read as BLANK. Measured in chromium
+  // (scratch/canvas-v6/defects-e2e.mjs, 360/768/1280): before the fix both sankey
+  // probes reported `painted=0, ribbons=0, nodes=0, empty=true`; after, `painted>0`
+  // with nodes + ribbons drawn.
+  //
+  // WHY a sequential stage→stage flow is the honest reading of form B: the flat
+  // series IS the funnel down the stages — label i is the volume that reached
+  // stage i. Each node's magnitude is that stage's own point value (so the node
+  // heights are exactly what the author typed), and the ribbon between stage i and
+  // i+1 carries the volume that made it THROUGH, i.e. min(points[i], points[i+1]).
+  // Using min rather than points[i+1] is what keeps conservation honest: a ribbon
+  // can never be wider than its own destination node, so d3-sankey never has to
+  // inflate a stage, and a flow that DROPS at a stage reads as a narrowing ribbon
+  // (the funnel shape the numbers describe) instead of a lie. max() would draw a
+  // ribbon wider than the node it lands on and d3-sankey would silently rebalance
+  // it, which is exactly the kind of quiet fudge the parser refuses elsewhere.
+  const links = useMemo(() => {
+    const authored = Array.isArray(first?.links)
+      ? (first!.links as { source: string; target: string; value: number }[])
+          .filter((l) => l && typeof l.source === "string" && typeof l.target === "string")
+          .map((l) => ({ source: l.source, target: l.target, value: Number(l.value) || 0 }))
+      : [];
+    if (authored.length > 0 || labels.length < 2) return authored;
+    // Form B: labels + a flat numeric series, no links. Build stage i → stage i+1.
+    const out: { source: string; target: string; value: number }[] = [];
+    for (let i = 0; i < labels.length - 1; i++) {
+      const a = Number(points[i]);
+      const b = Number(points[i + 1]);
+      // A missing/NaN point means "no data for that stage" — value 1 keeps the
+      // SHAPE (nodes + a hairline ribbon) instead of dropping the pair; nivo
+      // drops a zero-value link because it contributes no flow to scale.
+      const value = Number.isFinite(a) && Number.isFinite(b) ? Math.min(Math.abs(a), Math.abs(b)) : 1;
+      out.push({
+        source: labels[i],
+        target: labels[i + 1],
+        // ALL-ZERO form B (points [0,0,0]) still renders the shape: nivo lays out
+        // on the max value, and a 0 link contributes nothing, so we floor each
+        // ribbon at 1 to keep the card from collapsing to an empty plot. The
+        // legend below still shows the true 0s — the shape is not the lie, the
+        // numbers are.
+        value: value > 0 ? value : 1,
+      });
+    }
+    return out;
+  }, [first, labels, points]);
 
   if (block.chart === "sankey") {
     if (labels.length === 0 || links.length === 0) {
@@ -117,12 +179,13 @@ export default function NativeChart({
         </div>
       );
     }
-    const total = points.reduce((n, x) => n + (x ?? 0), 0);
+    // every link counted ONCE (a node's own number is its in+out throughput, so summing nodes double-counts)
+    const flowTotal = links.reduce((n, l) => n + l.value, 0);
     const narrow = w < 520;
     const pad = narrow ? 74 : 132;
     return (
-      <div className="ast-cv-chart-native ast-cv-sankey" ref={ref} style={{ minHeight: H + 40 }}>
-        <div className="ast-cv-chart-native-plot ast-cv-sankey-plot">
+      <div className="ast-cv-chart-native ast-cv-sankey" ref={ref}>
+        <div className="ast-cv-chart-native-plot ast-cv-sankey-plot" style={{ height: H }}>
         <ResponsiveSankey
           data={{
             nodes: labels.map((id: string) => ({ id })),
@@ -140,16 +203,20 @@ export default function NativeChart({
           linkHoverOpacity={0.62}
           labelPosition="outside"
           labelPadding={11}
+          /* nivo's default is "a darker shade of the node colour". The node colour is `var(--color-accent)`, which
+             d3-color cannot parse, so "darker" collapsed to rgb(0,0,0): black labels on a dark card (measured 1.1:1).
+             A concrete, theme-resolved colour is the only thing nivo can use here. */
+          labelTextColor={textColor}
           animate={false}
           isInteractive
           theme={{
-            text: { fontSize: 10.5, fontFamily: "var(--font-sans)", fill: "var(--color-brandtext)" },
-            labels: { text: { fontSize: 10.5, fontWeight: 500 } },
-            tooltip: { container: { background: "var(--cv-paper)", color: "var(--color-brandtext)" } },
+            text: { fontSize: 10.5, fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fill: textColor },
+            labels: { text: { fontSize: 10.5, fontWeight: 500, fill: textColor } },
+            tooltip: { container: { background: paperColor, color: textColor } },
           }}
         />
         </div>
-        <Legend rows={labels.map((l, i) => ({ label: l, value: points[i] ?? 0 }))} total={total} />
+        <Legend rows={labels.map((l, i) => ({ label: l, value: points[i] ?? 0 }))} total={flowTotal} totalLabel="total flow" />
       </div>
     );
   }
