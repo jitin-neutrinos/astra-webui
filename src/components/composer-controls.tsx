@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Paperclip, Check, SlidersHorizontal, ChevronRight, Gauge, Server, Cpu, Zap } from "lucide-react";
+import { Paperclip, Check, ChevronRight, Gauge, Server, Cpu, Zap } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { newId } from "@/lib/upload-names";
@@ -186,14 +186,13 @@ export function ComposerControls({ setAttachments, disabled, sessionInfo, catalo
 
   // avail=0 on the very first pass means "not measured yet" — show everything rather
   // than collapsing the row for one frame before the measurement lands.
-  const { visible, hidden } = useMemo(
+  const { visible } = useMemo(
     () => (layout.avail > 0
       ? splitVisible(fitItems, layout.avail, layout.reserved)
-      : { visible: ["yolo", "effort", "attach"], hidden: [] as string[] }),
+      : { visible: ["yolo", "effort", "attach"] }),
     [fitItems, layout.avail, layout.reserved]
   );
   const onBar = (k: string) => visible.includes(k);
-  const inMenu = (k: string) => hidden.includes(k);
   const fileRef = useRef<HTMLInputElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
@@ -246,7 +245,10 @@ export function ComposerControls({ setAttachments, disabled, sessionInfo, catalo
   // Rows are discovered from the DOM by their data-row key, so the registry below
   // only needs to enumerate keys in tab order — never rendered nodes.
   const rows: string[] = panel === null
-    ? ["attach", "provider", "model", "effort", "yolo"]
+    // Root panel is provider + model ONLY (see the panel itself) — the registry must
+    // enumerate exactly the rows that exist, or arrow keys land on data-row keys with no
+    // matching element and Enter silently does nothing.
+    ? ["provider", "model"]
     : panel === "effort"
       ? (effort === "" ? ["effort:"] : []).concat(EFFORTS.map((e) => "effort:" + e.id))
       : panel === "provider"
@@ -306,14 +308,10 @@ export function ComposerControls({ setAttachments, disabled, sessionInfo, catalo
 
       <button type="button" className="chat-chip chat-chip-options" disabled={disabled}
         aria-haspopup="dialog" aria-expanded={open} aria-controls="composer-options"
-        aria-label={hidden.length ? `Composer options (${hidden.length} more)` : "Composer options"}
-        title="Session settings"
-        data-overflow={hidden.length || undefined}
+        aria-label="Select provider and model"
+        title={`Provider: ${provider ? providerLabel(provider) : unset} · Model: ${model || unset}`}
         onClick={() => { if (!open) onOpen?.(); setOpen(!open); setPanel(null); setMenuProvider(null); }}>
-        <SlidersHorizontal className="cmenu-trigger-ico h-4 w-4" strokeWidth={1.5} />
-        {/* A count badge only while something is collapsed, so the trigger itself does
-            not change width when it appears/disappear (which would re-trigger the fit). */}
-        {hidden.length > 0 && <span className="chat-chip-badge" aria-hidden="true">{hidden.length}</span>}
+        <Cpu className="cmenu-trigger-ico h-4 w-4" strokeWidth={1.5} />
       </button>
 
       {/* ---- controls that FIT stay on the bar ---- */}
@@ -377,77 +375,42 @@ export function ComposerControls({ setAttachments, disabled, sessionInfo, catalo
                   exit={reduce ? { opacity: 0 } : { opacity: 0, transform: `translateX(${dir * -12}px)`, filter: "blur(2px)" }}
                   transition={{ duration: 0.14, ease: EASE }}
                 >
+                  {/* ROOT PANEL — PROVIDER + MODEL ONLY (owner 2026-10-04).
+                      The trigger is a model switcher, not a settings bag. Attach, effort
+                      and yolo live on the bar and collapse into it as space runs out, so
+                      duplicating them here would put the same control in two places and
+                      give the owner two competing sources of truth. Their ONLY route into
+                      this menu is the overflow state itself. */}
                   {panel === null && (
                     <>
                       <header className="cmenu-head">
-                        <span className="cmenu-title">Session settings</span>
+                        <span className="cmenu-title">Model</span>
                         <span className={cn("cmenu-sum", pending && "cmenu-shimmer")}>
-                          {pending ? "loading…" : providerLabel(provider)}
+                          {pending ? "loading…" : (provider ? providerLabel(provider) : unset)}
                         </span>
-                        {hidden.length > 0 && (
-                          <span className="cmenu-sum" title="These controls are collapsed into this menu because the bar is narrow">
-                            +{hidden.length} collapsed
-                          </span>
-                        )}
                       </header>
 
                       <motion.div variants={itemVariants} custom={0} initial="hidden" animate="show">
-                        <button type="button" className="cmenu-row" data-row="attach" data-kb={kb === 0}
-                          onClick={() => { pickFiles(); closeAll(); }}>
-                          <Paperclip className="cmenu-ico h-4 w-4" strokeWidth={1.5} />
-                          <span className="flex min-w-0 flex-col">
-                            <span>Attach files</span>
-                            <small>{inMenu("attach") ? "Collapsed — there is no room on the bar" : "Images, docs, sheets — or drop them in"}</small>
-                          </span>
-                        </button>
-                      </motion.div>
-
-                      <div className="cmenu-sep" />
-
-                      <p className="cmenu-label">Model</p>
-                      <motion.div variants={itemVariants} custom={1} initial="hidden" animate="show">
-                        <button type="button" className="cmenu-row" data-row="provider" data-kb={kb === 1}
+                        <button type="button" className="cmenu-row" data-row="provider" data-kb={kb === 0}
                           onClick={() => drill("provider")}>
                           <Server className="cmenu-ico h-4 w-4" strokeWidth={1.5} />
-                          <span className="flex-1 truncate text-left">{provider ? providerLabel(provider) : unset}</span>
+                          <span className="flex min-w-0 flex-1 flex-col text-left">
+                            <span className="text-[11px] uppercase tracking-[0.08em] opacity-70">Provider</span>
+                            <span className="truncate">{provider ? providerLabel(provider) : unset}</span>
+                          </span>
                           <ChevronRight className="cmenu-chev h-3.5 w-3.5" strokeWidth={1.5} />
                         </button>
                       </motion.div>
-                      <motion.div variants={itemVariants} custom={2} initial="hidden" animate="show">
-                        <button type="button" className="cmenu-row" data-row="model" data-kb={kb === 2}
+
+                      <motion.div variants={itemVariants} custom={1} initial="hidden" animate="show">
+                        <button type="button" className="cmenu-row" data-row="model" data-kb={kb === 1}
                           onClick={() => { if (provider) setMenuProvider(provider); drill("model"); }}>
                           <Cpu className="cmenu-ico h-4 w-4" strokeWidth={1.5} />
-                          <span className={cn("cmenu-val", pending && "cmenu-shimmer")}>{model || unset}</span>
-                          <ChevronRight className="cmenu-chev h-3.5 w-3.5" strokeWidth={1.5} />
-                        </button>
-                      </motion.div>
-
-                      <div className="cmenu-sep" />
-
-                      <p className="cmenu-label">Reasoning</p>
-                      <motion.div variants={itemVariants} custom={3} initial="hidden" animate="show">
-                        <button type="button" className={cn("cmenu-row", inMenu("effort") && "cmenu-row-collapsed")} data-row="effort" data-kb={kb === 3}
-                          onClick={() => { setDir(1); setPanel("effort"); }}>
-                          <Gauge className="cmenu-ico h-4 w-4" strokeWidth={1.5} />
-                          <span className="flex-1 truncate text-left">{effortLabel}</span>
-                          <ChevronRight className="cmenu-chev h-3.5 w-3.5" strokeWidth={1.5} />
-                        </button>
-                      </motion.div>
-
-                      <motion.div variants={itemVariants} custom={4} initial="hidden" animate="show">
-                        <button type="button" role="switch" aria-checked={yolo} data-row="yolo" data-kb={kb === 4}
-                          className={cn("cmenu-row", picked === "yolo" && "cmenu-row-picked", inMenu("yolo") && "cmenu-row-collapsed")}
-                          aria-label={yolo ? "Yolo mode on" : "Yolo mode off"}
-                          title={yolo ? "Yolo on — auto-approve" : "Yolo off — ask first"}
-                          onClick={() => pick("yolo", onToggleYolo)}>
-                          <Zap className={cn("cmenu-ico h-4 w-4", yolo && "cmenu-ico-on")} strokeWidth={1.5} />
                           <span className="flex min-w-0 flex-1 flex-col text-left">
-                            <span>Yolo mode</span>
-                            <small>{yolo ? "Tool calls run without asking" : "Tool calls need your approval"}</small>
+                            <span className="text-[11px] uppercase tracking-[0.08em] opacity-70">Model</span>
+                            <span className={cn("truncate", pending && "cmenu-shimmer")}>{model || unset}</span>
                           </span>
-                          <span className={cn("cmenu-switch", yolo && "cmenu-switch-on")} aria-hidden="true">
-                            <span className="cmenu-knob" />
-                          </span>
+                          <ChevronRight className="cmenu-chev h-3.5 w-3.5" strokeWidth={1.5} />
                         </button>
                       </motion.div>
 
