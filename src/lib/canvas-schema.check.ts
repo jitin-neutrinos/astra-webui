@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { splitCanvasBlocks, splitCanvasBlocksAsync, parseCanvasSpec, parseCanvasSpecAsync, extractOutermostJson, hasCanvas, planTurnCanvases, parseStreamingBlocks, parseStreamingCanvas } from "./canvas-schema.ts";
+import { splitCanvasBlocks, splitCanvasBlocksAsync, parseCanvasSpec, parseCanvasSpecAsync, extractOutermostJson, hasCanvas, planTurnCanvases, parseStreamingBlocks, parseStreamingCanvas, validateBlock } from "./canvas-schema.ts";
+import { canvasToMarkdown } from "./canvas-markdown.ts";
 
 const VALID = JSON.stringify({
   v: 1, title: "Usage",
@@ -1065,4 +1066,135 @@ test("table: a header with no body degrades instead of rendering an empty shell"
   const okSpec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "table", columns: ["a", "b"], rows: [["1", "2"]] }] }));
   assert.ok(okSpec, "a populated table still parses");
   assert.equal((okSpec!.blocks[0] as any).rows.length, 1);
+});
+
+// ── reactive canvas: the parser used to throw the whole layer away (M2) ─────
+// The renderers resolve `{bind, value, delta, points, visible}` against the
+// card's state, but the parser dropped every one of those blocks, stripped
+// `bind`/`visible`, and dropped the top-level `state` — so a slider drove
+// nothing and `CanvasView` never created its store. Each test anchors one
+// authoring form to "the block SURVIVES and the binding SURVIVES with it".
+// A dropped block shows up as blocks.length === 1 (the callout anchor only).
+
+/** Parse [BLOCK, anchor-callout] and return the surviving non-callout block. */
+function onlyBlock(block: unknown): any | null {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [block, { type: "callout", tone: "info", body: "anchor" }] }));
+  assert.ok(spec, "the card must parse");
+  const kept = (spec!.blocks as any[]).filter((b) => b.type !== "callout");
+  assert.equal(kept.length, 1, `block was DROPPED: ${JSON.stringify(block)}`);
+  return kept[0];
+}
+
+test("kpi: a bound value is kept, binding and all", () => {
+  const b = onlyBlock({ type: "kpi", label: "MRR", value: { $expr: "money(seats * price)" } });
+  assert.deepEqual(b.value, { $expr: "money(seats * price)" }, "the binding must reach the renderer intact");
+  assert.equal(b.label, "MRR");
+});
+
+test("kpi: a bound value keeps the block's `visible` too", () => {
+  const b = onlyBlock({ type: "kpi", label: "MRR", value: { $expr: "money(seats * price)" }, visible: { $expr: "flag" } });
+  assert.deepEqual(b.value, { $expr: "money(seats * price)" });
+  assert.deepEqual(b.visible, { $expr: "flag" }, "visible must not be stripped");
+});
+
+test("progress: a bound value is kept", () => {
+  const b = onlyBlock({ type: "progress", label: "Seats", value: { $expr: "seats / 5" }, max: 100 });
+  assert.deepEqual(b.value, { $expr: "seats / 5" });
+  assert.equal(b.max, 100);
+});
+
+test("table: bind.$from keeps the block with NO rows, and keeps `bind`", () => {
+  const b = onlyBlock({ type: "table", columns: ["svc"], bind: { $from: "ds", top: 3 } });
+  assert.deepEqual(b.bind, { $from: "ds", top: 3 }, "bind is the reader — it must survive");
+  assert.deepEqual(b.rows, [], "rows come from the dataset at render time");
+});
+
+test("table: the empty-table degradation still holds WITHOUT a bind", () => {
+  // The rows-optional relaxation is scoped to bind.$from: a bare
+  // {columns, rows: []} is still the "header with no body" defect.
+  assert.equal(validateBlock({ type: "table", columns: ["a"], rows: [] }), null);
+  assert.equal(validateBlock({ type: "table", columns: ["a"] }), null);
+});
+
+test("table: numeric/boolean/null cells are coerced to strings; an object cell degrades", () => {
+  const b = onlyBlock({ type: "table", columns: ["svc", "ok", "n"], rows: [["api", 412], ["w", true], ["n", null]] });
+  assert.deepEqual(b.rows, [["api", "412"], ["w", "true"], ["n", ""]]);
+  assert.equal(validateBlock({ type: "table", columns: ["a"], rows: [["x", { nested: 1 }]] }), null);
+});
+
+test("chart: a bound series' points survive, and a series `visible` survives", () => {
+  const b = onlyBlock({
+    type: "chart", chart: "bar", labels: ["a", "b"],
+    series: [{ name: "s", points: { $expr: "[1, 2]" }, visible: { $expr: "flag" } }],
+  });
+  assert.deepEqual(b.series[0].points, { $expr: "[1, 2]" }, "the binding stays where the renderer reads it");
+  assert.deepEqual(b.series[0].visible, { $expr: "flag" });
+  // a plain numeric series is untouched by the relaxation
+  const ok = onlyBlock({ type: "chart", chart: "line", labels: ["a", "b"], series: [{ name: "s", points: [1, 2] }] });
+  assert.deepEqual(ok.series[0].points, [1, 2]);
+  assert.equal(ok.series[0].visible, undefined);
+});
+
+test("chart: a non-numeric, non-binding points array is still rejected", () => {
+  assert.equal(validateBlock({ type: "chart", chart: "line", series: [{ name: "s", points: ["a", "b"] }] }), null);
+});
+
+test("state: scalars survive, bad keys and non-scalars are dropped", () => {
+  const spec = parseCanvasSpec(JSON.stringify({
+    v: 1, state: { seats: 100, "bad key": 1, x: { a: 1 }, ok: true, env: "prod", gone: null },
+    blocks: [{ type: "callout", tone: "info", body: "x" }],
+  }));
+  assert.ok(spec);
+  assert.deepEqual(spec!.state, { seats: 100, ok: true, env: "prod", gone: null });
+});
+
+test("state: a card with no state has NO `state` key at all", () => {
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "callout", tone: "info", body: "x" }] }));
+  assert.ok(spec);
+  assert.equal("state" in spec!, false, "an absent state must not appear as undefined");
+});
+
+test("state: the async/repair path keeps it too", async () => {
+  // Missing comma → tiers 1-2 refuse it, so this exercises repairIsolated
+  // (the same defect class the tier-3 test above pins).
+  const body = '{ "v":1, "state":{ "seats":120, "price":49 }, "blocks":[ { "type":"kpi", "label":"MRR" "value":1 } ] }';
+  assert.equal(parseCanvasSpec(body), null, "sync tiers must refuse it");
+  const spec = await parseCanvasSpecAsync(body);
+  assert.ok(spec, "tier 3 must rescue it");
+  assert.deepEqual(spec!.state, { seats: 120, price: 49 });
+});
+
+test("copy-as-markdown of a bound card never prints [object Object]", () => {
+  const spec = parseCanvasSpec(JSON.stringify({
+    v: 1, state: { seats: 2 },
+    blocks: [
+      { type: "kpi", label: "MRR", value: { $expr: "money(seats * price)" } },
+      { type: "progress", label: "p", value: { $expr: "seats / 5" } },
+      { type: "chart", chart: "bar", labels: ["a", "b"], series: [{ name: "s", points: { $expr: "[1, 2]" } }] },
+      { type: "table", columns: ["svc"], bind: { $from: "ds" } },
+    ],
+  }));
+  assert.ok(spec);
+  const md = canvasToMarkdown(spec!);
+  assert.ok(!md.includes("[object Object]"), "a binding must serialise as (live):\n" + md);
+  assert.ok(md.includes("(live)"), "the bound kpi value reads as (live)");
+});
+
+// PM review of the M2 worker (2026-10-04): three defects the worker's own tests did not cover.
+test("a bound KPI never prints [object Object] in the derived title, and a bound table exports as live, not header-only", async () => {
+  const { canvasToMarkdown } = await import("./canvas-markdown.ts");
+  const spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
+    { type: "kpi", label: "MRR", value: { $expr: "money(seats * price)" } },
+    { type: "table", columns: ["svc", "ms"], bind: { $from: "d" } },
+    { type: "data", name: "d", columns: ["svc", "ms"], rows: [["a", 1]] },
+  ] }));
+  assert.ok(spec, "reactive card parses");
+  const md = canvasToMarkdown(spec!);
+  assert.ok(!md.includes("[object Object]"), "no [object Object] in the markdown copy");
+  assert.ok(/Live table/.test(md), "a bound, row-less table is described as live");
+  // the bug was a markdown table header with NO body row after it; the `data` block legitimately exports its own row
+  const lines = md.split("\n");
+  lines.forEach((ln, i) => {
+    if (/^\|[-| ]+\|$/.test(ln)) assert.ok(/^\|.*\|$/.test(lines[i + 1] ?? "") && !/^\|[-| ]+\|$/.test(lines[i + 1] ?? ""), `table separator on line ${i} has no body row after it`);
+  });
 });

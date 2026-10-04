@@ -90,7 +90,8 @@ function fmt(n: unknown): string {
 
 
 function scatterOf(s: { name: string; points: number[] }, labels: string[]) {
-  return s.points.map((y, i) => ({ x: i + 1, y, z: Math.abs(y), label: labels[i] }));
+  const lit = Array.isArray(s.points) ? s.points : [];
+  return lit.map((y, i) => ({ x: i + 1, y, z: Math.abs(y), label: labels[i] }));
 }
 
 
@@ -107,7 +108,11 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
       </figure>
     );
   }
-  const labels = block.labels || block.series[0]?.points.map((_, i) => String(i + 1)) || [];
+  // A series' `points` may be a BINDING (a reactive card authors it as an
+  // expression), so every read here is guarded: `.map`/`.length` on the object
+  // form would throw and blank the entire card.
+  const firstPts = block.series[0]?.points;
+  const labels = block.labels || (Array.isArray(firstPts) ? firstPts.map((_, i) => String(i + 1)) : []) || [];
   // Reactive: a series' points may be a binding, and a hidden series drops out.
   const activeSeries = useMemo(
     () => block.series.filter((sr) => {
@@ -127,16 +132,21 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
     for (const sr of activeSeries) {
       const raw = (sr as unknown as { points: unknown }).points;
       const pts = raw != null && typeof raw === "object" && ctx ? bindPoints(raw, ctx.scope) : null;
-      row[sr.name] = pts ? (pts[i] ?? 0) : (sr.points[i] ?? 0);
+      const lit = Array.isArray(raw) ? raw : [];
+      row[sr.name] = pts ? (pts[i] ?? 0) : (lit[i] ?? 0);
     }
     return row;
   }), [labels, activeSeries, ctx]);
 
   const radarData = useMemo(() => {
-    const axes = labels.length ? labels : (block.series[0]?.points ?? []).map((_, i) => String(i + 1));
+    const rawFirst = block.series[0]?.points;
+    const axes = labels.length ? labels : (Array.isArray(rawFirst) ? rawFirst : []).map((_, i) => String(i + 1));
     return axes.map((a, i) => {
       const row: Record<string, string | number> = { axis: a };
-      for (const sr of block.series) row[sr.name] = sr.points[i] ?? 0;
+      for (const sr of block.series) {
+        const lit = Array.isArray(sr.points) ? sr.points : [];
+        row[sr.name] = lit[i] ?? 0;
+      }
       return row;
     });
   }, [labels, block]);
@@ -174,7 +184,7 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
 
   // Donut: single-series composition with the total in the hole. Slice colours
   // follow the LABELS (one colour per slice), not the series.
-  const donutTotal = block.series.reduce((n, s) => n + (s.points[0] ?? 0), 0);
+  const donutTotal = block.series.reduce((n, s) => n + (Array.isArray(s.points) ? (s.points[0] ?? 0) : 0), 0);
 
   return (
     <figure className="ast-cv-chart">
@@ -301,7 +311,7 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
             {/* Gauge readout in the hole (owner 2026-10-04: every chart element). */}
             <text x="50%" y="52%" textAnchor="middle" dominantBaseline="middle"
               fontSize="22" fontFamily="var(--font-sans)" fontWeight="700" fill="var(--color-brandtext)">
-              {fmt(block.series[0].points[0] ?? 0)}{block.title && /pct|%/i.test(block.title) ? "%" : ""}
+              {fmt(Array.isArray(block.series[0].points) ? (block.series[0].points[0] ?? 0) : 0)}{block.title && /pct|%/i.test(block.title) ? "%" : ""}
             </text>
             <text x="50%" y="66%" textAnchor="middle"
               fontSize="9.5" fontFamily="var(--font-mono)" fill="var(--color-muted)">of max</text>

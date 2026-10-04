@@ -461,6 +461,13 @@ export const REGRESSIONS = [
       "Theme builder shipped an unreadable palette: the OKLab forward matrix was wrong (a/b rows), generated grounds carried full accent chroma (dark grounds read as brown/espresso), and the contrast audit reported ratios it had not measured. A user theme syncs to every device, so a bad verdict ships everywhere.",
     guard: "src/lib/color-engine.check.ts",
   },
+  {
+    id: "RG-070",
+    found: "2026-10-04",
+    symptom:
+      "The reactive canvas layer was documented but dead at the parser: validateBlock dropped kpi/progress value bindings, table bind/numeric cells and chart series bindings, parseCanvasSpec stripped `state`, control defaults never seeded the scope, and a re-parse reset user edits.",
+    guard: "src/lib/canvas-schema.check.ts",
+  },
 ];
 
 // ---- gate -----------------------------------------------------------------

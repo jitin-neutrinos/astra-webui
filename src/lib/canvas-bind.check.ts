@@ -77,3 +77,12 @@ test("applySort asc/desc + string tiebreak", () => {
   assert.deepEqual(applySort(rows, { by: "a" }).map((r) => r.a), [1, 2, 3]);
   assert.deepEqual(applySort(rows, { col: "a", dir: "desc" }).map((r) => r.a), [3, 2, 1]);
 });
+
+test("money() resolves to a FORMATTED STRING — a KPI value must not go through bindNumber", () => {
+  // Documents why KpiTile uses resolveBinding: bindNumber strips "$" and ","
+  // and would render 5000 where the expression asked for "$5,000.00".
+  const r = resolveBinding({ $expr: "money(5 * 10)" }, {});
+  assert.equal(r.unset, false);
+  assert.equal(r.value, "$50.00");
+  assert.equal(typeof r.value, "string");
+});

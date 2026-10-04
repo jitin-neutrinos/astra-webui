@@ -9,13 +9,16 @@
 // until it closes; if the stream finalizes while unterminated, it is preserved
 // as markdown (streaming=false path).
 
+import type { Binding } from "./canvas-bind.ts";
+
 export type Trend = "up" | "down" | "flat";
 
 export interface KpiBlock {
   type: "kpi";
   label: string;
-  value: string | number;
-  delta?: string;
+  /** A reactive card may author the figure as a binding instead of a literal. */
+  value: string | number | Binding;
+  delta?: string | Binding;
   trend?: Trend;
   /** Optional inline sparkline (3-24 finite points). Degrades silently if bad. */
   spark?: number[];
@@ -31,10 +34,13 @@ export interface ChartBlock {
   labels?: string[];
   series: {
     name: string;
+    /** Reactive cards may author a BINDING here; it resolves at render time. */
     points: number[];
     items?: { name: string; value: number }[];
     /** sankey only: the authored edges, preserved so the flow keeps its shape */
     links?: { source: string; target: string; value: number }[];
+    /** Hide one series while the card's state says so. */
+    visible?: unknown;
   }[];
 }
 
@@ -42,6 +48,8 @@ export interface TableBlock {
   type: "table";
   columns: string[];
   rows: string[][];
+  /** Reactive: rows come from a `data` carrier through this reader. */
+  bind?: unknown;
 }
 
 export interface DiagramBlock {
@@ -72,7 +80,8 @@ export interface CalloutBlock {
 export interface ProgressBlock {
   type: "progress";
   label: string;
-  value: number;
+  /** Reactive cards may author the figure as a binding. */
+  value: number | Binding;
   max?: number;
   unit?: string;
   status?: "ok" | "warn" | "fail";
@@ -365,7 +374,9 @@ export interface TextBlock {
   language?: string;
 }
 
-export type CanvasBlock =
+// `visible` is accepted on EVERY block (json-render semantics: a binding gates
+// the whole block), so it rides on the union once instead of on 35 interfaces.
+export type CanvasBlock = (
   | KpiBlock | ChartBlock | TableBlock | DiagramBlock
   | ChecklistBlock | StepsBlock | CalloutBlock
   | ProgressBlock | TimelineBlock | CompareBlock | TreeBlock
@@ -374,7 +385,8 @@ export type CanvasBlock =
   | AccordionBlock | TerminalBlock | BadgesBlock | DividerBlock
   | SpreadsheetBlock | SlidesBlock | DocumentBlock | TextBlock
   | SliderBlock | SelectBlock | MultiSelectBlock | SegmentedBlock | ToggleBlock | SearchBlock | DataBlock
-  | GraphBlock | ImageBlock | GalleryBlock | VideoBlock;
+  | GraphBlock | ImageBlock | GalleryBlock | VideoBlock
+) & { visible?: unknown };
 
 export interface CanvasSpec {
   v: 1;
@@ -477,9 +489,34 @@ function isStr(v: unknown): v is string { return typeof v === "string"; }
 function isNum(v: unknown): v is number { return typeof v === "number" && Number.isFinite(v); }
 function isStrArr(v: unknown): v is string[] { return Array.isArray(v) && v.every(isStr); }
 
+/** A reactive binding is any object ({$expr}|{expr}|{path}|{$state}); resolution
+ *  lives in canvas-bind.ts and never throws. */
+function isBind(v: unknown): v is Record<string, unknown> {
+  return v != null && typeof v === "object" && !Array.isArray(v);
+}
+
+/** Per-card initial state: scalars only (the store is flat), anything else is ignored. */
+function pickState(v: unknown): Record<string, string | number | boolean | null> | undefined {
+  if (!isBind(v)) return undefined;
+  const out: Record<string, string | number | boolean | null> = {};
+  for (const [k, x] of Object.entries(v)) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(k)) continue;
+    if (typeof x === "string" || typeof x === "boolean" || x === null || (typeof x === "number" && Number.isFinite(x))) out[k] = x;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 /** Validate one parsed block object; null = invalid. Exported for the
  *  streaming partial parser, which validates blocks as they arrive. */
 export function validateBlock(b: any): CanvasBlock | null {
+  const v = validateBlockInner(b);
+  // `visible` is a WHOLE-block binding on any block type — copying it here
+  // beats teaching 35 cases about it, and a literal is ignored by bindVisible.
+  if (v && b && isBind(b.visible) && v.visible == null) v.visible = b.visible;
+  return v;
+}
+
+function validateBlockInner(b: any): CanvasBlock | null {
   if (!b || typeof b !== "object" || !isStr(b.type)) return null;
   // Aliases: models reach for near-miss names. Accept the obvious ones instead
   // of dropping the block (and, before per-block tolerance, the whole card).
@@ -508,8 +545,10 @@ export function validateBlock(b: any): CanvasBlock | null {
 
   switch (b.type) {
     case "kpi":
-      if (!isStr(b.label) || (!isStr(b.value) && !isNum(b.value))) return null;
-      if (b.delta != null && !isStr(b.delta)) return null;
+      // A reactive card authors the figure as a BINDING ({$expr:…} etc.); the
+      // renderer resolves it against the card's state.
+      if (!isStr(b.label) || (!isStr(b.value) && !isNum(b.value) && !isBind(b.value))) return null;
+      if (b.delta != null && !isStr(b.delta) && !isBind(b.delta)) return null;
       if (b.trend != null) {
         if (!TRENDS.has(b.trend)) {
           const mapped = TREND_ALIASES[b.trend];
@@ -519,10 +558,18 @@ export function validateBlock(b: any): CanvasBlock | null {
       }
       // spark: 3-24 finite points, else silently dropped (the tile stays useful)
       let spark: number[] | undefined;
-      if (b.spark != null) {
+      if (b.spark != null && !isBind(b.spark)) {
         if (Array.isArray(b.spark) && b.spark.length >= 3 && b.spark.length <= 24 && b.spark.every(isNum)) spark = b.spark;
       }
-      return { type: "kpi", label: b.label, value: b.value, delta: b.delta, trend: b.trend, spark };
+      return {
+        type: "kpi",
+        label: b.label,
+        value: b.value,
+        delta: b.delta,
+        trend: b.trend,
+        // a bound spark rides through as-is; the tile resolves it through bindPoints
+        spark: isBind(b.spark) ? (b.spark as unknown as number[]) : spark,
+      };
     case "chart": {
       if (!CHART_KINDS.has(b.chart)) return null;
       const chart = b.chart;
@@ -598,9 +645,13 @@ export function validateBlock(b: any): CanvasBlock | null {
       }
 
       if (!Array.isArray(b.series) || b.series.length === 0) return null;
-      const series: { name: string; points: number[]; items?: { name: string; value: number }[]; links?: { source: string; target: string; value: number }[] }[] = [];
+      const series: { name: string; points: number[]; items?: { name: string; value: number }[]; links?: { source: string; target: string; value: number }[]; visible?: unknown }[] = [];
       for (const s of b.series) {
-        if (!s || !isStr(s.name) || !Array.isArray(s.points) || !s.points.every(isNum)) return null;
+        if (!s || !isStr(s.name)) return null;
+        // points: a numeric array (canonical) OR a binding — a bound series
+        // keeps its binding in `points`, exactly where the renderer looks.
+        const bound = isBind(s.points);
+        if (!bound && (!Array.isArray(s.points) || !s.points.every(isNum))) return null;
         const kids = Array.isArray(s.items)
           ? s.items.filter((it: any) => it && (isStr(it.name) || isStr(it.label)) && isNum(it.value))
               .map((it: any) => ({ name: isStr(it.name) ? it.name : it.label, value: it.value }))
@@ -609,22 +660,44 @@ export function validateBlock(b: any): CanvasBlock | null {
           ? s.links.filter((l: any) => l && isStr(l.source) && isStr(l.target))
               .map((l: any) => ({ source: l.source, target: l.target, value: isNum(l.value) ? l.value : 1 }))
           : undefined;
-        series.push({ name: s.name, points: s.points, items: kids, links });
+        series.push({
+          name: s.name,
+          points: bound ? (s.points as unknown as number[]) : s.points,
+          items: kids,
+          links,
+          visible: isBind(s.visible) ? s.visible : undefined,
+        });
       }
       return { type: "chart", chart, title: isStr(b.title) ? b.title : undefined, labels: b.labels, series };
     }
     case "table": {
       if (!isStrArr(b.columns) || b.columns.length === 0) return null;
+      // Reactive table: rows come from a `data` carrier through `bind.$from`,
+      // so an absent/empty `rows` is EXPECTED, not the mangled-header defect.
+      if (isBind(b.bind) && isStr(b.bind.$from)) {
+        return { type: "table", columns: b.columns, rows: [], bind: b.bind };
+      }
       if (!Array.isArray(b.rows) || b.rows.length === 0) return null;
       // A header row with NO body is the "table looks mangled" report (measured:
       // 2 of 51 real cards shipped exactly `{"columns":[…],"rows":[]}`). An empty
       // array satisfies `.every()` so it passed validation and rendered as a
       // bare header — a table with nothing in it is not a table, so it degrades
       // like any other invalid block rather than showing an empty shell.
+      // Cells are coerced to strings: a model emits `412`, not `"412"`.
+      const rows: string[][] = [];
       for (const r of b.rows) {
-        if (!isStrArr(r) || r.length === 0) return null;
+        if (!Array.isArray(r) || r.length === 0) return null;
+        const out: string[] = [];
+        for (const c of r) {
+          if (isStr(c)) { out.push(c); continue; }
+          if (isNum(c)) { out.push(String(c)); continue; }
+          if (typeof c === "boolean") { out.push(String(c)); continue; }
+          if (c === null) { out.push(""); continue; }
+          return null; // object/array cell is a malformed row, not a table
+        }
+        rows.push(out);
       }
-      return { type: "table", columns: b.columns, rows: b.rows };
+      return { type: "table", columns: b.columns, rows };
     }
     case "diagram": {
       if (b.layout !== "flow" && b.layout !== "relationship") return null;
@@ -668,7 +741,7 @@ export function validateBlock(b: any): CanvasBlock | null {
       if (!TONES.has(b.tone) || !isStr(b.body)) return null;
       return { type: "callout", tone: b.tone, title: isStr(b.title) ? b.title : undefined, body: b.body };
     case "progress":
-      if (!isStr(b.label) || !isNum(b.value)) return null;
+      if (!isStr(b.label) || (!isNum(b.value) && !isBind(b.value))) return null;
       if (b.max != null && !isNum(b.max)) return null;
       if (b.unit != null && !isStr(b.unit)) return null;
       if (b.detail != null && !isStr(b.detail)) return null;
@@ -1348,7 +1421,10 @@ export function repairIsolated(raw: string, repair: (t: string) => string): Canv
   }
   if (blocks.length === 0) return null;
   const title = isStr((out as { title?: unknown }).title) ? (out as { title: string }).title : undefined;
-  return { v: 1, title, blocks };
+  // `state` seeds the card's store; omit the key entirely when absent so a
+  // state-less card stays deepEqual to its old shape.
+  const state = pickState((out as { state?: unknown }).state);
+  return state ? { v: 1, title, state, blocks } : { v: 1, title, blocks };
 }
 
 /**
@@ -1522,7 +1598,8 @@ export function parseCanvasSpec(raw: string): CanvasSpec | null {
   }
   if (blocks.length === 0) return null;
   const title = isStr(data.title) ? data.title : undefined;
-  return { v: 1, title, blocks };
+  const state = pickState(data.state);
+  return state ? { v: 1, title, state, blocks } : { v: 1, title, blocks };
 }
 
 interface FenceMatch { start: number; end: number; body: string; }

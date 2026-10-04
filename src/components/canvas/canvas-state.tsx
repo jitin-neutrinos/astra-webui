@@ -45,6 +45,15 @@ class CanvasStore {
     for (const l of this.listeners) l();
   }
 
+  /** Write a control's authored default ONLY if the key is still unset (never
+   *  overwrites a user edit or an authored state value). Deliberately NO version
+   *  bump / notify: seeding happens during render, before anyone reads. */
+  seed(key: string, v: StateValue | StateValue[]) {
+    if (Object.prototype.hasOwnProperty.call(this.values, key) && this.values[key] !== undefined) return;
+    this.values = { ...this.values, [key]: v };
+    this.frozen = null; // the scope changed without a version bump — drop the cache
+  }
+
   reset(fresh: Scope) {
     this.values = fresh;
     this.version++;
@@ -79,6 +88,9 @@ class CanvasStore {
 }
 
 const storeMap = new Map<string, CanvasStore>();
+/** The authored `state` each canvas id was seeded with (for the reset button and
+ *  for "did the spec's initial state actually change?"). */
+const sAuthored = new Map<string, Scope>();
 
 /** Store for one canvas id — created on first demand, reused across re-renders. */
 export function canvasStore(canvasId: string, initial: Scope): CanvasStore {
@@ -86,6 +98,10 @@ export function canvasStore(canvasId: string, initial: Scope): CanvasStore {
   const sig = JSON.stringify(initial) ?? "";
   if (!s) {
     s = new CanvasStore(initial);
+    // Record the authored state on CREATION too: without it the first re-parse
+    // compares `undefined` against the same spec's signature and resets the
+    // user's edits even though nothing changed.
+    sAuthored.set(canvasId, initial);
     storeMap.set(canvasId, s);
     if (storeMap.size > 24) {
       // drop the oldest store; the chat prunes history rows the same way
@@ -100,7 +116,6 @@ export function canvasStore(canvasId: string, initial: Scope): CanvasStore {
   if (authored !== sig) { s.reset(initial); sAuthored.set(canvasId, initial); }
   return s;
 }
-const sAuthored = new Map<string, Scope>();
 
 const Ctx = createContext<CanvasStore | null>(null);
 
@@ -143,6 +158,16 @@ export function useCanvasScope(): Scope {
   const s = useStore();
   useCanvasStateVersion();
   return s.snapshot();
+}
+
+/** Seed one control default into the store. Callable during render and
+ *  idempotent — seeding never notifies, so the scope must be read AFTER it. */
+export function useCanvasSeeder(): (key: string, v: StateValue | StateValue[]) => void {
+  // No provider (a card still streaming, or a gate body) means the module-level FALLBACK_STORE, which every
+  // such card shares. Seeding it would carry one card's slider default into the next card's control, so a
+  // provider-less card seeds nothing and its controls just show their own fallback.
+  const owned = useContext(Ctx);
+  return useMemo(() => (owned ? owned.seed.bind(owned) : () => {}), [owned]);
 }
 
 /** Reset button support: restores the authored initial state for one canvas. */

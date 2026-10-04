@@ -2,25 +2,36 @@
 // canvas spec. Pure; tested in canvas-schema.check.ts.
 import type { CanvasSpec, CanvasBlock } from "./canvas-schema";
 
+/** A reactive block authors values as bindings ({$expr:…}), so the markdown copy
+ *  must never print "[object Object]" — it shows "(live)" instead. */
+function live(v: unknown): string {
+  return typeof v === "object" && v !== null ? "(live)" : String(v ?? "");
+}
+/** A series' `points` may BE a binding; the markdown table treats it as empty. */
+const pts = (s: { points: unknown }): number[] => (Array.isArray(s.points) ? s.points : []);
+
 function blockToMd(b: CanvasBlock): string {
   switch (b.type) {
     case "kpi": {
-      const d = b.delta != null ? ` (${b.trend === "up" ? "↑" : b.trend === "down" ? "↓" : ""} ${b.delta})` : "";
-      const s = b.spark && b.spark.length >= 3 ? ` · trend: ${b.spark.map((x) => Math.round(x * 10) / 10).join(", ")}` : "";
-      return `- **${b.label}:** ${b.value}${d}${s}`;
+      const d = b.delta != null ? ` (${b.trend === "up" ? "↑" : b.trend === "down" ? "↓" : ""} ${live(b.delta)})` : "";
+      const spark = b.spark && Array.isArray(b.spark) && b.spark.length >= 3
+        ? ` · trend: ${b.spark.map((x) => Math.round(Number(x) * 10) / 10).join(", ")}`
+        : "";
+      return `- **${b.label}:** ${live(b.value)}${d}${spark}`;
     }
     case "chart": {
       const head = `**${b.title || b.chart + " chart"}**`;
       if (b.chart === "sankey" || b.chart === "treemap" || b.chart === "funnel") {
         const cols = b.labels ?? [];
         return [head, "", `| ${cols.join(" | ")} |`, `|${cols.map(() => "---").join("|")}|`,
-          ...b.series.map((sr) => `| ${sr.points.join(" | ")} |`)].join("\n");
+          ...b.series.map((sr) => `| ${pts(sr).join(" | ")} |`)].join("\n");
       }
-      const cols = (b.labels || b.series[0].points.map((_, i) => String(i + 1))).join(" | ");
-      const rows = b.series.map((s) => `${s.name} | ${s.points.join(" | ")}`);
+      const cols = (b.labels || pts(b.series[0]).map((_, i) => String(i + 1))).join(" | ");
+      const rows = b.series.map((s) => `${s.name} | ${pts(s).join(" | ")}`);
       return [head, "", `| label | ${cols} |`, `|---|${cols.split(" | ").map(() => "---").join("|")}|`, ...rows.map((r) => `| ${r} |`)].join("\n");
     }
     case "table": {
+      if (b.bind && b.rows.length === 0) return `**Live table:** ${b.columns.join(" · ")} _(rows come from the card's data)_`;
       const head = `| ${b.columns.join(" | ")} |`;
       const sep = `|${b.columns.map(() => "---").join("|")}|`;
       return [head, sep, ...b.rows.map((r) => `| ${r.join(" | ")} |`)].join("\n");
@@ -37,7 +48,7 @@ function blockToMd(b: CanvasBlock): string {
     case "callout":
       return `> ${b.title ? `**${b.title}** — ` : ""}${b.body}`;
     case "progress":
-      return `- **${b.label}:** ${b.value}${b.unit || ""}${b.detail ? ` (${b.detail})` : ""}`;
+      return `- **${b.label}:** ${live(b.value)}${b.unit || ""}${b.detail ? ` (${b.detail})` : ""}`;
     case "timeline":
       return b.items.map((it) => `- ${it.time ? `**${it.time}** — ` : ""}**${it.title}**${it.detail ? ` — ${it.detail}` : ""}`).join("\n");
     case "compare":

@@ -4,8 +4,8 @@
 import { useEffect, useMemo, useRef, useState, lazy, Suspense, Fragment } from "react";
 import { useReducedMotion, useSpring, motion } from "motion/react";
 import { cn } from "../../lib/utils";
-import { bindNumber, bindPoints, bindVisible, resolveFrom, type FromBinding, type DataRow } from "../../lib/canvas-bind";
-import { useCanvasStateVersion, useCanvasScope } from "./canvas-state";
+import { bindNumber, bindPoints, bindVisible, resolveBinding, resolveFrom, type FromBinding, type DataRow } from "../../lib/canvas-bind";
+import { useCanvasStateVersion, useCanvasScope, useCanvasSeeder, type StateValue } from "./canvas-state";
 
 /** Per-canvas render context: the reactive scope + the card's datasets. */
 export interface RenderCtx {
@@ -24,7 +24,23 @@ function formatKpi(n: number): string {
 function isReactiveBlock(b: CanvasBlock): boolean {
   const o = b as unknown as Record<string, unknown>;
   return o.visible != null || isBinding(o.value) || isBinding(o.delta) || isBinding(o.bind) ||
-    (b.type === "data") || isBinding(o.points) || isBinding(o.spark);
+    (b.type === "data") || isBinding(o.points) || isBinding(o.spark) ||
+    // a chart whose ONLY reactive part is a per-series binding still needs ctx
+    (Array.isArray(o.series) && (o.series as { points?: unknown; visible?: unknown }[]).some((s) => isBinding(s.points) || s.visible != null));
+}
+
+/** Write a control's authored default into the card scope. A control that
+ *  only shows its fallback in the UI would leave every `{$expr: "n*2"}` reader
+ *  at "—" until the user touched the control; the default IS the first value.
+ *  (Controls nested in tabs/accordion are out of scope — no recursion here.) */
+function seedControlDefault(b: CanvasBlock, seed: (k: string, v: StateValue | StateValue[]) => void) {
+  switch (b.type) {
+    case "slider": seed(b.bind, b.value ?? b.min); break;
+    case "select": case "segmented": seed(b.bind, b.value ?? b.options[0]?.value ?? ""); break;
+    case "multiselect": seed(b.bind, (b.value ?? []) as unknown as StateValue); break;
+    case "toggle": seed(b.bind, b.value ?? false); break;
+    case "search": seed(b.bind, ""); break;
+  }
 }
 
 /** Collect the card's `data` carriers by name for `$from` readers. */
@@ -140,7 +156,14 @@ export function KpiTile({ block }: { block: KpiBlock }) {
   useCanvasStateVersion();
   const scope = useCanvasScope();
   const raw = (block as unknown as { value: unknown }).value;
-  const value = isBinding(raw) ? bindNumber(raw, scope) : raw;
+  // resolveBinding, NOT bindNumber: `money(seats*price)` resolves to the STRING
+  // "$5,000" and bindNumber would strip the $ and render a bare 5000. The value
+  // is shown as the expression produced it; only `delta` wants a number.
+  const resolved = isBinding(raw) ? resolveBinding(raw, scope) : { value: raw, unset: false };
+  const value: string | number | null = resolved.unset || resolved.value == null ? null
+    : typeof resolved.value === "number" ? (Number.isFinite(resolved.value) ? resolved.value : null)
+    : typeof resolved.value === "boolean" ? String(resolved.value)
+    : String(resolved.value);
   const dRaw = (block as unknown as { delta: unknown }).delta;
   const delta = isBinding(dRaw) ? bindNumber(dRaw, scope) : dRaw;
   const spRaw = (block as unknown as { spark: unknown }).spark;
@@ -455,8 +478,12 @@ export function CalloutView({ block }: { block: CalloutBlock }) {
 // ---- Progress ----------------------------------------------------------------
 
 export function ProgressView({ block }: { block: ProgressBlock }) {
+  // `value` may be a binding (a bar driven by card state), so resolve it here.
+  useCanvasStateVersion();
+  const scope = useCanvasScope();
+  const v: number | null = isBinding(block.value) ? bindNumber(block.value, scope) : (block.value as number);
   const max = block.max ?? 100;
-  const pct = Math.max(0, Math.min(100, (block.value / (max || 1)) * 100));
+  const pct = Math.max(0, Math.min(100, ((v ?? 0) / (max || 1)) * 100));
   const shown = `${round1(pct)}${block.unit || "%"}`;
   return (
     <div className={cn("ast-cv-progress", block.status)}>
@@ -863,6 +890,10 @@ export function Blocks({
 }) {
   // The reactive context: current control values + this card's `data` datasets.
   // Built here (not per block) so every reader in the card sees one snapshot.
+  // A control's authored default is seeded BEFORE the scope is read: seeding
+  // deliberately does not notify, so anything read earlier would be stale.
+  const seedStore = useCanvasSeeder();
+  for (const b of blocks) seedControlDefault(b, seedStore);
   const reactiveBlocks = useMemo(() => blocks.some(isReactiveBlock), [blocks]);
   const scope = useCanvasScope();
   const datasets = useMemo(() => collectData(blocks), [blocks]);

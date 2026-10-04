@@ -24,12 +24,16 @@ import type { CanvasSpec, CanvasBlock } from "../../lib/canvas-schema";
 // The heading is ALWAYS derived from the data, so a canvas never reads as a
 // generic "Canvas". An owner-supplied title is kept but enriched with the first
 // real figure, so it stays contextually relevant to what is on screen.
+/** A reactive KPI authors its figure as a binding object. A title is derived from the spec alone (no
+ *  card state to resolve it in), so a bound figure is omitted instead of printing "[object Object]". */
+const figure = (v: unknown): string | null => (typeof v === "string" || typeof v === "number" ? String(v) : null);
+
 function deriveTitle(spec: { title?: string; blocks: CanvasBlock[] }): string {
   const b = spec.blocks.find((x) => x.type !== "data"); // data carriers never title the card
   const fromData = (blk: CanvasBlock | undefined): string | null => {
     if (!blk) return null;
     switch (blk.type) {
-      case "kpi": return blk.label ? `${blk.label}: ${blk.value}` : null;
+      case "kpi": { const f = figure(blk.value); return blk.label ? (f ? `${blk.label}: ${f}` : blk.label) : null; }
       case "compare": return blk.items?.[0]?.name ? `Compare — ${blk.items[0].name}` : "Comparison";
       case "table": return blk.columns?.length ? blk.columns.join(" · ") : "Data table";
       case "chart": return blk.series?.[0]?.name ? `${blk.series[0].name} · ${blk.chart} chart` : blk.title || "Chart";
@@ -67,7 +71,7 @@ function deriveTitle(spec: { title?: string; blocks: CanvasBlock[] }): string {
   };
   const derived = fromData(b);
   if (spec.title) {
-    const first = b?.type === "kpi" ? String(b.value) : null;
+    const first = b?.type === "kpi" ? figure(b.value) : null;
     return first && !spec.title.includes(first) ? `${spec.title} · ${first}` : spec.title;
   }
   return derived || "Canvas";
@@ -76,7 +80,12 @@ function deriveTitle(spec: { title?: string; blocks: CanvasBlock[] }): string {
 export default function CanvasView({ spec, partial, canvasId = "0" }: { spec?: CanvasSpec; partial?: { title?: string; blocks: CanvasBlock[] }; canvasId: string }) {
   const [copied, ping] = useReducer(copiedReducer, 0);
   const done = copied > 0;
-  const reactive = !!(spec?.state && Object.keys(spec.state).length > 0);
+  // A card with a CONTROL needs its own store even with no authored `state`:
+  // without the provider the control would write into the module-level
+  // FALLBACK_STORE, which is shared by every such card on the page (one card's
+  // slider moving every other card's KPI).
+  const hasControls = spec?.blocks.some((b) => ["slider", "select", "multiselect", "segmented", "toggle", "search"].includes(b.type));
+  const reactive = !!(spec?.state && Object.keys(spec.state).length > 0) || !!hasControls;
 
   // Streaming mode: paint the blocks that have completed so far, with a live
   // building indicator. No copy button — nothing final to copy yet.
