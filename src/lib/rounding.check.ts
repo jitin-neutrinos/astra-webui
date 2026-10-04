@@ -11,12 +11,11 @@ const sharp = [...css.matchAll(/\.ast-cv-[a-z-]+[^{]*\{[^}]*?border-radius:\s*(?
   .filter((m) => !m[0].includes(".ast-cv-heat-step"));
 assert.equal(sharp.length, 0, `canvas has ${sharp.length} sharp rectangle(s): ${sharp.map((m) => m[0].split("{")[0].trim()).join(", ")}`);
 
-// 2) the fill/track/dot controls ended up pills or circles
+// 2) the fill/track/dot controls ended up pills or circles (first rule per selector)
 for (const sel of ["ast-cv-progress-track", "ast-cv-progress-fill", "ast-cv-dot", "ast-cv-tl-dot", "ast-cv-callout-dot"]) {
-  const i = css.indexOf(sel + " {") >= 0 ? css.indexOf(sel + " {") : css.indexOf(sel + " {".slice(0, 1));
-  const j = css.indexOf("}", css.indexOf(sel, Math.max(0, css.indexOf("." + sel))));
-  const seg = css.slice(css.indexOf("." + sel), j);
-  assert.ok(/border-radius:\s*(?:9999px|50%)/.test(seg), sel + " must be pill/circle");
+  const seg = css.slice(css.indexOf("." + sel));
+  const rule = seg.slice(0, seg.indexOf("}") + 1);
+  assert.ok(/border-radius:\s*(?:9999px|50%)/.test(rule), sel + " must be pill/circle");
 }
 
 console.log("rounding.check: all canvas radii rounded (pill/circle/rounded-rect)");
