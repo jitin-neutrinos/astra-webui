@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Paperclip, Check, SlidersHorizontal, ChevronRight, Gauge, Server, Cpu, Zap } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { newId } from "@/lib/upload-names";
+import { splitVisible, type FitItem } from "../lib/overflow-fit";
 
 export type Attachment = {
   id: string;
@@ -89,6 +90,110 @@ export function ComposerControls({ setAttachments, disabled, sessionInfo, catalo
   const [dir, setDir] = useState<1 | -1>(1);
   const [kb, setKb] = useState(-1); // keyboard-highlighted row index within the live panel
   const [picked, setPicked] = useState<string | null>(null);
+
+  // ---- Priority+ overflow (owner 2026-10-04) --------------------------------
+  // Which controls stay on the bar and which collapse into the options menu is a
+  // LAYOUT decision, so it is measured rather than guessed: the row's real width,
+  // each control's real width, and the width of the furniture that never collapses
+  // (send button + hint). splitVisible() then decides, and it is a pure tested
+  // function (src/lib/overflow-fit.ts) so the decision cannot drift from its tests.
+  //
+  // The measured widths are kept in state rather than read during render because a
+  // ResizeObserver callback is not a render pass — reading layout there and calling
+  // setState is the standard shape, but storing the numbers and deriving the split
+  // keeps the render pure.
+  const [layout, setLayout] = useState<{ avail: number; reserved: number; widths: Record<string, number> }>(
+    () => ({ avail: 0, reserved: 0, widths: {} })
+  );
+  const rootRef = useRef<HTMLDivElement>(null);
+  const probeRef = useRef<HTMLDivElement>(null);
+
+  const measure = useCallback(() => {
+    // The .chat-composer-bar row belongs to the PARENT (chat-landing), not to this
+    // component, so barRef could never point at it and the first version of this
+    // measurement silently returned early on every call — the controls never collapsed.
+    // Measure from our own root instead: it is INSIDE that row, so its width plus the
+    // row's own padding is the true space available, and it is the element that actually
+    // changes width when the window does.
+    const row = rootRef.current;
+    if (!row) return;
+    const widths: Record<string, number> = {};
+    // Probe children are laid out but hidden from paint, so their widths are real
+    // without ever appearing in the row (opacity/visibility, NOT display:none —
+    // a display:none probe measures 0 and the whole fit calculation collapses).
+    for (const el of Array.from(probeRef.current?.children ?? []) as HTMLElement[]) {
+      const k = el.dataset.probe;
+      if (!k) continue;
+      const w = el.getBoundingClientRect().width;
+      if (w > 0) widths[k] = w;
+    }
+    setLayout((prev) => {
+      // Our root sits inside the row, so add the row's horizontal padding back to the
+      // available width — otherwise we claim space that the padding already consumes and
+      // the first control never quite fits.
+      const rowEl = row.parentElement;
+      const rowPad = rowEl ? parseFloat(getComputedStyle(rowEl).paddingLeft || "0") || 0 : 0;
+      // clientWidth is only correct because CSS gives this element
+      // `flex: 1 1 100%` — as a shrink-to-fit flex item it reported 164px (exactly the
+      // width of the controls it already held), so the budget was always self-fulfilling
+      // and no control was ever told to collapse. Claiming the free space makes
+      // clientWidth the real available width.
+      const avail = row.clientWidth + rowPad;
+      // Only the send button is furniture that never collapses. The hint text is
+      // deliberately NOT reserved: it sits between the controls, flexes, and soaks up
+      // every spare pixel, so counting it made the row look permanently full and the
+      // controls never collapsed. It stays on screen; it just does not get a budget line.
+      const reserved = widths.__send ?? 0;
+      if (
+        prev.avail === avail && prev.reserved === reserved &&
+        Object.keys(widths).length === Object.keys(prev.widths).length &&
+        ["attach", "effort", "yolo"].every((k) => (prev.widths[k] ?? 0) === (widths[k] ?? 0))
+      ) return prev; // no-op guard: ResizeObserver fires on sub-pixel changes too
+      return { avail, reserved, widths };
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    measure();
+    const row = rootRef.current;
+    if (!row || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(row);
+    window.addEventListener("resize", measure);
+    return () => { ro.disconnect(); window.removeEventListener("resize", measure); };
+  }, [measure]);
+
+  // Fonts load after first paint and change every control's width; remeasure once.
+  useEffect(() => {
+    const t = window.setTimeout(measure, 250);
+    if (typeof document !== "undefined" && (document as any).fonts?.ready) {
+      (document as any).fonts.ready.then(measure).catch(() => {});
+    }
+    return () => window.clearTimeout(t);
+  }, [measure]);
+
+  const fitItems: FitItem[] = useMemo(
+    () => [
+      // Pinned: provider + model live in the menu at EVERY width (owner's rule).
+      { key: "provider", width: 0, pinned: true },
+      { key: "model", width: 0, pinned: true },
+      { key: "yolo", width: layout.widths.yolo ?? 0 },
+      { key: "effort", width: layout.widths.effort ?? 0 },
+      { key: "attach", width: layout.widths.attach ?? 0 },
+    ],
+    [layout.widths]
+  );
+
+  // avail=0 on the very first pass means "not measured yet" — show everything rather
+  // than collapsing the row for one frame before the measurement lands.
+  const { visible, hidden } = useMemo(
+    () => (layout.avail > 0
+      ? splitVisible(fitItems, layout.avail, layout.reserved)
+      : { visible: ["yolo", "effort", "attach"], hidden: [] as string[] }),
+    [fitItems, layout.avail, layout.reserved]
+  );
+  const onBar = (k: string) => visible.includes(k);
+  const inMenu = (k: string) => hidden.includes(k);
   const fileRef = useRef<HTMLInputElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
@@ -194,16 +299,65 @@ export function ComposerControls({ setAttachments, disabled, sessionInfo, catalo
   };
 
   return (
-    <div className="relative flex min-w-0 flex-wrap items-center gap-1.5" ref={menuRef}>
+    <div className="relative flex min-w-0 flex-wrap items-center gap-1.5"
+      ref={(el) => { rootRef.current = el; menuRef.current = el as any; }}>
       <input ref={fileRef} type="file" multiple className="hidden" onChange={onFiles}
         aria-hidden="true" tabIndex={-1} />
 
       <button type="button" className="chat-chip chat-chip-options" disabled={disabled}
         aria-haspopup="dialog" aria-expanded={open} aria-controls="composer-options"
-        aria-label="Composer options" title="Session settings"
+        aria-label={hidden.length ? `Composer options (${hidden.length} more)` : "Composer options"}
+        title="Session settings"
+        data-overflow={hidden.length || undefined}
         onClick={() => { if (!open) onOpen?.(); setOpen(!open); setPanel(null); setMenuProvider(null); }}>
         <SlidersHorizontal className="cmenu-trigger-ico h-4 w-4" strokeWidth={1.5} />
+        {/* A count badge only while something is collapsed, so the trigger itself does
+            not change width when it appears/disappear (which would re-trigger the fit). */}
+        {hidden.length > 0 && <span className="chat-chip-badge" aria-hidden="true">{hidden.length}</span>}
       </button>
+
+      {/* ---- controls that FIT stay on the bar ---- */}
+      {onBar("yolo") && (
+        /* ICON-ONLY (owner 2026-10-04): every control on the bar is a square glyph. The
+           state a label used to carry now rides the icon's COLOUR and the aria-label, so
+           nothing is lost — a screen reader still announces "Yolo mode on", and the
+           title gives the same detail on hover. */
+        <button type="button" role="switch" aria-checked={yolo} data-bar="yolo"
+          className={cn("chat-chip chat-chip-icon", yolo && "chat-chip-on")}
+          aria-label={yolo ? "Yolo mode on" : "Yolo mode off"}
+          title={yolo ? "Yolo on — tool calls run without asking" : "Yolo off — tool calls need your approval"}
+          onClick={() => onToggleYolo()}>
+          <Zap className={cn("h-4 w-4", yolo && "chat-chip-ico-on")} strokeWidth={1.5} />
+        </button>
+      )}
+      {onBar("effort") && (
+        <button type="button" data-bar="effort" className="chat-chip chat-chip-icon"
+          aria-label={`Reasoning effort: ${effortLabel}`}
+          title={`Reasoning effort: ${effortLabel}`}
+          onClick={() => { if (!open) onOpen?.(); setOpen(true); setPanel("effort"); }}>
+          <Gauge className="h-4 w-4" strokeWidth={1.5} />
+        </button>
+      )}
+      {onBar("attach") && (
+        <button type="button" data-bar="attach" className="chat-chip chat-chip-icon"
+          aria-label="Attach files" title="Attach files"
+          onClick={() => { pickFiles(); }}>
+          <Paperclip className="h-4 w-4" strokeWidth={1.5} />
+        </button>
+      )}
+
+      {/* ---- measurement probes ----
+          Real, laid-out copies of every collapsible control (plus the two pieces of
+          furniture that never collapse) so their intrinsic widths can be read without
+          painting them. `visibility:hidden` keeps layout AND measurement working; a
+          display:none probe measures 0 and the fit would collapse the row on load. */}
+      <span ref={probeRef} className="chat-bar-probe" aria-hidden="true">
+        <span data-probe="yolo" className="chat-chip chat-chip-icon"><Zap className="h-4 w-4" strokeWidth={1.5} /></span>
+        <span data-probe="effort" className="chat-chip chat-chip-icon"><Gauge className="h-4 w-4" strokeWidth={1.5} /></span>
+        <span data-probe="attach" className="chat-chip chat-chip-icon"><Paperclip className="h-4 w-4" strokeWidth={1.5} /></span>
+        <span data-probe="__send" className="chat-send composer-bar-card .chat-send" />
+        <span data-probe="__hint" className="chat-composer-hint" />
+      </span>
 
       <AnimatePresence>
         {open && (
@@ -230,6 +384,11 @@ export function ComposerControls({ setAttachments, disabled, sessionInfo, catalo
                         <span className={cn("cmenu-sum", pending && "cmenu-shimmer")}>
                           {pending ? "loading…" : providerLabel(provider)}
                         </span>
+                        {hidden.length > 0 && (
+                          <span className="cmenu-sum" title="These controls are collapsed into this menu because the bar is narrow">
+                            +{hidden.length} collapsed
+                          </span>
+                        )}
                       </header>
 
                       <motion.div variants={itemVariants} custom={0} initial="hidden" animate="show">
@@ -238,7 +397,7 @@ export function ComposerControls({ setAttachments, disabled, sessionInfo, catalo
                           <Paperclip className="cmenu-ico h-4 w-4" strokeWidth={1.5} />
                           <span className="flex min-w-0 flex-col">
                             <span>Attach files</span>
-                            <small>Images, docs, sheets — or drop them in</small>
+                            <small>{inMenu("attach") ? "Collapsed — there is no room on the bar" : "Images, docs, sheets — or drop them in"}</small>
                           </span>
                         </button>
                       </motion.div>
@@ -267,8 +426,8 @@ export function ComposerControls({ setAttachments, disabled, sessionInfo, catalo
 
                       <p className="cmenu-label">Reasoning</p>
                       <motion.div variants={itemVariants} custom={3} initial="hidden" animate="show">
-                        <button type="button" className="cmenu-row" data-row="effort" data-kb={kb === 3}
-                          onClick={() => drill("effort")}>
+                        <button type="button" className={cn("cmenu-row", inMenu("effort") && "cmenu-row-collapsed")} data-row="effort" data-kb={kb === 3}
+                          onClick={() => { setDir(1); setPanel("effort"); }}>
                           <Gauge className="cmenu-ico h-4 w-4" strokeWidth={1.5} />
                           <span className="flex-1 truncate text-left">{effortLabel}</span>
                           <ChevronRight className="cmenu-chev h-3.5 w-3.5" strokeWidth={1.5} />
@@ -277,7 +436,7 @@ export function ComposerControls({ setAttachments, disabled, sessionInfo, catalo
 
                       <motion.div variants={itemVariants} custom={4} initial="hidden" animate="show">
                         <button type="button" role="switch" aria-checked={yolo} data-row="yolo" data-kb={kb === 4}
-                          className={cn("cmenu-row", picked === "yolo" && "cmenu-row-picked")}
+                          className={cn("cmenu-row", picked === "yolo" && "cmenu-row-picked", inMenu("yolo") && "cmenu-row-collapsed")}
                           aria-label={yolo ? "Yolo mode on" : "Yolo mode off"}
                           title={yolo ? "Yolo on — auto-approve" : "Yolo off — ask first"}
                           onClick={() => pick("yolo", onToggleYolo)}>

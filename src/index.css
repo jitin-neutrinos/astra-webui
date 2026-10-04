@@ -3088,6 +3088,8 @@ html.theme-fading body * {
 
 /* KPI tile */
 .ast-cv-kpi {
+  /* container-type makes the value's cqi scale relative to THIS card, not the viewport */
+  container-type: inline-size;
   padding: 10px 12px;
   border: 1px solid rgb(var(--c-89) / 0.08);
   border-radius: 10px;
@@ -4754,6 +4756,8 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
 .ast-cv-image { margin: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .ast-cv-image-img {
   width: 100%; max-height: 420px; object-fit: contain;
+  /* reserve the box so the load doesn't reflow the card (owner: media must not jump) */
+  aspect-ratio: 16 / 10;
   border: 1px solid var(--cv-border-hairline);
   border-radius: var(--radius-cv);
   background: var(--cv-paper);
@@ -4785,7 +4789,7 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
 .ast-cv-gviewer img { max-width: 92vw; max-height: 86vh; object-fit: contain; border-radius: 8px; }
 .ast-cv-gviewer p { font: 400 12px/1.4 var(--font-sans); color: rgb(var(--c-89)); text-align: center; padding: 8px 0; }
 .ast-cv-video { margin: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.ast-cv-video-el { width: 100%; max-height: 420px; border-radius: var(--radius-cv); border: 1px solid var(--cv-border-hairline); background: var(--color-void); }
+.ast-cv-video-el { width: 100%; max-height: 420px; aspect-ratio: 16 / 9; border-radius: var(--radius-cv); border: 1px solid var(--cv-border-hairline); background: var(--cv-paper); }
 
 /* Press feedback (every clickable control) + reduced motion -------------------- */
 .ast-cv-chip:active, .ast-cv-seg:active, .ast-cv-toggle:active:active { transform: scale(0.97); }
@@ -5524,3 +5528,27 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
   background: color-mix(in srgb, var(--color-accent) 14%, transparent);
 }
 .composer-bar-card .chat-chip-ico-on { color: var(--color-accent); }
+
+/* The button row must NOT wrap. `flex-wrap: wrap` meant that when space ran out the
+   controls wrapped onto a second line instead of overflowing — so the Priority+ fit had
+   nothing to detect and never fired at any width. `nowrap` makes the row genuinely
+   constrained: the measured width becomes a real budget, and a control that cannot fit
+   is collapsed into the options menu instead of silently stacking.
+   The hint text is allowed to shrink to nothing (min-width:0 + overflow hidden) so it
+   yields space to the controls rather than competing with them for it. */
+.chat-composer-bar { flex-wrap: nowrap !important; }
+.chat-composer-bar .chat-composer-hint {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+}
+/* The controls cluster: never wraps, never shrinks — a control is either fully visible
+   or collapsed into the menu, never clipped.
+   `flex: 1 1 100%` is LOAD-BEARING and looks wrong at a glance: it makes the cluster
+   claim ALL the free space so its clientWidth is the real budget the Priority+ fit
+   measures against. As a shrink-to-fit item (`flex: 0 0 auto`) it reported exactly the
+   width of the controls it already held (measured 164px), which made the budget
+   self-fulfilling — every control always 'fit' and nothing ever collapsed. */
+.chat-composer-bar > .relative { flex: 1 1 100%; flex-wrap: nowrap; min-width: 0; }

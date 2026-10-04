@@ -531,8 +531,32 @@ for (const file of [...liveChecks].sort()) {
   const isTs = /\.check\.(ts|tsx)$/.test(file) || /from ['"][^'"]+\.ts['"]/.test(readFileSync(join(ROOT, file), "utf8"));
   const args = isTs
     ? ["--import", "./scripts/ts-resolve.mjs", file]
-    : [file  {
+    : [file];
+  const r = spawnSync(process.execPath, args, { cwd: ROOT, encoding: "utf8", timeout: 120_000 });
+  if (r.status !== 0) {
+    const last = (r.stderr || r.stdout || "").trim().split("\n").filter(Boolean).pop() || "";
+    fail(`REGRESSED: ${file} — ${last.slice(0, 140)}`);
+  }
+}
+
+console.log(
+  `regression-gate: ${REGRESSIONS.length} pinned bugs, ${liveChecks.size} re-run live, ${discovered.length} checks discovered`
+);
+if (failures) {
+  console.error(`${failures} regression-gate failure(s)`);
+  process.exit(1);
+}
+
+// resurrected rows (merge ate the seam): RG-070 reactive-canvas parser + the overflow-fit guard row
+const EXTRAS = [
+  {
     id: "RG-070",
+    found: "2026-10-04",
+    symptom:
+      "Priority+ composer overflow: a wrong fit decision does not throw, it silently hides a control the owner needed or overflows the row on a phone. Guards the exact-fit boundary, an item wider than the whole budget, unmeasured NaN widths on first paint, monotonicity, and that every collapsible control stays reachable EXACTLY ONCE at every width.",
+    guard: "src/lib/overflow-fit.check.ts",
+  },
+];
     found: "2026-10-04",
     symptom:
       "Priority+ composer overflow: a wrong fit decision does not throw, it silently hides a control the owner needed or overflows the row on a phone. Guards the exact-fit boundary, an item wider than the whole budget, unmeasured NaN widths on first paint, monotonicity, and that every collapsible control stays reachable EXACTLY ONCE at every width.",

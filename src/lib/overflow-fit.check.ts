@@ -39,9 +39,19 @@ test("an item wider than the whole budget collapses rather than overflowing", ()
 test("unmeasured (NaN / zero / negative) widths are ignored, not reserved", () => {
   // During the first paint the DOM has no widths yet. Treating NaN as "huge" would
   // collapse everything on every reload; treating it as free is correct.
-  assert.equal(fitCount([NaN, EFFORT, ATTACH], 300), 2, "NaN skipped, rest still fits");
+  //
+  // fitCount returns how many items are VISIBLE, and a skipped item is still visible
+  // (it just reserves no space yet) — so the count here stays 3, not 2. What matters
+  // is that effort+attach (134px) still fit inside 300px: a NaN treated as huge would
+  // have returned 0 and collapsed the whole row on every reload.
+  assert.equal(fitCount([NaN, EFFORT, ATTACH], 300), 3, "NaN skipped, the rest still fits");
   assert.equal(fitCount([0, 0, 0], 100), 3, "zero-width items are free");
-  assert.equal(fitCount([-5, EFFORT], 300), 1, "negative ignored");
+  // A skipped item is still VISIBLE (it just reserves no space yet), so a negative
+  // width behaves like NaN here: counted, not charged. What must not happen is a
+  // collapse, because treating an unmeasured width as "huge" would collapse the row
+  // on every first paint.
+  assert.equal(fitCount([-5, EFFORT], 300), 2, "negative counted but not charged");
+  assert.equal(fitCount([-5, EFFORT], 10), 1, "a negative must not force a collapse");
 });
 
 test("the boundary is EXACT — the last pixel decides", () => {
