@@ -1373,6 +1373,10 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
     // LOW_SPEC skip only helps while TYPING (box fits, content grew by a char).
     // It must NOT skip when the box needs to SHRINK — the cleared-draft bug left
     // the composer tall forever. Re-measure unless the box is at its 1-line rest.
+    // The rest height is ~26px (see REST_H below), so 30 is the right "at rest"
+    // bound for this skip. It was written against the old 44px floor's neighbourhood
+    // and would have let a 1-line box fall through to a full re-measure on every
+    // keystroke — reintroducing exactly the typing lag this skip exists to avoid.
     if (LOW_SPEC && ta.clientHeight >= ta.scrollHeight - 1 && ta.clientHeight <= 30) return;
     // FIX (2026-10-03): synchronous scrollHeight read blocked the event loop,
     // causing "type whole sentences before a letter appears". Make it async via
@@ -1381,7 +1385,15 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       if (!taRef.current) return;
       const current = taRef.current;
       current.style.height = "auto";
-      const h = Math.max(current.scrollHeight, 44);
+      // REST height = one line of text plus the textarea's own 2px vertical padding
+      // (owner 2026-10-04: "the text input bar height must be one line of text length
+      // plus a subtle padding"). This was a 44px floor, which is roughly two lines: it
+      // is why the input sat visibly taller than the button bar even with tight card
+      // padding, and the CSS on .chat-composer-input never showed because this inline
+      // height wins. Derived from the type scale rather than hardcoded twice — a
+      // one-line box of 14.5px/1.5 text plus 2px padding is ~25.75px.
+      const REST_H = Math.ceil(14.5 * 1.5) + 4; // line box + 2px padding top and bottom
+      const h = Math.max(current.scrollHeight, REST_H);
       current.style.height = `${Math.min(h, 200)}px`;
     });
   }, []);

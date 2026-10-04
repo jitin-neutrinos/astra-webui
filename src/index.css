@@ -889,8 +889,22 @@ html.theme-fading body * {
    running trace lives ONLY on the input card. Cards stack with a small gap. */
 .chat-composer-shell { position: relative; display: flex; flex-direction: column; gap: 8px; }
 .chat-composer-shell.drag-over .chat-composer { border-color: rgb(var(--c-13) / 0.6); }
-.composer-input-card { padding: 10px 12px 8px; }
-.composer-bar-card { padding: 6px 10px; }
+/* Composer height: ONE line of text plus a subtle padding (owner 2026-10-04).
+   Both cards solve to the SAME 38px total, so the typing field and the button bar
+   read as one aligned pair rather than two mismatched slabs.
+
+   Measured, not guessed — and note the INPUT height is set in JS, not CSS:
+     textarea rest height (fitComposer REST_H) = 26px  <- one line + its own 2px padding
+     one bar chip row (11.5px font + 5px pad + 1px border) = 23.5px
+     input card: 26 + 5 + 5 + 2 (border)            = 38.00px
+     bar   card: 23.5 + 6.25 + 6.25 + 2 (border)    = 38.00px
+
+   The two paddings differ by 1.25px precisely BECAUSE the inner heights differ by
+   2.5px. Forcing them equal would have left the cards 2.5px apart, which is
+   visible at this size — so each card is padded to a shared total instead of to a
+   shared number. */
+.composer-input-card { padding: 5px 12px; }
+.composer-bar-card { padding: 6.25px 10px; }
 .chat-composer-bar { border-top: none; padding-top: 0; margin-top: 0; }
 .chat-composer.drag-over { border-color:rgb(var(--c-13) / 0.6); }
 .chat-composer.drag-over::before { opacity: 1; }
@@ -907,7 +921,7 @@ html.theme-fading body * {
    the caret) on different metrics — the "typing line is not synced" report.
    The zoom-guard media query bumps this one to match. */
 .composer-ph-text { font: 400 14.5px/1.5 var(--font-sans); color: var(--color-muted); max-width: 100%; }
-.chat-composer-input { display: block; width: 100%; position: relative; z-index: 1; background: transparent; border: none; color: var(--color-brandtext); font: 400 14.5px/1.5 var(--font-sans); resize: none; min-height: 24px; max-height: 200px; overflow-y: auto; padding: 2px 4px 8px; outline: none; }
+.chat-composer-input { display: block; width: 100%; position: relative; z-index: 1; background: transparent; border: none; color: var(--color-brandtext); font: 400 14.5px/1.5 var(--font-sans); resize: none; min-height: 24px; max-height: 200px; overflow-y: auto; padding: 2px 4px; outline: none; }
 .chat-composer-input::placeholder { color: transparent; }
 /* Recognized slash command: the "/" is stripped from the textarea's OWN value
    (see onInputChange), so the text needs no mirror overlay and the native caret
