@@ -77,7 +77,16 @@ export function toElements(graph: any): { nodes: any[]; edges: any[] } {
         kind: n.kind,
         weight: n.weight ?? 1,
         degree: n.degree ?? 0,
-        description: n.description ?? null,
+        // The canvas graph block's own field is `detail` (see the `graph` case
+        // in canvas-schema.ts and every read in canvas-graph-view.tsx, which
+        // asks for ele.data("detail")). This adapter only forwarded
+        // `description` — comindash's field name — so every node arrived with
+        // an EMPTY panel: measured 0/31 nodes carrying any context text, and a
+        // card that looked broken rather than empty. Forward BOTH: `detail` is
+        // canonical, `description` stays for the comindash-shaped payload this
+        // file was ported from, so neither caller can silently lose the text.
+        detail: n.detail ?? n.description ?? null,
+        description: n.detail ?? n.description ?? null,
         meta: n.meta ?? null,
         size: r * 2,
         fsize: r > 15 ? 12 : 11,
