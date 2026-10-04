@@ -1,0 +1,50 @@
+{
+  "type": "diagram",
+  "layout": "flow",
+  "direction": "lr",
+  "nodes": [
+    {
+      "id": "n1",
+      "label": "Node one"
+    },
+    {
+      "id": "n2",
+      "label": "Node two"
+    },
+    {
+      "id": "n3",
+      "label": "Node three"
+    }
+  ],
+  "edges": [
+    {
+      "from": "n1",
+      "to": "n2",
+      "label": "go"
+    },
+    {
+      "from": "n1",
+      "to": "n2",
+      "label": "go"
+    },
+    {
+      "from": "n1",
+      "to": "n2"
+    },
+    {
+      "from": "n2",
+      "to": "n2",
+      "label": "retry"
+    },
+    {
+      "from": "n2",
+      "to": "n3",
+      "label": "ok"
+    },
+    {
+      "from": "n3",
+      "to": "n1",
+      "label": "back"
+    }
+  ]
+}

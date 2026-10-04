@@ -1198,3 +1198,92 @@ test("a bound KPI never prints [object Object] in the derived title, and a bound
     if (/^\|[-| ]+\|$/.test(ln)) assert.ok(/^\|.*\|$/.test(lines[i + 1] ?? "") && !/^\|[-| ]+\|$/.test(lines[i + 1] ?? ""), `table separator on line ${i} has no body row after it`);
   });
 });
+
+// OWNER 2026-10-04 (RG-072): a diagram is unreadable as shapes alone, so the
+// parser keeps summary/caption/kind/note. These were silently dropped, so a
+// reader got no text explanation of a diagram at all.
+test("diagram: summary, caption, kind and note survive validation", () => {
+  const spec = parseCanvasSpec(JSON.stringify({
+    v: 1,
+    blocks: [{
+      type: "diagram", layout: "flow",
+      summary: "The request enters at the edge and lands in the ledger.",
+      caption: "Write path",
+      nodes: [
+        { id: "a", label: "Edge", kind: "entry", note: "public" },
+        { id: "b", label: "Ledger", kind: "store" },
+      ],
+      edges: [{ from: "a", to: "b", label: "writes", note: "sync" }],
+    }],
+  }));
+  assert.ok(spec, "the rich diagram parses");
+  const d = spec!.blocks[0] as any;
+  assert.equal(d.summary, "The request enters at the edge and lands in the ledger.");
+  assert.equal(d.caption, "Write path");
+  assert.equal(d.nodes[0].kind, "entry");
+  assert.equal(d.nodes[0].note, "public");
+  assert.equal(d.nodes[1].kind, "store");
+  assert.equal(d.edges[0].note, "sync");
+});
+
+test("diagram: the legacy shape still parses, with no new keys defined", () => {
+  const spec = parseCanvasSpec(JSON.stringify({
+    v: 1,
+    blocks: [{ type: "diagram", layout: "flow", nodes: [{ id: "a", label: "A" }, { id: "b", label: "B" }], edges: [{ from: "a", to: "b" }] }],
+  }));
+  assert.ok(spec, "the legacy diagram parses");
+  const d = spec!.blocks[0] as any;
+  assert.equal(d.nodes.length, 2);
+  assert.equal(d.edges.length, 1);
+  assert.equal(d.summary, undefined);
+  assert.equal(d.caption, undefined);
+  assert.equal(d.nodes[0].kind, undefined);
+  assert.equal(d.nodes[0].note, undefined);
+  assert.equal(d.edges[0].note, undefined);
+  // `direction` was already always emitted (tb/lr). The new keys follow the SAME
+  // defensive style as `detail` — `isStr(x) ? x : undefined` — so they are PRESENT
+  // as keys holding `undefined`. What must not happen is a new key carrying a
+  // value, so pin the serialised shape (that is what a consumer actually sees).
+  const serialised = JSON.parse(JSON.stringify(d));
+  for (const k of ["summary", "caption"]) assert.ok(!(k in serialised), `legacy block must not carry ${k}`);
+  for (const k of ["kind", "note"]) assert.ok(!(k in serialised.nodes[0]), `legacy node must not carry ${k}`);
+  assert.ok(!(("note" in serialised.edges[0])), "legacy edge must not carry note");
+  assert.equal(serialised.direction, "tb", "the pre-existing direction key is still emitted");
+});
+
+test("diagram: non-string kind/note/summary are ignored, not propagated", () => {
+  const spec = parseCanvasSpec(JSON.stringify({
+    v: 1,
+    blocks: [{
+      type: "diagram", layout: "flow",
+      summary: 42,
+      nodes: [{ id: "a", label: "A", kind: 7, note: { x: 1 } }],
+      edges: [{ from: "a", to: "a", note: ["nope"] }],
+    }],
+  }));
+  assert.ok(spec, "a diagram with junk optional fields still parses");
+  const d = spec!.blocks[0] as any;
+  assert.equal(d.summary, undefined, "a non-string summary is dropped");
+  assert.equal(d.nodes[0].kind, undefined, "a non-string kind is dropped");
+  assert.equal(d.nodes[0].note, undefined, "a non-string note is dropped");
+  assert.equal(d.edges[0].note, undefined, "a non-string edge note is dropped");
+});
+
+test("diagram: summary/caption/note are capped at 400 characters", () => {
+  const long = "x".repeat(900);
+  const spec = parseCanvasSpec(JSON.stringify({
+    v: 1,
+    blocks: [{
+      type: "diagram", layout: "flow",
+      summary: long, caption: long,
+      nodes: [{ id: "a", label: "A", note: long }],
+      edges: [{ from: "a", to: "a", note: long }],
+    }],
+  }));
+  assert.ok(spec);
+  const d = spec!.blocks[0] as any;
+  assert.equal(d.summary.length, 400);
+  assert.equal(d.caption.length, 400);
+  assert.equal(d.nodes[0].note.length, 400);
+  assert.equal(d.edges[0].note.length, 400);
+});

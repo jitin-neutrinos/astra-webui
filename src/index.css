@@ -972,7 +972,7 @@ html.theme-fading body * {
 .chat-popout-input::placeholder { color: var(--color-muted); }
 @media (max-width: 1023px) { .chat-popout-input { min-height: 110px; } }
 .chat-composer-hint { flex: 1; text-align: right; font: 400 11px/1 var(--font-sans); color: var(--color-muted); white-space: nowrap; }
-.chat-send { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 10px; border: none; background:linear-gradient(180deg, var(--color-accent), color-mix(in oklab, var(--color-accent) 62%, var(--color-void))); color: var(--color-void); cursor: pointer; flex-shrink: 0; box-shadow:0 1px 2px rgba(0,0,0,.25), 0 0 12px -2px rgb(var(--c-15) / 0.45); transition: transform 140ms cubic-bezier(0.23,1,0.32,1), box-shadow 140ms cubic-bezier(0.23,1,0.32,1), filter 140ms ease; }
+.chat-send { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 10px; border: none; background:linear-gradient(180deg, var(--color-accent), color-mix(in oklab, var(--color-accent) 62%, var(--color-void))); color: var(--color-void); cursor: pointer; flex-shrink: 0; box-shadow:0 1px 2px rgba(0,0,0,.25), 0 0 12px -2px rgb(var(--c-15) / 0.45); transition: transform 140ms cubic-bezier(0.23,1,0.32,1), box-shadow 140ms cubic-bezier(0.23,1,0.32,1), filter 140ms ease; }
 .chat-send:hover { filter: brightness(1.12); box-shadow:0 2px 4px rgba(0,0,0,.28), 0 0 18px -2px rgb(var(--c-13) / 0.6); }
 .chat-send:active { transform: scale(0.92); }
 /* sent-flash: brief check glyph + success pulse */
@@ -5331,16 +5331,6 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
 .composer-bar-card { display: flex; align-items: center; }
 .composer-bar-card .chat-composer-bar { align-items: center; width: 100%; }
 
-/* The composer's left-hand control cluster was 30px — 2px taller than the 28px send
-   button — which made the button bar card 40px against the input card's 38px and
-   broke the equal-height requirement. Measured in Chromium: barCard 40 vs inputCard
-   38, with the wrapper div reporting h=30 while .chat-send reported h=28.
-
-   Capping the cluster at the button's own height lets both cards resolve to the same
-   38px. `align-items: center` keeps the controls optically centred on the button's
-   centre line rather than top-aligned inside the shorter row. */
-.composer-bar-card .chat-composer-bar > .relative { max-height: 28px; align-items: center; }
-.composer-bar-card .chat-composer-bar > .relative > * { max-height: 28px; }
 
 /* ===== composer: full-width field + aligned controls (owner 2026-10-04, measured) ===== */
 
@@ -5365,20 +5355,172 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
    plus a 1px border around a 4px icon — so its 30x28 box puts the glyph 2px off the
    send button's optical centre line. Give it the SAME 28x28 box as .chat-send with the
    icon dead-centre, so the row reads as one set of controls. */
+/* Options trigger: same HEIGHT as send/stop (owner steer 2026-10-04 — "the options
+   button needs the same height as the stop and send buttons"). Measured: .chat-send is
+   34px; a bare .chat-chip is only 5px padding + an 11.5px line = ~21.5px, so the
+   trigger sat 12.5px shorter and read as a different control.
+
+   Height is forced to the button's box; WIDTH stays natural so the trigger keeps its
+   compact pill shape and does not become a wide square. The radius already matches
+   (10px). */
 .composer-bar-card .chat-chip-options {
-  width: 28px;
-  height: 28px;
-  padding: 0;
+  height: 34px;
+  min-height: 34px;
+  align-items: center;
+}
+/* Bar chips keep their natural pill height; the cluster cap above is what keeps the
+   card height equal, so no per-chip min-height is needed. */
+.composer-bar-card .chat-chip { display: inline-flex; align-items: center; }
+
+
+
+/* ── diagram v6: one SVG, pure layout, scroll + zoom ───────────────────────── */
+.ast-cv-dg { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.ast-cv-dg-caption { margin: 0; font: 600 12.5px/1.4 var(--font-sans); color: var(--color-brandtext); }
+.ast-cv-dg-summary { margin: 0; font: 400 12px/1.5 var(--font-sans); color: var(--color-muted); }
+.ast-cv-dg-stage { position: relative; min-width: 0; border: 1px solid var(--cv-border-hairline); border-radius: 12px; background: var(--cv-tile); }
+.ast-cv-dg-scroll { overflow: auto; overscroll-behavior: contain; touch-action: pan-x pan-y pinch-zoom; max-height: min(78vh, 760px); border-radius: 12px; }
+.ast-cv-full-body .ast-cv-dg-scroll { max-height: none; }
+.ast-cv-dg-sizer { position: relative; }
+.ast-cv-dg-svg { display: block; transform-origin: 0 0; }
+.ast-cv-dg-controls { display: flex; flex-direction: row; gap: 6px; justify-content: flex-end; }   /* below the stage, never overlaying the drawing */
+.ast-cv-dg-controls button { width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 12px; border: 1px solid var(--cv-border-strong); background: var(--cv-paper); color: var(--color-brandtext); cursor: pointer; }
+.ast-cv-dg-controls button:hover { border-color: color-mix(in srgb, var(--color-accent) 45%, var(--cv-border-strong)); }
+.ast-cv-dg-controls button:focus-visible, .ast-cv-dg-node:focus-visible { outline: 2px solid color-mix(in srgb, var(--color-accent) 60%, transparent); outline-offset: 2px; }
+.ast-cv-dg-node { cursor: pointer; }
+.ast-cv-dg-node rect { fill: var(--cv-paper); stroke: var(--cv-border-strong); stroke-width: 1; transition: stroke 120ms ease; }
+.ast-cv-dg-node.is-sel rect { stroke: var(--color-accent); stroke-width: 1.8; }
+.ast-cv-dg-label { font: 600 12px var(--font-sans); fill: var(--color-brandtext); }
+.ast-cv-dg-detail { font: 400 10.5px var(--font-sans); fill: var(--color-muted); }
+.ast-cv-dg-chip { fill: var(--cv-paper); stroke: var(--cv-border-hairline); stroke-width: 1; }
+.ast-cv-dg-elabel { font: 500 10.5px var(--font-sans); fill: var(--color-accent); text-anchor: middle; dominant-baseline: central; }
+.ast-cv-dg-path { fill: none; stroke: var(--color-accent); stroke-opacity: .85; stroke-width: 1.6; stroke-linejoin: round; }
+.ast-cv-dg-dim { opacity: .28; }
+.ast-cv-dg-panel { border: 1px solid var(--cv-border-hairline); border-radius: 12px; padding: 10px 12px; background: var(--cv-tile); display: flex; flex-direction: column; gap: 6px; }
+.ast-cv-dg-panel strong { font: 600 13px/1.3 var(--font-sans); color: var(--color-brandtext); }
+.ast-cv-dg-panel span { font: 400 12px/1.5 var(--font-sans); color: var(--color-muted); }
+.ast-cv-dg-neighbour { font: 500 12px var(--font-sans); color: var(--color-accent); background: transparent; border: 0; padding: 0 2px; min-height: 44px; cursor: pointer; }
+.ast-cv-dg-neighbour:focus-visible { outline: 2px solid color-mix(in srgb, var(--color-accent) 60%, transparent); outline-offset: 2px; }
+.ast-cv-dg-legend { display: flex; flex-wrap: wrap; gap: 6px; }
+.ast-cv-dg-legend button { min-height: 44px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--cv-border-strong); background: var(--cv-paper); color: var(--color-brandtext); font: 500 11.5px var(--font-sans); cursor: pointer; }
+.ast-cv-dg-legend button[aria-pressed="true"] { border-color: var(--color-accent); }
+.ast-cv-dg-twin summary { min-height: 44px; display: flex; align-items: center; font: 500 11.5px/1 var(--font-sans); color: var(--color-muted); cursor: pointer; }
+.ast-cv-dg-twin ul { margin: 0; padding: 0 0 0 18px; font: 400 12px/1.6 var(--font-sans); color: var(--color-brandtext); }
+
+/* ===== composer: restore the original large rounded-square buttons, equal heights =====
+   Owner 2026-10-04: undo the 28px shrink and restore the buttons to the large rounded
+   squares they were before the height work, then make the input card the SAME height
+   as the button bar.
+
+   Originals recovered from git rather than guessed (32bdd8f, d0ef1a6, b378ad3~1 all
+   agree): .chat-send 34x34 radius 10px, .chat-chip 5px/10px padding radius 10px.
+
+   With the button back at 34px the bar card is 34 + 4 + 4 + 2 = 44px, so the INPUT
+   card is padded to reach the same 44px: its textarea renders 28px, which needs 7px
+   of padding each side (28 + 7 + 7 + 2 = 44). Previously it used 4px and came out at
+   38px — 6px shorter than the bar, which is the "input is shorter" report.
+
+   The chips are NOT forced to a square here: they are pill-shaped controls whose
+   width follows their label (yolo, effort), matching how they looked originally. */
+.composer-input-card { padding: 7px 12px; }
+.composer-bar-card { padding: 4px 10px; }
+
+/* The left control cluster must never exceed the button's own height, or the bar card
+   grows past the input card again. 34px is the send button's box. */
+.composer-bar-card .chat-composer-bar > .relative { max-height: 34px; align-items: center; }
+
+/* Touch target: the send button is back to its full 34px, so the ::after extension is
+   no longer needed for it — the button IS the target. Chips keep a 44px minimum via
+   padding, unchanged from their original form. */
+.chat-send::after { display: none; }
+
+/* ===== Priority+ overflow: measurement probe + collapse affordances ===== */
+
+/* The probe is a laid-out but unpainted copy of every collapsible control plus the two
+   pieces of furniture that never collapse (send button, hint text). It is how the fit
+   calculation gets REAL widths without any control ever appearing twice.
+   `visibility: hidden` is load-bearing: it keeps layout and measurement, whereas
+   `display: none` measures 0 and would collapse the entire row on first paint. */
+.chat-bar-probe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  pointer-events: none;
+  height: 0;
+  overflow: hidden;
+  gap: 6px;
+  align-items: center;
+  z-index: -1;
+}
+/* A <span> probe must lay its children out as the real row does, and must not
+   contribute any width of its own. */
+.chat-bar-probe > * { display: inline-flex; align-items: center; }
+.chat-bar-probe > .chat-send,
+.chat-bar-probe > .chat-composer-hint { flex: none; }
+
+/* Count badge on the options trigger: shown only while something is collapsed.
+   It sits INSIDE the trigger's existing box (absolutely positioned) rather than
+   adding to it, because a trigger that changes width when the badge appears would
+   re-trigger the very ResizeObserver measurement that produced the badge. */
+.chat-chip-options { position: relative; }
+.chat-chip-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
-  flex: none;
+  font: 600 9px/1 var(--font-mono);
+  color: var(--color-void);
+  background: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-midnight);
 }
-/* Same treatment for the other bar chips so they stay optically identical to the
-   send button and the options trigger. */
-.composer-bar-card .chat-chip {
-  min-height: 28px;
-  display: inline-flex;
+
+/* A menu row whose control is currently collapsed onto the menu. Marked with a leading
+   dot so the owner can see WHY an action is not also on the bar — the alternative is
+   a control silently appearing in two places or, worse, neither. */
+.cmenu-row-collapsed > .cmenu-ico { opacity: 0.55; }
+.cmenu-row-collapsed::after {
+  content: "";
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--color-accent);
+  opacity: 0.75;
+}
+
+/* ===== bar controls are ICON-ONLY squares (owner 2026-10-04) =====
+   Every button on the button bar is now a glyph in a square box: no text labels.
+   A labelled chip sized itself to its words (yolo 64px, effort 80px), so the row's
+   contents changed width with the model's effort level — the fit calculation then had
+   to re-run every time the effort label changed length ("off" vs "ultra"). Fixed boxes
+   make the row's width independent of its contents, which is what lets the Priority+
+   collapse stay stable.
+
+   The state a label used to carry now rides colour + the accessible name:
+     - yolo ON  -> accent glyph + accent border (chat-chip-on, .chat-chip-ico-on)
+     - yolo OFF -> muted glyph
+   Nothing is lost to a screen reader: every button keeps a full aria-label, and the
+   effort button's label includes the live value ("Reasoning effort: ultra"). */
+.composer-bar-card .chat-chip-icon {
+  width: 34px;
+  min-width: 34px;
+  padding: 0;
+  gap: 0;
+  justify-content: center;
   align-items: center;
 }
+/* Uniform glyph size so a 4px icon and a 3.5px icon read as the same mark. */
+.composer-bar-card .chat-chip-icon svg { width: 17px; height: 17px; }
+/* The ON state must read at a glance without a label. */
+.composer-bar-card .chat-chip-icon.chat-chip-on {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+}
+.composer-bar-card .chat-chip-ico-on { color: var(--color-accent); }

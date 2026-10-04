@@ -56,8 +56,11 @@ export interface DiagramBlock {
   type: "diagram";
   layout: "flow" | "relationship";
   direction?: "tb" | "lr";
-  nodes: { id: string; label: string; detail?: string }[];
-  edges: { from: string; to: string; label?: string }[];
+  /** One-to-three sentence reading of the diagram (shown as the summary + used as the aria description). */
+  summary?: string;
+  caption?: string;
+  nodes: { id: string; label: string; detail?: string; kind?: string; note?: string }[];
+  edges: { from: string; to: string; label?: string; note?: string }[];
 }
 
 export interface ChecklistBlock {
@@ -702,20 +705,42 @@ function validateBlockInner(b: any): CanvasBlock | null {
     case "diagram": {
       if (b.layout !== "flow" && b.layout !== "relationship") return null;
       if (!Array.isArray(b.nodes) || b.nodes.length === 0) return null;
+      // A reader gets a text explanation of the diagram (summary + caption) and a
+      // kind/note per node — without these the block was a shape with no prose.
+      // Long agent-authored text is capped so one field cannot bloat the card.
       const nodes: DiagramBlock["nodes"] = [];
       const ids = new Set<string>();
       for (const n of b.nodes) {
         if (!n || !isStr(n.id) || !isStr(n.label)) return null;
         ids.add(n.id);
-        nodes.push({ id: n.id, label: n.label, detail: isStr(n.detail) ? n.detail : undefined });
+        nodes.push({
+          id: n.id,
+          label: n.label,
+          detail: isStr(n.detail) ? n.detail : undefined,
+          kind: isStr(n.kind) ? n.kind : undefined,
+          note: isStr(n.note) ? n.note.slice(0, 400) : undefined,
+        });
       }
       if (!Array.isArray(b.edges)) return null;
       const edges: DiagramBlock["edges"] = [];
       for (const e of b.edges) {
         if (!e || !isStr(e.from) || !isStr(e.to) || !ids.has(e.from) || !ids.has(e.to)) return null;
-        edges.push({ from: e.from, to: e.to, label: isStr(e.label) ? e.label : undefined });
+        edges.push({
+          from: e.from,
+          to: e.to,
+          label: isStr(e.label) ? e.label : undefined,
+          note: isStr(e.note) ? e.note.slice(0, 400) : undefined,
+        });
       }
-      return { type: "diagram", layout: b.layout, direction: b.direction === "lr" ? "lr" : "tb", nodes, edges };
+      return {
+        type: "diagram",
+        layout: b.layout,
+        direction: b.direction === "lr" ? "lr" : "tb",
+        summary: isStr(b.summary) ? b.summary.slice(0, 400) : undefined,
+        caption: isStr(b.caption) ? b.caption.slice(0, 400) : undefined,
+        nodes,
+        edges,
+      };
     }
     case "checklist":
       if (!Array.isArray(b.items)) return null;

@@ -1,0 +1,59 @@
+{
+  "type": "diagram",
+  "layout": "flow",
+  "direction": "tb",
+  "nodes": [
+    {
+      "id": "a1",
+      "label": "Ingest A"
+    },
+    {
+      "id": "a2",
+      "label": "Parse A"
+    },
+    {
+      "id": "a3",
+      "label": "Store A"
+    },
+    {
+      "id": "b1",
+      "label": "Ingest B"
+    },
+    {
+      "id": "b2",
+      "label": "Parse B"
+    },
+    {
+      "id": "c1",
+      "label": "Island"
+    },
+    {
+      "id": "c2",
+      "label": "Rock"
+    },
+    {
+      "id": "z",
+      "label": "Loose node, no edges at all"
+    }
+  ],
+  "edges": [
+    {
+      "from": "a1",
+      "to": "a2"
+    },
+    {
+      "from": "a2",
+      "to": "a3",
+      "label": "commit"
+    },
+    {
+      "from": "b1",
+      "to": "b2"
+    },
+    {
+      "from": "c1",
+      "to": "c2",
+      "label": "near"
+    }
+  ]
+}

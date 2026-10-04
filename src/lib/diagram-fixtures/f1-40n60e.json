@@ -1,0 +1,472 @@
+{
+  "type": "diagram",
+  "layout": "flow",
+  "direction": "tb",
+  "nodes": [
+    {
+      "id": "s0",
+      "label": "Service 0",
+      "detail": "p0·latency 10ms"
+    },
+    {
+      "id": "s1",
+      "label": "Service 1",
+      "detail": "p1·latency 11ms"
+    },
+    {
+      "id": "s2",
+      "label": "Service 2",
+      "detail": "p2·latency 12ms"
+    },
+    {
+      "id": "s3",
+      "label": "Service 3",
+      "detail": "p3·latency 13ms"
+    },
+    {
+      "id": "s4",
+      "label": "Service 4",
+      "detail": "p4·latency 14ms"
+    },
+    {
+      "id": "s5",
+      "label": "Service 5",
+      "detail": "p5·latency 15ms"
+    },
+    {
+      "id": "s6",
+      "label": "Service 6",
+      "detail": "p6·latency 16ms"
+    },
+    {
+      "id": "s7",
+      "label": "Service 7",
+      "detail": "p7·latency 17ms"
+    },
+    {
+      "id": "s8",
+      "label": "Service 8",
+      "detail": "p8·latency 18ms"
+    },
+    {
+      "id": "s9",
+      "label": "Service 9",
+      "detail": "p9·latency 19ms"
+    },
+    {
+      "id": "d0",
+      "label": "Data store 0"
+    },
+    {
+      "id": "d1",
+      "label": "Data store 1"
+    },
+    {
+      "id": "d2",
+      "label": "Data store 2"
+    },
+    {
+      "id": "d3",
+      "label": "Data store 3"
+    },
+    {
+      "id": "d4",
+      "label": "Data store 4"
+    },
+    {
+      "id": "d5",
+      "label": "Data store 5"
+    },
+    {
+      "id": "d6",
+      "label": "Data store 6"
+    },
+    {
+      "id": "d7",
+      "label": "Data store 7"
+    },
+    {
+      "id": "d8",
+      "label": "Data store 8"
+    },
+    {
+      "id": "d9",
+      "label": "Data store 9"
+    },
+    {
+      "id": "w0",
+      "label": "Worker 0",
+      "detail": "queue consumer"
+    },
+    {
+      "id": "w1",
+      "label": "Worker 1",
+      "detail": "queue consumer"
+    },
+    {
+      "id": "w2",
+      "label": "Worker 2",
+      "detail": "queue consumer"
+    },
+    {
+      "id": "w3",
+      "label": "Worker 3",
+      "detail": "queue consumer"
+    },
+    {
+      "id": "w4",
+      "label": "Worker 4",
+      "detail": "queue consumer"
+    },
+    {
+      "id": "w5",
+      "label": "Worker 5",
+      "detail": "queue consumer"
+    },
+    {
+      "id": "w6",
+      "label": "Worker 6",
+      "detail": "queue consumer"
+    },
+    {
+      "id": "w7",
+      "label": "Worker 7",
+      "detail": "queue consumer"
+    },
+    {
+      "id": "w8",
+      "label": "Worker 8",
+      "detail": "queue consumer"
+    },
+    {
+      "id": "w9",
+      "label": "Worker 9",
+      "detail": "queue consumer"
+    },
+    {
+      "id": "api",
+      "label": "API gateway",
+      "detail": "edge TLS termination"
+    },
+    {
+      "id": "ui",
+      "label": "Web client"
+    },
+    {
+      "id": "auth",
+      "label": "Auth service",
+      "detail": "OIDC"
+    },
+    {
+      "id": "cache",
+      "label": "Redis cache"
+    },
+    {
+      "id": "bus",
+      "label": "Event bus"
+    },
+    {
+      "id": "cd",
+      "label": "CD pipeline"
+    },
+    {
+      "id": "store",
+      "label": "Object store"
+    },
+    {
+      "id": "metrics",
+      "label": "Metrics sink"
+    },
+    {
+      "id": "logs",
+      "label": "Log sink"
+    },
+    {
+      "id": "mail",
+      "label": "Email relay"
+    }
+  ],
+  "edges": [
+    {
+      "from": "w0",
+      "to": "s9",
+      "label": "writes"
+    },
+    {
+      "from": "s4",
+      "to": "bus",
+      "label": "queries"
+    },
+    {
+      "from": "s3",
+      "to": "auth",
+      "label": "writes"
+    },
+    {
+      "from": "w7",
+      "to": "w6",
+      "label": "writes"
+    },
+    {
+      "from": "cd",
+      "to": "w7",
+      "label": "queries"
+    },
+    {
+      "from": "s7",
+      "to": "d4",
+      "label": "queries"
+    },
+    {
+      "from": "s3",
+      "to": "store",
+      "label": "writes"
+    },
+    {
+      "from": "d4",
+      "to": "s2",
+      "label": "reads"
+    },
+    {
+      "from": "d8",
+      "to": "w6",
+      "label": "writes"
+    },
+    {
+      "from": "store",
+      "to": "d9",
+      "label": "replicates"
+    },
+    {
+      "from": "d1",
+      "to": "s6",
+      "label": "replicates"
+    },
+    {
+      "from": "d2",
+      "to": "w3",
+      "label": "replicates"
+    },
+    {
+      "from": "s4",
+      "to": "store",
+      "label": "reads"
+    },
+    {
+      "from": "ui",
+      "to": "bus",
+      "label": "emits"
+    },
+    {
+      "from": "w9",
+      "to": "metrics"
+    },
+    {
+      "from": "w3",
+      "to": "d9",
+      "label": "reads"
+    },
+    {
+      "from": "d5",
+      "to": "s5",
+      "label": "queries"
+    },
+    {
+      "from": "ui",
+      "to": "w1"
+    },
+    {
+      "from": "d8",
+      "to": "logs"
+    },
+    {
+      "from": "s7",
+      "to": "auth",
+      "label": "retries"
+    },
+    {
+      "from": "w1",
+      "to": "s9"
+    },
+    {
+      "from": "w6",
+      "to": "s2"
+    },
+    {
+      "from": "s4",
+      "to": "cd",
+      "label": "retries"
+    },
+    {
+      "from": "w0",
+      "to": "w1",
+      "label": "queries"
+    },
+    {
+      "from": "ui",
+      "to": "metrics"
+    },
+    {
+      "from": "s4",
+      "to": "s5"
+    },
+    {
+      "from": "api",
+      "to": "s4",
+      "label": "replicates"
+    },
+    {
+      "from": "d9",
+      "to": "store"
+    },
+    {
+      "from": "w8",
+      "to": "d8"
+    },
+    {
+      "from": "w2",
+      "to": "s1"
+    },
+    {
+      "from": "w2",
+      "to": "d0",
+      "label": "publishes"
+    },
+    {
+      "from": "s3",
+      "to": "d3"
+    },
+    {
+      "from": "s8",
+      "to": "d5",
+      "label": "retries"
+    },
+    {
+      "from": "ui",
+      "to": "s5",
+      "label": "publishes"
+    },
+    {
+      "from": "cd",
+      "to": "d7"
+    },
+    {
+      "from": "w7",
+      "to": "cd",
+      "label": "publishes"
+    },
+    {
+      "from": "w2",
+      "to": "w4"
+    },
+    {
+      "from": "s9",
+      "to": "s5",
+      "label": "reads"
+    },
+    {
+      "from": "d4",
+      "to": "s0",
+      "label": "queries"
+    },
+    {
+      "from": "d1",
+      "to": "d6",
+      "label": "reads"
+    },
+    {
+      "from": "w6",
+      "to": "bus",
+      "label": "queries"
+    },
+    {
+      "from": "w0",
+      "to": "s8",
+      "label": "queries"
+    },
+    {
+      "from": "mail",
+      "to": "s3",
+      "label": "retries"
+    },
+    {
+      "from": "cd",
+      "to": "w5",
+      "label": "publishes"
+    },
+    {
+      "from": "s6",
+      "to": "api",
+      "label": "writes"
+    },
+    {
+      "from": "d2",
+      "to": "s4"
+    },
+    {
+      "from": "w8",
+      "to": "d0",
+      "label": "queries"
+    },
+    {
+      "from": "s3",
+      "to": "s6",
+      "label": "reads"
+    },
+    {
+      "from": "bus",
+      "to": "s6"
+    },
+    {
+      "from": "mail",
+      "to": "s1",
+      "label": "reads"
+    },
+    {
+      "from": "mail",
+      "to": "w4",
+      "label": "emits"
+    },
+    {
+      "from": "w2",
+      "to": "logs",
+      "label": "writes"
+    },
+    {
+      "from": "s7",
+      "to": "ui"
+    },
+    {
+      "from": "w9",
+      "to": "api",
+      "label": "writes"
+    },
+    {
+      "from": "s9",
+      "to": "s6"
+    },
+    {
+      "from": "d6",
+      "to": "api"
+    },
+    {
+      "from": "d0",
+      "to": "cache",
+      "label": "queries"
+    },
+    {
+      "from": "w3",
+      "to": "s9",
+      "label": "writes"
+    },
+    {
+      "from": "cache",
+      "to": "d9"
+    },
+    {
+      "from": "s5",
+      "to": "d6",
+      "label": "reads"
+    }
+  ]
+}

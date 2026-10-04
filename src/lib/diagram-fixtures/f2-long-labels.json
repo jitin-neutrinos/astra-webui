@@ -1,0 +1,59 @@
+{
+  "type": "diagram",
+  "layout": "flow",
+  "direction": "tb",
+  "nodes": [
+    {
+      "id": "a",
+      "label": "Ingest orchestration controller reconciler",
+      "detail": "Requeues failed partitions with exponential backoff and dead-letter routing"
+    },
+    {
+      "id": "b",
+      "label": "validation",
+      "detail": "schema"
+    },
+    {
+      "id": "c",
+      "label": "Hydration of downstream derived aggregates and rollups across every tenant scoped read model, including late arriving corrections"
+    },
+    {
+      "id": "d",
+      "label": "x",
+      "detail": "5f8c1a9e4b7d2f6a8c0e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1a3c5e7b9d1f3a5c"
+    },
+    {
+      "id": "longword",
+      "label": "Supercalifragilisticexpialidociousantidisestablishmentarianism"
+    },
+    {
+      "id": "e",
+      "label": "out"
+    }
+  ],
+  "edges": [
+    {
+      "from": "a",
+      "to": "b"
+    },
+    {
+      "from": "b",
+      "to": "c",
+      "label": "validated and enriched event payload forwarded downstream with a signed envelope"
+    },
+    {
+      "from": "c",
+      "to": "d",
+      "label": "x"
+    },
+    {
+      "from": "c",
+      "to": "e"
+    },
+    {
+      "from": "e",
+      "to": "longword",
+      "label": "fallback path"
+    }
+  ]
+}

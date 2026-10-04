@@ -468,6 +468,20 @@ export const REGRESSIONS = [
       "The reactive canvas layer was documented but dead at the parser: validateBlock dropped kpi/progress value bindings, table bind/numeric cells and chart series bindings, parseCanvasSpec stripped `state`, control defaults never seeded the scope, and a re-parse reset user edits.",
     guard: "src/lib/canvas-schema.check.ts",
   },
+  {
+    id: "RG-071",
+    found: "2026-10-04",
+    symptom:
+      "Diagram nodes, edge labels and connectors overlapped or ran through each other once a diagram had more than a handful of nodes: the layout was DOM-measured with a nudge heuristic that cannot guarantee free space. The pure layout is audited for node/label overlap, out-of-bounds, edge-through-node, edge-through-label, diagonal segments and determinism on 5 stress fixtures plus 200 seeded random graphs.",
+    guard: "src/lib/diagram-layout.check.ts",
+  },
+  {
+    id: "RG-072",
+    found: "2026-10-04",
+    symptom:
+      "The diagram block's optional summary/caption/kind/note fields were silently dropped by validateBlock, so a reader got no text explanation of a diagram.",
+    guard: "src/lib/canvas-schema.check.ts",
+  },
 ];
 
 // ---- gate -----------------------------------------------------------------
@@ -517,7 +531,15 @@ for (const file of [...liveChecks].sort()) {
   const isTs = /\.check\.(ts|tsx)$/.test(file) || /from ['"][^'"]+\.ts['"]/.test(readFileSync(join(ROOT, file), "utf8"));
   const args = isTs
     ? ["--import", "./scripts/ts-resolve.mjs", file]
-    : [file];
+    : [file  {
+    id: "RG-070",
+    found: "2026-10-04",
+    symptom:
+      "Priority+ composer overflow: a wrong fit decision does not throw, it silently hides a control the owner needed or overflows the row on a phone. Guards the exact-fit boundary, an item wider than the whole budget, unmeasured NaN widths on first paint, monotonicity, and that every collapsible control stays reachable EXACTLY ONCE at every width.",
+    guard: "src/lib/overflow-fit.check.ts",
+  },
+];
+
   const r = spawnSync(process.execPath, args, { cwd: ROOT, encoding: "utf8", timeout: 120_000 });
   if (r.status !== 0) {
     const last = (r.stderr || r.stdout || "").trim().split("\n").filter(Boolean).pop() || "";

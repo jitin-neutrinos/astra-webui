@@ -1,0 +1,71 @@
+{
+  "type": "diagram",
+  "layout": "flow",
+  "direction": "lr",
+  "nodes": [
+    {
+      "id": "p",
+      "label": "Planner"
+    },
+    {
+      "id": "w",
+      "label": "Worker"
+    },
+    {
+      "id": "q",
+      "label": "Queue"
+    },
+    {
+      "id": "m",
+      "label": "Monitor"
+    },
+    {
+      "id": "a",
+      "label": "Alert"
+    },
+    {
+      "id": "r",
+      "label": "Retrier"
+    }
+  ],
+  "edges": [
+    {
+      "from": "p",
+      "to": "q"
+    },
+    {
+      "from": "q",
+      "to": "w",
+      "label": "dequeue"
+    },
+    {
+      "from": "w",
+      "to": "m",
+      "label": "heartbeat"
+    },
+    {
+      "from": "m",
+      "to": "a",
+      "label": "threshold"
+    },
+    {
+      "from": "a",
+      "to": "r"
+    },
+    {
+      "from": "r",
+      "to": "q",
+      "label": "redeliver"
+    },
+    {
+      "from": "w",
+      "to": "p",
+      "label": "reschedule"
+    },
+    {
+      "from": "r",
+      "to": "r",
+      "label": "retry"
+    }
+  ]
+}

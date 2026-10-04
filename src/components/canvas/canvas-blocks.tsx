@@ -1,7 +1,7 @@
 // Canvas block renderers — the individual generative-UI surfaces. Pure
 // presentational; data contracts live in canvas-schema.ts. Lazy-loaded as a
 // chunk with CanvasView (recharts never enters the main bundle).
-import { useEffect, useMemo, useRef, useState, lazy, Suspense, Fragment } from "react";
+import { useEffect, useMemo, useState, lazy, Suspense, Fragment } from "react";
 import { useReducedMotion, useSpring, motion } from "motion/react";
 import { cn } from "../../lib/utils";
 import { bindNumber, bindPoints, bindVisible, resolveBinding, resolveFrom, type FromBinding, type DataRow } from "../../lib/canvas-bind";
@@ -84,7 +84,7 @@ function reactiveRows(bindVal: unknown, ctx?: RenderCtx): { columns: string[]; r
 // recharts lives behind this boundary: chart blocks defer-load the engine, every
 // other block type (and the whole gate path) stays sync and dependency-free.
 const ChartBlockView = lazy(() => import("./canvas-chart").then((m) => ({ default: m.ChartBlockView })));
-import type { CanvasBlock, KpiBlock, TableBlock, DiagramBlock, ChecklistBlock, StepsBlock, CalloutBlock, ProgressBlock, TimelineBlock, CompareBlock, TreeBlock, CodeBlock, ReferencesBlock, QuoteBlock, KeyValueBlock, DiffBlock, HeatmapBlock, TabsBlock, AccordionBlock, TerminalBlock, BadgesBlock, DividerBlock } from "../../lib/canvas-schema";
+import type { CanvasBlock, KpiBlock, TableBlock, ChecklistBlock, StepsBlock, CalloutBlock, ProgressBlock, TimelineBlock, CompareBlock, TreeBlock, CodeBlock, ReferencesBlock, QuoteBlock, KeyValueBlock, DiffBlock, HeatmapBlock, TabsBlock, AccordionBlock, TerminalBlock, BadgesBlock, DividerBlock } from "../../lib/canvas-schema";
 
 
 // ---- KPI ---------------------------------------------------------------------
@@ -252,169 +252,9 @@ export function TableBlockView({ block, ctx }: { block: TableBlock; ctx?: Render
 }
 
 // ---- Diagram -----------------------------------------------------------------
-
-/** One connector's geometry. A LABELLED connector carries the two split points
- *  so the renderer can draw a real gap where the label sits. */
-type EdgeGeom = {
-  d: string;
-  label?: string;
-  x: number;
-  y: number;
-};
-
-
-// Nodes layered into columns; edges drawn as an SVG overlay measured from live
-// DOM rects. Relationship layout renders a single grid column-wrap.
-export function DiagramBlockView({ block }: { block: DiagramBlock }) {
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const [edges, setEdges] = useState<EdgeGeom[]>([]);
-
-  const layers = useMemo(() => {
-    if (block.layout === "relationship") return [block.nodes];
-    const idx = new Map(block.nodes.map((n, i) => [n.id, i]));
-    const layer = new Array(block.nodes.length).fill(0);
-    for (let pass = 0; pass < Math.min(block.nodes.length, 8); pass++) {
-      let moved = false;
-      for (const e of block.edges) {
-        const a = idx.get(e.from);
-        const b = idx.get(e.to);
-        if (a == null || b == null) continue;
-        if (layer[b] < layer[a] + 1) { layer[b] = layer[a] + 1; moved = true; }
-      }
-      if (!moved) break;
-    }
-    const byLayer = new Map<number, typeof block.nodes>();
-    block.nodes.forEach((n, i) => {
-      const l = layer[i];
-      if (!byLayer.has(l)) byLayer.set(l, []);
-      byLayer.get(l)!.push(n);
-    });
-    return [...byLayer.entries()].sort((a, b) => a[0] - b[0]).map(([, ns]) => ns);
-  }, [block]);
-
-  useEffect(() => {
-    const measure = () => {
-      const root = wrapRef.current;
-      if (!root) return;
-      const rects = new Map<string, DOMRect>();
-      root.querySelectorAll<HTMLElement>("[data-node]").forEach((el) => {
-        rects.set(el.dataset.node!, el.getBoundingClientRect());
-      });
-      const base = root.getBoundingClientRect();
-      const rectsList = [...rects.values()];
-      const out: EdgeGeom[] = [];
-      // Nodes already occupying this horizontal band (label collision guard).
-      const claimed: { l: number; r: number; t: number; b: number }[] = [];
-      for (const e of block.edges) {
-        const a = rects.get(e.from);
-        const b = rects.get(e.to);
-        if (!a || !b) continue;
-        const horizontal = block.direction === "lr" && block.layout === "flow";
-        let x1: number, y1: number, x2: number, y2: number;
-        if (horizontal) {
-          x1 = a.right - base.left; y1 = a.top + a.height / 2 - base.top;
-          x2 = b.left - base.left; y2 = b.top + b.height / 2 - base.top;
-        } else {
-          x1 = a.left + a.width / 2 - base.left; y1 = a.bottom - base.top;
-          x2 = b.left + b.width / 2 - base.left; y2 = b.top - base.top;
-        }
-        const mx = (x1 + x2) / 2;
-        const my = (y1 + y2) / 2;
-        const k = horizontal ? Math.max(24, Math.abs(x2 - x1) / 2) : Math.max(20, Math.abs(y2 - y1) / 2);
-        const cx1 = horizontal ? x1 + k : x1;
-        const cy1 = horizontal ? y1 : y1 + k;
-        const cx2 = horizontal ? x2 - k : x2;
-        const cy2 = horizontal ? y2 : y2 - k;
-        const full = `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
-        if (!e.label) { out.push({ d: full, x: mx, y: my }); continue; }
-        // OWNER 2026-10-04 (mandatory no-overlap): a label must never sit on a
-        // card or on another label. Measured on a phone: 2 labels on nodes, 1
-        // label-on-label. Nudge it vertically until it clears every box.
-        const w = Math.min(96, Math.max(34, e.label.length * 5.6));
-        const h = 14;
-        let lx = mx, ly = my;
-        const hits = (x: number, y: number) => {
-          const box = { l: x - w / 2, r: x + w / 2, t: y - h / 2, b: y + h / 2 };
-          const overlaps = (o: { l: number; r: number; t: number; b: number }) =>
-            !(box.r <= o.l || o.r <= box.l || box.b <= o.t || o.b <= box.t);
-          if (claimed.some(overlaps)) return true;
-          return rectsList.some((n) => overlaps({
-            l: n.left - base.left, r: n.right - base.left, t: n.top - base.top, b: n.bottom - base.top,
-          }));
-        };
-        // Step until clear, in BOTH axes (a label must clear a card even when
-        // moving sideways is the only free direction on a narrow column).
-        // Start clear of the connector line itself: the label lives in the GAP
-        // between two node rows, never centred on the line it annotates.
-        const stepY = [-13, 13, -26, 26, -39, 39, -52, 52, -65, 65, 0];
-        const stepX = [0, -w / 2 - 10, w / 2 + 10, -w - 20, w + 20];
-        outer: for (const dx of stepX) {
-          for (const dy of stepY) {
-            if (!hits(lx + dx, ly + dy)) { lx += dx; ly += dy; break outer; }
-          }
-        }
-        claimed.push({ l: lx - w / 2, r: lx + w / 2, t: ly - h / 2, b: ly + h / 2 });
-        // Split the connector around the label so the LINE NEVER passes through
-        // the text (the last interference a phone screenshot still showed).
-        // The label is drawn as an opaque CHIP in the layer above the lines, so
-        // the connector is visually interrupted exactly where the label reads —
-        // no geometry maths, and a visual overlap is impossible by construction.
-        out.push({ d: `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`, label: e.label, x: lx, y: ly });
-      }
-      setEdges(out);
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    if (wrapRef.current) ro.observe(wrapRef.current);
-    window.addEventListener("resize", measure);
-    return () => { ro.disconnect(); window.removeEventListener("resize", measure); };
-  }, [block]);
-
-  // OWNER 2026-10-04: on mobile the edges and their labels rendered BEHIND the
-  // node cards, so a flow diagram was a stack of boxes with invisible lines.
-  // Three structural fixes, in order of impact:
-  //   1. a scrollable canvas — the whole diagram is laid out at a MIN width, so
-  //      a narrow phone pans the diagram instead of crushing it;
-  //   2. the SVG edge layer sits UNDER the nodes (z-index) but the LABELS sit
-  //      ABOVE them, with a paper-coloured halo so they read over a card edge;
-  //   3. on a coarse pointer the layout flips to a single column (tb) because a
-  //      3-column side-by-side flow is unreadable under 400px.
-  const compact = typeof matchMedia === "function" && matchMedia("(max-width: 560px)").matches;
-
-  return (
-    <div className={cn("ast-cv-diagram-scroll", compact && "is-compact")}>
-      <div className={cn("ast-cv-diagram", block.direction === "lr" && !compact && "lr")} ref={wrapRef}>
-        {/* PATHS sit under the node cards… */}
-        <svg className="ast-cv-edges" aria-hidden="true">
-          {edges.map((e, i) => {
-            // A labelled connector is drawn as two segments with a gap where the
-            // label sits — the line can never run through its own text.
-            return <path key={i} d={e.d} fill="none" stroke="var(--color-accent)" strokeOpacity={0.85} strokeWidth={2} />;
-          })}
-        </svg>
-        {/* …and LABELS above them, with a paper halo. One layer is why the
-            labels vanished behind the cards on a phone. */}
-        <svg className="ast-cv-edges ast-cv-edges-labels" aria-hidden="true">
-          {edges.map((e, i) => (
-            e.label ? <text key={i} x={e.x} y={e.y} className="ast-cv-edge-label">{e.label}</text> : null
-          ))}
-        </svg>
-        <div className="ast-cv-node-columns">
-          {layers.map((col, ci) => (
-            <div key={ci} className="ast-cv-node-col">
-              {col.map((n) => (
-                <div key={n.id} data-node={n.id} className="ast-cv-node">
-                  <span className="ast-cv-node-label">{n.label}</span>
-                  {n.detail && <span className="ast-cv-node-detail">{n.detail}</span>}
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
+// The diagram surface moved to ./canvas-diagram (its own lazy chunk): one SVG
+// drawn from the PURE layout in lib/diagram-layout.ts, so node/label overlap is
+// audited rather than nudged. See DiagramLazy below.
 
 // ---- Checklist / Steps ---------------------------------------------------------
 
@@ -960,6 +800,9 @@ const TextLazy = lazy(() => import("./canvas-docs").then((m) => ({ default: m.Te
 const ReactiveLazy = lazy(() => import("./canvas-reactive").then((m) => ({ default: m.ReactiveHub })));
 // v5 knowledge graph — its own lazy chunk (layout maths + SVG renderer).
 const GraphLazy = lazy(() => import("./canvas-graph-view"));
+// v6 diagram — one SVG from the pure layout. dagre (~17 kB gz) lives HERE, so
+// it must never enter the main chunk; same eager-path rule as GraphLazy.
+const DiagramLazy = lazy(() => import("./canvas-diagram").then((m) => ({ default: m.DiagramView })));
 
 function DocSkeleton() {
   // No spinner: the owner reads a loader artifact as a broken card.
@@ -990,7 +833,12 @@ function renderOne(b: CanvasBlock, id: string, bi: number, ctx?: RenderCtx): Rea
     case "badges": return <BadgesView block={b} />;
     case "divider": return <DividerView block={b} />;
     case "table": return <TableBlockView block={b} ctx={ctx} />;
-    case "diagram": return <DiagramBlockView block={b} />;
+    case "diagram":
+      return (
+        <Suspense fallback={<div className="ast-cv-chart ast-cv-chart-skeleton" aria-busy="true" />}>
+          <DiagramLazy block={b} id={`cv-dg-${id}-${bi}`} />
+        </Suspense>
+      );
     case "checklist": return <ChecklistView block={b} />;
     case "steps": return <StepsView block={b} />;
     case "chart":
