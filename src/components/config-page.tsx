@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from "react";
-import { ArrowLeft, Check, Loader2, Undo, Download, Upload, AlertTriangle, Search, ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
+import { ArrowLeft, Check, Loader2, Undo, Download, Upload, AlertTriangle, Search, ChevronDown, ChevronRight, RefreshCw, Brain, Cpu, Zap, Shield, Database, Plus, X, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type SchemaField = {
@@ -20,13 +20,22 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
   const [config, setConfig] = useState<any>(null);
   const [schema, setSchema] = useState<Schema | null>(null);
   const [modelOptions, setModelOptions] = useState<string[]>([]);
+  const [providerOptions, setProviderOptions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [search, setSearch] = useState("");
-  
+  const [showAddProvider, setShowAddProvider] = useState(false);
+  const [showAddModel, setShowAddModel] = useState(false);
+  const [newProviderName, setNewProviderName] = useState("");
+  const [newProviderSlug, setNewProviderSlug] = useState("");
+  const [newModelName, setNewModelName] = useState("");
+  const [newModelProvider, setNewModelProvider] = useState("");
+  const [brainOpen, setBrainOpen] = useState(true);
+  const [behaviorOpen, setBehaviorOpen] = useState(true);
+
   // Pending saves map: dotpath -> status ("saving" | "saved" | "error")
   const [saves, setSaves] = useState<Record<string, string>>({});
-  
+
   // Undo state
   const [undoState, setUndoState] = useState<{ path: string; oldVal: any; newVal: any; timer?: number } | null>(null);
 
@@ -72,18 +81,18 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
         fetch("/api/hx/config/schema"),
         fetch("/api/hx/model/options").catch(() => ({ json: () => ({ models: [] }) } as any))
       ]);
-      
+
       if (!cfgRes.ok) throw new Error("Failed to load config");
-      
+
       const cfg = await cfgRes.json();
       const sch = await schRes.json();
       const opt = await optRes.json();
-      
+
       setConfig(cfg);
       setSchema(sch);
-      
+
       if (opt.providers && Array.isArray(opt.providers)) {
-        // Catalog shape: {providers: [{slug, models: [...]}]} — flatten model ids/names.
+        setProviderOptions(opt.providers);
         const mods = opt.providers.flatMap((p: any) =>
           (Array.isArray(p.models) ? p.models : []).map((m: any) => typeof m === "string" ? m : m.id || m.name)
         ).filter(Boolean);
@@ -102,7 +111,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
 
   const getVal = (path: string) => {
     if (!config) return undefined;
-    const parts = path.split('.');
+    const parts = path.split(".");
     let curr = config;
     for (const p of parts) {
       if (curr === undefined || curr === null) return undefined;
@@ -119,7 +128,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
     // Optimistic UI update
     setConfig((prev: any) => {
       const next = JSON.parse(JSON.stringify(prev));
-      const parts = path.split('.');
+      const parts = path.split(".");
       let curr = next;
       for (let i = 0; i < parts.length - 1; i++) {
         if (!curr[parts[i]]) curr[parts[i]] = {};
@@ -133,7 +142,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
 
     // Construct deep update payload (single dotpath change per PUT)
     const payloadConfig: any = {};
-    const parts = path.split('.');
+    const parts = path.split(".");
     let curr = payloadConfig;
     for (let i = 0; i < parts.length - 1; i++) {
       curr[parts[i]] = {};
@@ -192,6 +201,87 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
     setUndoState(null);
   };
 
+  // Model ids a provider owns. Shape varies: plain strings or {id|name}.
+  const modelIds = (p: any): string[] =>
+    (Array.isArray(p?.models) ? p.models : [])
+      .map((m: any) => (typeof m === "string" ? m : m?.id || m?.name || ""))
+      .filter(Boolean);
+
+  // The provider that OWNS the persisted model. `model` is the only persisted
+  // key — there is no top-level `provider` in config, so writing one is a no-op
+  // and the old derive-only version snapped straight back to zai.
+  const providerOwningModel = useMemo(() => {
+    const model = getVal("model");
+    if (!model) return "";
+    return providerOptions.find((p: any) => modelIds(p).includes(model))?.slug || "";
+  }, [getVal("model"), providerOptions]);
+
+  // Selection intent lives locally so the picker does not fight the user; it
+  // re-syncs whenever the persisted model changes (undo, import, reset).
+  const [selectedProvider, setSelectedProvider] = useState("");
+  useEffect(() => {
+    if (providerOwningModel) setSelectedProvider(providerOwningModel);
+  }, [providerOwningModel]);
+
+  // Picking a provider also moves the model onto that provider — the pair is
+  // persisted through `model`, so the choice survives a reload.
+  const pickProvider = (slug: string) => {
+    setSelectedProvider(slug);
+    const ids = modelIds(providerOptions.find((p: any) => p.slug === slug));
+    if (ids.length && !ids.includes(getVal("model"))) updateVal("model", ids[0]);
+  };
+
+  // Models filtered by selected provider
+  const filteredModels = useMemo(() => {
+    if (!selectedProvider) return modelOptions;
+    const p = providerOptions.find((x: any) => x.slug === selectedProvider);
+    if (!p) return modelOptions;
+    return modelIds(p);
+  }, [selectedProvider, providerOptions, modelOptions]);
+
+  // Fallback chain helpers
+  const addFallbackEntry = () => {
+    const chain = [...(getVal("fallback_providers") || [])];
+    chain.push({ provider: "", model: "" });
+    updateVal("fallback_providers", chain);
+  };
+
+  const updateFallbackEntry = (index: number, field: string, value: string) => {
+    const chain = [...(getVal("fallback_providers") || [])];
+    chain[index] = { ...chain[index], [field]: value };
+    updateVal("fallback_providers", chain);
+  };
+
+  const removeFallbackEntry = (index: number) => {
+    const chain = [...(getVal("fallback_providers") || [])];
+    chain.splice(index, 1);
+    updateVal("fallback_providers", chain);
+  };
+
+  // Add provider/model helpers
+  const addProvider = () => {
+    if (!newProviderSlug.trim()) return;
+    const newProv = { slug: newProviderSlug.trim(), name: newProviderName.trim() || newProviderSlug.trim(), models: [] };
+    setProviderOptions((prev: any[]) => [...prev, newProv]);
+    setShowAddProvider(false);
+    setNewProviderName("");
+    setNewProviderSlug("");
+  };
+
+  const addModel = () => {
+    if (!newModelName.trim() || !newModelProvider) return;
+    setProviderOptions((prev: any[]) =>
+      prev.map((p: any) =>
+        p.slug === newModelProvider
+          ? { ...p, models: [...(p.models || []), newModelName.trim()] }
+          : p
+      )
+    );
+    setShowAddModel(false);
+    setNewModelName("");
+    setNewModelProvider("");
+  };
+
   const exportConfig = () => {
     if (!config) return;
     const blob = new Blob([JSON.stringify(config, null, 2)], { type: "application/json" });
@@ -246,8 +336,8 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
 
   const renderField = (path: string, label?: string, typeOverride?: string, optionsOverride?: string[]) => {
     const fieldSchema = schema?.fields?.[path];
-    if (!fieldSchema && !label) return null; // Wait, some curated fields might not be in schema, like agent.reasoning_effort. R2 says to render it anyway.
-    
+    if (!fieldSchema && !label) return null;
+
     const type = typeOverride || fieldSchema?.type || "string";
     const options = optionsOverride || fieldSchema?.options || [];
     const val = getVal(path);
@@ -274,21 +364,19 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
           {type === "boolean" ? (
             <button
               onClick={() => updateVal(path, !val)}
-              className={cn("w-10 h-5 rounded-[5px] transition-colors relative", val ? "bg-accent" : "bg-white/10")}
+              className={cn("w-12 h-6 rounded-lg transition-colors relative shrink-0 min-w-0", val ? "bg-accent" : "bg-white/10")}
             >
-              <span className={cn("absolute top-0.5 left-0.5 bg-void w-4 h-4 rounded-[3px] transition-transform", val && "translate-x-5")} />
+              <span className={cn("absolute top-0.5 left-0.5 bg-void w-5 h-5 rounded-md transition-transform", val && "translate-x-6")} />
             </button>
           ) : type === "select" || (options && options.length > 0) ? (
             options.length > 0 ? (
-              <select
+              <DropdownSelect
                 value={val ?? ""}
-                onChange={(e) => updateVal(path, e.target.value)}
-                className="bg-midnight border border-white/10 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-accent/50 min-w-[140px] appearance-none cursor-pointer"
-              >
-                {options.map((opt: string) => <option key={opt} value={opt}>{opt || "off"}</option>)}
-              </select>
+                onChange={(v) => updateVal(path, v)}
+                options={options.map((opt: string) => ({ value: opt, label: opt || "off" }))}
+                placeholder="Select..."
+              />
             ) : (
-              // Fallback to text input if select has no options in schema
               <input
                 type="text"
                 value={drafts[path] ?? val ?? ""}
@@ -324,15 +412,54 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
   };
 
   const ttsProvider = getVal("tts.provider") || "openai";
-  // Ponytail: keep only real voice keys — piper has voice but no speed; guard by schema presence.
   const ttsVoiceKey = schema?.fields?.[`tts.${ttsProvider}.voice`] ? `tts.${ttsProvider}.voice`
     : schema?.fields?.[`tts.${ttsProvider}.voice_id`] ? `tts.${ttsProvider}.voice_id` : null;
   const ttsSpeedKey = schema?.fields?.[`tts.${ttsProvider}.speed`] ? `tts.${ttsProvider}.speed` : null;
 
+  // Custom dropdown component
+  const DropdownSelect = ({ value, onChange, options, placeholder = "Select...", className = "" }: {
+    value: string;
+    onChange: (v: string) => void;
+    options: { value: string; label: string }[];
+    placeholder?: string;
+    className?: string;
+  }) => {
+    const [open, setOpen] = useState(false);
+    const ref = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+      const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+      document.addEventListener("mousedown", handler);
+      return () => document.removeEventListener("mousedown", handler);
+    }, []);
+    const selected = options.find(o => o.value === value);
+    return (
+      <div ref={ref} className={`relative ${className}`}>
+        <button type="button" onClick={() => setOpen(!open)}
+          className="w-full flex items-center justify-between gap-2 bg-midnight border border-white/10 rounded-lg px-3 py-2 text-sm text-left hover:border-accent/30 focus:border-accent/50 focus:outline-none transition-colors cursor-pointer"
+        >
+          <span className={cn("truncate", !selected && "text-slate-500")}>{selected?.label || placeholder}</span>
+          <ChevronDown className={cn("w-4 h-4 text-slate-500 shrink-0 transition-transform", open && "rotate-180")} />
+        </button>
+        {open && (
+          <div className="absolute z-50 mt-1 w-full bg-midnight border border-white/10 rounded-lg shadow-2xl max-h-60 overflow-y-auto">
+            {options.map(o => (
+              <button key={o.value} type="button" onClick={() => { onChange(o.value); setOpen(false); }}
+                className={cn("w-full text-left px-3 py-2 text-sm hover:bg-accent/10 transition-colors truncate",
+                  o.value === value ? "text-accent bg-accent/5" : "text-slate-300")}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
-    <div className="flex-1 overflow-auto bg-void text-brandtext font-sans p-4 lg:p-10 relative">
+    <div className="flex-1 overflow-auto bg-void text-brandtext font-sans px-3 py-4 sm:px-6 lg:p-10 relative">
       <div className="max-w-4xl mx-auto mb-8 flex items-center gap-4">
-        <button type="button" onClick={onBack} className="p-2 -ml-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-slate-400 transition lg:hidden" aria-label="Back to chat">
+        <button type="button" onClick={onBack} className="p-2 -ml-2 rounded-lg hover:bg-white/5 text-slate-400 transition lg:hidden" aria-label="Back to chat">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div>
@@ -342,34 +469,258 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
       </div>
 
       <div className="max-w-4xl mx-auto space-y-6">
-        
-        {/* Curated Sections */}
-        
-        <section className="rounded-2xl border border-white/[0.08] bg-midnight/50 p-6 backdrop-blur-md">
-          <h3 className="font-display text-lg text-brandtext mb-4 border-b border-white/[0.04] pb-2">Brain</h3>
-          <div className="space-y-1">
-            {renderField("model", "Default Model", "select", modelOptions)}
-            
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3 border-b border-white/[0.04]">
-              <div className="flex-1 min-w-0">
-                <label className="text-sm text-slate-200 font-medium font-mono">Fallback Chain</label>
-                <p className="text-xs text-slate-500 mt-0.5">Read-only view of fallback_providers</p>
+
+        {/* Brain Section - Collapsible */}
+        <section className="rounded-2xl border border-white/[0.08] bg-midnight/50 backdrop-blur-md overflow-hidden">
+          <button type="button" onClick={() => setBrainOpen(!brainOpen)} className="w-full flex items-center gap-3 p-6 pb-4 text-left hover:bg-white/[0.02] transition-colors">
+            <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
+              <Brain className="w-4 h-4 text-accent" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-display text-lg text-brandtext">Brain</h3>
+              <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Core AI Configuration</p>
+            </div>
+            <ChevronDown className={cn("w-5 h-5 text-slate-500 transition-transform shrink-0", !brainOpen && "-rotate-90")} />
+          </button>
+          {brainOpen && (
+          <div className="px-6 pb-6 space-y-6">
+
+          {/* Quick Stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+            <div className="bg-void/50 rounded-lg p-3">
+              <div className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-1">Model</div>
+              <div className="text-sm font-mono text-brandtext truncate">{getVal("model") || "—"}</div>
+            </div>
+            <div className="bg-void/50 rounded-lg p-3">
+              <div className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-1">Reasoning</div>
+              <div className="text-sm font-mono text-brandtext">{getVal("agent.reasoning_effort") || "—"}</div>
+            </div>
+            <div className="bg-void/50 rounded-lg p-3">
+              <div className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-1">Memory</div>
+              <div className="text-sm font-mono text-brandtext">{getVal("memory.memory_enabled") ? "On" : "Off"}</div>
+            </div>
+            <div className="bg-void/50 rounded-lg p-3">
+              <div className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-1">Streaming</div>
+              <div className="text-sm font-mono text-brandtext">{getVal("streaming.enabled") ? "On" : "Off"}</div>
+            </div>
+          </div>
+
+          {/* Model & Provider */}
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Cpu className="w-3.5 h-3.5 text-accent/70" />
+              <h4 className="text-xs font-mono uppercase tracking-[0.15em] text-slate-400">Model & Provider</h4>
+            </div>
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-slate-500 font-mono mb-1 block">Provider</label>
+                  <div className="flex gap-2">
+                    <DropdownSelect
+                      value={selectedProvider}
+                      onChange={pickProvider}
+                      options={providerOptions.map(p => ({ value: p.slug, label: p.name }))}
+                      placeholder="Select provider"
+                      className="flex-1 min-w-0"
+                    />
+                    <button onClick={() => setShowAddProvider(true)} className="h-[38px] w-[38px] shrink-0 grid place-items-center rounded-lg bg-accent/10 hover:bg-accent/20 text-accent transition-colors" title="Add provider" aria-label="Add provider">
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 font-mono mb-1 block">Model</label>
+                  <div className="flex gap-2">
+                    <DropdownSelect
+                      value={getVal("model") || ""}
+                      onChange={(v) => updateVal("model", v)}
+                      options={filteredModels.map(m => ({ value: m, label: m }))}
+                      placeholder="Select model"
+                      className="flex-1 min-w-0"
+                    />
+                    <button onClick={() => setShowAddModel(true)} className="h-[38px] w-[38px] shrink-0 grid place-items-center rounded-lg bg-accent/10 hover:bg-accent/20 text-accent transition-colors" title="Add model" aria-label="Add model">
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
               </div>
-              <div className="text-xs font-mono text-slate-400 max-w-[50%] text-right truncate">
-                {(getVal("fallback_providers") || []).join(" → ") || "None"}
+              {renderField("model_context_length", "Context Length", "number")}
+
+              {/* Fallback Chain - Editable */}
+              <div className="py-3 border-b border-white/[0.04]">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <label className="text-sm text-slate-200 font-medium font-mono">Fallback Chain</label>
+                    <p className="text-xs text-slate-500 mt-0.5">Ordered failover sequence</p>
+                  </div>
+                  <button onClick={addFallbackEntry} className="h-[38px] w-[38px] shrink-0 grid place-items-center rounded-lg bg-accent/10 hover:bg-accent/20 text-accent transition-colors" title="Add fallback provider" aria-label="Add fallback provider">
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {(getVal("fallback_providers") || []).map((entry: any, i: number) => (
+                    <div key={i} className="flex flex-col sm:flex-row sm:items-center gap-2 bg-void/50 rounded-lg px-3 py-2 overflow-hidden">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono text-slate-500 w-4">{i + 1}.</span>
+                        <DropdownSelect
+                          value={entry.provider || ""}
+                          onChange={(v) => updateFallbackEntry(i, "provider", v)}
+                          options={providerOptions.map(p => ({ value: p.slug, label: p.name }))}
+                          placeholder="Provider"
+                          className="flex-1 min-w-0"
+                        />
+                        <button onClick={() => removeFallbackEntry(i)} className="h-[38px] w-[38px] shrink-0 grid place-items-center rounded-lg bg-white/[0.04] hover:bg-redx/15 text-slate-500 hover:text-redx transition-colors" title="Remove" aria-label={`Remove fallback entry ${i + 1}`}>
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <DropdownSelect
+                        value={entry.model || ""}
+                        onChange={(v) => updateFallbackEntry(i, "model", v)}
+                        options={(() => {
+                          const models: any[] = providerOptions.find((p: any) => p.slug === entry.provider)?.models || [];
+                          return models.map((m: any) => {
+                            const mid = typeof m === "string" ? m : m.id || m.name || "";
+                            return { value: mid, label: mid };
+                          });
+                        })()}
+                        placeholder="Model"
+                        className="flex-1 min-w-0"
+                      />
+                    </div>
+                  ))}
+                  {(!getVal("fallback_providers") || getVal("fallback_providers").length === 0) && (
+                    <p className="text-xs text-slate-500 font-mono py-2">No fallback providers configured</p>
+                  )}
+                </div>
               </div>
             </div>
-
-            {renderField("agent.reasoning_effort", "Reasoning Effort", "select", ["off", "low", "medium", "high", "ultra"])}
           </div>
+
+          {/* Reasoning & Thinking */}
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Brain className="w-3.5 h-3.5 text-accent/70" />
+              <h4 className="text-xs font-mono uppercase tracking-[0.15em] text-slate-400">Reasoning & Thinking</h4>
+            </div>
+            <div className="space-y-1">
+              {renderField("agent.reasoning_effort", "Reasoning Effort", "select", ["off", "low", "medium", "high", "ultra"])}
+              {renderField("agent.service_tier", "Service Tier", "select", ["", "normal", "fast", "auto", "cold"])}
+              {renderField("agent.max_turns", "Max Turns", "number")}
+              {renderField("agent.reasoning_echo", "Reasoning Echo", "boolean")}
+            </div>
+          </div>
+
+          {/* Memory & Context */}
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Database className="w-3.5 h-3.5 text-accent/70" />
+              <h4 className="text-xs font-mono uppercase tracking-[0.15em] text-slate-400">Memory & Context</h4>
+            </div>
+            <div className="space-y-1">
+              {renderField("memory.memory_enabled", "Memory System", "boolean")}
+              {renderField("memory.provider", "Memory Provider", "select", ["", "agentmemory", "byterover", "holographic", "honcho", "mem0", "openviking", "retaindb", "supermemory"])}
+              {renderField("memory.memory_char_limit", "Memory Char Limit", "number")}
+              {renderField("memory.user_char_limit", "User Char Limit", "number")}
+              {renderField("memory.user_profile_enabled", "User Profile", "boolean")}
+            </div>
+          </div>
+
+          {/* Streaming & Output */}
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Zap className="w-3.5 h-3.5 text-accent/70" />
+              <h4 className="text-xs font-mono uppercase tracking-[0.15em] text-slate-400">Streaming & Output</h4>
+            </div>
+            <div className="space-y-1">
+              {renderField("streaming.enabled", "Stream Responses", "boolean")}
+              {renderField("streaming.buffer_threshold", "Buffer Threshold", "number")}
+              {renderField("streaming.cursor", "Cursor Character")}
+            </div>
+          </div>
+
+          {/* Agent Behavior */}
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Shield className="w-3.5 h-3.5 text-accent/70" />
+              <h4 className="text-xs font-mono uppercase tracking-[0.15em] text-slate-400">Agent Behavior</h4>
+            </div>
+            <div className="space-y-1">
+              {renderField("agent.tool_use_enforcement", "Tool Use Enforcement")}
+              {renderField("agent.execution_guidance", "Execution Guidance")}
+              {renderField("agent.stall_guards", "Stall Guards", "boolean")}
+              {renderField("agent.verify_guidance", "Verify Guidance", "boolean")}
+              {renderField("agent.environment_probe", "Environment Probe", "boolean")}
+            </div>
+          </div>
+
+          {/* Safety & Guards */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle className="w-3.5 h-3.5 text-accent/70" />
+              <h4 className="text-xs font-mono uppercase tracking-[0.15em] text-slate-400">Safety & Guards</h4>
+            </div>
+            <div className="space-y-1">
+              {renderField("agent.empty_response_guard.enabled", "Empty Response Guard", "boolean")}
+              {renderField("agent.empty_response_guard.cost_threshold_usd", "Cost Threshold (USD)", "number")}
+              {renderField("agent.bot_mode_protocol", "Bot Mode Protocol", "boolean")}
+            </div>
+          </div>
+          </div>
+          )}
         </section>
 
-        <section className="rounded-2xl border border-white/[0.08] bg-midnight/50 p-6 backdrop-blur-md">
-          <h3 className="font-display text-lg text-brandtext mb-4 border-b border-white/[0.04] pb-2">Behavior</h3>
-          <div className="space-y-1">
-            {renderField("approvals.mode", "Approval Mode", "select", ["manual", "smart", "off"])}
-            {renderField("memory.memory_enabled", "Memory System", "boolean")}
+        {/* Behavior Section - Collapsible */}
+        <section className="rounded-2xl border border-white/[0.08] bg-midnight/50 backdrop-blur-md overflow-hidden">
+          <button type="button" onClick={() => setBehaviorOpen(!behaviorOpen)} className="w-full flex items-center gap-3 p-6 pb-4 text-left hover:bg-white/[0.02] transition-colors">
+            <div className="w-8 h-8 rounded-lg bg-violetx/10 flex items-center justify-center shrink-0">
+              <Shield className="w-4 h-4 text-violetx" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-display text-lg text-brandtext">Behavior</h3>
+              <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Interaction & Safety</p>
+            </div>
+            <ChevronDown className={cn("w-5 h-5 text-slate-500 transition-transform shrink-0", !behaviorOpen && "-rotate-90")} />
+          </button>
+          {behaviorOpen && (
+          <div className="px-6 pb-6 space-y-6">
+            {/* Approvals */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Shield className="w-3.5 h-3.5 text-violetx/70" />
+                <h4 className="text-xs font-mono uppercase tracking-[0.15em] text-slate-400">Approvals</h4>
+              </div>
+              <div className="space-y-1">
+                {renderField("approvals.mode", "Approval Mode", "select", ["manual", "smart", "off"])}
+                {renderField("approvals.timeout", "Approval Timeout (s)", "number")}
+                {renderField("approvals.destructive_slash_confirm", "Confirm Destructive Commands", "boolean")}
+              </div>
+            </div>
+            {/* Memory */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Database className="w-3.5 h-3.5 text-violetx/70" />
+                <h4 className="text-xs font-mono uppercase tracking-[0.15em] text-slate-400">Memory</h4>
+              </div>
+              <div className="space-y-1">
+                {renderField("memory.memory_enabled", "Memory System", "boolean")}
+                {renderField("memory.write_approval", "Memory Write Approval", "boolean")}
+                {renderField("memory.nudge_interval", "Nudge Interval", "number")}
+              </div>
+            </div>
+            {/* Interaction */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Zap className="w-3.5 h-3.5 text-violetx/70" />
+                <h4 className="text-xs font-mono uppercase tracking-[0.15em] text-slate-400">Interaction</h4>
+              </div>
+              <div className="space-y-1">
+                {renderField("agent.text_verbosity", "Text Verbosity")}
+                {renderField("agent.coding_context", "Coding Context")}
+                {renderField("agent.image_input_mode", "Image Input Mode")}
+              </div>
+            </div>
           </div>
+          )}
         </section>
 
         {(ttsVoiceKey || ttsSpeedKey) && (
@@ -385,7 +736,6 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
         <section className="rounded-2xl border border-white/[0.08] bg-midnight/50 p-6 backdrop-blur-md">
           <h3 className="font-display text-lg text-brandtext mb-4 border-b border-white/[0.04] pb-2">Appearance</h3>
           <div className="space-y-1">
-            {renderField("display.skin", "Theme Skin")}
             {renderField("streaming.enabled", "Stream Responses", "boolean")}
           </div>
           <ThemePanel />
@@ -408,7 +758,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
 
         {/* Advanced Toggle */}
         <div className="pt-4 pb-12">
-          <button 
+          <button
             onClick={() => setShowAdvanced(!showAdvanced)}
             className="flex items-center justify-center w-full gap-2 py-3 rounded-xl border border-white/[0.04] bg-white/[0.01] hover:bg-white/[0.03] transition-colors text-sm font-mono text-slate-400"
           >
@@ -420,9 +770,9 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
             <div className="mt-6 space-y-6 animate-in fade-in slide-in-from-top-4 duration-300">
               <div className="relative">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input 
-                  type="text" 
-                  placeholder="Search settings..." 
+                <input
+                  type="text"
+                  placeholder="Search settings..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="w-full bg-midnight/50 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-accent/50 font-mono"
@@ -440,7 +790,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
                   </section>
                 );
               })}
-              
+
               {Object.keys(categories).length === 0 && (
                 <div className="text-center py-10 text-slate-500 text-sm font-mono">No settings match your search.</div>
               )}
@@ -456,12 +806,88 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
             <p className="text-sm font-medium text-slate-200">Setting updated</p>
             <p className="text-xs font-mono text-slate-500 mt-0.5 max-w-[200px] truncate">{undoState.path}</p>
           </div>
-          <button 
+          <button
             onClick={handleUndo}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-accent/10 text-accent hover:bg-accent/20 transition-colors text-xs font-mono uppercase tracking-wider font-bold"
           >
             <Undo className="w-3.5 h-3.5" /> Undo
           </button>
+        </div>
+      )}
+
+      {/* Add Provider Modal */}
+      {showAddProvider && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowAddProvider(false)}>
+          <div className="bg-midnight border border-white/10 rounded-2xl p-6 w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-display text-lg text-brandtext">Add Provider</h3>
+              <button onClick={() => setShowAddProvider(false)} className="p-1 rounded hover:bg-white/10 text-slate-400"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-slate-500 font-mono mb-1 block">Provider Slug</label>
+                <input
+                  type="text"
+                  value={newProviderSlug}
+                  onChange={e => setNewProviderSlug(e.target.value)}
+                  placeholder="e.g. openai"
+                  className="w-full bg-void border border-white/10 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-accent/50"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 font-mono mb-1 block">Display Name</label>
+                <input
+                  type="text"
+                  value={newProviderName}
+                  onChange={e => setNewProviderName(e.target.value)}
+                  placeholder="e.g. OpenAI"
+                  className="w-full bg-void border border-white/10 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-accent/50"
+                />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button onClick={() => setShowAddProvider(false)} className="flex-1 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-sm transition-colors">Cancel</button>
+                <button onClick={addProvider} className="flex-1 px-4 py-2 rounded-lg bg-accent hover:bg-accent/80 text-void text-sm font-medium transition-colors">Add</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Model Modal */}
+      {showAddModel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowAddModel(false)}>
+          <div className="bg-midnight border border-white/10 rounded-2xl p-6 w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-display text-lg text-brandtext">Add Model</h3>
+              <button onClick={() => setShowAddModel(false)} className="p-1 rounded hover:bg-white/10 text-slate-400"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-slate-500 font-mono mb-1 block">Provider</label>
+                <DropdownSelect
+                  value={newModelProvider}
+                  onChange={setNewModelProvider}
+                  options={providerOptions.map(p => ({ value: p.slug, label: p.name }))}
+                  placeholder="Select provider"
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 font-mono mb-1 block">Model ID</label>
+                <input
+                  type="text"
+                  value={newModelName}
+                  onChange={e => setNewModelName(e.target.value)}
+                  placeholder="e.g. gpt-4o"
+                  className="w-full bg-void border border-white/10 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-accent/50"
+                />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button onClick={() => setShowAddModel(false)} className="flex-1 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-sm transition-colors">Cancel</button>
+                <button onClick={addModel} className="flex-1 px-4 py-2 rounded-lg bg-accent hover:bg-accent/80 text-void text-sm font-medium transition-colors">Add</button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
