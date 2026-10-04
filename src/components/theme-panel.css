@@ -47,3 +47,86 @@
 .tf-mode { font: 500 12px/1 var(--font-sans); color: var(--color-muted); background: transparent; border: none; border-radius: 7px; padding: 7px 16px; cursor: pointer; transition: color 150ms ease, background-color 150ms ease; }
 .tf-mode:hover { color: var(--color-brandtext); }
 .tf-mode-on { color: var(--color-void); background: var(--color-cyanx); }
+
+/* ============================ theme selector dropdown ============================ */
+/* The card grid became a dropdown: 5+ themes and user themes do not fit as cards,
+   and the owner asked for a proper selector. Both modes of each entry are shown
+   side by side so a theme is judged as the PAIR it actually is. */
+.tf-picker { position: relative; }
+.tf-picker-btn {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 11px; cursor: pointer; text-align: left;
+  background: rgb(0 0 0 / 0.25); border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 10px; transition: border-color 150ms ease, background-color 150ms ease;
+}
+.tf-picker-btn:hover { border-color: rgb(var(--c-4) / 0.45); }
+.tf-picker-btn:focus-visible { outline: 2px solid rgb(var(--c-4) / 0.6); outline-offset: 1px; }
+.tf-picker-name { flex: 1; min-width: 0; font: 500 13px/1.2 var(--font-sans); color: var(--color-brandtext); }
+.tf-picker-badge {
+  margin-left: 6px; padding: 2px 5px; border-radius: 5px; font: 600 9px/1 var(--font-sans);
+  font-style: normal; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--color-cyanx); background: rgb(var(--c-4) / 0.14);
+}
+.tf-caret {
+  width: 7px; height: 7px; flex: none; margin-right: 3px;
+  border-right: 1.5px solid var(--color-muted); border-bottom: 1.5px solid var(--color-muted);
+  transform: rotate(45deg) translate(-2px, -2px); transition: transform 160ms ease;
+}
+.tf-caret-open { transform: rotate(-135deg) translate(-3px, -3px); }
+.tf-picker-menu {
+  position: absolute; z-index: 40; top: calc(100% + 4px); left: 0; right: 0;
+  max-height: 320px; overflow-y: auto; padding: 4px;
+  background: var(--color-midnight); border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 10px; box-shadow: 0 18px 40px rgb(0 0 0 / 0.45);
+}
+.tf-picker-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 8px;
+  background: transparent; border: none; border-radius: 8px; cursor: pointer; text-align: left;
+  transition: background-color 130ms ease;
+}
+.tf-picker-item:hover { background: rgb(var(--c-4) / 0.10); }
+.tf-picker-item-on { background: rgb(var(--c-4) / 0.12); }
+.tf-picker-item-on .tf-picker-item-name { color: var(--color-cyanx); }
+.tf-picker-item-name { flex: 1; min-width: 0; font: 400 12.5px/1.2 var(--font-sans); color: var(--color-brandtext); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tf-pair { display: flex; gap: 3px; flex: none; }
+.tf-swatches-sm i { width: 9px; height: 16px; }
+.tf-picker-del {
+  flex: none; width: 20px; height: 20px; display: grid; place-items: center;
+  border-radius: 6px; font: 400 15px/1 var(--font-sans); color: var(--color-muted);
+  cursor: pointer; transition: color 130ms ease, background-color 130ms ease;
+}
+.tf-picker-del:hover { color: var(--color-redx); background: rgb(var(--c-9) / 0.16); }
+.tf-picker-foot { padding: 5px 4px 2px; margin-top: 3px; border-top: 1px solid rgb(255 255 255 / 0.08); }
+
+/* ============================ disclosure (colours menu) ============================ */
+.tf-disclosure {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 2px;
+  background: transparent; border: none; cursor: pointer; text-align: left;
+}
+.tf-disclosure:hover .tf-section-title { color: var(--color-brandtext); }
+.tf-disclosure .tf-sub { margin-left: auto; }
+
+/* ============================ theme builder ============================ */
+.tf-builder-inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin: 4px 0 12px; }
+.tf-bfield { display: flex; flex-direction: column; gap: 5px; font: 400 11px/1 var(--font-sans); color: var(--color-muted); }
+.tf-bcolor { display: flex; align-items: center; gap: 8px; }
+.tf-bcolor input[type="color"] { width: 30px; height: 30px; padding: 0; border: 1px solid rgb(255 255 255 / 0.15); border-radius: 8px; background: none; cursor: pointer; }
+.tf-bcolor code { font: 400 11px/1 var(--font-mono); color: var(--color-brandtext); }
+.tf-builder-out { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.tf-bpreview { padding: 10px; border: 1px solid rgb(255 255 255 / 0.10); border-radius: 10px; background: rgb(0 0 0 / 0.25); }
+/* the light preview is painted as paper so the verdict is judged on the real surface */
+.tf-bpreview-light { background: rgb(255 255 255 / 0.92); border-color: rgb(0 0 0 / 0.12); }
+.tf-bpreview-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.tf-bpreview-title { font: 600 10px/1 var(--font-sans); letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-muted); }
+.tf-verdict { padding: 3px 7px; border-radius: 6px; font: 600 10px/1 var(--font-mono); }
+.tf-verdict-ok { color: var(--color-emerald); background: rgb(var(--c-10) / 0.16); }
+.tf-verdict-bad { color: var(--color-redx); background: rgb(var(--c-9) / 0.16); }
+.tf-bswatches { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+.tf-bswatch { display: flex; flex-direction: column; gap: 3px; align-items: center; }
+.tf-bswatch i { display: block; width: 100%; height: 22px; border-radius: 5px; border: 1px solid rgb(255 255 255 / 0.14); }
+.tf-bswatch em { font: 400 8px/1 var(--font-sans); font-style: normal; color: var(--color-muted); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.tf-bratios { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.tf-ratio { padding: 2px 6px; border-radius: 5px; font: 500 9.5px/1.4 var(--font-mono); }
+.tf-ratio-ok { color: var(--color-emerald); background: rgb(var(--c-10) / 0.14); }
+.tf-ratio-bad { color: var(--color-redx); background: rgb(var(--c-9) / 0.16); }
+.tf-mini-primary { color: var(--color-void); background: var(--color-cyanx); border-color: transparent; font-weight: 600; }

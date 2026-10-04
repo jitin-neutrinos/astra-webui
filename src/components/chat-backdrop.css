@@ -63,3 +63,13 @@
 @media (prefers-reduced-motion: reduce) {
   .chat-backdrop-media[autoplay], .chat-backdrop-yt iframe { /* autoplay attribute can't be styled; JS pause handled in component */ }
 }
+
+/* Blur: applied on the CONTAINER (not the media) so the blur samples the composited
+   frame once instead of per-element, and the dim scrim stays sharp above it.
+   The scale() compensates for the soft edge a blur leaves at the viewport border —
+   without it the 1px transparent rim of a blurred image is visible as a dark halo.
+   Only applied when bg.blur > 0 (inline), so the default path has no filter cost. */
+.chat-backdrop[style*="blur"] { will-change: filter; transform-origin: center; }
+/* A blurred backdrop is static decoration: promoting it to its own layer keeps the
+   filter off the chat's repaint path while typing/scrolling. */
+.chat-backdrop-yt iframe { background: #000; }

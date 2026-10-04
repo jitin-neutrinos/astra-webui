@@ -5,6 +5,7 @@
 // Channel vars come from the tokenized CSS (295 defs); roles resolve per mode.
 
 import rawPalettes from "../theme-engine/palettes.json";
+import { readUserThemes, writeUserThemes, type UserTheme } from "./color-engine";
 
 export interface PaletteVariant { [token: string]: string } // "--color-void": "#0a0a0f"
 export interface Palette {
@@ -13,6 +14,31 @@ export interface Palette {
 }
 export const palettes = (rawPalettes as unknown as { palettes: Palette[] }).palettes;
 export type ThemeMode = "dark" | "light";
+
+/**
+ * Every selectable palette: the shipped ones plus the user's saved themes.
+ *
+ * User themes are STORED SEPARATELY from palettes.json on purpose — the shipped
+ * list is a generated artefact (build-palette.mjs rewrites it, so a hand-edit
+ * there is erased), while user themes are runtime data that must survive both a
+ * rebuild and a `hermes update`. They are merged HERE, at the single lookup
+ * seam, so every existing consumer (picker, applyPalette, mergeCustom,
+ * currentPaletteId, the sync layer) sees both without being rewritten.
+ */
+export function allPalettes(): Palette[] {
+  const user = readUserThemes().map(
+    (t: UserTheme): Palette => ({
+      id: t.id,
+      name: t.name,
+      source: "user",
+      license: t.license,
+      variants: { dark: t.variants.dark, light: t.variants.light },
+    })
+  );
+  // A user theme may shadow a shipped id (re-deriving "astra-ui"); the user's wins.
+  const shadowed = new Set(user.map((u) => u.id));
+  return [...palettes.filter((p) => !shadowed.has(p.id)), ...user];
+}
 
 const LS_KEY = "astra-palette";
 const LS_CUSTOM = "astra-palette-custom";
@@ -43,7 +69,7 @@ function channels(variant: PaletteVariant, token: string): string {
  *  which is what reads as "muddy, hard-to-read secondary text". Deriving the ramp from the
  *  palette's ink + void makes every step a tint of THAT theme's own colours. */
 function syncThemeColorMeta(mode: ThemeMode) {
-  const p = mergeCustom(palettes.find((x) => x.id === currentPaletteId()) || palettes[0]);
+  const p = mergeCustom(allPalettes().find((x) => x.id === currentPaletteId()) || palettes[0]);
   const v = p.variants[mode] || {};
   const voidHex = v["--color-void"];
   if (/^#[0-9a-fA-F]{6}$/.test(voidHex || "")) {
@@ -219,14 +245,14 @@ export function currentPaletteId(): string {
   try {
     const id = localStorage.getItem(LS_KEY);
     if (!id) return palettes[0].id;
-    if (palettes.some((p) => p.id === id)) return id;
+    if (allPalettes().some((p) => p.id === id)) return id;
     localStorage.removeItem(LS_KEY);
     return palettes[0].id;
   } catch { return palettes[0].id; }
 }
 
 export function setPalette(id: string): number {
-  const p = palettes.find((x) => x.id === id);
+  const p = allPalettes().find((x) => x.id === id);
   if (!p) return -1;
   try { localStorage.setItem(LS_KEY, id); } catch { /* private mode */ }
   const n = applyPalette(p);
@@ -254,7 +280,7 @@ export function setToken(paletteId: string, mode: ThemeMode, token: string, hex:
   all[paletteId][mode][token] = hex;
   try { localStorage.setItem(LS_CUSTOM, JSON.stringify(all)); } catch { return false; }
   if (paletteId === currentPaletteId()) {
-    const p = palettes.find((x) => x.id === paletteId);
+    const p = allPalettes().find((x) => x.id === paletteId);
     if (p) {
       const merged = mergeCustom(p);
       applyPalette(merged, mode);
@@ -286,7 +312,7 @@ export function mergeCustom(p: Palette): Palette {
 export function restorePalette() {
   const id = currentPaletteId();
   if (id !== "astra-ui") {
-    const p = palettes.find((x) => x.id === id);
+    const p = allPalettes().find((x) => x.id === id);
     if (p) {
       applyPalette(mergeCustom(p));
       window.dispatchEvent(new CustomEvent("astra-palette-change", { detail: id })); // drives sync push
@@ -302,7 +328,7 @@ try {
     // sidebar dark/light flip: re-apply the ACTIVE palette for the NEW mode (channel vars +
     // @theme overrides + chrome meta) so the switch is instant — no reload (owner 10-02 bug).
     const id = currentPaletteId();
-    const p = palettes.find((x) => x.id === id);
+    const p = allPalettes().find((x) => x.id === id);
     if (p) applyPalette(mergeCustom(p), getMode());
     syncThemeColorMeta(getMode());
   });
@@ -312,7 +338,7 @@ try {
 let syncRev = 0;
 let applyingRemote = false;
 let pushTimer: ReturnType<typeof setTimeout> | null = null;
-type SyncState = { palette?: string; mode?: ThemeMode; bg?: ChatBg | null; custom?: CustomEdits; rev?: number };
+type SyncState = { palette?: string; mode?: ThemeMode; bg?: ChatBg | null; custom?: CustomEdits; userThemes?: UserTheme[]; rev?: number };
 
 async function pushSync(patch: Partial<SyncState>) {
   try {
@@ -332,14 +358,25 @@ function applyRemote(st: SyncState) {
     if (typeof st.rev === "number") syncRev = st.rev;
     if (st.palette && st.palette !== currentPaletteId()) {
       try { localStorage.setItem(LS_KEY, st.palette); } catch { /* noop */ }
-      const p = palettes.find((x) => x.id === st.palette);
+      const p = allPalettes().find((x) => x.id === st.palette);
       if (p) applyPalette(mergeCustom(p), st.mode || getMode());
       window.dispatchEvent(new CustomEvent("astra-palette-change", { detail: st.palette }));
     }
     if (st.custom) {
       try { localStorage.setItem(LS_CUSTOM, JSON.stringify(st.custom)); } catch { /* noop */ }
-      const p = palettes.find((x) => x.id === currentPaletteId());
+      const p = allPalettes().find((x) => x.id === currentPaletteId());
       if (p) applyPalette(mergeCustom(p));
+    }
+    if (st.userThemes) {
+      // Owner requirement: a saved theme is available on EVERY device and app.
+      // Remote wins wholesale (last-write-wins) rather than merging per-id, so a
+      // delete on one device propagates instead of being resurrected by a merge.
+      if (JSON.stringify(readUserThemes()) !== JSON.stringify(st.userThemes)) {
+        writeUserThemes(st.userThemes);
+        // If the ACTIVE theme was one the remote just deleted, fall back cleanly.
+        const p = allPalettes().find((x) => x.id === currentPaletteId());
+        if (p) applyPalette(mergeCustom(p), st.mode || getMode());
+      }
     }
     if (st.bg !== undefined) {
       const cur = readChatBg();
@@ -368,6 +405,9 @@ export function startThemeSync() {
     } catch { /* offline */ }
   }, 5000);
   window.addEventListener("astra-palette-change", (e) => schedulePush({ palette: (e as CustomEvent).detail }));
+  // A created/edited/deleted theme is broadcast so every other device and the
+  // Android app gain it without a reload.
+  window.addEventListener("astra-user-themes-change", () => schedulePush({ userThemes: readUserThemes() }));
   window.addEventListener("astra-chat-bg-change", (e) => schedulePush({ bg: (e as CustomEvent).detail }));
   window.addEventListener("astra-theme-change", (e) => {
     const m = (e as CustomEvent).detail;

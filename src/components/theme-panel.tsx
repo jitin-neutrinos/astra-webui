@@ -1,46 +1,106 @@
-// theme-panel.tsx — Config page "Appearance" section.
-// Astra UI is the only theme. This panel shows: the theme (Astra UI), a Dark/Light mode
-// toggle wired to the SAME state as the sidebar button, a live token editor for the active
-// mode, and the chat backdrop picker (image URL / upload / video / YouTube).
-// Compact, flat, brand-locked (uses the page's existing card/chip vocabulary).
+// theme-panel.tsx — the "Appearance" section of the Config page.
+//
+// Structure (owner revamp 2026-10-04):
+//   - Theme SELECTOR as a proper dropdown (not a card grid), showing live swatches
+//     for both modes of the highlighted entry so the choice is informed.
+//   - Dark/Light toggle, wired to the SAME hook the sidebar button uses.
+//   - Colours moved OUT of the section body into a "Customise colours" menu —
+//     the default view shows no colour pickers at all.
+//   - A THEME BUILDER: give it a primary + secondary accent, it generates a full
+//     12-token palette for BOTH modes and contrast-checks every text role.
+//   - Chat backdrop picker, persisted and synced across devices.
+//
+// Colour maths lives in src/lib/color-engine.ts (pure + tested); this file is UI only.
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../lib/utils";
 import {
-  palettes, currentPaletteId, setPalette, getMode,
+  allPalettes, currentPaletteId, setPalette, getMode,
   readCustom, clearCustom, setToken, mergeCustom, readChatBg, writeChatBg,
   youtubeId, type Palette, type ThemeMode,
 } from "../lib/theme-store";
+import {
+  generateVariant, wcagAA, saveUserTheme, deleteUserTheme,
+  slugifyThemeName, CONTRACT_TOKENS, type UserTheme,
+} from "../lib/color-engine";
 import { useTheme } from "./theme-toggle";
 
-const SWATCH_TOKENS = ["--color-void", "--color-midnight", "--color-depth", "--color-cyanx", "--color-violetx", "--color-fuchsiax", "--color-redx", "--color-emerald"];
-const EDIT_TOKENS = ["--color-void", "--color-midnight", "--color-depth", "--color-surface", "--color-brandtext", "--color-muted", "--color-cyanx", "--color-violetx", "--color-fuchsiax", "--color-redx", "--color-emerald", "--color-amber"];
+const SWATCH_TOKENS = ["--color-void", "--color-midnight", "--color-depth", "--color-surface", "--color-cyanx", "--color-violetx"];
+const EDIT_TOKENS = [
+  "--color-void", "--color-midnight", "--color-depth", "--color-surface",
+  "--color-brandtext", "--color-muted", "--color-cyanx", "--color-violetx",
+  "--color-fuchsiax", "--color-redx", "--color-emerald", "--color-amber",
+];
+/** Human labels — the token names are internal plumbing, the owner reads these. */
+const TOKEN_LABEL: Record<string, string> = {
+  "--color-void": "Page background",
+  "--color-midnight": "Card surface",
+  "--color-depth": "Raised surface",
+  "--color-surface": "Borders & dividers",
+  "--color-brandtext": "Primary text",
+  "--color-muted": "Muted text",
+  "--color-cyanx": "Accent (primary)",
+  "--color-violetx": "Accent (secondary)",
+  "--color-fuchsiax": "Highlight",
+  "--color-redx": "Error / danger",
+  "--color-emerald": "Success",
+  "--color-amber": "Warning",
+};
 
 export function ThemePanel({ onUpload }: { onUpload?: (file: File) => Promise<string> }) {
   const [active, setActive] = useState(currentPaletteId());
   const [mode, setMode] = useState<ThemeMode>(getMode());
-  const [customTick, setCustomTick] = useState(0); // re-render on edits
+  const [customTick, setCustomTick] = useState(0);
   const [bg, setBg] = useState(readChatBg());
   const [bgUrl, setBgUrl] = useState("");
   const [busyUp, setBusyUp] = useState(false);
+  const [themeListTick, setThemeListTick] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // SAME hook the sidebar toggle uses: one source of truth, so flipping either control moves
-  // both. The hook owns the wipe animation and the data-theme flip + broadcast.
+  // menus
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [coloursOpen, setColoursOpen] = useState(false);
+  const [builderOpen, setBuilderOpen] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  // builder draft
+  const [bName, setBName] = useState("");
+  const [bPrimary, setBPrimary] = useState("#22d3ee");
+  const [bSecondary, setBSecondary] = useState("#34d399");
+
   const [theme, toggleTheme] = useTheme();
   const isLight = theme === "light";
 
   useEffect(() => {
     const onMode = () => setMode(getMode());
     window.addEventListener("astra-theme-change", onMode);
-    return () => window.removeEventListener("astra-theme-change", onMode);
+    // A theme arriving from another device must appear in the picker without a reload.
+    const onThemes = () => setThemeListTick((t) => t + 1);
+    window.addEventListener("astra-user-themes-change", onThemes);
+    return () => {
+      window.removeEventListener("astra-theme-change", onMode);
+      window.removeEventListener("astra-user-themes-change", onThemes);
+    };
   }, []);
 
-  // palette list is a single entry now, but keep the lookup shape so re-adding a theme later
-  // is a data change, not a rewrite.
-  const shown: Palette = useMemo(() => {
-    const p = palettes.find((x) => x.id === active) || palettes[0];
-    return mergeCustom(p);
-  }, [active, customTick]);
+  // click-outside for the dropdown
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const h = (e: MouseEvent) => { if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setPickerOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [pickerOpen]);
+
+  // allPalettes() is a function (it merges shipped + user themes), so memoise on the tick.
+  const all = useMemo(() => allPalettes(), [themeListTick, customTick]);
+  const shown: Palette = useMemo(() => mergeCustom(all.find((x) => x.id === active) || all[0]), [all, active, customTick]);
+  const activeEntry = all.find((x) => x.id === active) || all[0];
+
+  // builder output — regenerated live as the accents change
+  const draft = useMemo(
+    () => ({ dark: generateVariant(bPrimary, bSecondary, "dark"), light: generateVariant(bPrimary, bSecondary, "light") }),
+    [bPrimary, bSecondary]
+  );
 
   const applyBg = (next: typeof bg) => { writeChatBg(next); setBg(next); };
 
@@ -48,106 +108,285 @@ export function ThemePanel({ onUpload }: { onUpload?: (file: File) => Promise<st
     setBusyUp(true);
     try {
       if (onUpload) { const path = await onUpload(f); applyBg({ kind: f.type.startsWith("video") ? "video" : "image", src: path }); }
-      else {
-        // no server route handed in: object URL (session-local fallback)
-        applyBg({ kind: f.type.startsWith("video") ? "video" : "image", src: URL.createObjectURL(f) });
-      }
+      else applyBg({ kind: f.type.startsWith("video") ? "video" : "image", src: URL.createObjectURL(f) });
     } finally { setBusyUp(false); }
   };
 
   const bgPreview = bg ? (bg.kind === "youtube" ? `YouTube · ${youtubeId(bg.src)}` : bg.src.split("/").pop()) : "none";
 
+  const saveBuiltTheme = () => {
+    const name = bName.trim() || "Untitled theme";
+    const id = slugifyThemeName(name);
+    const t: UserTheme = {
+      id, name, source: "user", license: "—", createdAt: Date.now(),
+      // BOTH modes are mandatory — the generator always produces both, so there
+      // is no dark-only or light-only path at all (owner's rule).
+      variants: {
+        dark: { ...draft.dark.tokens },
+        light: { ...draft.light.tokens },
+      },
+    };
+    saveUserTheme(t);
+    setThemeListTick((x) => x + 1);
+    setPalette(id);
+    setActive(id);
+    setBName("");
+    setBuilderOpen(false);
+  };
+
   return (
     <section data-theme-engine-new className="tf-panel">
-      {/* theme — Astra UI plus the owner's elemental themes (Fire / Water / Earth / Wind) */}
+      {/* ---------- theme selector (dropdown) ---------- */}
       <div className="tf-section">
         <div className="tf-section-head">
           <span className="tf-section-title">Theme</span>
-          <span className="tf-sub">{palettes.length} themes · each with dark + light</span>
+          <span className="tf-sub">{all.length} available · each with dark + light</span>
         </div>
-        <div className="tf-grid">
-          {palettes.map((p) => {
-            const v = mergeCustom(p).variants[mode];
-            const isActive = p.id === active;
-            return (
-              <button key={p.id} type="button"
-                className={isActive ? "tf-card tf-card-active" : "tf-card"}
-                onClick={() => { setPalette(p.id); setActive(p.id); }}
-                title={`${p.name} — applies in both dark and light`}>
-                <span className="tf-swatches">
-                  {SWATCH_TOKENS.map((t) => <i key={t} style={{ background: v[t] || "#000" }} />)}
-                </span>
-                <span className="tf-name">{p.name}</span>
-                <span className="tf-variant">{isActive ? "active" : "tap to apply"}</span>
-              </button>
-            );
-          })}
+        <div ref={pickerRef} className="tf-picker">
+          <button type="button" className="tf-picker-btn" onClick={() => setPickerOpen((o) => !o)}
+            aria-haspopup="listbox" aria-expanded={pickerOpen}>
+            <span className="tf-swatches">
+              {SWATCH_TOKENS.map((t) => (
+                <i key={t} style={{ background: shown.variants[mode][t] || "#000" }} />
+              ))}
+            </span>
+            <span className="tf-picker-name">
+              {activeEntry?.name}
+              {activeEntry?.source === "user" && <em className="tf-picker-badge">yours</em>}
+            </span>
+            <span className={`tf-caret${pickerOpen ? " tf-caret-open" : ""}`} aria-hidden="true" />
+          </button>
+
+          {pickerOpen && (
+            <div className="tf-picker-menu" role="listbox">
+              {all.map((p) => {
+                const v = mergeCustom(p).variants;
+                const isActive = p.id === active;
+                return (
+                  <button key={p.id} type="button" role="option" aria-selected={isActive}
+                    className={cn("tf-picker-item", isActive && "tf-picker-item-on")}
+                    onClick={() => { setPalette(p.id); setActive(p.id); setPickerOpen(false); }}>
+                    {/* both modes side by side, so the entry is judged on the pair */}
+                    <span className="tf-pair">
+                      <span className="tf-swatches tf-swatches-sm">
+                        {SWATCH_TOKENS.map((t) => <i key={`d${t}`} style={{ background: v.dark[t] || "#000" }} />)}
+                      </span>
+                      <span className="tf-swatches tf-swatches-sm">
+                        {SWATCH_TOKENS.map((t) => <i key={`l${t}`} style={{ background: v.light[t] || "#fff" }} />)}
+                      </span>
+                    </span>
+                    <span className="tf-picker-item-name">
+                      {p.name}
+                      {p.source === "user" && <em className="tf-picker-badge">yours</em>}
+                    </span>
+                    {p.source === "user" && (
+                      <span className="tf-picker-del" role="button" tabIndex={0}
+                        title={`Delete ${p.name}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!window.confirm(`Delete theme "${p.name}"? It will disappear from all your devices.`)) return;
+                          const left = deleteUserTheme(p.id);
+                          setThemeListTick((x) => x + 1);
+                          if (p.id === active) { const fallback = all.find((x) => x.id !== p.id) || all[0]; setPalette(fallback.id); setActive(fallback.id); }
+                          void left;
+                        }}
+                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); (e.currentTarget as HTMLElement).click(); } }}
+                      >×</span>
+                    )}
+                  </button>
+                );
+              })}
+              <div className="tf-picker-foot">
+                <button type="button" className="tf-mini" onClick={() => { setBuilderOpen((o) => !o); setPickerOpen(false); }}>
+                  {builderOpen ? "Close builder" : "+ Build a theme"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* dark / light — the same state the sidebar button drives */}
+      {/* ---------- theme builder ---------- */}
+      {builderOpen && (
+        <div className="tf-edit" data-testid="tf-builder">
+          <div className="tf-edit-head">
+            <span className="tf-edit-title">Theme builder</span>
+            <span className="tf-sub">define dark + light — both are always generated</span>
+          </div>
+
+          <div className="tf-builder-inputs">
+            <label className="tf-bfield">
+              <span>Name</span>
+              <input className="tf-input" value={bName} placeholder="My theme"
+                onChange={(e) => setBName(e.target.value)} />
+            </label>
+            <label className="tf-bfield">
+              <span>Primary accent</span>
+              <span className="tf-bcolor">
+                <input type="color" value={bPrimary} onChange={(e) => setBPrimary(e.target.value)} />
+                <code>{bPrimary}</code>
+              </span>
+            </label>
+            <label className="tf-bfield">
+              <span>Secondary accent</span>
+              <span className="tf-bcolor">
+                <input type="color" value={bSecondary} onChange={(e) => setBSecondary(e.target.value)} />
+                <code>{bSecondary}</code>
+              </span>
+            </label>
+          </div>
+
+          {/* live preview + contrast verdict for BOTH modes */}
+          <div className="tf-builder-out">
+            {(["dark", "light"] as const).map((m) => {
+              const g = draft[m];
+              return (
+                <div key={m} className={cn("tf-bpreview", m === "light" && "tf-bpreview-light")}>
+                  <div className="tf-bpreview-head">
+                    <span className="tf-bpreview-title">{m}</span>
+                    <span className={cn("tf-verdict", g.failing.length === 0 ? "tf-verdict-ok" : "tf-verdict-bad")}>
+                      {g.failing.length === 0 ? "AA pass" : `${g.failing.length} fail`}
+                    </span>
+                  </div>
+                  <div className="tf-bswatches">
+                    {CONTRACT_TOKENS.map((t) => (
+                      <span key={t} className="tf-bswatch" title={`${TOKEN_LABEL[t] || t} — ${g.tokens[t]}`}>
+                        <i style={{ background: g.tokens[t] }} />
+                        <em>{(TOKEN_LABEL[t] || t).split(" ")[0]}</em>
+                      </span>
+                    ))}
+                  </div>
+                  {/* the actual contrast measurement, per text role */}
+                  <div className="tf-bratios">
+                    {(["--color-brandtext", "--color-muted"] as const).map((role) => {
+                      const v = wcagAA(g.tokens[role], g.tokens["--color-midnight"]);
+                      return (
+                        <span key={role} className={cn("tf-ratio", v.pass ? "tf-ratio-ok" : "tf-ratio-bad")}>
+                          {(TOKEN_LABEL[role] || role).split(" ")[0]} {v.ratio?.toFixed(2) ?? "—"}:1
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <p className="tf-note">
+            Give a primary and a secondary; every other colour is derived and measured.
+            A theme always has both a dark and a light variant — that is a requirement, not a default.
+            Saving makes it available on all your devices and the app.
+          </p>
+          <div className="tf-bg-row">
+            <button type="button" className="tf-mini tf-mini-primary" onClick={saveBuiltTheme}>
+              Save theme
+            </button>
+            <button type="button" className="tf-mini" onClick={() => setBuilderOpen(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* ---------- dark / light ---------- */}
       <div className="tf-section">
         <div className="tf-section-head">
-          <span className="tf-section-title">Appearance</span>
+          <span className="tf-section-title">Mode</span>
           <span className="tf-sub">also on the sidebar</span>
         </div>
         <div className="tf-modes" role="radiogroup" aria-label="Colour mode">
           <button type="button" role="radio" aria-checked={!isLight}
             className={cn("tf-mode", !isLight && "tf-mode-on")}
-            onClick={() => { if (isLight) toggleTheme(null); }}>
-            Dark
-          </button>
+            onClick={() => { if (isLight) toggleTheme(null); }}>Dark</button>
           <button type="button" role="radio" aria-checked={isLight}
             className={cn("tf-mode", isLight && "tf-mode-on")}
-            onClick={() => { if (!isLight) toggleTheme(null); }}>
-            Light
-          </button>
+            onClick={() => { if (!isLight) toggleTheme(null); }}>Light</button>
         </div>
       </div>
 
-      {/* token editor for the active mode */}
-      <div className="tf-edit">
-        <div className="tf-edit-head">
-          <span className="tf-edit-title">Tokens — {shown.name} ({mode})</span>
-          {readCustom()[active] && (
-            <button type="button" className="tf-mini" onClick={() => { clearCustom(active); setCustomTick((t) => t + 1); }}>Reset edits</button>
-          )}
-        </div>
-        <div className="tf-tokens">
-          {EDIT_TOKENS.map((t) => (
-            <label key={t} className="tf-token">
-              <input type="color" value={shown.variants[mode][t] || "#000000"}
-                onChange={(e) => { setToken(active, mode, t, e.target.value); setCustomTick((x) => x + 1); }} />
-              <span className="tf-token-name">{t.replace("--color-", "")}</span>
-              <code className="tf-token-hex">{shown.variants[mode][t]}</code>
-            </label>
-          ))}
-        </div>
-        <p className="tf-note">Edits persist on this device and apply live. Glows follow the accent; dark mode glows, light mode stays flat.</p>
+      {/* ---------- colours, moved into their own menu ---------- */}
+      <div className="tf-section">
+        <button type="button" className="tf-disclosure" aria-expanded={coloursOpen}
+          onClick={() => setColoursOpen((o) => !o)}>
+          <span className="tf-section-title">Customise colours</span>
+          <span className="tf-sub">{coloursOpen ? "hide" : `${EDIT_TOKENS.length} tokens · ${mode}`}</span>
+          <span className={cn("tf-caret", coloursOpen && "tf-caret-open")} aria-hidden="true" />
+        </button>
+
+        {coloursOpen && (
+          <div className="tf-edit" data-testid="tf-colours">
+            <div className="tf-edit-head">
+              <span className="tf-edit-title">Tokens — {shown.name} ({mode})</span>
+              {readCustom()[active] && (
+                <button type="button" className="tf-mini" onClick={() => { clearCustom(active); setCustomTick((t) => t + 1); }}>Reset edits</button>
+              )}
+            </div>
+            <div className="tf-tokens">
+              {EDIT_TOKENS.map((t) => {
+                const hex = shown.variants[mode][t] || "#000000";
+                // live AA badge against the card surface, so an edit can't quietly
+                // produce an unreadable role
+                const isText = t === "--color-brandtext" || t === "--color-muted";
+                const card = shown.variants[mode]["--color-midnight"];
+                const v = isText ? wcagAA(hex, card) : null;
+                return (
+                  <label key={t} className="tf-token">
+                    <input type="color" value={hex}
+                      onChange={(e) => { setToken(active, mode, t, e.target.value); setCustomTick((x) => x + 1); }} />
+                    <span className="tf-token-name">{TOKEN_LABEL[t] || t.replace("--color-", "")}</span>
+                    <code className="tf-token-hex">{hex}</code>
+                    {v && (
+                      <span className={cn("tf-ratio", v.pass ? "tf-ratio-ok" : "tf-ratio-bad")}>
+                        {v.ratio?.toFixed(1)}
+                      </span>
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+            <p className="tf-note">
+              Edits sync to all your devices and apply live. The number is the measured contrast
+              against the card surface — text must stay at 4.5 or above.
+            </p>
+          </div>
+        )}
       </div>
 
-      {/* chat backdrop */}
+      {/* ---------- chat backdrop ---------- */}
       <div className="tf-bg">
-        <div className="tf-edit-head"><span className="tf-edit-title">Chat background</span><span className="tf-sub">now: {bgPreview}</span></div>
+        <div className="tf-edit-head">
+          <span className="tf-edit-title">Chat background</span>
+          <span className="tf-sub">now: {bgPreview}</span>
+        </div>
         <div className="tf-bg-row">
           <input className="tf-input" placeholder="Image / video URL, or YouTube link"
             value={bgUrl} onChange={(e) => setBgUrl(e.target.value)} />
           <button type="button" className="tf-mini" onClick={() => {
             const u = bgUrl.trim(); if (!u) return;
             applyBg(youtubeId(u) ? { kind: "youtube", src: u } : { kind: /\.(mp4|webm|mov|m4v)(\?|$)/i.test(u) ? "video" : "image", src: u });
+            setBgUrl("");
           }}>Apply</button>
-          <button type="button" className="tf-mini" disabled={busyUp} onClick={() => fileRef.current?.click()}>{busyUp ? "Uploading…" : "Upload"}</button>
+          <button type="button" className="tf-mini" disabled={busyUp} onClick={() => fileRef.current?.click()}>
+            {busyUp ? "Uploading…" : "Upload"}
+          </button>
           <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ""; }} />
           {bg && <button type="button" className="tf-mini" onClick={() => applyBg(null)}>Off</button>}
         </div>
         {bg && (
-          <label className="tf-dim">dim
-            <input type="range" min={0} max={0.9} step={0.05} value={bg.dim ?? 0.45}
-              onChange={(e) => applyBg({ ...bg, dim: Number(e.target.value) })} />
-          </label>
+          <>
+            <label className="tf-dim">dim
+              <input type="range" min={0} max={0.9} step={0.05} value={bg.dim ?? 0.45}
+                onChange={(e) => applyBg({ ...bg, dim: Number(e.target.value) })} />
+            </label>
+            <label className="tf-dim">blur
+              <input type="range" min={0} max={40} step={1} value={bg.blur ?? 0}
+                onChange={(e) => applyBg({ ...bg, blur: Number(e.target.value) })} />
+            </label>
+          </>
         )}
-        <p className="tf-note">YouTube backgrounds autoplay muted (per YouTube's embed terms) and fill the chat window at any screen size or orientation.</p>
+        <p className="tf-note">
+          Your background choice is stored on the server and follows you to every device and the app,
+          updating live. YouTube plays muted and loops without the black gap.
+        </p>
       </div>
     </section>
   );

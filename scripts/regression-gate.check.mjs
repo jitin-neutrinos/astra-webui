@@ -454,6 +454,13 @@ export const REGRESSIONS = [
       "Graph cross-filter drift in the ported graphFilter.js: facetAvailability must report the values that still leave a non-empty graph, and applyFilters must drop orphan nodes after edge survival.",
     guard: "src/lib/canvas-filter.port.check.mjs",
   },
+  {
+    id: "RG-069",
+    found: "2026-10-04",
+    symptom:
+      "Theme builder shipped an unreadable palette: the OKLab forward matrix was wrong (a/b rows), generated grounds carried full accent chroma (dark grounds read as brown/espresso), and the contrast audit reported ratios it had not measured. A user theme syncs to every device, so a bad verdict ships everywhere.",
+    guard: "src/lib/color-engine.check.ts",
+  },
 ];
 
 // ---- gate -----------------------------------------------------------------

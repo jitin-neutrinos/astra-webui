@@ -47,6 +47,18 @@ export function handleThemeState(req, res, validToken) {
           mode: body.mode === "light" || body.mode === "dark" ? body.mode : prev.mode,
           bg: body.bg === null ? null : (body.bg && typeof body.bg === "object" ? body.bg : prev.bg),
           custom: body.custom && typeof body.custom === "object" ? body.custom : prev.custom,
+          // Owner requirement: themes built in the UI are available on EVERY
+          // device and app, so the full list syncs. Shape-validated here rather
+          // than trusted: this file is the one place a malformed theme could
+          // reach every client, and a theme missing a variant is unusable.
+          userThemes: Array.isArray(body.userThemes)
+            ? body.userThemes.filter(
+                (t) =>
+                  t && typeof t.id === "string" && typeof t.name === "string" &&
+                  t.variants?.dark && t.variants?.light &&
+                  Object.keys(t.variants.dark).length > 0 && Object.keys(t.variants.light).length > 0
+              )
+            : prev.userThemes,
           rev: (prev.rev || 0) + 1,
           ts: Date.now(),
         };

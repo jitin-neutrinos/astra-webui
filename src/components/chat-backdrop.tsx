@@ -86,16 +86,30 @@ export function ChatBackdrop() {
     };
   }, [bg?.kind, bg?.src]);
 
-  // youtube: cut the loop gap via the IFrame API + resume after tab-hide
+  // youtube: loop + resume after tab-hide.
+  //
+  // OPTIMISATION (2026-10-04): the IFrame API is ~500KB and used to be loaded for
+  // EVERY YouTube wallpaper, only to seek on ENDED. But `loop=1&playlist=<id>` on a
+  // PLAIN iframe already loops seamlessly with zero JS. So the API is now loaded
+  // LAZILY — and only when there is a saved position >1s to restore. With no saved
+  // position (the common case: a freshly picked wallpaper) we ship a bare iframe,
+  // no API, no player instance, no destroy/recreate churn on every bg change.
   useEffect(() => {
     if (bg?.kind !== "youtube" || !ytId) return;
+    const ytKey = `astra-bg-video-pos:yt:${ytId}`;
+    const startAt = Number(localStorage.getItem(ytKey) || "0");
     let player: any = null;
     let disposed = false;
     let lastState = -1;
+
+    if (startAt <= 1) {
+      // No position to restore — a bare iframe is enough. The `loop`+`playlist`
+      // pair is YouTube's own seamless loop, so no JS is needed at all.
+      return;
+    }
+
     loadYtApi().then((YT) => {
       if (disposed || !ytRef.current || !YT?.Player) return;
-      const ytKey = `astra-bg-video-pos:yt:${ytId}`;
-      const startAt = Number(localStorage.getItem(ytKey) || "0");
       player = new YT.Player(YT_FRAME_ID, {
         videoId: ytId,
         playerVars: {
@@ -105,17 +119,16 @@ export function ChatBackdrop() {
           origin: window.location.origin,
         },
         events: {
-          onReady: (e: any) => { e.target.mute(); if (startAt > 1) e.target.seekTo(startAt, true); e.target.playVideo(); },
+          onReady: (e: any) => { e.target.mute(); e.target.seekTo(startAt, true); e.target.playVideo(); },
           onStateChange: (e: any) => {
             if (e.data === YT.PlayerState.ENDED && lastState === YT.PlayerState.PLAYING) {
-              e.target.seekTo(0, true); e.target.playVideo();     // tight loop, no reload
+              e.target.seekTo(0, true); e.target.playVideo();
               try { localStorage.setItem(ytKey, "0"); } catch {}
             }
             lastState = e.data;
           },
         },
       });
-      // persist position every 5s so a reload resumes where it left off
       const ytSave = window.setInterval(() => {
         try { const t = player?.getCurrentTime?.(); if (typeof t === "number" && t > 0) localStorage.setItem(ytKey, String(Math.floor(t))); } catch { /* not ready */ }
       }, 5000);
@@ -131,8 +144,21 @@ export function ChatBackdrop() {
   if (!bg || (bg.kind === "youtube" && !ytId)) return null;
 
   const dim = Math.min(Math.max(bg.dim ?? 0.45, 0), 0.9);
+  const blur = Math.min(Math.max(bg.blur ?? 0, 0), 40);
+  // Position to restore, if any. <=1 means "nothing worth restoring", which is the
+  // condition under which we ship a bare iframe instead of loading the IFrame API.
+  const ytKey = `astra-bg-video-pos:yt:${ytId}`;
+  const ytStart = ytId ? Number(localStorage.getItem(ytKey) || "0") : 0;
+  const useApi = bg.kind === "youtube" && ytStart > 1;
+
   return (
-    <div aria-hidden="true" className="chat-backdrop" data-kind={bg.kind} data-theme-engine-new>
+    <div
+      aria-hidden="true"
+      className="chat-backdrop"
+      data-kind={bg.kind}
+      data-theme-engine-new
+      style={blur > 0 ? { filter: `blur(${blur}px)`, transform: `scale(${1 + blur / 90})` } : undefined}
+    >
       {bg.kind === "image" && (
         <img src={bgSrc(bg.src)} alt="" className="chat-backdrop-media" draggable={false} />
       )}
@@ -153,9 +179,21 @@ export function ChatBackdrop() {
       )}
       {bg.kind === "youtube" && ytId && (
         <div className="chat-backdrop-yt">
-          {/* API-created player (no src iframe): zero unstarted chrome, instant muted autoplay,
-              seekTo(0) looping. host params let YT style its own embed legally. */}
-          <div ref={ytRef} id={YT_FRAME_ID} />
+          {useApi ? (
+            /* API-created player (no src iframe): needed only to restore a position. */
+            <div ref={ytRef} id={YT_FRAME_ID} />
+          ) : (
+            /* Bare iframe: `loop=1` + `playlist=<id>` is YouTube's own seamless loop,
+               so the ~500KB IFrame API is never fetched in the common case.
+               iv_load_policy=3 keeps the YouTube chrome/click-area out of the frame. */
+            <iframe
+              id={YT_FRAME_ID}
+              title="Chat background video"
+              src={`https://www.youtube-nocookie.com/embed/${ytId}?autoplay=1&mute=1&controls=0&loop=1&playlist=${ytId}&playsinline=1&rel=0&iv_load_policy=3&disablekb=1&fs=0&modestbranding=1`}
+              allow="autoplay; encrypted-media; picture-in-picture"
+              referrerPolicy="strict-origin-when-cross-origin"
+            />
+          )}
         </div>
       )}
       <div className="chat-backdrop-dim" style={{ backgroundColor: `rgba(0,0,0,${dim})` }} />
