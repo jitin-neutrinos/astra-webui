@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from "react";
-import { ArrowLeft, Check, Loader2, Undo, Download, Upload, AlertTriangle, Search, ChevronDown, ChevronRight, RefreshCw, Brain, Cpu, Zap, Shield, Database, Plus, X, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, Loader2, Undo, Download, Upload, AlertTriangle, Search, ChevronDown, ChevronRight, RefreshCw, Brain, Cpu, Zap, Shield, Database, Plus, X, Trash2, Palette, Eye, Terminal as TerminalIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type SchemaField = {
@@ -30,8 +30,9 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
   const [newProviderSlug, setNewProviderSlug] = useState("");
   const [newModelName, setNewModelName] = useState("");
   const [newModelProvider, setNewModelProvider] = useState("");
-  const [brainOpen, setBrainOpen] = useState(true);
-  const [behaviorOpen, setBehaviorOpen] = useState(true);
+  const [brainOpen, setBrainOpen] = useState(false);
+  const [behaviorOpen, setBehaviorOpen] = useState(false);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
 
   // Pending saves map: dotpath -> status ("saving" | "saved" | "error")
   const [saves, setSaves] = useState<Record<string, string>>({});
@@ -733,12 +734,95 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
           </section>
         )}
 
-        <section className="rounded-2xl border border-white/[0.08] bg-midnight/50 p-6 backdrop-blur-md">
-          <h3 className="font-display text-lg text-brandtext mb-4 border-b border-white/[0.04] pb-2">Appearance</h3>
-          <div className="space-y-1">
-            {renderField("streaming.enabled", "Stream Responses", "boolean")}
+        {/* Appearance Section - Collapsible */}
+        <section className="rounded-2xl border border-white/[0.08] bg-midnight/50 backdrop-blur-md overflow-hidden">
+          <button type="button" onClick={() => setAppearanceOpen(!appearanceOpen)} className="w-full flex items-center gap-3 p-6 pb-4 text-left hover:bg-white/[0.02] transition-colors">
+            <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
+              <Palette className="w-4 h-4 text-accent" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-display text-lg text-brandtext">Appearance</h3>
+              <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Theme &amp; Readability</p>
+            </div>
+            <ChevronDown className={cn("w-5 h-5 text-slate-500 transition-transform shrink-0", !appearanceOpen && "-rotate-90")} />
+          </button>
+          {appearanceOpen && (
+          <div className="px-6 pb-6 space-y-6">
+            {/* Theme */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Palette className="w-3.5 h-3.5 text-accent/70" />
+                <h4 className="text-xs font-mono uppercase tracking-[0.15em] text-slate-400">Theme</h4>
+              </div>
+              <div className="space-y-1">
+                {renderField("display.skin", "CLI Skin", "select", ["default", "ares", "mono", "slate"])}
+                {renderField("display.interface", "Interface")}
+                {renderField("display.language", "Language")}
+              </div>
+              <div className="mt-4">
+                <ThemePanel />
+              </div>
+            </div>
+
+            {/* Readability */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Eye className="w-3.5 h-3.5 text-accent/70" />
+                <h4 className="text-xs font-mono uppercase tracking-[0.15em] text-slate-400">Readability</h4>
+              </div>
+              <div className="space-y-1">
+                {renderField("display.compact", "Compact Mode", "boolean")}
+                {renderField("display.timestamps", "Show Timestamps", "boolean")}
+                {renderField("display.timestamp_format", "Timestamp Format")}
+                {renderField("display.show_cost", "Show Cost", "boolean")}
+              </div>
+            </div>
+
+            {/* Reasoning Display */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Brain className="w-3.5 h-3.5 text-accent/70" />
+                <h4 className="text-xs font-mono uppercase tracking-[0.15em] text-slate-400">Reasoning Display</h4>
+              </div>
+              <div className="space-y-1">
+                {renderField("display.show_reasoning", "Show Reasoning", "boolean")}
+                {renderField("display.reasoning_full", "Full Reasoning", "boolean")}
+                {renderField("display.reasoning_style", "Reasoning Style")}
+                {renderField("display.show_commentary", "Show Commentary", "boolean")}
+                {renderField("display.final_response_markdown", "Final Response Markdown")}
+              </div>
+            </div>
+
+            {/* Tool Output */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <TerminalIcon className="w-3.5 h-3.5 text-accent/70" />
+                <h4 className="text-xs font-mono uppercase tracking-[0.15em] text-slate-400">Tool Output</h4>
+              </div>
+              <div className="space-y-1">
+                {renderField("display.friendly_tool_labels", "Friendly Tool Labels", "boolean")}
+                {renderField("display.inline_diffs", "Inline Diffs", "boolean")}
+                {renderField("display.tool_preview_length", "Tool Preview Length", "number")}
+                {renderField("display.tool_progress_grouping", "Tool Progress Grouping")}
+                {renderField("display.focus_view", "Focus View", "boolean")}
+              </div>
+            </div>
+
+            {/* Turn & Resume */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <RefreshCw className="w-3.5 h-3.5 text-accent/70" />
+                <h4 className="text-xs font-mono uppercase tracking-[0.15em] text-slate-400">Turn &amp; Resume</h4>
+              </div>
+              <div className="space-y-1">
+                {renderField("display.turn_completion_explainer", "Completion Explainer", "boolean")}
+                {renderField("display.turn_summary", "Turn Summary", "boolean")}
+                {renderField("display.resume_display", "Resume Display", "select", ["minimal", "full", "off"])}
+                {renderField("display.busy_input_mode", "Busy Input Mode", "select", ["interrupt", "queue", "steer"])}
+              </div>
+            </div>
           </div>
-          <ThemePanel />
+          )}
         </section>
 
         <section className="rounded-2xl border border-redx/20 bg-redx/5 p-6 backdrop-blur-md">
