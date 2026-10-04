@@ -5,8 +5,8 @@ import {
   describeOutput,
   excerpt,
   type IOField,
-} from "./tool-io";
-import { describeTool } from "./tool-identity";
+} from "./tool-io.ts";
+import { describeTool } from "./tool-identity.ts";
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) { console.error("FAIL:", msg); process.exit(1); }

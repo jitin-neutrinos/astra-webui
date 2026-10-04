@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { easeFlip } from "./theme-ease";
+import { easeFlip } from "./theme-ease.ts";
 
 /** Playhead value the tween writes at progress p, mirroring ThemeArtwork. */
 function frame(from: number, to: number, p: number) {

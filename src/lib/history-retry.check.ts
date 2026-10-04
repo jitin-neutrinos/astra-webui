@@ -3,7 +3,7 @@
 // the project's check runner pattern (see other *.check.ts files).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { histBackoffMs, histFailureTransient, HIST_MAX_ATTEMPTS } from "./history-retry";
+import { histBackoffMs, histFailureTransient, HIST_MAX_ATTEMPTS } from "./history-retry.ts";
 
 test("backoff is exponential then capped", () => {
   assert.equal(histBackoffMs(1), 1500);

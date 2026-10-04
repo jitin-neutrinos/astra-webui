@@ -8,7 +8,7 @@ import {
   filterCommands,
   __setRegistryCache,
   type CommandEntry,
-} from "./command-registry";
+} from "./command-registry.ts";
 
 const cmd = (name: string, over: Partial<CommandEntry> = {}): CommandEntry => ({
   name,

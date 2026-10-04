@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createItem, onTurnComplete, dockVisible, dismissItem, loadItems, saveItems, reconcileWithServer } from "./bg-items";
-import type { BgItem, Store } from "./bg-items";
+import { createItem, onTurnComplete, dockVisible, dismissItem, loadItems, saveItems, reconcileWithServer } from "./bg-items.ts";
+import type { BgItem, Store } from "./bg-items.ts";
 
 test("onTurnComplete transitions", () => {
   let items: BgItem[] = [

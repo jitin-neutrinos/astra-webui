@@ -2,7 +2,7 @@
 // Run: npx tsx --test src/lib/command-exec.check.ts
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { surfaceFor, splitSlash, SURFACE_COMMANDS, NOT_SURFACED } from "./command-exec";
+import { surfaceFor, splitSlash, SURFACE_COMMANDS, NOT_SURFACED } from "./command-exec.ts";
 
 test("every requested command has a surface", () => {
   // The nine the owner asked for, by name.

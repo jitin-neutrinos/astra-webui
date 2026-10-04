@@ -1,7 +1,7 @@
 // Checks for the 2026-09-29 dup + greet-row fixes.
 // npx tsx src/lib/replay-dedup.check.ts
-import { applySegmentOps, lastAssistantHasText } from "./chat-segments";
-import { rowsToTurns, type HistoryRow } from "./normalize-messages";
+import { applySegmentOps, lastAssistantHasText } from "./chat-segments.ts";
+import { rowsToTurns, type HistoryRow } from "./normalize-messages.ts";
 
 let fails = 0;
 function ok(cond: boolean, msg: string, extra?: unknown) {

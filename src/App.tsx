@@ -162,7 +162,7 @@ function LoginScreen({ password, setPassword, clearError, error, busy, submit }:
                 Password
               </label>
               <div className="relative rounded-lg bg-black/70">
-                <div className="pointer-events-none absolute inset-0 rounded-lg border border-white/10 transition-colors duration-200 focus-within:border-cyanx/60" />
+                <div className="pointer-events-none absolute inset-0 rounded-lg border border-white/10 transition-colors duration-200 focus-within:border-accent/60" />
                 <input
                   type={showPw ? "text" : "password"} id="password" name="password"
                   autoComplete="current-password" autoFocus required
@@ -175,7 +175,7 @@ function LoginScreen({ password, setPassword, clearError, error, busy, submit }:
                   type="button"
                   onClick={() => setShowPw((s) => !s)}
                   aria-label={showPw ? "Hide password" : "Show password"}
-                  className="absolute right-3 top-1/2 z-30 -translate-y-1/2 text-slate-600 transition-colors hover:text-cyanx"
+                  className="absolute right-3 top-1/2 z-30 -translate-y-1/2 text-slate-600 transition-colors hover:text-accent"
                 >
                   {showPw
                     ? <EyeOff className="h-4 w-4" strokeWidth={1.5} />
@@ -190,7 +190,7 @@ function LoginScreen({ password, setPassword, clearError, error, busy, submit }:
             ) : null}
             <button
               type="submit" disabled={busy}
-              className="mt-2 w-full rounded-lg border border-cyanx/25 bg-cyanx/10 py-3 text-base text-cyanx transition-all hover:bg-cyanx/20 hover:shadow-[0_0_24px_rgba(34,211,238,0.2)] disabled:opacity-50"
+              className="mt-2 w-full rounded-lg border border-accent/25 bg-accent/10 py-3 text-base text-accent transition-all hover:bg-accent/20 hover:shadow-[0_0_24px_rgba(34,211,238,0.2)] disabled:opacity-50"
             >
               {busy ? "Signing in..." : "Let me in"}
             </button>
@@ -612,14 +612,14 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
         <button type="button" onClick={onToggleCollapse} disabled={drawerOpen}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           title={expanded ? "Collapse" : "Expand"}
-          className="rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyanx/60">
+          className="rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent/60">
           <img src="/astra-logo.png" alt="Astra"
             className="h-7 w-7 shrink-0 rounded-lg object-cover" />
         </button>
         {expanded && (
           <div className="min-w-0">
             <p className="truncate font-display text-sm font-semibold tracking-tight text-brandtext">Astra</p>
-            <p className="truncate font-mono text-[8px] uppercase tracking-[0.3em] text-cyanx/60">Command Center</p>
+            <p className="truncate font-mono text-[8px] uppercase tracking-[0.3em] text-accent/60">Command Center</p>
           </div>
         )}
       </div>
@@ -637,7 +637,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
               aria-expanded={open}
               title={expanded ? `Toggle ${group.label}` : group.label}
               className={cn("flex h-8 w-full items-center rounded-md text-left font-sans text-[13px] font-medium tracking-[0.08em] transition-colors duration-200",
-                open ? "text-cyanx/90" : "text-slate-600 hover:text-slate-400",
+                open ? "text-accent/90" : "text-slate-600 hover:text-slate-400",
                 expanded ? "justify-between px-3" : "justify-center")}>
               <span className="flex min-w-0 items-center gap-1.5">
                 {group.icon}
@@ -679,7 +679,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
                   // drops its container, so a 48px rail isn't crowded.
                   item.name === "Chats" && unreadTotal > 0 && (expanded ? "ast-nav-unread" : "ast-nav-unread-rail"),
                   active
-                    ? "bg-cyanx/10 text-cyanx"
+                    ? "bg-accent/10 text-accent"
                     : "text-slate-300 hover:bg-white/5 hover:text-white",
                 )}>
                 <span className="grid h-full w-12 shrink-0 place-content-center text-muted">{item.icon}</span>
@@ -694,7 +694,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
                   </span>
                 )}
                 {expanded && "badge" in item && item.badge ? (
-                  <span className="ml-auto mr-3 font-mono text-[8px] uppercase tracking-widest text-cyanx/60">{item.badge}</span>
+                  <span className="ml-auto mr-3 font-mono text-[8px] uppercase tracking-widest text-accent/60">{item.badge}</span>
                 ) : null}
               </button>
               );

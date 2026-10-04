@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { wipeClipFromRect, radiusPct } from "./theme-wipe";
+import { wipeClipFromRect, radiusPct } from "./theme-wipe.ts";
 
 const W = 1280, H = 800;
 

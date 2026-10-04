@@ -4981,3 +4981,88 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
 /* Sticky header + per-column alignment (design critique C10/C11). */
 .ast-cv-table th { position: sticky; top: 0; z-index: 1; background: var(--cv-paper); }
 .ast-cv-table th.num, .ast-cv-table td.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
+
+/* Native-size charts (sankey/treemap/funnel self-size in recharts 2.15, so they
+   are NOT wrapped in a ResponsiveContainer). They must scale to the card. */
+.ast-cv-chart-native {
+  width: 100%;
+  display: flex; flex-direction: column; gap: 8px; min-width: 0;
+}
+.ast-cv-chart-native .recharts-wrapper,
+.ast-cv-chart-native .recharts-surface { max-width: 100%; }
+.ast-cv-chart-native svg { max-width: 100%; height: auto; }
+@media (prefers-reduced-motion: reduce) { .ast-cv-chart-native * { transition: none !important; } }
+
+/* ==========================================================================
+   KPI tiles — uniform by construction (owner 2026-10-04: "these cards always
+   need to have the same visual design and consistency in terms of dimensions;
+   one card taller than the others looks weird"). Every tile is a grid cell of
+   ONE row height, the value is the hero, and the delta chip wraps by WORD
+   instead of ellipsising mid-word (the word-integrity law applies to chips too).
+   ========================================================================== */
+.ast-cv-group.rows {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  align-items: stretch;          /* every tile the same height, always */
+  gap: 10px;
+}
+.ast-cv-group.rows > .ast-cv-item { display: flex; min-width: 0; }
+.ast-cv-group.rows > .ast-cv-item > .ast-cv-kpi { flex: 1; min-width: 0; }
+
+.ast-cv-kpi {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  min-height: 92px;             /* one floor for all tiles in a row */
+  padding: 12px 14px;
+}
+.ast-cv-kpi-label {
+  font: 500 10px/1.2 var(--font-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  /* the LABEL wraps between words; it never breaks one */
+  overflow-wrap: break-word;
+  word-break: normal;
+  hyphens: none;
+}
+.ast-cv-kpi-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.ast-cv-kpi-value {
+  font: 700 clamp(22px, 4.4cqi, 30px)/1.05 var(--font-sans);
+  letter-spacing: -0.02em;
+  color: var(--color-brandtext);
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+.ast-cv-kpi-delta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 46%;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font: 500 10.5px/1.25 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  /* wrap BY WORD inside the chip; ellipsis is what clipped "+3 port che…" */
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: normal;
+  text-align: right;
+}
+.ast-cv-kpi-delta-glyph { flex: none; }
+.ast-cv-kpi-delta-text { min-width: 0; }
+
+/* Below 4 tiles the row becomes 2-up, then 1-up — same card, same proportions. */
+@media (max-width: 700px) { .ast-cv-group.rows { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 420px) { .ast-cv-group.rows { grid-template-columns: minmax(0, 1fr); } }

@@ -16,20 +16,26 @@
 //     both apply and a palette switch retints live.
 //   • Series get a legend ALWAYS (even at one series) so the label is never
 //     ambiguous, and a value readout in the tooltip stays tabular.
-import { useMemo } from "react";
+import { lazy, Suspense, useMemo } from "react";
 import {
   ResponsiveContainer, AreaChart, Area, LineChart, Line, BarChart, Bar,
   RadialBarChart, RadialBar, PieChart, Pie, Cell, XAxis, YAxis,
   Tooltip, Legend, PolarAngleAxis, type TooltipProps,
   // v5 — these four ship in the recharts build we ALREADY load; no new bytes,
   // no new dependency, just four more chart kinds for the same price.
-  Sankey, Treemap, FunnelChart, Funnel, ScatterChart, Scatter, ZAxis, RadarChart, Radar,
+  ScatterChart, Scatter, ZAxis, RadarChart, Radar,
   PolarGrid, PolarRadiusAxis,
 } from "recharts";
 import type { ChartBlock } from "../../lib/canvas-schema";
+import type { RenderCtx } from "./canvas-blocks";
+import { bindPoints } from "../../lib/canvas-bind";
+import { evaluate } from "../../lib/canvas-expr";
 
 // Owner 2026-10-03: ONE accent for all canvas charts. Series separate by
 // opacity tier (100/72/48%) + the always-on legend, not by hue.
+const NATIVE = new Set(["sankey", "treemap", "funnel"]);
+const NativeLazy = lazy(() => import("./canvas-native-charts"));
+
 export const SERIES_COLORS = [
   "var(--color-accent)",
   "color-mix(in srgb, var(--color-accent) 72%, transparent)",
@@ -52,31 +58,6 @@ const LEGEND_STYLE = {
   color: "var(--color-muted)",
   paddingTop: 8,
 } as const;
-
-/** Numeric x/y axes with hairline rules — the readable default. */
-const axes = (opts?: { xType?: "number" | "category"; yLabel?: string; xLabel?: string; height?: number }) => (
-  <>
-    <XAxis
-      dataKey="name"
-      tick={AXIS_TICK}
-      tickLine={false}
-      axisLine={{ stroke: AXIS_LINE }}
-      height={opts?.height ?? 24}
-      type={opts?.xType ?? "category"}
-      label={opts?.xLabel ? { value: opts.xLabel, position: "insideBottom", offset: -12, fill: "var(--color-muted)", fontSize: 10 } : undefined}
-      min={opts?.xType === "number" ? "dataMin" : undefined}
-      max={opts?.xType === "number" ? "dataMax" : undefined}
-    />
-    <YAxis
-      tick={AXIS_TICK}
-      tickFormatter={(v: number) => fmt(v)}
-      tickLine={false}
-      axisLine={{ stroke: AXIS_LINE }}
-      width={44}
-      label={opts?.yLabel ? { value: opts.yLabel, angle: -90, position: "insideLeft", fill: "var(--color-muted)", fontSize: 10, offset: 12 } : undefined}
-    />
-  </>
-);
 
 const legend = (icon: "plainline" | "circle" | "square" = "plainline") => (
   <Legend
@@ -105,108 +86,52 @@ function fmt(n: unknown): string {
 // shape. All colour comes from the ONE accent via opacity tiers, so the series
 // never read as different "brands".
 
-/** Sankey: layer the labels into columns by cumulative value so the flow reads. */
-function sankeyOf(labels: string[], points: number[]): { name: string; value: number }[][] {
-  const order = labels
-    .map((l, i) => ({ name: l, value: Math.max(points[i] ?? 0, 0) }))
-    .sort((a, b) => b.value - a.value);
-  const cols: { name: string; value: number }[][] = [];
-  const load: number[] = [];
-  for (const it of order) {
-    let c = 0;
-    while (c < load.length && load[c] > (load[c - 1] ?? 0)) c++;
-    if (c >= cols.length) { cols.push([]); load.push(0); }
-    cols[c].push(it);
-    load[c] += it.value;
-  }
-  return cols;
-}
 
-function sankeyLinks(labels: string[], points: number[]) {
-  const cols = sankeyOf(labels, points);
-  const colOf = new Map<string, number>();
-  cols.forEach((c, ci) => c.forEach((it) => colOf.set(it.name, ci)));
-  const links: { source: number; target: number; value: number }[] = [];
-  for (let ci = 0; ci < cols.length - 1; ci++) {
-    const from = cols[ci], to = cols[ci + 1];
-    const n = Math.max(from.length, to.length);
-    for (let k = 0; k < n; k++) {
-      const a = from[k % from.length], b = to[k % to.length];
-      const v = Math.min(a.value, b.value) || 1;
-      links.push({ source: colOf.get(a.name)!, target: colOf.get(b.name)!, value: v });
-    }
-  }
-  return links;
-}
 
-/** Treemap: nested children when the model supplied them, else flat items. */
-function treemapOf(block: ChartBlock) {
-  return block.series[0]?.items?.length
-    ? block.series[0].items.map((it, i) => ({ ...it, tier: i % 3 }))
-    : (block.labels ?? block.series[0].points.map((_, i) => String(i + 1))).map((l, i) => ({
-        name: l,
-        value: block.series[0].points[i] ?? 0,
-        tier: i % 3,
-      }));
-}
 
 function scatterOf(s: { name: string; points: number[] }, labels: string[]) {
   return s.points.map((y, i) => ({ x: i + 1, y, z: Math.abs(y), label: labels[i] }));
 }
 
-function TreemapCell(props: any) {
-  const { x, y, width, height, name, depth = 1 } = props;
-  const fill = SERIES_COLORS[Math.min(depth - 1, SERIES_COLORS.length - 1)];
-  return (
-    <g>
-      <rect x={x} y={y} width={Math.max(width - 1, 0)} height={Math.max(height - 1, 0)} fill={fill} opacity={depth === 1 ? 0.92 : 0.6} rx={2} />
-      {width > 44 && height > 16 && (
-        <text x={x + 6} y={y + 13} fontSize={10} fill="var(--color-brandtext)" style={{ paintOrder: "stroke", stroke: "var(--cv-paper)", strokeWidth: 3 }}>
-          {String(name ?? "").slice(0, Math.floor(width / 6))}
-        </text>
-      )}
-    </g>
-  );
-}
 
-function SankeyNode(props: any) {
-  const { x, y, width, height, index = 0, name } = props;
-  const right = x + width > 100;
-  return (
-    <g>
-      <rect x={x} y={y} width={Math.max(width, 2)} height={Math.max(height, 2)} fill={SERIES_COLORS[index % SERIES_COLORS.length]} rx={2} />
-      {height > 14 && (
-        <text
-          x={right ? x - 6 : x + width + 6}
-          y={y + height / 2 + 3}
-          textAnchor={right ? "end" : "start"}
-          fontSize={10.5}
-          fill="var(--color-brandtext)"
-          style={{ paintOrder: "stroke", stroke: "var(--cv-paper)", strokeWidth: 3 }}
-        >
-          {String(name ?? "")}
-        </text>
-      )}
-    </g>
-  );
-}
 
-export function ChartBlockView({ block }: { block: ChartBlock }) {
+export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: RenderCtx }) {
+  // No series ⇒ not a chart. Every adapter reads series[0], so this ONE guard
+  // is what stops a malformed block from throwing inside render and blanking
+  // the ENTIRE card (measured: the funnel / treemap / sankey reports).
+  if (!Array.isArray(block?.series) || block.series.length === 0) {
+    return (
+      <figure className="ast-cv-chart">
+        {block?.title && <figcaption className="ast-cv-chart-title">{block.title}</figcaption>}
+        <p className="ast-cv-table-empty">No data — this chart arrived without any series.</p>
+      </figure>
+    );
+  }
   const labels = block.labels || block.series[0]?.points.map((_, i) => String(i + 1)) || [];
+  // Reactive: a series' points may be a binding, and a hidden series drops out.
+  const activeSeries = useMemo(
+    () => block.series.filter((sr) => {
+      const vis = (sr as unknown as { visible?: unknown }).visible;
+      if (vis == null || !ctx) return true;
+      const r = vis as Record<string, unknown>;
+      if (typeof r?.["$expr"] === "string") {
+        const out = evaluate(r["$expr"] as string, ctx.scope);
+        return out.ok ? !!out.value : true;
+      }
+      return true;
+    }),
+    [block.series, ctx],
+  );
   const data = useMemo(() => labels.map((l, i) => {
     const row: Record<string, string | number> = { name: l };
-    for (const s of block.series) row[s.name] = s.points[i] ?? 0;
+    for (const sr of activeSeries) {
+      const raw = (sr as unknown as { points: unknown }).points;
+      const pts = raw != null && typeof raw === "object" && ctx ? bindPoints(raw, ctx.scope) : null;
+      row[sr.name] = pts ? (pts[i] ?? 0) : (sr.points[i] ?? 0);
+    }
     return row;
-  }), [labels, block]);
+  }), [labels, activeSeries, ctx]);
 
-  const sankeyNodes = useMemo(() => sankeyOf(labels, block.series[0]?.points ?? []), [labels, block]);
-  const sankeyLinksData = useMemo(() => sankeyLinks(labels, block.series[0]?.points ?? []), [labels, block]);
-  const treemapData = useMemo(() => treemapOf(block), [block]);
-  const funnelData = useMemo(
-    () => (labels.length ? labels : (block.series[0]?.points ?? []).map((_, i) => String(i + 1)))
-      .map((l, i) => ({ name: l, value: block.series[0]?.points[i] ?? 0, fill: SERIES_COLORS[i % SERIES_COLORS.length] })),
-    [labels, block],
-  );
   const radarData = useMemo(() => {
     const axes = labels.length ? labels : (block.series[0]?.points ?? []).map((_, i) => String(i + 1));
     return axes.map((a, i) => {
@@ -233,13 +158,13 @@ export function ChartBlockView({ block }: { block: ChartBlock }) {
 
   // Axes + legend on every kind (owner 2026-10-04). The old shared fragment hid
   // both axes entirely, which is why every chart read as an unlabelled smear.
-  const axis = (
-    <>
-      {axes()}
-      <Tooltip content={<TT />} cursor={{ fill: "rgb(var(--c-89) / 0.04)" }} />
-      {legend()}
-    </>
-  );
+  // Axis elements must be DIRECT children — recharts detects axes by walking its
+  // own children, so wrapping them in a Fragment makes every axis vanish. That
+  // is exactly what the owner saw: only the scatter (inline axes) drew one.
+  const X = <XAxis dataKey="name" tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: AXIS_LINE }} height={24} />;
+  const Y = <YAxis tick={AXIS_TICK} tickFormatter={(v: number) => fmt(v)} tickLine={false} axisLine={{ stroke: AXIS_LINE }} width={46} />;
+  const TIP = <Tooltip content={<TT />} cursor={{ fill: "rgb(var(--c-89) / 0.04)" }} />;
+  const LEG = legend();
 
   const H = block.chart === "radial" || block.chart === "pie" || block.chart === "donut" ? 210
     : block.chart === "radar" ? 230
@@ -257,8 +182,11 @@ export function ChartBlockView({ block }: { block: ChartBlock }) {
       <ResponsiveContainer width="100%" height={H}>
         {block.chart === "line" ? (
           <LineChart data={data} margin={{ top: 6, right: 6, bottom: 0, left: 0 }}>
-            {axis}
-            {block.series.map((s, i) => (
+            {X}
+            {Y}
+            {TIP}
+            {LEG}
+            {activeSeries.map((s, i) => (
               <Line
                 key={s.name}
                 type="monotone"
@@ -274,8 +202,11 @@ export function ChartBlockView({ block }: { block: ChartBlock }) {
           </LineChart>
         ) : block.chart === "area" ? (
           <AreaChart data={data} margin={{ top: 6, right: 6, bottom: 0, left: 0 }}>
-            {axis}
-            {block.series.map((s, i) => (
+            {X}
+            {Y}
+            {TIP}
+            {LEG}
+            {activeSeries.map((s, i) => (
               <Area
                 key={s.name}
                 type="monotone"
@@ -292,8 +223,11 @@ export function ChartBlockView({ block }: { block: ChartBlock }) {
           </AreaChart>
         ) : block.chart === "bar" || block.chart === "stack" ? (
           <BarChart data={data} margin={{ top: 6, right: 6, bottom: 0, left: 0 }} barCategoryGap="22%">
-            {axis}
-            {block.series.map((s, i) => (
+            {X}
+            {Y}
+            {TIP}
+            {LEG}
+            {activeSeries.map((s, i) => (
               <Bar
                 key={s.name}
                 dataKey={s.name}
@@ -373,66 +307,16 @@ export function ChartBlockView({ block }: { block: ChartBlock }) {
               fontSize="9.5" fontFamily="var(--font-mono)" fill="var(--color-muted)">of max</text>
             <Tooltip content={<TT />} isAnimationActive={false} />
           </RadialBarChart>
-        ) : block.chart === "sankey" ? (
-          <Sankey
-            data={{ nodes: sankeyNodes, links: sankeyLinksData }}
-            nodePadding={14}
-            nodeWidth={12}
-            linkCurvature={0.42}
-            margin={{ top: 8, right: 60, bottom: 8, left: 60 }}
-            link={{ stroke: SERIES_COLORS[1], strokeOpacity: 0.4 }}
-            node={<SankeyNode />}
-          >
-            <Tooltip content={<TT />} />
-          </Sankey>
-        ) : block.chart === "treemap" ? (
-          <>
-            <Treemap
-              data={treemapData}
-              dataKey="value"
-              aspectRatio={4 / 3}
-              stroke="none"
-              content={<TreemapCell />}
-            >
-              <Tooltip content={<TT />} />
-            </Treemap>
-            {/* A treemap has no axes, so it gets a legend row + total instead —
-                the same "name the data" job the legend does elsewhere. */}
-            <div className="ast-cv-chart-legend ast-cv-chart-legend-block">
-              {treemapData.slice(0, 6).map((d: any, i: number) => (
-                <span key={i} className="ast-cv-legend-item">
-                  <span className="ast-cv-dot" style={{ background: SERIES_COLORS[i % SERIES_COLORS.length] }} />
-                  {d.name} · {fmt(d.value)}
-                </span>
-              ))}
-              <span className="ast-cv-legend-total">total {fmt(treemapData.reduce((n: number, d: any) => n + (d.value ?? 0), 0))}</span>
-            </div>
-          </>
-        ) : block.chart === "funnel" ? (
-          <>
-            <FunnelChart margin={{ top: 8, right: 12, bottom: 8, left: 12 }}>
-              <Tooltip content={<TT />} />
-              <Funnel dataKey="value" data={funnelData} isAnimationActive={false} stroke="none">
-                {funnelData.map((_, i) => (
-                  <Cell key={i} fill={SERIES_COLORS[i % SERIES_COLORS.length]} />
-                ))}
-              </Funnel>
-            </FunnelChart>
-            {/* Stage-to-stage conversion — the number a funnel exists to show. */}
-            <div className="ast-cv-chart-legend ast-cv-chart-legend-block">
-              {funnelData.map((d: any, i: number) => {
-                const prev = i === 0 ? d.value : funnelData[i - 1].value;
-                const pct = prev > 0 ? (d.value / prev) * 100 : 0;
-                return (
-                  <span key={i} className="ast-cv-legend-item">
-                    <span className="ast-cv-dot" style={{ background: SERIES_COLORS[i % SERIES_COLORS.length] }} />
-                    {d.name} · {fmt(d.value)}
-                    {i > 0 && <em className="ast-cv-funnel-pct">{pct.toFixed(1)}%</em>}
-                  </span>
-                );
-              })}
-            </div>
-          </>
+        ) : NATIVE.has(block.chart) ? (
+          // recharts 2.15 self-sizes Sankey/Treemap/Funnel: inside a
+          // ResponsiveContainer they measure 0×0 and paint NOTHING (measured:
+          // `surfaces: 0`), so they are rendered natively with real pixels.
+          //   • sankey  → @nivo/sankey (MIT, React 19 peer) — recharts' Sankey
+          //     delegates to d3-sankey and THROWS on our own payload
+          //     ("e.split is not iterable"), which blanked the whole card.
+          //   • treemap → recharts Treemap, measured width.
+          //   • funnel  → recharts FunnelChart, measured width + conversion row.
+          <Suspense fallback={<div className="ast-cv-graph-skeleton" aria-busy="true" />}><NativeLazy block={block} labels={labels} H={H} /></Suspense>
         ) : block.chart === "scatter" ? (
           <ScatterChart margin={{ top: 10, right: 16, bottom: 8, left: 0 }}>
             {/* REAL numeric axes. The old pair was `hide` with no domain and the
@@ -452,7 +336,7 @@ export function ChartBlockView({ block }: { block: ChartBlock }) {
             <ZAxis type="number" dataKey="z" range={[60, 260]} />
             <Tooltip cursor={{ stroke: "rgb(var(--c-89) / 0.25)" }} content={<TT />} />
             {legend("circle")}
-            {block.series.map((sr, i) => (
+            {activeSeries.map((sr, i) => (
               <Scatter
                 key={sr.name}
                 name={sr.name}
@@ -476,7 +360,7 @@ export function ChartBlockView({ block }: { block: ChartBlock }) {
             />
             <Tooltip content={<TT />} />
             {legend("circle")}
-            {block.series.map((sr, i) => (
+            {activeSeries.map((sr, i) => (
               <Radar key={sr.name} name={sr.name} dataKey={sr.name} stroke={SERIES_COLORS[i % SERIES_COLORS.length]} fill={SERIES_COLORS[i % SERIES_COLORS.length]} fillOpacity={0.14} isAnimationActive={false} />
             ))}
           </RadarChart>

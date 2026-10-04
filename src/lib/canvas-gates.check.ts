@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { reviewBodyToBlocks, fixBodyToBlocks, reportBodyToBlocks } from "./canvas-gates";
+import { reviewBodyToBlocks, fixBodyToBlocks, reportBodyToBlocks } from "./canvas-gates.ts";
 
 test("review body → severity KPI row + findings table", () => {
   const blocks = reviewBodyToBlocks({

@@ -1,6 +1,6 @@
 // no-duplication checks for text reconciliation (repo assert pattern).
 // Run: npx tsx src/lib/no-dup.check.ts
-import { applySegmentOps } from "./chat-segments";
+import { applySegmentOps } from "./chat-segments.ts";
 
 let fails = 0;
 function ok(cond: boolean, msg: string, extra?: unknown) {

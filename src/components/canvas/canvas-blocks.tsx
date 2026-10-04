@@ -4,6 +4,66 @@
 import { useEffect, useMemo, useRef, useState, lazy, Suspense, Fragment } from "react";
 import { useReducedMotion, useSpring, motion } from "motion/react";
 import { cn } from "../../lib/utils";
+import { bindNumber, bindPoints, bindVisible, resolveFrom, type FromBinding, type DataRow } from "../../lib/canvas-bind";
+import { useCanvasStateVersion, useCanvasScope } from "./canvas-state";
+
+/** Per-canvas render context: the reactive scope + the card's datasets. */
+export interface RenderCtx {
+  scope: Record<string, unknown>;
+  datasets: Map<string, DataRow[]>;
+}
+
+const isBinding = (v: unknown): boolean => v != null && typeof v === "object";
+
+function formatKpi(n: number): string {
+  if (!Number.isFinite(n)) return "—";
+  return Number.isInteger(n) ? n.toLocaleString("en-US") : n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
+/** A card is reactive if any block declares a binding or a `visible`. */
+function isReactiveBlock(b: CanvasBlock): boolean {
+  const o = b as unknown as Record<string, unknown>;
+  return o.visible != null || isBinding(o.value) || isBinding(o.delta) || isBinding(o.bind) ||
+    (b.type === "data") || isBinding(o.points) || isBinding(o.spark);
+}
+
+/** Collect the card's `data` carriers by name for `$from` readers. */
+function collectData(blocks: CanvasBlock[]): Map<string, DataRow[]> {
+  const out = new Map<string, DataRow[]>();
+  for (const b of blocks) {
+    if (b.type !== "data") continue;
+    const d = b as unknown as { name: string; columns?: string[]; rows: (string | number | boolean | null)[][]; header?: boolean };
+    const cols = d.columns?.length ? d.columns : inferCols(d.rows);
+    const body = d.columns?.length ? d.rows : (d.header === false ? d.rows : d.rows.slice(1));
+    out.set(d.name, body.map((r) => {
+      const o: DataRow = {};
+      cols.forEach((c, i) => {
+        const v = r[i];
+        o[c] = v == null ? null : typeof v === "number" ? v : typeof v === "boolean" ? (v ? 1 : 0) : String(v);
+      });
+      return o;
+    }));
+  }
+  return out;
+}
+
+function inferCols(rows: unknown[][]): string[] {
+  const first = rows[0];
+  return first && first.every((c) => typeof c === "string") ? (first as string[]) : [];
+}
+
+/** Resolve a reactive table's rows: `bind.$from` + filter/sort/top over a `data` block. */
+function reactiveRows(bindVal: unknown, ctx?: RenderCtx): { columns: string[]; rows: string[][] } | null {
+  if (!bindVal || typeof bindVal !== "object" || !ctx) return null;
+  const fb = bindVal as FromBinding;
+  if (typeof fb.$from !== "string") return null;
+  const source = ctx.datasets.get(fb.$from);
+  if (!source) return null;
+  const cols = source.length ? Object.keys(source[0]) : [];
+  if (!cols.length) return null;
+  const rows = resolveFrom(fb, ctx.datasets, ctx.scope);
+  return { columns: cols, rows: rows.map((r) => cols.map((c) => (r[c] == null ? "" : String(r[c])))) };
+}
 
 // recharts lives behind this boundary: chart blocks defer-load the engine, every
 // other block type (and the whole gate path) stays sync and dependency-free.
@@ -13,12 +73,15 @@ import type { CanvasBlock, KpiBlock, TableBlock, DiagramBlock, ChecklistBlock, S
 
 // ---- KPI ---------------------------------------------------------------------
 
-function CountUp({ value }: { value: string | number }) {
+function CountUp({ value }: { value: unknown }) {
   const reduce = useReducedMotion();
+  // React error #31: an object rendered as a child kills the WHOLE card. A
+  // reactive spec puts {"$expr": …} here, so resolve + coerce BEFORE JSX.
+  if (isBinding(value)) return null;
   const num = typeof value === "number" ? value : Number(String(value).replace(/[^0-9.\-]/g, ""));
   const parseable = typeof value === "number" || /^\s*[0-9][0-9.,\s]*\s*$/.test(String(value));
   if (reduce || !parseable || !Number.isFinite(num)) {
-    return <span className="ast-cv-kpi-value">{value}</span>;
+    return <span className="ast-cv-kpi-value">{String(value ?? "—")}</span>;
   }
   return <CountUpInner value={num} display={String(value)} />;
 }
@@ -72,18 +135,32 @@ function Sparkline({ points, trend }: { points: number[]; trend?: string }) {
 }
 
 export function KpiTile({ block }: { block: KpiBlock }) {
+  // A control write anywhere in this card re-renders, which is what makes a
+  // derived KPI ("MRR = seats × price") actually live.
+  useCanvasStateVersion();
+  const scope = useCanvasScope();
+  const raw = (block as unknown as { value: unknown }).value;
+  const value = isBinding(raw) ? bindNumber(raw, scope) : raw;
+  const dRaw = (block as unknown as { delta: unknown }).delta;
+  const delta = isBinding(dRaw) ? bindNumber(dRaw, scope) : dRaw;
+  const spRaw = (block as unknown as { spark: unknown }).spark;
+  const spark = isBinding(spRaw) ? bindPoints(spRaw, scope) : Array.isArray(spRaw) ? (spRaw as number[]) : null;
+
   const glyph = block.trend === "up" ? "↑" : block.trend === "down" ? "↓" : "";
   const cls = block.trend === "up" ? "up" : block.trend === "down" ? "down" : "";
   return (
     <div className="ast-cv-kpi">
       <span className="ast-cv-kpi-label">{block.label}</span>
       <div className="ast-cv-kpi-row">
-        <CountUp value={block.value} />
-        {block.delta != null && (
-          <span className={cn("ast-cv-kpi-delta", cls)}>{glyph} {block.delta}</span>
+        <CountUp value={value} />
+        {delta != null && (
+          <span className={cn("ast-cv-kpi-delta", cls)} title={typeof delta === "number" ? formatKpi(delta) : String(delta)}>
+            <span className="ast-cv-kpi-delta-glyph" aria-hidden="true">{glyph}</span>
+            <span className="ast-cv-kpi-delta-text">{typeof delta === "number" ? formatKpi(delta) : String(delta)}</span>
+          </span>
         )}
       </div>
-      {block.spark && block.spark.length >= 3 && <Sparkline points={block.spark} trend={block.trend} />}
+      {spark && spark.length >= 3 && <Sparkline points={spark} trend={block.trend} />}
     </div>
   );
 }
@@ -96,9 +173,10 @@ export function KpiTile({ block }: { block: KpiBlock }) {
 // validation because `[].every(…)` is vacuously true — so the card rendered as a
 // bare header row. Fixed at the schema (an empty table degrades) and hardened
 // here so no future shape can produce a header with no body again.
-export function TableBlockView({ block }: { block: TableBlock }) {
-  const cols = block.columns ?? [];
-  const rawRows = Array.isArray(block.rows) ? block.rows : [];
+export function TableBlockView({ block, ctx }: { block: TableBlock; ctx?: RenderCtx }) {
+  const reactive = reactiveRows((block as unknown as { bind?: unknown }).bind, ctx);
+  const cols = reactive ? reactive.columns : (block.columns ?? []);
+  const rawRows = reactive ? reactive.rows : Array.isArray(block.rows) ? block.rows : [];
   // Pad/trim every row to the header width: a ragged row renders as blanks
   // rather than shifting every column after it.
   const rows = rawRows
@@ -735,6 +813,12 @@ export function Blocks({
   /** Stable per-card prefix for fullscreen slot keys; unique within one canvas. */
   canvasId?: string;
 }) {
+  // The reactive context: current control values + this card's `data` datasets.
+  // Built here (not per block) so every reader in the card sees one snapshot.
+  const reactiveBlocks = useMemo(() => blocks.some(isReactiveBlock), [blocks]);
+  const scope = useCanvasScope();
+  const datasets = useMemo(() => collectData(blocks), [blocks]);
+  const ctx: RenderCtx | undefined = reactiveBlocks ? { scope, datasets } : undefined;
   const groups: CanvasBlock[][] = [];
   let rowRun: CanvasBlock[] = [];
   const flush = () => { if (rowRun.length > 0) { groups.push(rowRun); rowRun = []; } };
@@ -761,7 +845,7 @@ export function Blocks({
         return (
           <div key={gi} className={cn("ast-cv-group", (rowKind === "kpi" || rowKind === "progress") && "rows")}>
             {g.map((b, bi) => {
-              const inner = renderOne(b, `${canvasId}-${gi}`, bi);
+              const inner = renderOne(b, `${canvasId}-${gi}`, bi, ctx);
               // --i drives the CSS stagger (no per-block JS timer) and keeps the
               // arrival index in the DOM for QA.
               const idx = { ["--i" as string]: bi } as React.CSSProperties;
@@ -803,9 +887,12 @@ function DocSkeleton() {
   return <div className="ast-cv-doc-skeleton" aria-busy="true" />;
 }
 
-function renderOne(b: CanvasBlock, id: string, bi: number): React.ReactNode {
+function renderOne(b: CanvasBlock, id: string, bi: number, ctx?: RenderCtx): React.ReactNode {
   // `data` blocks are carriers for `$from` readers — never a surface.
   if (b.type === "data") return null;
+  // `visible` gates a whole block (json-render semantics); unset ⇒ visible.
+  const vis = (b as unknown as { visible?: unknown }).visible;
+  if (vis != null && ctx && !bindVisible(vis, ctx.scope)) return null;
   switch (b.type) {
     case "kpi": return <KpiTile block={b} />;
     case "progress": return <ProgressView block={b} />;
@@ -823,14 +910,14 @@ function renderOne(b: CanvasBlock, id: string, bi: number): React.ReactNode {
     case "terminal": return <TerminalView block={b} />;
     case "badges": return <BadgesView block={b} />;
     case "divider": return <DividerView block={b} />;
-    case "table": return <TableBlockView block={b} />;
+    case "table": return <TableBlockView block={b} ctx={ctx} />;
     case "diagram": return <DiagramBlockView block={b} />;
     case "checklist": return <ChecklistView block={b} />;
     case "steps": return <StepsView block={b} />;
     case "chart":
       return (
         <Suspense fallback={<div className="ast-cv-chart ast-cv-chart-skeleton" aria-busy="true" />}>
-          <ChartBlockView block={b} />
+          <ChartBlockView block={b} ctx={ctx} />
         </Suspense>
       );
     case "callout": return <CalloutView block={b} />;

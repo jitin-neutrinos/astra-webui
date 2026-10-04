@@ -1,8 +1,8 @@
 // Assert-based check for the replay-dedup rules: never renders a duplicated
 // response / approve / clarify / gate after session resume / reconnect.
 //   npx tsx src/lib/chat-dedup.check.ts
-import { applySegmentOps, hasRenderedReq, lastAssistantHasText, reqSidOf } from "./chat-segments";
-import type { Segment, SegOp } from "./chat-segments";
+import { applySegmentOps, hasRenderedReq, lastAssistantHasText, reqSidOf } from "./chat-segments.ts";
+import type { Segment, SegOp } from "./chat-segments.ts";
 
 let failures = 0;
 function ok(name: string, cond: boolean, extra?: unknown) {

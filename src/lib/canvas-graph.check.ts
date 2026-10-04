@@ -149,3 +149,38 @@ test("new chart kinds alias their near-miss names", () => {
   const flow = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "chart", chart: "flow", stages: [{ label: "a", value: 1 }] }] }));
   assert.equal((flow!.blocks[0] as { chart: string }).chart, "sankey");
 });
+
+// ── renderer contracts (owner 2026-10-04) ───────────────────────────────────
+// Two bugs blanked an ENTIRE card from a single malformed block, and one made
+// the graph render with no connections at all. Each is pinned here because the
+// symptom ("funnel shows no chart", "no connecting lines") is far from the cause.
+
+// A chart with no series must DEGRADE to a message, not throw inside render:
+// every adapter in canvas-chart reads series[0], so one empty block took the
+// whole canvas down (React error #31 / a TypeError in the parser fallback).
+test("a chart with no series degrades instead of vanishing the card", () => {
+  assert.equal(parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "chart", chart: "line" }] })), null,
+    "a chart with no series is invalid and must not reach the renderer");
+  // …and a sankey keeps its LINKS (nivo needs nodes+links, not a column sort)
+  const sk = parseCanvasSpec(JSON.stringify({
+    v: 1,
+    blocks: [{ type: "chart", chart: "sankey", nodes: [{ id: "a" }, { id: "b" }, { id: "c" }],
+      links: [{ source: "a", target: "b", value: 10 }, { source: "b", target: "c", value: 6 }] }],
+  }));
+  assert.ok(sk, "sankey parses");
+  const series = (sk!.blocks[0] as { series: { points: number[]; links?: unknown[] }[] }).series[0];
+  assert.equal(series.points.length, 3, "one point per node");
+  assert.equal(series.links?.length, 2, "the authored connections survive normalization");
+});
+
+// The graph renderer must add nodes AND edges in ONE collection: cytoscape's
+// add() silently ignores a second argument, which rendered 9 isolated nodes and
+// NO connecting lines (the owner's "relationship needs connecting lines" report).
+test("graph elements carry BOTH nodes and edges into cytoscape", () => {
+  const els = toElements({ nodes: G.nodes, edges: G.edges } as any);
+  assert.equal(els.nodes.length, 5);
+  assert.equal(els.edges.length, 4, "edges survive toElements — a dropped edge here is an invisible connection");
+  const one = [...els.nodes, ...els.edges] as { data: { source?: string } }[];
+  assert.equal(one.filter((e) => e.data.source !== undefined).length, 4,
+    "every edge is addressable as a source/target pair");
+});

@@ -23,7 +23,7 @@ const markedRead: string[] = [];
   return { ok: true };
 };
 
-import * as notify from "./notify";
+import * as notify from "./notify.ts";
 
 notify._test.reset();
 notify.setBaseTitle("My Astra");

@@ -1,5 +1,5 @@
 // harness-agents checks (repo assert pattern). Run: npx tsx src/lib/harness-agents.check.ts
-import { detectHarness, mergeRoster } from "./harness-agents";
+import { detectHarness, mergeRoster } from "./harness-agents.ts";
 
 let failures = 0;
 function ok(cond: boolean, msg: string) {

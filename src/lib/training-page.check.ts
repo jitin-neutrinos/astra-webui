@@ -5,7 +5,7 @@
 // restated the logic would only test its own copy and pass even after the page
 // broke.
 
-import { jobCounts, fmtCountdown, countdownUntil } from "./training-view";
+import { jobCounts, fmtCountdown, countdownUntil } from "./training-view.ts";
 
 function main() {
   let failures = 0;

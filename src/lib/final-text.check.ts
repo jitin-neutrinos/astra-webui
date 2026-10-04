@@ -8,7 +8,7 @@
 // re-pulled history. `text-final` fixes it — but it must never double-render
 // text that DID stream, so every branch below is pinned.
 
-import { applySegmentOps, type Segment, type SegOp } from "./chat-segments";
+import { applySegmentOps, type Segment, type SegOp } from "./chat-segments.ts";
 
 let failures = 0;
 function check(name: string, cond: boolean, extra?: unknown) {

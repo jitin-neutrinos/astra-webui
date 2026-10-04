@@ -44,10 +44,10 @@ function themeTokens() {
 /** Node radius on coarse pointers — 44px-class targets for a fingertip. */
 const coarse = () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
 
-const EDGE_REST = 0.34;
+const EDGE_REST = 0.72; // was 0.34 — read as "no lines at all" on the dark ground
 const EDGE_LIT = 0.75;
 const DIM_NODE = 0.16;
-const DIM_EDGE = 0.08;
+const DIM_EDGE = 0.12;
 const KIND_OPACITY = [1, 0.72, 0.48];
 
 export default function GraphView({ block }: { block: GraphBlock }) {
@@ -66,9 +66,12 @@ export default function GraphView({ block }: { block: GraphBlock }) {
   useEffect(() => {
     const host = hostRef.current;
     if (!host || !block.nodes.length) return undefined;
-    const tokens = themeTokens();
     const big = coarse();
     const els = toElements(block);
+    // cytoscape's CANVAS renderer cannot resolve `var(--x)`: every colour must
+    // be a resolved literal. themeTokens() reads the cascade and returns hex,
+    // which is the only reason the map was visible at all.
+    const tokens = themeTokens();
 
     // NB: cytoscape's constructor `elements:` option SILENTLY DROPS position
     // fields in 3.34 (nodes land at 0,0) — you must add() after construction.
@@ -82,7 +85,9 @@ export default function GraphView({ block }: { block: GraphBlock }) {
       maxZoom: 3.5,
       pixelRatio: "auto",
     } as any);
-    cy.add(els.nodes, els.edges);
+    // ONE argument: cytoscape's add() ignores a second collection, which is
+    // exactly why the map rendered as 9 isolated nodes and no connections.
+    cy.add([...els.nodes, ...els.edges]);
     cyRef.current = cy;
     if (import.meta.env?.DEV) (window as any).__kg = cy;
 
@@ -120,9 +125,12 @@ export default function GraphView({ block }: { block: GraphBlock }) {
         { selector: "node.lit", style: { "text-opacity": 1 } },
         { selector: "node.dim", style: { opacity: DIM_NODE } },
         { selector: "edge", style: {
-            "line-color": t.accent, "curve-style": "haystack", "haystack-radius": 0.4,
-            "target-arrow-shape": "none", opacity: EDGE_REST, width: "data(width)",
-            "transition-property": "opacity", "transition-duration": 180, "z-index": 1,
+            // OWNER 2026-10-04: "the relationship needs connecting lines, which are
+            // missing now" — the edges existed but sat at 0.34 opacity on a dark
+            // ground and read as absent. Raised, and given a visible outline.
+            "line-color": t.accent, "curve-style": "bezier", "control-point-step-size": 40,
+            "target-arrow-shape": "none", opacity: 0.72, width: "data(width)",
+            "overlay-opacity": 0, "transition-property": "opacity", "transition-duration": 180, "z-index": 1,
         } },
         // `asserted` = analyst-added relation: the one semantic distinction
         // worth a different stroke (same as upstream).
@@ -142,7 +150,9 @@ export default function GraphView({ block }: { block: GraphBlock }) {
     // programmatic zoom()/fit(), so the viewport events alone are sufficient.
     const applyScale = () => {
       const z = cy.zoom();
-      const scale = Math.max(0.2, Math.min(3, 1 / Math.max(z, 0.15)));
+      // Sized for legibility, not for compensation: at fit-zoom (~0.59) the old
+      // 1/z multiplier inflated a 24px node to 81px. Clamped to a sane band.
+      const scale = Math.max(0.55, Math.min(1.35, 1 / Math.max(z, 0.4)));
       cy.batch(() => {
         cy.nodes().forEach((n: any) => {
           const base = n.data("size") ?? 24;

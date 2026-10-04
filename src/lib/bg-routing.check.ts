@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { showsInFeed } from "./bg-routing";
+import { showsInFeed } from "./bg-routing.ts";
 
 // Owner mandate: /bg replies live in the dock, not the chat feed.
 test("an ordinary chat turn always shows", () => {

@@ -3,7 +3,7 @@
 //   https://astra.jitinnair.com — the proxy broadcasts every upstream frame to
 //   every tab, so server→client requests MUST be gated on params.session_id
 //   === liveIdRef.current (exact match, fail-closed).
-import { requestBelongsToLive } from "./hermes-ws";
+import { requestBelongsToLive } from "./hermes-ws.ts";
 
 function assert(cond: boolean, msg: string) {
   if (!cond) throw new Error("FAIL: " + msg);

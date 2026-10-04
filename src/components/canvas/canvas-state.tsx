@@ -23,6 +23,8 @@ class CanvasStore {
   private listeners = new Set<() => void>();
   /** consumers that already rendered with this version (stamp = write count) */
   private rendered = new Map<number, Set<string>>();
+  private frozen: Scope | null = null;
+  private frozenAt = -1;
 
   constructor(initial: Scope) {
     this.values = initial;
@@ -58,6 +60,15 @@ class CanvasStore {
     if (this.rendered.size > 16) { const k = this.rendered.keys().next().value; if (k !== undefined) this.rendered.delete(k); }
     set.add(id);
     return this.version;
+  }
+
+  /** Current values, frozen so a consumer cannot mutate another card's state. */
+  snapshot(): Scope {
+    if (!this.frozen || this.frozenAt !== this.version) {
+      this.frozen = Object.freeze({ ...this.values });
+      this.frozenAt = this.version;
+    }
+    return this.frozen;
   }
 
   subscribe = (l: () => void) => {
@@ -130,8 +141,8 @@ export function useCanvasSet(): (key: string, v: StateValue) => void {
 /** Read the full current scope for expression evaluation (stable identity per version). */
 export function useCanvasScope(): Scope {
   const s = useStore();
-  const v = useCanvasStateVersion();
-  return v === 0 ? s["values" as keyof CanvasStore] as unknown as Scope : (s as unknown as { values: Scope }).values;
+  useCanvasStateVersion();
+  return s.snapshot();
 }
 
 /** Reset button support: restores the authored initial state for one canvas. */

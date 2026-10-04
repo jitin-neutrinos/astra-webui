@@ -29,7 +29,13 @@ export interface ChartBlock {
     | "sankey" | "treemap" | "funnel" | "radar" | "scatter";
   title?: string;
   labels?: string[];
-  series: { name: string; points: number[]; items?: { name: string; value: number }[] }[];
+  series: {
+    name: string;
+    points: number[];
+    items?: { name: string; value: number }[];
+    /** sankey only: the authored edges, preserved so the flow keeps its shape */
+    links?: { source: string; target: string; value: number }[];
+  }[];
 }
 
 export interface TableBlock {
@@ -529,6 +535,47 @@ export function validateBlock(b: any): CanvasBlock | null {
       // series — normalise all of them to the canonical series form here so the
       // renderer has ONE shape to draw and a near-miss shape never degrades.
       if (NEW_KINDS && (!Array.isArray(b.series) || b.series.length === 0)) {
+        // A sankey authored the natural way carries nodes + links, NOT series.
+        // This branch must run FIRST: the generic items-collection below also
+        // looks at `nodes`, consumed it, and left the block with no series at
+        // all — which the renderer then rejected ("no data"), so the flow chart
+        // rendered empty.
+        if (chart === "sankey" && Array.isArray(b.nodes) && Array.isArray(b.links)) {
+          const nodeNames: string[] = [];
+          const index = new Map<string, number>();
+          for (const n of b.nodes) {
+            const nm = isStr(n) ? n : isStr(n?.id) ? n.id : isStr(n?.name) ? n.name : null;
+            if (nm == null) return null;
+            index.set(nm, nodeNames.length);
+            nodeNames.push(nm);
+          }
+          if (nodeNames.length === 0) return null;
+          const vals = nodeNames.map(() => 0);
+          for (const l of b.links) {
+            if (!l || typeof l !== "object") continue;
+            const a = isStr(l.source) ? l.source : isStr(l.from) ? l.from : null;
+            const z = isStr(l.target) ? l.target : isStr(l.to) ? l.to : null;
+            const v = isNum(l.value) ? l.value : 1;
+            if (a == null || z == null || !index.has(a) || !index.has(z)) continue;
+            vals[index.get(a)!] += v;
+            vals[index.get(z)!] += v;
+          }
+          const links: { source: string; target: string; value: number }[] = [];
+          for (const l of b.links) {
+            if (!l || typeof l !== "object") continue;
+            const a = isStr(l.source) ? l.source : isStr(l.from) ? l.from : null;
+            const z = isStr(l.target) ? l.target : isStr(l.to) ? l.to : null;
+            if (a == null || z == null || !index.has(a) || !index.has(z)) continue;
+            links.push({ source: a, target: z, value: isNum(l.value) ? l.value : 1 });
+          }
+          return {
+            type: "chart", chart,
+            title: isStr(b.title) ? b.title : undefined,
+            labels: nodeNames,
+            series: [{ name: "flow", points: vals, links }],
+          };
+        }
+
         const items = Array.isArray(b.items) ? b.items
           : Array.isArray(b.stages) ? b.stages
           : Array.isArray(b.nodes) && b.nodes.every((n: any) => n && typeof n === "object" && isNum(n.value))
@@ -548,39 +595,21 @@ export function validateBlock(b: any): CanvasBlock | null {
           const series = [{ name: isStr(b.title) ? b.title : chart, points, items: kids }];
           return { type: "chart", chart, title: isStr(b.title) ? b.title : undefined, labels, series };
         }
-        // sankey with explicit nodes + links
-        if (chart === "sankey" && Array.isArray(b.nodes) && Array.isArray(b.links)) {
-          const nodeNames: string[] = [];
-          const index = new Map<string, number>();
-          for (const n of b.nodes) {
-            const nm = isStr(n) ? n : isStr(n?.id) ? n.id : isStr(n?.name) ? n.name : null;
-            if (nm == null) return null;
-            index.set(nm, nodeNames.length);
-            nodeNames.push(nm);
-          }
-          const vals = nodeNames.map(() => 0);
-          for (const l of b.links) {
-            if (!l || typeof l !== "object") return null;
-            const a = isStr(l.source) ? l.source : isStr(l.from) ? l.from : null;
-            const z = isStr(l.target) ? l.target : isStr(l.to) ? l.to : null;
-            const v = isNum(l.value) ? l.value : 1;
-            if (a == null || z == null || !index.has(a) || !index.has(z)) continue;
-            vals[index.get(a)!] += v;
-            vals[index.get(z)!] += v;
-          }
-          return { type: "chart", chart, title: isStr(b.title) ? b.title : undefined, labels: nodeNames, series: [{ name: "flow", points: vals }] };
-        }
       }
 
       if (!Array.isArray(b.series) || b.series.length === 0) return null;
-      const series: { name: string; points: number[]; items?: { name: string; value: number }[] }[] = [];
+      const series: { name: string; points: number[]; items?: { name: string; value: number }[]; links?: { source: string; target: string; value: number }[] }[] = [];
       for (const s of b.series) {
         if (!s || !isStr(s.name) || !Array.isArray(s.points) || !s.points.every(isNum)) return null;
         const kids = Array.isArray(s.items)
           ? s.items.filter((it: any) => it && (isStr(it.name) || isStr(it.label)) && isNum(it.value))
               .map((it: any) => ({ name: isStr(it.name) ? it.name : it.label, value: it.value }))
           : undefined;
-        series.push({ name: s.name, points: s.points, items: kids });
+        const links = Array.isArray(s.links)
+          ? s.links.filter((l: any) => l && isStr(l.source) && isStr(l.target))
+              .map((l: any) => ({ source: l.source, target: l.target, value: isNum(l.value) ? l.value : 1 }))
+          : undefined;
+        series.push({ name: s.name, points: s.points, items: kids, links });
       }
       return { type: "chart", chart, title: isStr(b.title) ? b.title : undefined, labels: b.labels, series };
     }
