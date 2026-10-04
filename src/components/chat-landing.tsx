@@ -1927,9 +1927,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
             />
           </div>
         ))}
-        <div className={cn("chat-composer mx-auto w-full max-w-[52rem]", dragOver && "drag-over")}>
-          {/* Fewer comet bands on low-memory/low-core devices (see composer-trace). */}
-          <ComposerTrace bands={LOW_SPEC ? 24 : 32} />
+        <div className={cn("chat-composer-shell mx-auto w-full max-w-[52rem]", dragOver && "drag-over")}>
           {dragOver && (
             <div className="chat-drop-overlay" aria-hidden="true">Drop to attach</div>
           )}
@@ -1975,7 +1973,11 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
             }}
             onRunTui={(cmd) => void runTuiCommand(cmd.name)}
           />
-          <div className="composer-field">
+          {/* Input is its OWN rounded card — the running trace lives on this card,
+              not the buttons bar. Fewer comet bands on low-memory/low-core devices. */}
+          <div className="chat-composer composer-input-card">
+            <ComposerTrace bands={LOW_SPEC ? 24 : 32} />
+            <div className="composer-field">
             <textarea
               ref={taRef}
               rows={1}
@@ -1997,8 +1999,10 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
               }
               active={input.length === 0}
             />
+            </div>
           </div>
-          <div className="chat-composer-bar">
+          <div className="chat-composer composer-bar-card">
+            <div className="chat-composer-bar">
             <ComposerControls
               setAttachments={setAttachments}
               sessionInfo={sessionInfo}
@@ -2030,6 +2034,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
             >
               {sentFlash ? <Check className="h-4 w-4" strokeWidth={2} /> : <ArrowUp className="h-4 w-4" strokeWidth={1.8} />}
             </button>
+            </div>
           </div>
         </div>
       </div>
