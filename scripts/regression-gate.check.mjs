@@ -468,19 +468,33 @@ export const REGRESSIONS = [
       "The reactive canvas layer was documented but dead at the parser: validateBlock dropped kpi/progress value bindings, table bind/numeric cells and chart series bindings, parseCanvasSpec stripped `state`, control defaults never seeded the scope, and a re-parse reset user edits.",
     guard: "src/lib/canvas-schema.check.ts",
   },
-  {
+{
     id: "RG-071",
     found: "2026-10-04",
     symptom:
       "Diagram nodes, edge labels and connectors overlapped or ran through each other once a diagram had more than a handful of nodes: the layout was DOM-measured with a nudge heuristic that cannot guarantee free space. The pure layout is audited for node/label overlap, out-of-bounds, edge-through-node, edge-through-label, diagonal segments and determinism on 5 stress fixtures plus 200 seeded random graphs.",
     guard: "src/lib/diagram-layout.check.ts",
   },
-  {
+{
     id: "RG-072",
     found: "2026-10-04",
     symptom:
       "The diagram block's optional summary/caption/kind/note fields were silently dropped by validateBlock, so a reader got no text explanation of a diagram.",
     guard: "src/lib/canvas-schema.check.ts",
+  },
+  {
+    id: "RG-073",
+    found: "2026-10-04",
+    symptom:
+      "Sidebar logo alignment drifted: the mark sat a pixel off the title baseline after a container change. Guards the logo/title box geometry across widths.",
+    guard: "src/lib/sidebar-logo-align.check.ts",
+  },
+  {
+    id: "RG-074",
+    found: "2026-10-04",
+    symptom:
+      "Priority+ composer overflow: a wrong fit decision does not throw, it silently hides a control the owner needed or overflows the row on a phone. Guards the exact-fit boundary, an item wider than the whole budget, unmeasured NaN widths on first paint, monotonicity, and that every collapsible control stays reachable EXACTLY ONCE at every width.",
+    guard: "src/lib/overflow-fit.check.ts",
   },
 ];
 
@@ -532,38 +546,6 @@ for (const file of [...liveChecks].sort()) {
   const args = isTs
     ? ["--import", "./scripts/ts-resolve.mjs", file]
     : [file];
-  const r = spawnSync(process.execPath, args, { cwd: ROOT, encoding: "utf8", timeout: 120_000 });
-  if (r.status !== 0) {
-    const last = (r.stderr || r.stdout || "").trim().split("\n").filter(Boolean).pop() || "";
-    fail(`REGRESSED: ${file} — ${last.slice(0, 140)}`);
-  }
-}
-
-console.log(
-  `regression-gate: ${REGRESSIONS.length} pinned bugs, ${liveChecks.size} re-run live, ${discovered.length} checks discovered`
-);
-if (failures) {
-  console.error(`${failures} regression-gate failure(s)`);
-  process.exit(1);
-}
-
-// resurrected rows (merge ate the seam): RG-070 reactive-canvas parser + the overflow-fit guard row
-const EXTRAS = [
-  {
-    id: "RG-070",
-    found: "2026-10-04",
-    symptom:
-      "Priority+ composer overflow: a wrong fit decision does not throw, it silently hides a control the owner needed or overflows the row on a phone. Guards the exact-fit boundary, an item wider than the whole budget, unmeasured NaN widths on first paint, monotonicity, and that every collapsible control stays reachable EXACTLY ONCE at every width.",
-    guard: "src/lib/overflow-fit.check.ts",
-  },
-];
-    found: "2026-10-04",
-    symptom:
-      "Priority+ composer overflow: a wrong fit decision does not throw, it silently hides a control the owner needed or overflows the row on a phone. Guards the exact-fit boundary, an item wider than the whole budget, unmeasured NaN widths on first paint, monotonicity, and that every collapsible control stays reachable EXACTLY ONCE at every width.",
-    guard: "src/lib/overflow-fit.check.ts",
-  },
-];
-
   const r = spawnSync(process.execPath, args, { cwd: ROOT, encoding: "utf8", timeout: 120_000 });
   if (r.status !== 0) {
     const last = (r.stderr || r.stdout || "").trim().split("\n").filter(Boolean).pop() || "";
