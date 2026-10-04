@@ -496,6 +496,13 @@ export const REGRESSIONS = [
       "Priority+ composer overflow: a wrong fit decision does not throw, it silently hides a control the owner needed or overflows the row on a phone. Guards the exact-fit boundary, an item wider than the whole budget, unmeasured NaN widths on first paint, monotonicity, and that every collapsible control stays reachable EXACTLY ONCE at every width.",
     guard: "src/lib/overflow-fit.check.ts",
   },
+  {
+    id: "RG-075",
+    found: "2026-10-04",
+    symptom:
+      "A sharp rectangle crept back into the UI (owner law: every visible corner is a pill, a circle or a rounded rectangle). Guards index.css app-wide, with the scrollbar/bottom-attached/heat-cell exceptions documented in the check.",
+    guard: "src/lib/rounding.check.ts",
+  },
 ];
 
 // ---- gate -----------------------------------------------------------------
