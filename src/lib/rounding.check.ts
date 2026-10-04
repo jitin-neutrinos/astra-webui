@@ -6,10 +6,14 @@ import { readFileSync } from "node:fs";
 
 const css = readFileSync(new URL("../index.css", import.meta.url), "utf8");
 
+// deliberate exceptions (do NOT round): scrollbar grip (3px), bottom-attached cards (0 0 12px 12px),
+// a 1px caret, heat-map cells (4px, a grid must read as cells)
+const DELIBERATE = ["-webkit-scrollbar-thumb", "0 0 12px 12px", "cmenu-row-collapsed::after", "ast-cv-heat-step", "::-moz-range-thumb"];
+
 // 1) no 0/1/2/3px border-radius on any .ast-cv-* rule (matches across lines)
-const sharp = [...css.matchAll(/\.ast-cv-[a-z-]+[^{]*\{[^}]*?border-radius:\s*(?:0|1|2|3)px/g)]
-  .filter((m) => !m[0].includes(".ast-cv-heat-step"));
-assert.equal(sharp.length, 0, `canvas has ${sharp.length} sharp rectangle(s): ${sharp.map((m) => m[0].split("{")[0].trim()).join(", ")}`);
+const sharp = [...css.matchAll(/(?:^|})\s*([.#][a-zA-Z][^{}]*?)\{[^}]*?border-radius:\s*(?:0|1|2|3)(?:\.\d+)?px/g)]
+  .filter((m) => !DELIBERATE.some((d) => m[1].includes(d) || m[0].includes(d)));
+assert.equal(sharp.length, 0, `sharp rectangles remain: ${sharp.map((m) => m[1].trim()).join(", ")}`);
 
 // 2) the fill/track/dot controls ended up pills or circles (first rule per selector)
 for (const sel of ["ast-cv-progress-track", "ast-cv-progress-fill", "ast-cv-dot", "ast-cv-tl-dot", "ast-cv-callout-dot"]) {
@@ -18,4 +22,4 @@ for (const sel of ["ast-cv-progress-track", "ast-cv-progress-fill", "ast-cv-dot"
   assert.ok(/border-radius:\s*(?:9999px|50%)/.test(rule), sel + " must be pill/circle");
 }
 
-console.log("rounding.check: all canvas radii rounded (pill/circle/rounded-rect)");
+console.log("rounding.check: every visible corner is rounded (pill/circle/rounded-rect; heat cells 4px, scrollbar and bottom-attached cards documented)");
