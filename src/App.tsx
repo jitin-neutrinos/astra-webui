@@ -608,14 +608,24 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
           top of a fixed height is redundant and made it read taller than the
           header, so the padding is gone and the height is the token alone. */}
       <div className={cn("ast-topbar flex shrink-0 border-b border-white/[0.07]",
-        expanded ? "items-center gap-3 px-4" : "items-center justify-center px-2")}>
-        <button type="button" onClick={onToggleCollapse} disabled={drawerOpen}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          title={expanded ? "Collapse" : "Expand"}
-          className="rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent/60">
-          <img src="/astra-logo.png" alt="Astra"
-            className="h-7 w-7 shrink-0 rounded-lg object-cover" />
-        </button>
+        expanded ? "items-center gap-3 px-4" : "items-center px-2")}>
+        {/* In the collapsed rail the logo must share the EXACT centre of the 48px
+            icon column every nav row below uses. `justify-center` cannot do that:
+            the rail's 1px right border (border-box) leaves a 63px content box, so
+            centring inside it lands the logo on 31.5px while the `w-12` icon spans
+            land on 32px — measured on the live DOM, a consistent 0.5px offset
+            between the logo and the icons it is supposed to align with. Locking
+            both to the same origin (px-2 + w-12) puts the two centres on the same
+            pixel. Expanded keeps the plain flow layout. */}
+        <span className={cn("grid shrink-0 place-content-center", !expanded && "h-full w-12")}>
+          <button type="button" onClick={onToggleCollapse} disabled={drawerOpen}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={expanded ? "Collapse" : "Expand"}
+            className="rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent/60">
+            <img src="/astra-logo.png" alt="Astra"
+              className="h-7 w-7 shrink-0 rounded-lg object-cover" />
+          </button>
+        </span>
         {expanded && (
           <div className="min-w-0">
             <p className="truncate font-display text-sm font-semibold tracking-tight text-brandtext">Astra</p>
