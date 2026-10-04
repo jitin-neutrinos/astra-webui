@@ -617,11 +617,28 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
             between the logo and the icons it is supposed to align with. Locking
             both to the same origin (px-2 + w-12) puts the two centres on the same
             pixel. Expanded keeps the plain flow layout. */}
-        <span className={cn("grid shrink-0 place-content-center", !expanded && "h-full w-12")}>
+        <span className={cn("grid shrink-0", !expanded && "h-full w-12 grid-cols-1 place-content-stretch")}>
           <button type="button" onClick={onToggleCollapse} disabled={drawerOpen}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             title={expanded ? "Collapse" : "Expand"}
-            className="rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent/60">
+            className={cn(
+              "rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent/60",
+              // In the rail the button FILLS the 48x56 column and centres the logo
+              // inside it. Two traps, both measured on iPad Pro 12.9:
+              //  1. index.css has a global touch rule
+              //     (`@media (pointer: coarse) { button { min-width/min-height: 44px } }`)
+              //     so any content-sized button becomes 44px on tablets. A 44px
+              //     button with a left-aligned 28px image put the logo 8px left of
+              //     the rail centre (measured -8.00px, both orientations) while
+              //     fine-pointer desktops measured 0.00px and hid it.
+              //  2. `place-content: center` on the wrapper sizes the grid TRACK to
+              //     content, so `w-full`/`h-full` on the button resolve against a
+              //     content-sized track and stay 44px. The wrapper therefore uses
+              //     `place-content-stretch` and the button fills the real track.
+              // Filling the column (48x56) also beats the 44px a11y minimum
+              // outright, so the touch target grows rather than being traded away.
+              !expanded && "grid h-full w-full place-content-center",
+            )}>
             <img src="/astra-logo.png" alt="Astra"
               className="h-7 w-7 shrink-0 rounded-lg object-cover" />
           </button>
