@@ -913,12 +913,25 @@ html.theme-fading body * {
    (see onInputChange), so the text needs no mirror overlay and the native caret
    sits exactly where the user is typing. */
 .chat-composer-input.cmd-active { color: var(--color-accent); caret-color: var(--color-accent); text-shadow: 0 0 8px color-mix(in srgb, var(--color-accent) 55.0%, transparent); }
-/* Separation between the text field and the buttons row: same shape and same background
-   (the composer is ONE surface at the theme's void colour), divided by a hairline in the
-   theme's own accent. Alpha is tuned per mode — on a dark ground a faint accent is
-   invisible, so dark needs ~40% where light reads at ~16%. */
-.chat-composer-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; padding-top: 8px; border-top: 1px solid color-mix(in srgb, var(--color-accent) 40%, transparent); }
-[data-theme="light"] .chat-composer-bar { border-top-color: color-mix(in srgb, var(--color-accent) 22%, transparent); }
+/* Composer buttons bar — the top rule is GONE (owner 2026-10-04: "remove the line on
+   top, and make the container as tall as where the removed line would be").
+
+   HISTORY: this bar was once the bottom half of ONE .chat-composer surface, divided
+   from the text field by a 1px accent hairline (40% alpha, 22% in light). It is now
+   its own card (.composer-bar-card, 6px 10px padding) inside .chat-composer-shell,
+   which already separates the two with an 8px flex gap. So the rule's job — dividing
+   input from actions — is done by the card boundary and the gap, and the rule itself
+   only added a hard horizontal edge across the composer.
+
+   On the height: the earlier spelling of this rule re-added padding-top: 9px to
+   "preserve" the removed line's space, but that was wrong for the CURRENT structure —
+   the bar already has its own card padding, and extra top padding just stretched the
+   gap between the field and its buttons. Height is therefore left entirely to
+   .composer-bar-card's padding plus the shell gap. */
+.chat-composer-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  border-top: none; padding-top: 0; margin-top: 0;
+}
 .chat-chip-active { border-color:rgb(var(--c-15) / 0.45); color: var(--color-accent); background:rgb(var(--c-19) / 0.08); }
 
 /* popout composer: floating expanded editor anchored above the composer */
@@ -1938,24 +1951,33 @@ html.theme-fading body * {
   background-color:rgb(var(--light-c-76));
 }
 
-/* Light-mode bubbles: the pre-theme-engine values, restored EXACTLY (owner 2026-10-03).
-   Baseline (commit 837d0b0) was:
-     --bubble-ai-bg: transparent;      --bubble-ai-border: color-mix(in srgb, var(--color-accent) 22.0%, transparent);
-     --bubble-user-bg: transparent;    --bubble-user-border: rgba(4,120,87,.28);
-     --bubble-user-text: #064e3b;
-   The engine had retinted these into visible colour-mix fills, which read as "light mode is
-   broken". Kept token-routed where the result is byte-identical: `color-mix(in srgb, C p%,
-   transparent)` serialises to color(srgb ...) but is the SAME colour as rgba(C, p) — verified by
-   pixel comparison, not string equality. The user TEXT is a literal: it is a deliberately deep
-   green (65% of the accent toward black), and every color-mix spelling lands on a visibly
-   lighter tint than the baseline. */
+/* Light-mode bubbles — WHITE TINT ADDED (owner 2026-10-04).
+   The baseline was `transparent`, which was correct only while the page ground was
+   always the light paper. With a chat BACKDROP set (a dark photo/video), a
+   transparent bubble let that dark media show straight through and light-mode ink
+   sat on top of it — unreadable. Glassmorphism only works if the glass has a tint:
+   the blur is what makes a surface translucent, and the tint is what keeps it
+   legible over arbitrary media. So light mode now mixes the bubble toward WHITE
+   (the mode's own paper), never toward the backdrop.
+
+   Kept high enough to stay readable over a dark wallpaper (owner asked for visible
+   text), low enough that the wallpaper still reads through the glass. */
 [data-theme="light"] {
-  --bubble-ai-bg: transparent;
+  --bubble-ai-bg: color-mix(in srgb, #ffffff 88%, transparent);
   --bubble-ai-border: color-mix(in srgb, var(--color-accent) 22%, transparent);
-  --bubble-user-bg: transparent;
+  --bubble-user-bg: color-mix(in srgb, #ffffff 82%, transparent);
   --bubble-user-border: color-mix(in srgb, var(--color-emerald) 28%, transparent);
   --bubble-user-text: #064e3b;
 }
+/* An AI bubble is the main text surface, so it gets the strongest paper tint;
+   the user's own bubble sits a step more transparent to read as a different
+   surface while still carrying its own weight. */
+[data-theme="light"] .chat-bubble-ai { background: color-mix(in srgb, #ffffff 88%, transparent); }
+[data-theme="light"] .chat-bubble-user { background: color-mix(in srgb, #ffffff 82%, transparent); }
+/* The composer carries typed-but-unsent text, so it gets its own opaque-ish tint
+   rather than inheriting the void-based one (which is near-transparent in light). */
+[data-theme="light"] .chat-composer { background: color-mix(in srgb, #ffffff 92%, transparent); }
+[data-theme="light"] .chat-welcome { background: color-mix(in srgb, #ffffff 78%, transparent); }
 
 /* light mode: every button + hover re-balanced to the warm surfaces.
    .chat-chip transparent button → ink text, ink hairline, darkened-cyan hover.
