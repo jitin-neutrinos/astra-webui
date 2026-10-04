@@ -230,11 +230,21 @@ export function TableBlockView({ block, ctx }: { block: TableBlock; ctx?: Render
 
 // ---- Diagram -----------------------------------------------------------------
 
+/** One connector's geometry. A LABELLED connector carries the two split points
+ *  so the renderer can draw a real gap where the label sits. */
+type EdgeGeom = {
+  d: string;
+  label?: string;
+  x: number;
+  y: number;
+};
+
+
 // Nodes layered into columns; edges drawn as an SVG overlay measured from live
 // DOM rects. Relationship layout renders a single grid column-wrap.
 export function DiagramBlockView({ block }: { block: DiagramBlock }) {
   const wrapRef = useRef<HTMLDivElement>(null);
-  const [edges, setEdges] = useState<{ d: string; label?: string; x: number; y: number }[]>([]);
+  const [edges, setEdges] = useState<EdgeGeom[]>([]);
 
   const layers = useMemo(() => {
     if (block.layout === "relationship") return [block.nodes];
@@ -268,7 +278,10 @@ export function DiagramBlockView({ block }: { block: DiagramBlock }) {
         rects.set(el.dataset.node!, el.getBoundingClientRect());
       });
       const base = root.getBoundingClientRect();
-      const out: { d: string; label?: string; x: number; y: number }[] = [];
+      const rectsList = [...rects.values()];
+      const out: EdgeGeom[] = [];
+      // Nodes already occupying this horizontal band (label collision guard).
+      const claimed: { l: number; r: number; t: number; b: number }[] = [];
       for (const e of block.edges) {
         const a = rects.get(e.from);
         const b = rects.get(e.to);
@@ -289,7 +302,41 @@ export function DiagramBlockView({ block }: { block: DiagramBlock }) {
         const cy1 = horizontal ? y1 : y1 + k;
         const cx2 = horizontal ? x2 - k : x2;
         const cy2 = horizontal ? y2 : y2 - k;
-        out.push({ d: `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`, label: e.label, x: mx, y: my });
+        const full = `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
+        if (!e.label) { out.push({ d: full, x: mx, y: my }); continue; }
+        // OWNER 2026-10-04 (mandatory no-overlap): a label must never sit on a
+        // card or on another label. Measured on a phone: 2 labels on nodes, 1
+        // label-on-label. Nudge it vertically until it clears every box.
+        const w = Math.min(96, Math.max(34, e.label.length * 5.6));
+        const h = 14;
+        let lx = mx, ly = my;
+        const hits = (x: number, y: number) => {
+          const box = { l: x - w / 2, r: x + w / 2, t: y - h / 2, b: y + h / 2 };
+          const overlaps = (o: { l: number; r: number; t: number; b: number }) =>
+            !(box.r <= o.l || o.r <= box.l || box.b <= o.t || o.b <= box.t);
+          if (claimed.some(overlaps)) return true;
+          return rectsList.some((n) => overlaps({
+            l: n.left - base.left, r: n.right - base.left, t: n.top - base.top, b: n.bottom - base.top,
+          }));
+        };
+        // Step until clear, in BOTH axes (a label must clear a card even when
+        // moving sideways is the only free direction on a narrow column).
+        // Start clear of the connector line itself: the label lives in the GAP
+        // between two node rows, never centred on the line it annotates.
+        const stepY = [-13, 13, -26, 26, -39, 39, -52, 52, -65, 65, 0];
+        const stepX = [0, -w / 2 - 10, w / 2 + 10, -w - 20, w + 20];
+        outer: for (const dx of stepX) {
+          for (const dy of stepY) {
+            if (!hits(lx + dx, ly + dy)) { lx += dx; ly += dy; break outer; }
+          }
+        }
+        claimed.push({ l: lx - w / 2, r: lx + w / 2, t: ly - h / 2, b: ly + h / 2 });
+        // Split the connector around the label so the LINE NEVER passes through
+        // the text (the last interference a phone screenshot still showed).
+        // The label is drawn as an opaque CHIP in the layer above the lines, so
+        // the connector is visually interrupted exactly where the label reads —
+        // no geometry maths, and a visual overlap is impossible by construction.
+        out.push({ d: `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`, label: e.label, x: lx, y: ly });
       }
       setEdges(out);
     };
@@ -316,9 +363,11 @@ export function DiagramBlockView({ block }: { block: DiagramBlock }) {
       <div className={cn("ast-cv-diagram", block.direction === "lr" && !compact && "lr")} ref={wrapRef}>
         {/* PATHS sit under the node cards… */}
         <svg className="ast-cv-edges" aria-hidden="true">
-          {edges.map((e, i) => (
-            <path key={i} d={e.d} fill="none" stroke="var(--color-accent)" strokeOpacity={0.62} strokeWidth={1.8} />
-          ))}
+          {edges.map((e, i) => {
+            // A labelled connector is drawn as two segments with a gap where the
+            // label sits — the line can never run through its own text.
+            return <path key={i} d={e.d} fill="none" stroke="var(--color-accent)" strokeOpacity={0.85} strokeWidth={2} />;
+          })}
         </svg>
         {/* …and LABELS above them, with a paper halo. One layer is why the
             labels vanished behind the cards on a phone. */}

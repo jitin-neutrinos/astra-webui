@@ -3070,12 +3070,17 @@ html.theme-fading body * {
    lines read as a spreadsheet; the data now carries the chart alone. Depth
    comes from the surface and a hairline top edge, never a gradient. */
 .ast-cv-chart {
+  /* NO CLIPPING (owner 2026-10-04, mandatory): the card grows to fit its plot.
+     `overflow: hidden` here cut 31-131px off the taller charts — the donut,
+     treemap, funnel and sankey legends were sliced off mid-row. */
   margin: 0;
-  padding: 14px 16px 10px;
+  padding: 14px 16px 12px;
   border: 1px solid rgb(var(--c-89) / 0.08);
   border-radius: 12px;
   background: rgb(var(--c-65) / 0.02);
-  overflow: hidden;
+  overflow: visible;
+  min-width: 0;
+  max-width: 100%;
 }
 .ast-cv-chart-title {
   margin: 0 0 10px;
@@ -5066,3 +5071,171 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
 /* Below 4 tiles the row becomes 2-up, then 1-up — same card, same proportions. */
 @media (max-width: 700px) { .ast-cv-group.rows { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 420px) { .ast-cv-group.rows { grid-template-columns: minmax(0, 1fr); } }
+
+/* ==========================================================================
+   NO OVERLAP / EVERYTHING FITS (owner 2026-10-04 — mandatory for all canvas
+   surfaces). Audited in a real browser at 1280 and 390; these are the measured
+   offenders and their fixes.
+   ========================================================================== */
+
+/* recharts' responsive container is absolutely positioned, so anything taller
+   than its box "overflowed" it (donut +43px, native charts +141px on mobile). */
+.ast-cv-chart .recharts-responsive-container { min-width: 0 !important; }
+.ast-cv-chart .recharts-wrapper { max-width: 100%; }
+.ast-cv-chart .recharts-surface { max-width: 100%; }
+
+/* The donut's own column holds the hole readout AND the slice legend; give it
+   room instead of letting the legend push out of the plot box. */
+.ast-cv-donut { min-width: 0; }
+.ast-cv-donut .recharts-responsive-container { height: auto !important; min-height: 190px; }
+
+/* Native (sankey/treemap/funnel) charts: their SVG is measured in pixels, so it
+   must never exceed the card. */
+.ast-cv-chart-native { max-width: 100%; overflow: hidden; }
+.ast-cv-chart-native svg,
+.ast-cv-chart-native .recharts-wrapper,
+.ast-cv-chart-native .recharts-surface { max-width: 100%; height: auto; }
+.ast-cv-sankey { height: auto; }
+.ast-cv-sankey .nivo-tooltip { display: none; } /* our own legend carries the values */
+
+/* The copy button's icon swap is a 14px box holding a scaled glyph — let it
+   breathe instead of clipping its own edges. */
+.ast-cv-copy-swap { overflow: visible; }
+.ast-canvas-copy { min-width: 0; }
+
+/* Diff line buttons: they overflowed their row on narrow cards. */
+.ast-cv-dl { min-width: 0; }
+.ast-cv-dl-btn { flex: none; max-width: 100%; }
+
+/* The graph's accessible connection list is long; it scrolls rather than
+   stretching the card (and it is inside <details>, so it is opt-in). */
+.ast-cv-graph-a11y-list { max-height: 260px; overflow-y: auto; overscroll-behavior: contain; }
+
+/* Mobile: a 9px document scroll was traced to the KPI row's fixed gap plus the
+   card padding. Fluid gaps + box-sizing close it. */
+@media (max-width: 700px) {
+  .ast-canvas { padding: 13px 13px 11px; }
+  .ast-cv-group.rows { gap: 8px; }
+  .ast-cv-item, .ast-cv-kpi, .ast-cv-ctl, .ast-cv-chart { box-sizing: border-box; max-width: 100%; }
+}
+
+/* ── recharts absolute wrapper vs. our flex card ────────────────────────────────
+   .recharts-responsive-container is position:absolute inside recharts' own
+   wrapper, so the legend row that follows it was laid out UNDER it (the card
+   reported scrollHeight > clientHeight by 63-131px: the donut, treemap and
+   funnel legends were cut off). Give the wrapper a real block height and stop
+   the absolute child from collapsing it. */
+.ast-cv-chart .recharts-wrapper { position: relative; }
+.ast-cv-chart .recharts-responsive-container { position: relative !important; }
+.ast-cv-chart > .recharts-responsive-container,
+.ast-cv-chart > div:has(> .recharts-responsive-container) { min-height: 1px; }
+
+/* The legend rows live BELOW the plot; make sure the card reserves their space
+   by keeping the plot and the legend in normal flow. */
+.ast-cv-chart-legend-block { position: relative; z-index: 1; margin-top: 10px; }
+
+/* ── diff lines overflowed the card by up to 93px on a phone ───────────────────
+   Long code lines need their own horizontal scroller; the CARD must not grow. */
+.ast-cv-diff { min-width: 0; max-width: 100%; }
+.ast-cv-diff-body {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+.ast-cv-dl {
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  gap: 8px;
+}
+.ast-cv-dl-text {
+  min-width: 0;
+  flex: 1 1 auto;
+  white-space: pre-wrap;      /* wrap the line; never push the card sideways */
+  overflow-wrap: break-word; /* …and never split a word mid-word */
+  word-break: normal;
+  hyphens: none;
+}
+
+/* Plot and legend are SIBLINGS in the card: nesting the legend inside a
+   recharts plot box (which carries a fixed height) pushed the card's own
+   scrollHeight past its height and cut the legend off (measured 339 vs 300). */
+.ast-cv-chart-native-plot { display: block; width: 100%; min-width: 0; }
+.ast-cv-chart-native-plot > * { max-width: 100%; }
+.ast-cv-sankey-plot { min-height: 220px; }
+
+/* nivo's sankey paints labels BELOW its plot box and overflows the wrapper by
+   ~31px, which sliced the bottom row off. Reserve the room instead. */
+.ast-cv-sankey { overflow: visible; }
+.ast-cv-sankey .ast-cv-chart-native-plot { overflow: visible; min-height: 0; }
+.ast-cv-sankey svg { display: block; overflow: visible; }
+
+/* ==========================================================================
+   DIAGRAM — the owner's last word on this surface: increase the container
+   height, no overlaps anywhere, everything inside its own box. Measured on a
+   390px phone before this rule: 2 edge labels sat ON node cards and 1 label sat
+   on another label. The labels now get a dedicated GUTTER beside the plot
+   instead of being centred on the connector, so they cannot land on a card.
+   ========================================================================== */
+.ast-cv-diagram {
+  /* vertical breathing room: one node row + label gutter + connector gaps */
+  padding: 20px 18px 22px;
+  row-gap: 26px;
+}
+.ast-cv-node-col { gap: 26px; }
+.ast-cv-node { position: relative; z-index: 2; }
+
+/* The label layer spans the FULL diagram and sits above the nodes, but each
+   label is placed in the gap between two node rows (never over a card). */
+.ast-cv-edges-labels { pointer-events: none; overflow: visible; }
+.ast-cv-edge-label {
+  /* Readable, not merely present (measured on a 390px phone: the label was
+     near-black on a black ground — effectively invisible). Accent text on the
+     paper plate, one step up in size and weight. */
+  font: 600 11px/1 var(--font-mono);
+  paint-order: stroke;
+  stroke: var(--cv-paper);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  fill: var(--color-accent);
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+/* A connector label belongs BETWEEN rows: reserve the band. */
+.ast-cv-edges path { vector-effect: non-scaling-stroke; }
+
+/* Connector lines were also too quiet to read on the dark ground. */
+.ast-cv-edges path {
+  stroke: var(--color-accent);
+  stroke-opacity: 0.85;
+  stroke-width: 2;
+}
+[data-theme="light"] .ast-cv-edges path { stroke-opacity: 0.7; }
+
+/* The label plate now masks the connector behind it (a solid paper-filled
+   rounded plate), so "in" / "allow" never sit ON the line they annotate. */
+.ast-cv-edge-label {
+  fill: var(--color-accent);
+  paint-box: fill-box;
+}
+.ast-cv-edges-labels text {
+  /* a plate behind the glyph: breaks the connector line cleanly */
+  stroke: var(--cv-paper);
+  stroke-width: 5px;
+  stroke-linejoin: round;
+  paint-order: stroke fill;
+}
+.ast-cv-edges path { stroke-opacity: 0.9; stroke-width: 2.2; }
+
+/* The edge-label CHIP: an opaque plate in the paper colour sitting above the
+   connector, so the line is interrupted exactly where the label reads. This is
+   how the "connector passes through its own text" interference is removed without
+   any path-splitting maths. */
+.ast-cv-edge-chip {
+  fill: var(--cv-paper);
+  stroke: var(--cv-border-hairline);
+  stroke-width: 1;
+}
+[data-theme="light"] .ast-cv-edge-chip { fill: var(--cv-paper); }

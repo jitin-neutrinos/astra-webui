@@ -121,7 +121,8 @@ export default function NativeChart({
     const narrow = w < 520;
     const pad = narrow ? 74 : 132;
     return (
-      <div className="ast-cv-chart-native ast-cv-sankey" ref={ref} style={{ height: H }}>
+      <div className="ast-cv-chart-native ast-cv-sankey" ref={ref} style={{ minHeight: H + 40 }}>
+        <div className="ast-cv-chart-native-plot ast-cv-sankey-plot">
         <ResponsiveSankey
           data={{
             nodes: labels.map((id: string) => ({ id })),
@@ -147,6 +148,7 @@ export default function NativeChart({
             tooltip: { container: { background: "var(--cv-paper)", color: "var(--color-brandtext)" } },
           }}
         />
+        </div>
         <Legend rows={labels.map((l, i) => ({ label: l, value: points[i] ?? 0 }))} total={total} />
       </div>
     );
@@ -168,6 +170,7 @@ export default function NativeChart({
     }
     return (
       <div className="ast-cv-chart-native" ref={ref}>
+        <div className="ast-cv-chart-native-plot">
         <Treemap
           width={w}
           height={H}
@@ -179,7 +182,8 @@ export default function NativeChart({
         >
           <Tooltip />
         </Treemap>
-        <Legend rows={items.slice(0, 8).map((d: any) => ({ label: String(d.name), value: Number(d.value) || 0 }))} total={total} />
+      </div>
+      <Legend rows={items.slice(0, 8).map((d: any) => ({ label: String(d.name), value: Number(d.value) || 0 }))} total={total} />
       </div>
     );
   }
@@ -198,14 +202,16 @@ export default function NativeChart({
   }
   return (
     <div className="ast-cv-chart-native" ref={ref}>
-      <FunnelChart width={w} height={H} margin={{ top: 8, right: 16, bottom: 8, left: 16 }}>
-        <Tooltip />
-        <Funnel dataKey="value" data={stages as any[]} nameKey="name" isAnimationActive={false} stroke="none" lastShapeType="rectangle">
-          {stages.map((st: any, i: number) => (
-            <Cell key={st?.name ?? i} fill={SERIES_COLORS[i % SERIES_COLORS.length]} />
-          ))}
-        </Funnel>
-      </FunnelChart>
+      <div className="ast-cv-chart-native-plot">
+        <FunnelChart width={w} height={H} margin={{ top: 8, right: 16, bottom: 8, left: 16 }}>
+          <Tooltip />
+          <Funnel dataKey="value" data={stages as any[]} nameKey="name" isAnimationActive={false} stroke="none" lastShapeType="rectangle">
+            {stages.map((st: any, i: number) => (
+              <Cell key={st?.name ?? i} fill={SERIES_COLORS[i % SERIES_COLORS.length]} />
+            ))}
+          </Funnel>
+        </FunnelChart>
+      </div>
       {/* Stage-to-stage conversion — the number a funnel exists to show. */}
       <div className="ast-cv-chart-legend ast-cv-chart-legend-block">
         {stages.map((st: any, i: number) => {
