@@ -45,7 +45,17 @@ export function handleThemeState(req, res, validToken) {
         state.palettes[key] = {
           palette: typeof body.palette === "string" ? body.palette : prev.palette,
           mode: body.mode === "light" || body.mode === "dark" ? body.mode : prev.mode,
-          bg: body.bg === null ? null : (body.bg && typeof body.bg === "object" ? body.bg : prev.bg),
+          // A per-tab blob/data URL is unresolvable on every other device. Storing one
+          // here is how a background set on the phone became invisible on the iPad: the
+          // client that created it held it in memory, and every other device faithfully
+          // adopted a dead string. The clients already refuse to push one; the server
+          // refuses to accept one, so a STALE client (an app left open across a deploy)
+          // cannot poison shared state either. This is the last line of defence.
+          bg: body.bg === null
+            ? null
+            : (body.bg && typeof body.bg === "object"
+              ? (/^(blob:|data:)/i.test(String(body.bg.src || "")) ? prev.bg : body.bg)
+              : prev.bg),
           custom: body.custom && typeof body.custom === "object" ? body.custom : prev.custom,
           // Owner requirement: themes built in the UI are available on EVERY
           // device and app, so the full list syncs. Shape-validated here rather
