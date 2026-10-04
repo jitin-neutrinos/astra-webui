@@ -5341,3 +5341,44 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
    centre line rather than top-aligned inside the shorter row. */
 .composer-bar-card .chat-composer-bar > .relative { max-height: 28px; align-items: center; }
 .composer-bar-card .chat-composer-bar > .relative > * { max-height: 28px; }
+
+/* ===== composer: full-width field + aligned controls (owner 2026-10-04, measured) ===== */
+
+/* BUG: the textarea was capped to 188px inside an 832px card — 620px wasted, and it
+   read as "the input only works on the left". Measured cause: .composer-field is a
+   block-level shrink-to-fit wrapper, so the textarea's width:100% resolved against
+   the wrapper's own 188px instead of the card's 808px content box. It never had a
+   max-width — the wrapper collapsed, and the percentage inherited that collapse.
+
+   The fix is to make the field a real flex child that grows, not a block that
+   shrink-wraps. `.composer-input-card` is already display:flex from the centring
+   work, so the field just needs to be allowed to take the free space. */
+.composer-input-card .composer-field { flex: 1 1 auto; min-width: 0; width: 100%; }
+.composer-input-card .chat-composer-input { width: 100%; min-width: 0; }
+
+/* The rotating placeholder is absolutely positioned against .composer-field, so it
+   inherits the now-correct full width and no longer needs its own cap. */
+.composer-input-card .composer-ph { width: 100%; }
+
+/* BUG: the options button did not line up with its neighbours. It is inside the bar
+   row (verified: top 576 == the row's top 576), but it is a .chat-chip — 5px padding
+   plus a 1px border around a 4px icon — so its 30x28 box puts the glyph 2px off the
+   send button's optical centre line. Give it the SAME 28x28 box as .chat-send with the
+   icon dead-centre, so the row reads as one set of controls. */
+.composer-bar-card .chat-chip-options {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  flex: none;
+}
+/* Same treatment for the other bar chips so they stay optically identical to the
+   send button and the options trigger. */
+.composer-bar-card .chat-chip {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+}
