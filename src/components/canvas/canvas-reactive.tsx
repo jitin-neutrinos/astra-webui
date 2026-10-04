@@ -215,10 +215,10 @@ export function SearchView({ block }: { block: SearchBlock }) {
 
 function srcUrl(src: string, image: boolean): string {
   if (/^https?:\/\//i.test(src) || src.startsWith("/api/")) return src;
-  const p = src.replace(/^~(?=\/)/, "");
-  if (image && needsTranscode(p)) return transcodeUrl(p);
-  if (image) return downloadUrl(p);
-  return videoSrc({ path: p, name: p.split("/").pop() || p });
+  // a leading ~/ is kept: the server expands it (see media-paths.ts `encoded`)
+  if (image && needsTranscode(src)) return transcodeUrl(src);
+  if (image) return downloadUrl(src);
+  return videoSrc({ path: src, name: src.split("/").pop() || src });
 }
 
 export function ImageView({ block }: { block: ImageBlock }) {

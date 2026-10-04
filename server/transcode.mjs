@@ -126,7 +126,9 @@ export async function handleTranscode(req, res, validToken) {
   // existing /api/hx/files/* proxy already serves any path with this same
   // cookie (Hermes policy governs), so this guard is defense-in-depth against
   // traversal tricks, not the primary boundary.
-  const resolved = resolve(src);
+  // `~` / `~/x` mean the user's home (same expansion the Hermes files API does); path.resolve alone
+  // would treat "~" as a relative directory name and resolve it against the server's cwd.
+  const resolved = resolve(src === "~" || src.startsWith("~/") ? homeRoot() + src.slice(1) : src);
   const roots = [homeRoot(), "/tmp", "/media"];
   if (!roots.some(r => resolved === r || resolved.startsWith(r + sep))) {
     res.writeHead(403, { "content-type": "application/json" });

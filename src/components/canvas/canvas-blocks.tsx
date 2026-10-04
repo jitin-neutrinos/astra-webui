@@ -581,8 +581,7 @@ function linkHref(href?: string): string | undefined {
   }
   // host file path (~/..., /home/..., or bare relative repo path) → served
   if (href.startsWith("~") || href.startsWith("/home/") || href.startsWith("/")) {
-    const p = href.replace(/^~(?=\/)/, "");
-    return `/api/hx/files/download?path=${encodeURIComponent(p)}`;
+    return `/api/hx/files/download?path=${encodeURIComponent(href)}`;
   }
   return href;
 }

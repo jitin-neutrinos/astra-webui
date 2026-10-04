@@ -35,6 +35,7 @@ assert.equal(await branch(fakeReq(`/api/media/transcode?path=${encodeURIComponen
 assert.equal(await branch(fakeReq(`/api/media/transcode?path=${encodeURIComponent("/etc/passwd.avi")}`, "ok")), 403, "outside roots → 403");
 assert.equal(await branch(fakeReq(`/api/media/transcode?path=${encodeURIComponent(`${HOME}/no-such-${Date.now()}.avi`)}`, "ok")), 404, "missing file → 404");
 assert.equal(await branch(fakeReq(`/api/media/transcode?path=${encodeURIComponent(`${HOME}/x.pdf`)}`, "ok")), 415, "non-media → 415 (kind before stat)");
+assert.equal(await branch(fakeReq(`/api/media/transcode?path=${encodeURIComponent("~/../../etc/passwd.avi")}`, "ok")), 403, "~ expands to HOME, so ~/../../etc/passwd.avi escapes home → 403");
 
 // happy path: 1-frame blue BMP → jpeg
 let ffmpegOk = true;

@@ -5,7 +5,7 @@ import {
   mediaKind, needsTranscode, isNativeVideo, badgeLabel, kindInfo, extOf,
   TRANSCODABLE_EXTS,
 } from "../src/lib/media-kinds.ts";
-import { mediaPaths, MEDIA_RE } from "../src/lib/media-paths.ts";
+import { mediaPaths, MEDIA_RE, downloadUrl, streamUrl, transcodeUrl } from "../src/lib/media-paths.ts";
 import { bentoLayout, AREAS } from "../src/lib/bento.ts";
 import { uniqueUploadName, displayName, newId } from "../src/lib/upload-names.ts";
 import { loadDraft, saveDraft, clearDraft, moveDraft, draftKey, type KV } from "../src/lib/drafts.ts";
@@ -101,5 +101,11 @@ ok(displayName("notes.txt") === "notes.txt", "displayName plain untouched");
   const throwing: KV = { getItem: () => { throw new Error("x"); }, setItem: () => { throw new Error("x"); }, removeItem: () => { throw new Error("x"); } };
   ok(loadDraft(throwing, "s") === "", "throwing KV → empty string");
 }
+
+// ── tilde paths must reach the server intact (regression: `~/uploads/a.png` became `/uploads/a.png`) ──
+ok(downloadUrl("~/uploads/a.png") === "/api/hx/files/download?path=~%2Fuploads%2Fa.png", "download keeps ~/");
+ok(streamUrl("~/uploads/a.mp4") === "/api/hx/files/stream?path=~%2Fuploads%2Fa.mp4", "stream keeps ~/");
+ok(transcodeUrl("~/a.heic") === "/api/media/transcode?path=~%2Fa.heic", "transcode keeps ~/");
+ok(downloadUrl("/home/x/a.png") === "/api/hx/files/download?path=%2Fhome%2Fx%2Fa.png", "absolute path unchanged");
 
 console.log(`verify-media: ${n} assertions passed`);

@@ -92,9 +92,11 @@ export function extractAttachments(content: string) {
 // Classification lives in media-kinds.ts (single table); server set drift is
 // checked by scripts/verify-media.check.ts.
 
-// Encodes a host path for the astra proxy's download/stream endpoints.
+// Encodes a host path for the astra proxy's download/stream endpoints. A leading
+// `~/` is KEPT on purpose: the Hermes files API and /api/media/transcode both expand
+// it server-side. Stripping it turned `~/uploads/a.png` into `/uploads/a.png` (404).
 function encoded(path: string): string {
-  return encodeURIComponent(path.replace(/^~(?=\/)/, ""));
+  return encodeURIComponent(path);
 }
 
 export function downloadUrl(path: string): string {

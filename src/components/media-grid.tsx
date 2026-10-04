@@ -2,7 +2,7 @@
 // items fill the bento; >5 collapses into layout-5 with a "+N" overflow tile.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TriangleAlert, Play, Maximize2, Download, FileText, Sheet, Presentation, FileArchive, File as FileIcon, Film } from "lucide-react";
-import { type MediaItem, imageSrc, videoSrc, audioSrc, transcodeUrl, canTranscode } from "@/lib/media-paths";
+import { type MediaItem, imageSrc, videoSrc, audioSrc, transcodeUrl, canTranscode, downloadUrl } from "@/lib/media-paths";
 import { mediaKind, badgeLabel, needsTranscode, isVisual } from "@/lib/media-kinds";
 import { bentoLayout, AREAS } from "@/lib/bento";
 import { downloadFile } from "@/lib/download";
@@ -115,7 +115,7 @@ function PdfThumb({ it }: { it: MediaItem }) {
     if (!inView || thumb || !it.path) return;
     let alive = true;
     void import("./doc-previews/pdf-view").then(({ pdfThumb }) =>
-      pdfThumb(`/api/hx/files/download?path=${encodeURIComponent(it.path!.replace(/^~(?=\/)/, ""))}`, 320),
+      pdfThumb(downloadUrl(it.path!), 320),
     )
       .then((u) => alive && setThumb(u))
       .catch(() => { /* icon tile stays */ });
