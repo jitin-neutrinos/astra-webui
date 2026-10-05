@@ -720,7 +720,77 @@ export const REGRESSIONS = [
       "A half-revealed canvas fence reached the markdown renderer. TextRow passes the revealed PREFIX of a message, so a cut landing inside a fence produced a fence with no closer, which the parser rejects and marked then paints as code. Guards two invariants swept over EVERY reveal position across five fence shapes (3-tick, 4-tick, an ordinary code fence, two cards in one message, and a card containing backticks in its body): no frame may leak a partial fence, and prose before the first fence must never be lost. Also guards that a ``` inside the JSON body is not mistaken for the closer. Proven by reversal — disabling the guard fails 5 of 9 subtests with '1/91 frames leaked a partial fence'.",
     guard: "src/lib/canvas-reveal.check.ts",
   },
-];
+  {
+    id: "RG-107",
+    found: "2026-10-05",
+    symptom:
+      "The same chat list was downloaded THREE times per open (~900 ms of pure waiting through the Cloudflare tunnel, measured: 3 x 307 ms, the list request firing 4x in one open) — chats-panel, App.tsx's unread seed, and prune.ts each fetched it independently with nothing shared. Fixed with src/lib/sessions-cache.ts, which coalesces concurrent identical requests and briefly caches them. Guards BOTH halves, because a cache that shares too much is a worse bug than no cache: four concurrent identical callers must cost exactly ONE fetch (the coalescing property), sequential callers must collapse via the TTL, the TTL must expire and refetch, errors must not be cached and must keep their .status for the caller's 401/503 messaging, and invalidateSessions() must force a real refetch. Equally load-bearing: a DIFFERENT limit, a source-FILTERED list, a search query, and an offset page must NEVER be shared — showing the wrong chat list, or pinning page two forever, would be worse than the duplicate fetch. Also guards that parameter order and cache-busters do not split the key, since either would silently defeat coalescing.",
+    guard: "src/lib/sessions-cache.check.ts",
+  },
+  {
+    id: "RG-108",
+    found: "2026-10-05",
+    symptom:
+      "A field was dropped from a history row that the client actually reads. server/history-trim.mjs removes fields from every message to save bandwidth, and the candidate list looked obviously safe: `api_content` (the raw provider payload, superseded by `content`) and `reasoning_content` (a byte-for-byte duplicate of `reasoning`). The dangerous part is what it ALSO looked safe to remove: `session_id` — the same chat id on all 100 rows, ~2.3 KiB per open. history-trim.check.mjs REJECTED that removal by grepping the live client tree and found NINE readers (chat-landing, subagent-panel, chat-segments, command-exec, prune, session-row, tool-io, ws-engine, ws-helpers); it looks redundant within one page but is load-bearing across routes, and dropping it would have broken deep-links, subagent frames and tool results for a different session. So the guard re-derives 'is this field read?' from src/ on EVERY run — a field a later session starts reading fails here immediately instead of silently blanking the UI. Also asserts the KEEPS: content, reasoning (drives 'Thought for Nm'), timestamp, tool_call_id, display_kind (hidden rows and failed_turn), finish_reason; that the input is not mutated; and that unknown fields pass through, because this is a drop-list and not an allow-list — a new upstream field must be safe by default.",
+    guard: "server/history-trim.check.mjs",
+  },
+  {
+    id: "RG-111",
+    found: "2026-10-05",
+    symptom:
+      "The history field trim was installed, unit-tested green, and DID NOTHING. server/history-trim.mjs removes api_content and reasoning_content from every message row, but the router condition that invokes it in hermes-proxy.mjs was `^/api/hx/sessions/[^/]+/messages/?$` — `$`-anchored, while EVERY real history request carries a query string (`?order=latest&limit=100&offset=0`). The pattern never matched, the trim never ran, and the full payload crossed the tunnel unchanged. No test caught it: history-trim.check.mjs proves the TRIMMER is correct, which is not evidence the trimmer is CALLED. It was found only by re-measuring the live endpoint after a stash round-trip restored an older proxy — 224 KiB instead of 184 KiB, with api_content back in the payload. This check pins the ROUTER instead: extracts the shipped literal from the source, asserts it is not end-anchored and explicitly accepts a query string, then runs that exact pattern against all five real history URL shapes (including every query-string form the client sends) and against the paths it must NOT engage — the list, search, single-session, stream-log and title routes — plus the GET gate and the pass-through-on-serialize-failure fallback.",
+    guard: "server/history-trim-routing.check.mjs",
+  },
+  {
+    id: "RG-109",
+    found: "2026-10-05",
+    symptom:
+      "The live streaming turn was being skipped by the off-screen paint optimisation, or the exemption regressed silently. src/index.css:4000 already sets `content-visibility: auto` on .chat-turn and un-skips `:first-child` — but the turn that must never be skipped is the one being STREAMED, which is almost always the LAST turn. The live turn mutates ~60x/second (the reveal animation), so while skipped the browser does layout and paint for text nobody can see, and can substitute a placeholder mid-update — which reads as a flicker of the very bubble being watched. chat-timeline.tsx stamps data-streaming on exactly that element and perf-chat.css exempts it BY ATTRIBUTE, so the exemption follows the live turn wherever it sits in the feed. This check compiles the REAL stylesheet through the project's own Vite pipeline (throwing into a temp outDir, never dist/) and asserts on declaration SETS, because lightningcss reorders declarations and substring matching would pass against a rule the build dropped. Guards that the EXISTING off-screen skip is still present (this file must not have replaced it), that the live turn is forced visible with its placeholder size dropped, that the streaming placeholder bubble is too, that the live selector is MORE SPECIFIC than .chat-turn so it cannot depend on stylesheet load order, and that the scroll container — which owns scrollTop — is never itself skipped.",
+    guard: "scripts/perf-chat.check.mjs",
+  },
+  {
+    id: "RG-112",
+    found: "2026-10-05",
+    symptom:
+      "Opening an .xlsx/.docx/.pptx attachment from chat left the preview floating in a narrow column instead of filling the viewer. Two stacked width constraints: .mv-doc carried `max-width:960px`, and the doc slide inherited .mv-slide's 12px side padding — so a wide spreadsheet never used the available width and the gap read as a layout bug rather than a style choice. Fixed by dropping the cap to max-width:none and adding a `.mv-slide-doc` MODIFIER (not an edit to the shared .mv-slide) that stretches the preview and zeroes horizontal padding; the xlsx table also lost its per-cell max-w-[220px], so columns size to the container. The load-bearing assertion is the third one: base .mv-slide must KEEP its 12px padding, because audio and video slides share that rule and editing it instead of the modifier silently re-laid-out every player. Also asserts against the COMPILED css in dist/, parsing declarations as sets, since lightningcss reorders them and expands color-mix() into an @supports var() form that substring matching would miss. Proven by reversal — restoring max-width:960px fails exactly the cap assertion and nothing else.",
+    guard: "scripts/doc-preview-fill.check.mjs",
+  },
+  {
+    id: "RG-110",
+    found: "2026-10-05",
+    symptom:
+      "The assistant bubble split when it must not, or the rule that keeps it whole drifted out from under the live view. The owner's requirement: ONE assistant bubble containing responses, tool calls, thinking and canvas cards, broken ONLY by a user message — and a single bubble when no user message was sent. Verified against the REAL renderer source rather than a reimplementation, because the only authority on how the live view sequences messages is chat-landing.tsx itself; a test that re-derived the rule would prove only the test. Guards the fold behaviourally (no user message -> one bubble; 50 consecutive assistant rows -> one bubble; two users each with a reply -> four bubbles, first reply kept whole; consecutive user rows produce NO empty assistant bubble between them) and the WIRING structurally: the running bubble is closed only inside the path that APPENDS A USER MESSAGE, the 'reply painted above the user's message' regression note stays recorded, and the live view still documents that it matches the history-restore rule — otherwise a reload would render a different bubble shape than the live view did.",
+    guard: "src/lib/bubble-invariant.check.ts",
+  },
+  {
+    id: "RG-113",
+    found: "2026-10-05",
+    symptom:
+      "An accordion item's NESTED blocks vanished and the dropdown rendered with NO content on the live site — reported as 'the accordion dropdown renders with no content'. The parser was innocent and so was the renderer: validateBlock already parsed and preserved item.blocks, and AccordionView already rendered it through the same `Blocks` dispatcher. The single point of loss was sanitizeCanvasSpec, which is the ONE call on the render path (chat-timeline.tsx:70) and rebuilt every accordion item as `{title, body}`, dropping `blocks` and `open`. An item whose only content was nested blocks therefore reached the renderer as a title with body:undefined — an empty disclosure, and no error anywhere, because a dropped field is not a thrown one. The whole suite stayed green because every existing gate tested the PARSER, which had been right all along: this is the same class as RG-090 (reactive layer inert while the parser-only gates passed), and the same fix — a container that nests blocks must be sanitized by the same per-block validator as the card around it. `tabs` had the same defect in a worse form: it had NO case at all, so every tabs card fell through to `default: return null` and disappeared from the card entirely. Both now recurse through a shared sanitizeBlockList with a depth cap (the parser does not bound depth, so unbounded nesting was a stack-overflow waiting on a card that parsed fine). Guards: the exact reported card shape keeps its nested blocks through BOTH the parser and the sanitizer; an authored open:true survives; a body-only accordion is unchanged; an invalid nested block degrades fail-soft (bad block dropped, siblings and the card intact, no throw); an all-invalid item is dropped rather than left as a dead header; the fence round-trip and the markdown projection keep the nesting; deep nesting is capped; a tabs card survives; and a chart nested in an item keeps the series.points/series.data the lazy chart renderer reads. Proven by reversal — restoring the old accordion branch fails 7 of the new cases.",
+    guard: "src/lib/canvas-schema.check.ts",
+  },
+  {
+id: "RG-114",
+    found: "2026-10-05",
+    symptom:
+      "The live 'card builds as it streams' mode could never fire. chat-timeline.tsx parsed mdFor.get(tailIdx) — the turn planner's OUTPUT — and the planner already cuts an open tail fence away, so the search always found nothing. Measured: parse(mdFor) -> null while parse(raw segment) -> 3 blocks. Fix parses the RAW segment text and strips the fence from the markdown copy. Second defect, caught by the new gate in my own first attempt: a CLOSED contained fence double-rendered, because the planner deliberately leaves those inline (canvas-schema.ts:2141, so following prose stays below the card) and RichText splits them. Guards the provisional card appearing, growing 1->2->3 blocks as they land, the payload being stripped from the markdown, prose before the fence surviving, closed fences NOT painting a provisional card while staying in the markdown, 4-tick fences both ways, and a ``` inside the card's own body not reading as the closer.",
+    guard: "src/lib/canvas-live.check.ts",
+  },
+      {
+    id: "RG-115",
+    found: "2026-10-05",
+    symptom:
+      "A card lost the user's interaction when a reply completed. Canvas state is keyed by canvasId, and ids were derived from a per-ROW useId; `text-final` collapses a multi-segment turn into one, so the card moved to a different row, got a different id, and React mounted a fresh card — slider, zoom and scroll all reset. Measured: text segments 2 -> 1 on a prose/tool/prose+card turn, the most common multi-tool shape. Ids are now derived from the card's CONTENT (FNV hash of type:label per block) plus an occurrence index, scoped by the component uid. Guards that the same card re-parsed keeps its id, different cards get different ids, two IDENTICAL cards are separated by the occurrence index (they would otherwise collide on the page-wide singleton fullscreen slot), the id still differs per scope, and the anchor really does move at text-final so the bug cannot silently return.",
+    guard: "src/lib/canvas-identity.check.ts",
+  },
+      {
+    id: "RG-116",
+    found: "2026-10-05",
+    symptom:
+      "A message containing a canvas card re-parsed and re-sanitised ALL of its prose on EVERY streaming delta, so the stream visibly lagged after a card appeared and worsened with answer length. The canvas render path called renderRichHtml inline in the render body; the memo the file documents (splitRichBlocks + memo'd RichBlockView) only serves the no-canvas fast path, so any card threw the optimisation away. Measured then: 4.62 ms/render vs 2.37 ms on the fast path — `marked` alone, before DOMPurify over the same HTML — i.e. 116% of one core at 25 deltas/s versus 59%. Fixed with MdPart, memo'd on its own source, and blockSig gated on hasCanvas (on the canvas path `blocks` is computed but never rendered: ~1.85 ms/render of pure waste). Verified in Chromium by COUNTING parser invocations: 50 -> 26 over 25 deltas (1.9x), plus that a changed part still re-parses so the memo cannot serve stale HTML, and that no part is blanked.",
+    guard: "scripts/canvas-render-perf.browser.mts",
+  },
+    ];
 
 // ---- gate -----------------------------------------------------------------
 

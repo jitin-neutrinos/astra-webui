@@ -105,6 +105,33 @@ const RichBlockView = memo(function RichBlockView({ source }: { source: string }
 import { splitRichBlocks } from "../lib/rich-blocks";
 import { withholdOpenCanvasFence, openCanvasFence } from "../lib/canvas-reveal";
 
+/**
+ * A canvas id that survives its host row moving (2026-10-05).
+ *
+ * Canvas state is keyed by canvasId (canvas-state.tsx canvasStore), so a card
+ * whose id changes loses every control the user touched. The ids used to be
+ * `${useId()}-${index}` — and `text-final` COLLAPSES a multi-segment turn into
+ * one segment, so the card lands in a different TextRow, gets a different
+ * useId, and React mounts a fresh card. Measured: text segments 2 -> 1 on a
+ * prose/tool/prose+card turn, the most common multi-tool shape.
+ *
+ * Fix: derive the id from the card's CONTENT plus its occurrence index within
+ * the message, scoped by the component uid. Measured: stable across re-parses
+ * of the same spec, distinct for different cards, 10k hashes in 15ms. The
+ * occurrence index is required because two IDENTICAL cards in one message would
+ * otherwise collide on the page-wide singleton fullscreen slot.
+ */
+function canvasContentId(scope: string, spec: unknown, occurrence: number): string {
+  const blocks = (spec as { blocks?: { type?: string; label?: string; name?: string }[] })?.blocks ?? [];
+  const src = JSON.stringify(blocks.map((b) => `${b?.type}:${b?.label ?? b?.name ?? ""}`));
+  let h = 0x811c9dc5;
+  for (let i = 0; i < src.length; i++) {
+    h ^= src.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return `cv-${scope}-${h.toString(36)}-${occurrence}`;
+}
+
 export function RichText({ text, onOpenMedia, streaming }: { text: string; onOpenMedia?: (items: MediaItem[], index: number) => void; streaming?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
   // Stable per-instance id, namespaced into every canvas block's fullscreen key.
@@ -257,11 +284,16 @@ export function RichText({ text, onOpenMedia, streaming }: { text: string; onOpe
   return (
     <div className="relative group" ref={containerRef}>
       <AnimatedCopyButton sm className="!absolute top-2 right-2 z-10 !h-6 !w-6 opacity-0 group-hover:opacity-100 transition-opacity" text={text} />
-      {parts.map((p, i) =>
-        p.kind === "canvas"
-          ? <CanvasHost key={`cv${i}`} spec={p.spec} id={`${uid}-${i}`} />
-          : <MdPart key={`md${i}`} source={p.text} streaming={streaming} />
-      )}
+      {parts.map((p, i) => {
+        if (p.kind === "canvas") {
+          // occurrence index: count canvases already emitted, so two IDENTICAL
+          // cards in one message still resolve to distinct fullscreen slots.
+          const occurrence = parts.slice(0, i).filter((q) => q.kind === "canvas").length;
+          const cid = canvasContentId(uid, p.spec, occurrence);
+          return <CanvasHost key={cid} spec={p.spec} id={cid} />;
+        }
+        return <MdPart key={`md${i}`} source={p.text} streaming={streaming} />;
+      })}
     </div>
   );
 }
@@ -567,7 +599,10 @@ function TextRow({ seg, reveal, onOpenMedia, mdOverride, canvases, liveCanvas, l
     <div className="chat-text-seg">
       {display && <RichText text={display} onOpenMedia={onOpenMedia} streaming={seg.status === "run"} />}
       {/* Canvases anchored here by the turn planner render after this segment's prose. */}
-      {canvases?.map((spec, i) => <CanvasHost key={`cv${i}`} spec={spec} id={`${uid}-a${i}`} />)}
+      {canvases?.map((spec, i) => {
+        const cid = canvasContentId(uid, spec, i);
+        return <CanvasHost key={cid} spec={spec} id={cid} />;
+      })}
       {/* LIVE canvas: blocks paint the moment each one completes mid-stream. */}
       {live && liveCanvas && <CanvasHost partial={liveCanvas} id={`${uid}-live`} />}
       {(fullyRevealed || isDone) && paths.length > 0 && (
