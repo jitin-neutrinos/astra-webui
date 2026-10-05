@@ -8,13 +8,27 @@ import { RichText } from "../chat-timeline";
 import { FinalReportCard } from "./final-report";
 import { reviewBodyToBlocks, fixBodyToBlocks } from "../../lib/canvas-gates";
 import { Blocks } from "../canvas/canvas-blocks";
+import { sanitizeCanvasSpec } from "../../lib/canvas-sanitize";
+import type { CanvasBlock } from "../../lib/canvas-schema";
 
 // Gate bodies rendered through the shared canvas blocks (severity KPI row,
 // findings table, checklists, report stats) inside the existing gate shell.
 // Import statically here: gates are a primary canvas consumer and the gate
 // path must not flash a lazy-fallback while the user waits on a decision.
-function GateBlocks({ blocks }: { blocks: import("../../lib/canvas-schema").CanvasBlock[] }) {
-  return <Blocks blocks={blocks} animate={false} />;
+//
+// 2026-10-05: TWO fixes that this was silently missing on.
+// 1. SANITIZE. `sanitizeCanvasSpec` had exactly one call site in the whole
+//    codebase (chat-timeline.tsx:70) — the gate path rendered `Blocks` with
+//    whatever the body carried, uncapped. Gate bodies are agent-authored, so
+//    they need the same second line of defence as chat cards.
+// 2. UNIQUE canvasId. Every gate rendered with the DEFAULT canvasId "0", and
+//    canvasId namespaces the fullscreen slot key (a page-wide singleton host).
+//    Two gate bodies on one page therefore resolved to the SAME slot, so
+//    expanding one could show the other.
+function GateBlocks({ blocks, canvasId }: { blocks: CanvasBlock[]; canvasId: string }) {
+  const safe = sanitizeCanvasSpec({ v: 1, blocks });
+  if (!safe) return null;
+  return <Blocks blocks={safe.blocks} animate={false} canvasId={canvasId} />;
 }
 
 export function GateCard({ seg, sessionId, onRespond, onOpenMedia: _onOpenMedia }: {
@@ -121,7 +135,7 @@ export function GateCard({ seg, sessionId, onRespond, onOpenMedia: _onOpenMedia 
           </summary>
           <div className="mt-4 pointer-events-none">
             {env.kind === "report" ? (
-               <FinalReportCard body={env.body as any} title={env.title} reduced={false} />
+               <FinalReportCard body={env.body as any} title={env.title} reduced={false} canvasId={`gate-${reqId}-report`} />
             ) : (
                <div className="gate-body"><RichText text={(env.body as any).content || JSON.stringify(env.body)} /></div>
             )}
@@ -150,7 +164,7 @@ export function GateCard({ seg, sessionId, onRespond, onOpenMedia: _onOpenMedia 
       {env.subtitle && <p className="gate-subtitle">{env.subtitle}</p>}
 
       {env.kind === "report" ? (
-        <FinalReportCard body={env.body as any} title={env.title} reduced={false} />
+        <FinalReportCard body={env.body as any} title={env.title} reduced={false} canvasId={`gate-${reqId}-report`} />
       ) : env.kind === "plan" ? (
         <div className="gate-body">
           {mode === "edit" ? (
@@ -168,9 +182,9 @@ export function GateCard({ seg, sessionId, onRespond, onOpenMedia: _onOpenMedia 
       ) : (env.kind === "review" || env.kind === "fix") ? (
         <div className="gate-body">
           {env.kind === "review" ? (
-            <GateBlocks blocks={reviewBodyToBlocks(env.body as any)} />
+            <GateBlocks blocks={reviewBodyToBlocks(env.body as any)} canvasId={`gate-${reqId}-review`} />
           ) : (
-            <GateBlocks blocks={fixBodyToBlocks(env.body as any)} />
+            <GateBlocks blocks={fixBodyToBlocks(env.body as any)} canvasId={`gate-${reqId}-fix`} />
           )}
         </div>
       ) : null}

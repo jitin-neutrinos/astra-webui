@@ -566,6 +566,90 @@ export const REGRESSIONS = [
       "Sidebar nav rows stacked with zero vertical gap: after the filled-selected change the Work header and Chats row both paint a full accent fill, and with no spacing they read as one merged blob. Guards that the items container keeps flex flex-col gap-1.5 mt-1 so EVERY group (Work/Configure/Operate, expanded + rail) keeps header/row spacing.",
     guard: "scripts/sidebar-gap.check.mjs",
   },
+  {
+    id: "RG-085",
+    found: "2026-10-05",
+    symptom:
+      "Astra runs a SQLite build vulnerable to the WAL-reset corruption bug (SQLite 3.7.0..3.51.2: a checkpoint racing a WAL-resetting commit records frames as backfilled when they were not, so a committed transaction silently vanishes — no error at write or checkpoint time; fixed in 3.51.3, 2026-03-13). Node bundles its own SQLite, so this recurs with no diff in this repo: the dnf Node 22.22.2 shipped exactly 3.51.2, the last vulnerable release. Preconditions are live here — WAL mode plus two processes on the same file (the service plus a detached backfill runner, per training.mjs's own comment). Detected here only by reading the runtime; no test, error or log line ever mentioned it. Guards three things: the LIVE interpreter's sqlite_version() is >= 3.51.3 and is not the withdrawn 3.52.0; astra-webui.service does not still ExecStart the dnf /usr/bin/node; and the live database passes PRAGMA integrity_check with a non-empty row count. Also records that newer is not safer here — Node 24.9.0 bundles SQLite 3.50.4, so 'upgrade Node' by version number walks back into the bug.",
+    guard: "scripts/sqlite-runtime.check.mjs",
+  },
+  {
+    id: "RG-086",
+    found: "2026-10-05",
+    symptom:
+      "A duplicated user message: the client's durable outbox is at-least-once, so a crash, a retry, or a reconnect replays prompt.submit, and the server has no memory that it already accepted that message. The client structurally cannot prevent this — it cannot distinguish 'accepted, response lost' from 'never arrived' — so a duplicate reaches the model as a second turn. Fixed by server-side idempotency (message-dedupe.mjs) claimed BEFORE the upstream forward in hermes-proxy.mjs, which is the only ordering that makes an at-least-once client safe. Guards the whole contract: the store's claim/replay/bind/bindStoredForLive/sweep/throttle semantics and a 25-way concurrent claim race (a read-then-write check would let two callers both win); and the WIRING, where the real bug class lives — claim precedes forwardToUpstream, a replay RETURNS instead of falling through, a dedupe-store crash still forwards the message (losing idempotency is recoverable, losing a send is not), and five non-prompt frame types plus a decoy method, an oversized frame, malformed JSON and a keyless legacy client are all left untouched. Proven end-to-end against the live server over a real authenticated WebSocket (11/11).",
+    guard: "server/message-dedupe.check.mjs",
+  },
+  {
+    id: "RG-087",
+    found: "2026-10-05",
+    symptom:
+      "The prompt.submit idempotency interception regressed at the wiring level while the store kept passing: claim moved after the forward (a crash between them leaves the key unclaimed and the replay double-applies), the replay branch fell through to the gateway instead of returning, a dedupe-store error swallowed the user's message instead of forwarding it, or the prefilter grew so broad that non-prompt frames (session.create, client.info, approval.respond, tool.result, session.resume) or a message whose TEXT merely contains 'prompt.submit' got intercepted. Covers hermes-proxy.mjs's decision path as a pure function over real frame shapes, plus the source-level ordering guarantee.",
+    guard: "server/message-dedupe-wiring.check.mjs",
+  },
+  {
+    id: "RG-088",
+    found: "2026-10-05",
+    symptom:
+      "An interrupted answer was lost. The gateway coalesces token deltas at ~30fps and then discards them — only the final message row survives — its replay ring is in-process memory (512 events / 4 MiB per session) that dies with the process, replay_epoch exists precisely because a restart resets the counters, and the HTTP stream route writes no `id:` line so Last-Event-ID resume is impossible there too. So before stream-log.mjs there was NO durable copy of a partially streamed answer: a crash mid-answer destroyed it. Guards the log's whole contract — the body-vs-reference split (prose stored, tool output referenced, since tool rows are 74,138 of 149,060 and average 2,902 B and are ALREADY durable in state.db); byte-identical reassembly of replayed deltas, which is the property that makes the feature worth anything; seq ordering, the resume cursor, replay idempotency and per-session isolation; retention purge plus the purge watermark that distinguishes 'never streamed' from 'everything I needed was deleted'; and four ways a stored payload could be unusable — oversized, many-keyed, cyclic, or a pre-existing corrupt row — each of which must degrade to a parseable marker instead of throwing in eventsSince. The WITHOUT ROWID + rowid-subquery purge no-op and the mid-JSON byte-slice corruption were both real bugs found by these checks.",
+    guard: "server/stream-log.check.mjs",
+  },
+  {
+    id: "RG-089",
+    found: "2026-10-05",
+    symptom:
+      "While a reply streamed, every word after a canvas card VANISHED. planTurnCanvases withheld the tail fence with OPEN_FENCE_RE, which matches the first opener and captures to end of string regardless of a closer, and cut it unconditionally — so a CLOSED fence was deleted too. Measured: 'intro\\n```astra-canvas\\n{...}\\n```\\nAFTER' -> mdPerSeg ['intro\\n'], canvases [] — the card AND all following prose gone until the turn finalized. Same truncation hit an INVALID fence, whose prose was the fail-soft fallback. Guards that withholding happens only for a genuinely unterminated tail fence, that two closed fences keep their tail, that a real unterminated fence is still withheld, and that finalized output is byte-identical.",
+    guard: "src/lib/canvas-streaming-loss.check.ts",
+  },
+  {
+    id: "RG-090",
+    found: "2026-10-05",
+    symptom:
+      "The sanitizer deleted the entire reactive layer before anything rendered, so every interactive card was inert while the whole suite stayed green (the gates test the PARSER and the bind layer, never the sanitizer). Measured: kpi value {$expr:'seats*price'} -> {'type':'kpi','label':'MRR'} with no value; progress value {$expr:'pct'} -> literal 0; a table carrying bind.$from dropped WHOLE; data.name dropped, so $from could never resolve. sanitizeCanvasSpec rebuilt each block from a literal per-type field list and copied none of the reactive keys. Guards that $expr/$from/visible/bind survive, that a bound table is never dropped, that data.name survives, and that the existing caps (10000-char strings, array and key limits) still apply INSIDE a binding.",
+    guard: "src/lib/canvas-sanitize.reactive.check.ts",
+  },
+  {
+    id: "RG-091",
+    found: "2026-10-05",
+    symptom:
+      "Per-canvas reactive state lost the user's edits three ways. (1) canvasStore compared JSON.stringify(initial), so key order was part of the identity: a re-parse emitting the same values in a different order — which models do constantly, and the sanitizer copies state through untouched — silently reset every slider, proven by the behaviour probe (seats 30 -> 10 with nothing about the spec changed). (2) The store LRU evicted by INSERTION ORDER with no liveness check, so with >24 canvases it could evict the store of a card STILL ON SCREEN: that card's control snapped back and later writes went to an orphan store nothing was subscribed to, freezing it permanently. (3) useCanvasReset read (store as {__id?:string}).__id and __id was never assigned anywhere in the repo, so reset was a silent no-op. Also guards that sAuthored is pruned with storeMap (it leaked one entry per canvas id forever). Asserted by source shape because Node cannot load a .tsx; the behaviour itself is proven by src/lib/canvas-state.behaviour.mts.",
+    guard: "src/lib/canvas-state-keepalive.check.ts",
+  },
+  {
+    id: "RG-092",
+    found: "2026-10-05",
+    symptom:
+      "A fresh clone of this repo could not build, twice, and nothing caught it: commit bd04fe6 (2026-10-03) wired App.tsx to four never-staged modules, and commit 2f60290 (2026-10-05) wired chat-timeline.tsx to ../lib/canvas-sanitize and canvas-view.tsx to ./canvas-export while both stayed untracked. A clean clone failed tsc with TS2307. The build never caught it because it runs in the primary checkout where the untracked file is present — only a clone is honest. This guard resolves every relative import made by a TRACKED src file and fails if the target is neither tracked nor a tracked extension of one, distinguishing 'exists but untracked' (the exact shape that breaks a clone) from 'missing entirely'.",
+    guard: "scripts/untracked-imports.check.mjs",
+  },
+  {
+    id: "RG-093",
+    found: "2026-10-05",
+    symptom:
+      "quoteBareKeys was O(n^2): it re-scanned the whole accumulator for the previous non-whitespace character once per input character. Measured 82 KB = 1.1 s, 166 KB = 5.4 s, 334 KB = 17.3 s, and a realistic 342 KB bare-key payload = 21 s — on the SYNCHRONOUS path, i.e. once per streaming delta, freezing the tab ~20 s per frame on a common emission shape. Now tracked in a variable: the same 4000-block payload parses in 10 ms. Also guarded that bare keys still parse at every nesting depth and with whitespace around every structural character.",
+    guard: "src/lib/canvas-streaming-loss.check.ts",
+  },
+  {
+    id: "RG-094",
+    found: "2026-10-05",
+    symptom:
+      "sanitizeCanvasSpec had exactly ONE call site in the whole codebase (chat-timeline.tsx:70), so the gate path rendered canvas blocks with no sanitiser and no length caps at all, and the streaming 'partial' card bypassed it entirely by construction. Every gate body is agent-authored, so it needs the same second line of defence. Also: every gate rendered with the DEFAULT canvasId '0', and canvasId namespaces the page-wide singleton fullscreen slot key — two gate bodies on one page resolved to the SAME slot, so expanding one could display the other.",
+    guard: "src/lib/canvas-sanitize.reactive.check.ts",
+  },
+  {
+    id: "RG-095",
+    found: "2026-10-05",
+    symptom:
+      "The paginated export emitted a BLANK FIRST PAGE: section-aware packing pushed [start, u-1] without checking the width, and when a page held exactly a section heading whose body did not fit, that range collapsed to [0, 0] — an empty block range. A 360-configuration sweep produced 162 (45%) empty page ranges. The blank page rendered AND shipped in the downloaded PDF/PPTX, with the folio reading '1 / 2' over nothing. The existing assertPartition could not catch it (abuts 0===0 and covered 0+2===2 both hold on the buggy output) — the 'green geometry audit hid a real defect' class recorded in AGENTS.md.",
+    guard: "src/lib/canvas-pagination.check.ts",
+  },
+  {
+    id: "RG-096",
+    found: "2026-10-05",
+    symptom:
+      "Charts silently dropped data the parser had already accepted: a scatter whose natural data is [[x,y]] pairs or [{x,y}] objects failed the numeric-array test and the WHOLE card was discarded rather than degraded. The sankey/treemap/funnel/radar/scatter kinds also accept a natural vocabulary (nodes+links, items, stages, labels+series) instead of `series`, so those shapes parsed to nothing.",
+    guard: "src/lib/canvas-pagination.check.ts",
+  },
 ];
 
 // ---- gate -----------------------------------------------------------------

@@ -12,7 +12,7 @@
 // UseSyncExternalStore keeps React 19/StrictMode honest: getSnapshot must be
 // pure — we hand back an immutable version tag that only changes on write, and
 // consumers re-read values inside render from the same store.
-import { createContext, useContext, useMemo, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
 
 export type StateValue = number | string | boolean;
 export type Scope = Readonly<Record<string, unknown>>;
@@ -25,9 +25,18 @@ class CanvasStore {
   private rendered = new Map<number, Set<string>>();
   private frozen: Scope | null = null;
   private frozenAt = -1;
+  /** How many providers currently hold this store. 2026-10-05: the LRU used
+   *  to evict by INSERTION ORDER with no liveness check, so on a page with
+   *  >24 canvases it could evict the store of a card still on screen — that
+   *  card's slider snapped back and every later write went to an orphan. */
+  mounted = 0;
+  /** The canvas id this store belongs to. `useCanvasReset` read a `__id` field
+   *  that was never assigned anywhere, so reset was a silent no-op. */
+  readonly id: string;
 
-  constructor(initial: Scope) {
+  constructor(initial: Scope, id = "") {
     this.values = initial;
+    this.id = id;
   }
 
   get(key: string, fallback: StateValue | number | string | boolean): unknown {
@@ -88,6 +97,9 @@ class CanvasStore {
 }
 
 const storeMap = new Map<string, CanvasStore>();
+/** Cap on retained stores. Same budget as before; the eviction SKIP rule is
+ *  what changed (see the `mounted` field). */
+const MAX_STORES = 24;
 /** The authored `state` each canvas id was seeded with (for the reset button and
  *  for "did the spec's initial state actually change?"). */
 const sAuthored = new Map<string, Scope>();
@@ -95,26 +107,48 @@ const sAuthored = new Map<string, Scope>();
 /** Store for one canvas id — created on first demand, reused across re-renders. */
 export function canvasStore(canvasId: string, initial: Scope): CanvasStore {
   let s = storeMap.get(canvasId);
-  const sig = JSON.stringify(initial) ?? "";
+  const sig = stableSig(initial);
   if (!s) {
-    s = new CanvasStore(initial);
+    s = new CanvasStore(initial, canvasId);
     // Record the authored state on CREATION too: without it the first re-parse
     // compares `undefined` against the same spec's signature and resets the
     // user's edits even though nothing changed.
     sAuthored.set(canvasId, initial);
     storeMap.set(canvasId, s);
-    if (storeMap.size > 24) {
-      // drop the oldest store; the chat prunes history rows the same way
-      const first = storeMap.keys().next().value;
-      if (first !== undefined) storeMap.delete(first);
+    if (storeMap.size > MAX_STORES) {
+      // drop the OLDEST store, but never one a mounted card is using: evicting
+      // a live store left the card frozen forever (its slider snapped back and
+      // further writes went to an orphan). See mounted-count below.
+      for (const [id, st] of storeMap) {
+        if (st.mounted > 0) continue;
+        storeMap.delete(id);
+        sAuthored.delete(id);
+        break;
+      }
     }
     return s;
   }
   // spec state changed underneath us (history re-parse): reset only when the
   // authored initial state actually differs, so user edits normally survive.
-  const authored = JSON.stringify(sAuthored.get(canvasId));
+  //
+  // HIGH (2026-10-05): compare a KEY-ORDER-INDEPENDENT signature. Plain
+  // JSON.stringify made key order part of the identity, so a re-parse that
+  // emitted the same values in a different order silently reset every slider
+  // the user had moved. Model output is not key-stable, and the sanitizer
+  // copies `state` through untouched, so nothing normalised the order.
+  const authored = stableSig(sAuthored.get(canvasId));
   if (authored !== sig) { s.reset(initial); sAuthored.set(canvasId, initial); }
   return s;
+}
+
+/** Canonical signature: same keys AND same values, regardless of key order. */
+function stableSig(v: unknown): string {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return JSON.stringify(v ?? null) ?? "";
+  const o = v as Record<string, unknown>;
+  const keys = Object.keys(o).sort();
+  const parts: string[] = [];
+  for (const k of keys) parts.push(`${JSON.stringify(k)}:${stableSig(o[k])}`);
+  return "{" + parts.join(",") + "}";
 }
 
 const Ctx = createContext<CanvasStore | null>(null);
@@ -127,6 +161,13 @@ const FALLBACK_STORE = new CanvasStore({});
 /** Provide the store once per canvas card (inside CanvasView's body). */
 export function CanvasStateProvider({ canvasId, initial, children }: { canvasId: string; initial: Scope; children: ReactNode }) {
   const store = useMemo(() => canvasStore(canvasId, initial), [canvasId, initial]);
+  // Mount/unmount accounting: the LRU skips stores with mounted > 0, so a card
+  // still on screen can never be evicted. StrictMode double-invokes effects,
+  // hence the idempotent count rather than a boolean flag.
+  useEffect(() => {
+    store.mounted++;
+    return () => { store.mounted--; };
+  }, [store]);
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }
 
@@ -173,9 +214,12 @@ export function useCanvasSeeder(): (key: string, v: StateValue | StateValue[]) =
 /** Reset button support: restores the authored initial state for one canvas. */
 export function useCanvasReset(): () => void {
   const s = useStore();
-  const canvasId = (s as unknown as { __id?: string }).__id ?? "";
-  return () => {
-    const init = sAuthored.get(canvasId);
+  // 2026-10-05: this read `(s as {__id?: string}).__id`, and `__id` was NEVER
+  // assigned anywhere in the repo — so canvasId was always "" and
+  // `sAuthored.get("")` was always undefined, making reset a silent no-op.
+  // The store now carries its own id (see CanvasStore.id).
+  return useMemo(() => () => {
+    const init = sAuthored.get(s.id);
     if (init) s.reset(init);
-  };
+  }, [s]);
 }

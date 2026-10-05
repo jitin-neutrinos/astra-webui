@@ -1293,26 +1293,38 @@ function quoteBareKeys(s: string): string {
   let i = 0;
   let inStr = false;
   let esc = false;
+  // HIGH (2026-10-05): the last non-whitespace char emitted, tracked in a var.
+  // The old `out.replace(/\s+$/,"").slice(-1)` re-scanned the whole accumulator
+  // PER INPUT CHARACTER — O(n^2). Measured 82 KB = 1.1 s, 334 KB = 17.3 s, a
+  // realistic 342 KB bare-key payload = 21 s, on the SYNC path (once per
+  // streaming delta) => a ~20 s tab freeze per frame on a common shape.
+  let lastSig = "";
   while (i < s.length) {
     const c = s[i];
     if (inStr) {
       out += c;
       if (esc) esc = false;
       else if (c === "\\") esc = true;
-      else if (c === '"') inStr = false;
+      else if (c === '"') { inStr = false; lastSig = '"'; }
       i++;
       continue;
     }
     if (c === '"') { inStr = true; out += c; i++; continue; }
-    const prev = out.replace(/\s+$/, "").slice(-1);
+    // `prev` must be the last non-whitespace char of `out` BEFORE appending c
+    // — that is exactly what the old `out.replace(/\s+$/,"").slice(-1)`
+    // returned, and it must be sampled BEFORE lastSig is refreshed below or the
+    // key at this position is tested against itself instead of its predecessor.
+    const prev = lastSig;
     if (prev === "{" || prev === ",") {
       const m = /^\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*:/.exec(s.slice(i));
       if (m) {
         out += m[0].replace(m[1], `"${m[1]}"`);
+        lastSig = ":"; // out now ends with the key's colon
         i += m[0].length;
         continue;
       }
     }
+    if (c.trim() !== "") lastSig = c;
     out += c;
     i++;
   }
@@ -1988,11 +2000,20 @@ export function planTurnCanvases(segTexts: string[], streaming = false): TurnCan
 
   // Streaming: withhold a still-open fence at the tail instead of flashing raw
   // JSON. Anything already closed above rendered above.
+  //
+  // CRITICAL (2026-10-05): withhold ONLY when the tail fence is genuinely
+  // UNTERMINATED. OPEN_FENCE_RE matches the first opener and captures to end of
+  // string regardless of whether a closer follows, so the old unconditional
+  // slice deleted a CLOSED card plus every word of prose after it, for the whole
+  // duration of the stream. Measured: "intro\n```astra-canvas\n{...}\n```\nAFTER"
+  // -> mdPerSeg ["intro\n"] and canvases [] — card AND prose both gone.
   if (streaming) {
     for (let i = texts.length - 1; i >= 0; i--) {
       if (!mdPerSeg[i].includes("```astra-canvas")) continue;
       const open = OPEN_FENCE_RE.exec(mdPerSeg[i]);
-      if (open) mdPerSeg[i] = mdPerSeg[i].slice(0, open.index);
+      // A closed fence is already a card (spanning) or inline for RichText
+      // (contained); cutting it deletes both it and the prose after it.
+      if (open && !/`{3,}/.test(open[1])) mdPerSeg[i] = mdPerSeg[i].slice(0, open.index);
       break;
     }
   }
