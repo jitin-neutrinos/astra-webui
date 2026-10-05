@@ -1880,3 +1880,87 @@ test("diagram: markdown copy keeps fields and cardinality", () => {
   assert.ok(md.includes("1..*"), "cardinality is copied");
   assert.ok(md.includes("email"), "field names are copied");
 });
+
+
+// ── tree: sanitizer/schema divergence (a correctness bug, not a feature) ────────
+// The parser validated `detail` + `children` and TreeView rendered both, but the
+// sanitizer — the ONE call on the render path — rebuilt each node as {id,label}
+// and dropped both. A tree therefore arrived as a FLAT list: no detail text and no
+// hierarchy at all, since `children` was the only thing expressing it. A
+// parser-only suite stayed green through it.
+const tree = (b: unknown) => parseCanvasSpec(JSON.stringify({ v: 1, blocks: [b] }));
+const FILE_TREE = {
+  type: "tree",
+  nodes: [
+    { id: "src", label: "src", detail: "6 files" },
+    { id: "a.ts", label: "a.ts", detail: "1.2 kB", children: [] },
+    { id: "lib", label: "lib", children: ["b.ts"] },
+    { id: "b.ts", label: "b.ts" },
+  ],
+};
+
+test("tree: detail + children survive the sanitizer (they used to be dropped)", () => {
+  const spec = tree(FILE_TREE);
+  assert.ok(spec, "the tree parses");
+  const p = spec!.blocks[0] as any;
+  assert.equal(p.nodes[0].detail, "6 files", "the parser keeps detail");
+  assert.deepEqual(p.nodes[2].children, ["b.ts"], "the parser keeps children");
+
+  // The render path. A tree with no children is a FLAT LIST — the hierarchy the
+  // author authored simply does not exist on screen.
+  const s = sanitizeCanvasSpec(spec) as any;
+  assert.equal(s.blocks[0].nodes[0].detail, "6 files", "detail must survive");
+  assert.deepEqual(s.blocks[0].nodes[2].children, ["b.ts"], "children must survive");
+  // And the nesting still resolves: every child id exists in the node list.
+  const ids = new Set(s.blocks[0].nodes.map((n: any) => n.id));
+  for (const n of s.blocks[0].nodes) for (const c of n.children ?? []) assert.ok(ids.has(c), `dangling child ${c}`);
+  // A leaf keeps NO children key rather than an empty array.
+  assert.equal(s.blocks[0].nodes[3].children, undefined, "a leaf has no children key");
+});
+
+// The layers are NOT redundant, and which one rejects what is measured, not
+// assumed: the PARSER rejects a dangling child and an over-long node list (both
+// measured null below), while the SANITIZER is what collapses duplicate ids and
+// enforces the 100-node cap. Both are asserted so neither can silently change.
+test("tree: a dangling child is rejected by the PARSER, never passed to the renderer", () => {
+  assert.equal(tree({ type: "tree", nodes: [{ id: "a", label: "A", children: ["ghost"] }] }), null,
+    "a child id that does not exist is an invalid tree");
+  // TreeView's byId lookup returns undefined for an unknown id and renders nothing,
+  // so a dangling child is a silently empty row — it must not reach the renderer.
+  const ok = tree({ type: "tree", nodes: [{ id: "a", label: "A", children: ["b"] }, { id: "b", label: "B" }] });
+  assert.ok(ok, "a resolvable child parses");
+  assert.deepEqual(sanitizeCanvasSpec(ok)!.blocks[0].nodes[0].children, ["b"]);
+  // Junk in `children` never throws on either side.
+  assert.doesNotThrow(() => tree({ type: "tree", nodes: [{ id: "a", label: "A", children: [1, null, {}] }] }));
+  assert.doesNotThrow(() => tree({ type: "tree", nodes: [{ id: "a", label: "A", children: "nope" }] }));
+});
+
+test("tree: the sanitizer collapses duplicate ids and enforces the 100-node cap", () => {
+  // A duplicate id is NOT a parse error, so the sanitizer is what stops the second
+  // row: React would key both to the same id and the tree would lose a row.
+  const s = sanitizeCanvasSpec(tree({
+    type: "tree", nodes: [{ id: "a", label: "A" }, { id: "a", label: "dup" }],
+  })!) as any;
+  assert.equal(s.blocks[0].nodes.length, 1, "the duplicate id is collapsed to one row");
+  assert.equal(s.blocks[0].nodes[0].label, "A", "the FIRST node wins");
+  // The PARSER does not cap a tree node list (measured: 140 childless nodes parse
+  // fine), so the 100-node cap is the SANITIZER's alone — which is why it is
+  // asserted here and not assumed from the parser. (A 140-node list whose last
+  // node names a child DOES fail to parse, because that child does not exist.)
+  const many = tree({ type: "tree", nodes: Array.from({ length: 140 }, (_, i) => ({ id: `n${i}`, label: `n${i}` })) });
+  assert.ok(many, "the parser does not cap the node list");
+  const s2 = sanitizeCanvasSpec(many!) as any;
+  assert.equal(s2.blocks[0].nodes.length, 100, "the sanitizer caps at 100");
+  assert.equal(tree({
+    type: "tree", nodes: Array.from({ length: 140 }, (_, i) => ({ id: `n${i}`, label: `n${i}`, children: [`n${i + 1}`] })),
+  }), null, "a dangling child still rejects the card, however deep");
+});
+
+test("tree: string caps hold on id, label and the newly-preserved detail", () => {
+  const s = sanitizeCanvasSpec(tree({
+    type: "tree", nodes: [{ id: "x".repeat(400), label: "y".repeat(900), detail: "z".repeat(2000) }],
+  })!) as any;
+  assert.ok(s.blocks[0].nodes[0].id.length <= 50, "id is capped");
+  assert.ok(s.blocks[0].nodes[0].label.length <= 200, "label is capped");
+  assert.ok(s.blocks[0].nodes[0].detail.length <= 500, "detail is capped — the newly-kept field is capped too");
+});

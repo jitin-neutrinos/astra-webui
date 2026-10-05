@@ -688,19 +688,39 @@ function sanitizeBlock(b: unknown, depth = 0): CanvasBlock | null {
       break;
     }
     case "tree": {
+      // BUG (fixed 2026-10-05, "the file tree shows no hierarchy"): this case
+      // rebuilt every node as {id,label} and DROPPED `detail` and `children`.
+      // canvas-schema.ts validated both and TreeView rendered both, so the parser
+      // and the renderer were both already correct — but sanitizeCanvasSpec is the
+      // ONE call on the render path (chat-timeline.tsx:70), so every tree reached
+      // the renderer as a FLAT list of top-level rows: `detail` gone and the whole
+      // nesting flattened, because `children` was the only thing that expressed it.
+      // Same bug class as tabs (b1ec4e9) and accordion: the sanitizer silently
+      // discards what the other two layers carry.
       if (!Array.isArray(obj.nodes)) return null;
-      sanitized.nodes = obj.nodes
-        .map((n: unknown) => {
-          if (!n || typeof n !== "object") return null;
-          const no = n as Record<string, unknown>;
-          const id = typeof no.id === "string" ? truncate(no.id, 50) : "";
-          if (!id) return null;
-          const label = typeof no.label === "string" ? truncate(no.label, 200) : id;
-          return { id, label };
-        })
-        .filter((x: unknown): x is { id: string; label: string } => x !== null)
-        .slice(0, 100);
-      if (sanitized.nodes.length === 0) return null;
+      const nodes: Record<string, unknown>[] = [];
+      const ids = new Set<string>();
+      for (const n of obj.nodes) {
+        if (nodes.length >= 100) break;               // the existing 100-node cap
+        if (!n || typeof n !== "object") continue;
+        const no = n as Record<string, unknown>;
+        const id = typeof no.id === "string" ? truncate(no.id, 50) : "";
+        if (!id || ids.has(id)) continue;
+        ids.add(id);
+        const out: Record<string, unknown> = { id, label: typeof no.label === "string" ? truncate(no.label, 200) : id };
+        if (typeof no.detail === "string") out.detail = truncate(no.detail, 500);
+        // children are IDs: only strings, only ones that survive the same cap.
+        if (Array.isArray(no.children)) {
+          const kids = no.children
+            .filter((c: unknown): c is string => typeof c === "string")
+            .slice(0, MAX_ITEMS)
+            .map((c: string) => truncate(c, 50));
+          if (kids.length > 0) out.children = kids;
+        }
+        nodes.push(out);
+      }
+      if (nodes.length === 0) return null;
+      sanitized.nodes = nodes;
       break;
     }
     case "terminal": {
