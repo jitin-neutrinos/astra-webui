@@ -882,7 +882,25 @@ function validateBlockInner(b: any): CanvasBlock | null {
       return { type: "chart", chart, title: isStr(b.title) ? b.title : undefined, labels: b.labels, series };
     }
     case "table": {
-      if (!isStrArr(b.columns) || b.columns.length === 0) return null;
+      // Model near-miss (2026-10-05): `{from:"d"}` instead of `bind:{$from:"d"}`
+      // — the same reach-for-the-obvious-key behaviour the alias table covers
+      // for TYPES, here for the binding key. Normalised before anything reads it.
+      if (!isBind(b.bind) && isStr(b.from)) b.bind = { $from: b.from };
+      // A REACTIVE table does not need authored columns: the data carrier
+      // defines them. A model that omits columns used to lose the WHOLE table
+      // at this line. Resolve what the sibling `data` blocks carry:
+      const dsCols = (() => {
+        const name = isBind(b.bind) && isStr((b.bind as any).$from) ? (b.bind as any).$from : null;
+        if (!name || !Array.isArray(b.__datasets)) return null;
+        const d = (b.__datasets as { name?: unknown; columns?: unknown }[]).find((x) => x && x.name === name);
+        return Array.isArray(d?.columns) ? d!.columns.filter(isStr) : null;
+      })();
+      if (!isStrArr(b.columns) || b.columns.length === 0) {
+        // Bound + a named dataset with columns → synthesise; otherwise reject.
+        if (!dsCols || dsCols.length === 0) return null;
+        b.columns = dsCols;
+      }
+      if (b.columns.length === 0) return null;
       // `stats` is validated HERE and stored on both return paths. It is an
       // instruction to the renderer ("compute these numbers for me"), not data,
       // so it must never be able to reject an otherwise valid table: a bad stat
@@ -2113,6 +2131,15 @@ export function parseCanvasSpec(raw: string): CanvasSpec | null {
   // wall of raw JSON in the chat).
   const blocks: CanvasBlock[] = [];
   for (const b of list2) {
+    // Sibling injection: a table that binds `$from` may omit `columns` — the
+    // referenced `data` block defines them. Pass the top-level datasets down so
+    // the table case can synthesise them; the key is stripped by per-type
+    // validation, never rendered.
+    if (b && b.type === "table") {
+      b.__datasets = list2
+        .filter((x: any) => x && x.type === "data" && isStr(x.name))
+        .map((x: any) => ({ name: x.name, columns: x.columns }));
+    }
     const v = validateBlock(b);
     if (v) blocks.push(v);
   }

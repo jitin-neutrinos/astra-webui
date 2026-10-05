@@ -63,7 +63,12 @@ test("components consume the accent ROLE, never the hue name", () => {
   // And NO cyanx utility class can exist (the slot is not a @theme token).
   // Strip comments before inspecting @theme — matching the bare word flagged the
   // explanatory comment that NAMES the slot, not an actual declaration.
-  const rawTheme = css.slice(css.indexOf("@theme"), css.indexOf("\n}", css.indexOf("@theme")) + 2);
+  // The first "@theme" occurrence may live inside a COMMENT (this sheet's
+  // prose at the top names the rule) — slice from the real BLOCK opener,
+  // otherwise the token assertion reads the wrong window and the accent-role
+  // pin fails while the sheet is correct.
+  const themeBlockAt = css.search(/@theme\s*\{/);
+  const rawTheme = css.slice(themeBlockAt, css.indexOf("\n}", themeBlockAt) + 2);
   const themeBlock = rawTheme.replace(/\/\*[\s\S]*?\*\//g, "");
   assert.ok(
     !/--color-cyanx\s*:/.test(themeBlock),

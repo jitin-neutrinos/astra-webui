@@ -44,6 +44,11 @@ export function openTrainingDb() {
   mkdirSync(dirname(DB_PATH), { recursive: true });
   db = new DatabaseSync(DB_PATH);
   db.exec("PRAGMA journal_mode = WAL;");
+  // Migration: dbs created before ingested_at existed — ALTER ADD is idempotent-guarded.
+  try {
+    const cols = db.prepare("PRAGMA table_info(sessions)").all().map((c) => c.name);
+    if (!cols.includes("ingested_at")) db.exec("ALTER TABLE sessions ADD COLUMN ingested_at INTEGER");
+  } catch { /* fresh db created with it above */ }
   db.exec(`
     CREATE TABLE IF NOT EXISTS sessions (
       sid TEXT PRIMARY KEY,
@@ -53,7 +58,10 @@ export function openTrainingDb() {
       ended_at INTEGER NOT NULL,
       message_rows INTEGER NOT NULL,
       token_stats TEXT,
-      review_status TEXT NOT NULL DEFAULT 'dumped'
+      review_status TEXT NOT NULL DEFAULT 'dumped',
+      /* ingest bookkeeping: NULL = never dumped for training. read by
+         ingest.mjs / retention.mjs / backfill.mjs; fresh clones need it. */
+      ingested_at INTEGER
     );
     CREATE TABLE IF NOT EXISTS messages (
       sid TEXT NOT NULL,

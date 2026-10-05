@@ -42,6 +42,7 @@ export { MEDIA_RE, mediaPaths, stripMediaLines };
 
 import DOMPurify from "dompurify";
 import { renderRichHtml } from "../lib/rich-html";
+import "./perf-chat.css"; // must be imported by a rendered file or the off-screen skip ships nothing
 import { splitCanvasBlocks, splitCanvasBlocksAsync, planTurnCanvases, parseStreamingCanvas, type CanvasSpec, type CanvasBlock, type CanvasPart } from "../lib/canvas-schema";
 import { wireCodeCopyButtons } from "../lib/rich-pre";
 import { safeTail } from "../lib/safe-tail";

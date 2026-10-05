@@ -1023,7 +1023,7 @@ function renderOne(b: CanvasBlock, id: string, bi: number, ctx?: RenderCtx): Rea
           <GitGraphLazy block={b} />
         </Suspense>
       );
-    case "accordion": return <AccordionView block={b} />;
+    case "accordion": return <AccordionView block={b} ctx={ctx} />;
     case "terminal": return <TerminalView block={b} />;
     case "badges": return <BadgesView block={b} />;
     case "divider": return <DividerView block={b} />;

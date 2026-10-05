@@ -64,7 +64,7 @@ function parseStats(raw: unknown): Record<string, number> | null {
   } catch { return null; }
 }
 
-export function TrainingPage({ onBack }: { onBack: () => void }) {
+export function TrainingPage({ onBack, onOpenJob }: { onBack: () => void; onOpenJob?: (sid: string) => void }) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [jobsError, setJobsError] = useState<string | null>(null);
@@ -190,10 +190,17 @@ export function TrainingPage({ onBack }: { onBack: () => void }) {
             ) : (
               <ul className="space-y-1.5" role="list">
                 {ordered.map((j, idx) => {
+                  const sid = String(j?.sid ?? "");
                   const m = metaFor(j?.status);
+                  const openJob = () => { if (sid && onOpenJob) onOpenJob(sid); };
                   return (
                     <li key={j?.sid || `job${idx}`} className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-2.5 py-2">
-                      <div className="flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={openJob}
+                        aria-label={`Open review job ${sid.slice(-9)}`}
+                        className="flex w-full items-center justify-between gap-2 text-left"
+                      >
                         <span className="truncate text-xs text-slate-300" title={String(j?.last_error || j?.sid || "")}>
                           {String(j?.sid ?? "—").slice(-9)}
                         </span>
@@ -203,7 +210,7 @@ export function TrainingPage({ onBack }: { onBack: () => void }) {
                           {m.label}
                           {j?.status === "awaiting_retry" ? ` ${countdownUntil(j?.next_attempt_at)}` : ""}
                         </span>
-                      </div>
+                      </button>
                       <div className="mt-1 flex items-center gap-3 text-[10px] text-slate-500">
                         {j?.attempts !== undefined && j?.attempts !== null && <span className="tabular-nums">attempt {j.attempts}/6</span>}
                         {j?.updated_at ? <span className="tabular-nums">updated {stamp(j.updated_at)}</span> : null}

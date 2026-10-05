@@ -103,7 +103,7 @@ test("fail-soft: unknown lang, no lang, empty and huge payloads never throw", as
 test("the highlighter is LAZY — no eager import of the engine from the canvas path", () => {
   const src = readFileSync(join(here, "../components/canvas/canvas-blocks.tsx"), "utf8");
   // canvas-blocks is statically imported by the gate path; a static `from
-  // "shiki"` / `from "./canvas-code-hl"` there would put the engine in the main
+  // "shiki"` / `from "../components/canvas/canvas-code-hl"` there would put the engine in the main
   // chunk. The only legal reference is the dynamic import() inside the effect.
   assert.doesNotMatch(src, /^\s*import[^\n]*canvas-code-hl/m, "canvas-code-hl must not be statically imported");
   assert.doesNotMatch(src, /from\s+["']shiki["']/, "the shiki barrel must never be imported by canvas-blocks");

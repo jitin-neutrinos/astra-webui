@@ -22,10 +22,14 @@ const SRC = join(ROOT, "src", "components", "perf-chat.css");
 
 // --- 1. the source exists and is imported ---------------------------------
 assert.ok(existsSync(SRC), "perf-chat.css exists");
+// The importer is chat-timeline.tsx (the file that stamps data-streaming);
+// chat-landing once imported it, the transcript path moved. Either importing
+// file ships the sheet — pin "imported somewhere real", not the filename.
 const landing = readFileSync(join(ROOT, "src", "components", "chat-landing.tsx"), "utf8");
+const timelineSrc = readFileSync(join(ROOT, "src", "components", "chat-timeline.tsx"), "utf8");
 assert.ok(
-  /import\s*"\.\/perf-chat\.css"/.test(landing),
-  "chat-landing.tsx imports perf-chat.css (an unimported stylesheet ships nothing)"
+  /import\s*"\.\/perf-chat\.css"/.test(landing) || /import\s*"\.\/perf-chat\.css"/.test(timelineSrc),
+  "chat-landing.tsx or chat-timeline.tsx imports perf-chat.css (an unimported stylesheet ships nothing)"
 );
 
 // --- 2. the TSX stamps the attribute the CSS depends on -------------------

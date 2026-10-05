@@ -17,7 +17,7 @@
 //   * it keeps author spacing (` > `, `:has( > .x)`), so selectors are normalised.
 
 import { build } from 'vite';
-import { readFileSync, readdirSync, rmSync } from 'node:fs';
+import { readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
@@ -29,7 +29,7 @@ await build({
 });
 
 const cssDir = path.join(OUT, 'assets');
-const file = readdirSync(cssDir).find((f) => f.endsWith('.css'));
+const file = readdirSync(cssDir).filter((f) => f.endsWith('.css')).sort((a, b) => statSync(path.join(cssDir, b)).size - statSync(path.join(cssDir, a)).size)[0];
 if (!file) { console.log('FAIL — no css emitted'); process.exit(1); }
 const css = readFileSync(path.join(cssDir, file), 'utf8');
 
@@ -191,11 +191,14 @@ const SHARED = ['.chat-scroll', '.chat-think-text', '.chat-term-out', '.suba-tai
 const shared = ALL.find((r) => r.sels.includes('.chat-scroll') && r.sels.includes('.chat-think-text'));
 check('shared chat scrollbar block emitted', !!shared);
 for (const sel of SHARED) check(`  covers ${sel}`, !!shared?.sels.includes(norm(sel)));
-check('shared block paints the accent thumb',
-  !!shared && shared.decls.has('scrollbar-color:var(--sb-thumb)transparent'));
+// Owner 10-05 superseded the tinted thumb: scrollbars are INVISIBLE on the chat
+// surface by design (standard scrollbar-width:none + webkit fallback). Pin the
+// CURRENT law — the shared block hides the rail; no thumb colour assertion.
+check('shared block hides the rail (owner 10-05 law)',
+  !!shared && shared.decls.has('scrollbar-width:none'));
 // think-panel keeps the owner's deliberately wider, visible bar
-check('think-panel keeps its wider bar',
-  valOf('.chat-think-text::-webkit-scrollbar', 'width') === '10px',
+check('think-panel rail is hidden like the rest (owner 10-05 law)',
+  valOf('.chat-think-text::-webkit-scrollbar', 'width') === '0',
   'width:' + valOf('.chat-think-text::-webkit-scrollbar', 'width'));
 
 // no rule outside that block may repaint a chat scrollbar with a baked channel

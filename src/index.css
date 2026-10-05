@@ -72,6 +72,9 @@
   --color-depth: #1a1f29;
   --color-surface: #252b39;
   --color-brandtext: #f2f3f7;
+  /* Fixed near-white for glyphs sitting ON an accent fill — the accent can be
+     any hue, so the on-accent text is a role of its own, not slate-50-by-name. */
+  --color-onaccent: #f8fafc;
   --color-muted: #8d929e;
   /* The accent is registered as a ROLE, not a hue. `--color-cyanx` is the theme
      engine's storage slot (palettes.json owns it) and is deliberately NOT in
@@ -6009,7 +6012,7 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
 .composer-bar-card .chat-chip.chat-chip-yolo.chat-chip-on svg { color: var(--color-void); fill: currentColor; }
 [data-theme="light"] .composer-bar-card .chat-chip.chat-chip-yolo.chat-chip-on {
   background: rgb(var(--light-c-1));
-  color: #f8fafc;
+  color: var(--color-onaccent);
   box-shadow: none;
 }
 /* The bolt follows the button's ink, not the generic filled-chip svg rule:
@@ -6019,7 +6022,7 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
 .composer-bar-card .chat-chip-yolo svg { color: var(--color-accent); fill: currentColor; }
 .composer-bar-card .chat-chip.chat-chip-yolo.chat-chip-on svg { color: var(--color-void); }
 [data-theme="light"] .composer-bar-card .chat-chip-yolo svg { color: rgb(var(--light-c-34)); }
-[data-theme="light"] .composer-bar-card .chat-chip.chat-chip-yolo.chat-chip-on svg { color: #f8fafc; }
+[data-theme="light"] .composer-bar-card .chat-chip.chat-chip-yolo.chat-chip-on svg { color: var(--color-onaccent); }
 /* The ON state must read at a glance without a label. */
 .composer-bar-card .chat-chip-icon.chat-chip-on {
   border-color: var(--color-accent);

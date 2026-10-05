@@ -1823,8 +1823,9 @@ test("diagram: circuit symbols + smooth routing parse; unknown values are droppe
   assert.equal(d.route, "smooth");
   assert.equal(d.nodes[0].symbol, "resistor");
   assert.equal(d.nodes[1].symbol, "ground");
-  assert.equal(sanitizeCanvasSpec(spec)!.blocks[0].nodes[0].symbol, "resistor", "symbol survives");
-  assert.equal(sanitizeCanvasSpec(spec)!.blocks[0].route, "smooth");
+  const sgR = sanitizeCanvasSpec(spec)!.blocks[0] as any;
+  assert.equal(sgR.nodes[0].symbol, "resistor", "symbol survives");
+  assert.equal(sgR.route, "smooth");
 
   // Unknown enum values degrade to absent, and the block still renders.
   const junk = dg({ type: "diagram", layout: "flow", route: "diagonal",
@@ -1929,7 +1930,7 @@ test("tree: a dangling child is rejected by the PARSER, never passed to the rend
   // so a dangling child is a silently empty row — it must not reach the renderer.
   const ok = tree({ type: "tree", nodes: [{ id: "a", label: "A", children: ["b"] }, { id: "b", label: "B" }] });
   assert.ok(ok, "a resolvable child parses");
-  assert.deepEqual(sanitizeCanvasSpec(ok)!.blocks[0].nodes[0].children, ["b"]);
+  assert.deepEqual((sanitizeCanvasSpec(ok)!.blocks[0] as any).nodes[0].children, ["b"]);
   // Junk in `children` never throws on either side.
   assert.doesNotThrow(() => tree({ type: "tree", nodes: [{ id: "a", label: "A", children: [1, null, {}] }] }));
   assert.doesNotThrow(() => tree({ type: "tree", nodes: [{ id: "a", label: "A", children: "nope" }] }));
@@ -2077,7 +2078,7 @@ test("gitgraph: fail-soft — no commits degrades, junk fields never throw", () 
   // rather than rendering an empty card.
   assert.equal(sanitizeCanvasSpec(git({ type: "gitgraph", commits: [] })), null);
   assert.doesNotThrow(() => git({ type: "gitgraph", commits: [{ id: "a", message: "m", parents: 5, tags: {}, merge: "yes" }], branches: [null, 3] }));
-  assert.equal(git({ type: "gitgraph", commits: [{ id: "a", message: "m", merge: "yes" }] })!.blocks[0].merge, undefined,
+  assert.equal((git({ type: "gitgraph", commits: [{ id: "a", message: "m", merge: "yes" }] })!.blocks[0] as any).merge, undefined,
     "only an explicit true is a merge");
 });
 

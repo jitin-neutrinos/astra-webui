@@ -797,6 +797,41 @@ id: "RG-114",
       "The paginated A4/slide export emitted a BLANK FIRST PAGE. Page ranges are half-open [start, end) — packSections pushes [start, u] where u is the first unit that did not fit — so when a page held exactly a section heading, u - start === 1 and the push [start, u - 1] collapsed to [start, start], a ZERO-WIDTH range. Measured 396 of 840 realistic 3-block configurations across both page modes (47%): page one rendered nothing and the folio printed '1 / 2' over a blank sheet. The shipped assertPartition could NOT see it — first starts 0, last ends n, ranges abut (0 === 0) and covered === n all hold on the broken output, which is the 'green geometry audit hid a real defect' class recorded in AGENTS.md. Fix: never emit a zero-width range; the heading simply travels down to join its body, which is what Rule 3 already required. Guards a full 3-block sweep per page mode for empty ranges, the headline divider+oversized-table shape, that a heading and its body never split across pages, complete non-duplicated unit coverage, that a lone heading still paginates, and that an empty document still yields exactly one page. Proven by reversal — restoring the push fails 161 of 420 configs in the a4 sweep alone.",
     guard: "src/lib/canvas-pagination.blankpage.check.ts",
   },
+  {
+    id: "RG-118",
+    found: "2026-10-05",
+    symptom:
+      "The per-column arithmetic behind table.stats footers lost its contract: a column the renderer cannot read honestly must produce NO footer rather than a plausible one, and the same rows must always produce the same footer.",
+    guard: "src/lib/canvas-stats.check.ts",
+  },
+  {
+    id: "RG-119",
+    found: "2026-10-05",
+    symptom:
+      "Syntax highlighting leaked a non-theme colour into a canvas code/diff/terminal block (shiki output must be var(--code-…) only), or a tokenizer throw turned a code block into a broken card.",
+    guard: "src/lib/canvas-code-hl.check.ts",
+  },
+  {
+    id: "RG-120",
+    found: "2026-10-05",
+    symptom:
+      "The math block pulled katex (~75 kB + webfonts) into the main chunk or let one unparseable formula kill the card (throwOnError:false is a load-bearing invariant).",
+    guard: "src/lib/canvas-math.check.ts",
+  },
+  {
+    id: "RG-121",
+    found: "2026-10-05",
+    symptom:
+      "server/sysinfo.mjs audit additions drifted: the read-only facts the ops page shows (uptime, sqlite rows, health) must keep their probe shape.",
+    guard: "server/sysinfo.audit.check.mjs",
+  },
+  {
+    id: "RG-122",
+    found: "2026-10-05",
+    symptom:
+      "The FIFTH recurrence of the rebuild-a-block class, owner-reported as 'the sanitizer bug again — reactive tables pulling rows from a data block were being dropped'. THREE stacked holes this time, all silent: (1) RENDERER CTX — TabsView/AccordionView/LayoutView re-entered the shared Blocks dispatcher WITHOUT a ctx prop and isReactiveBlock did not look inside containers, so a bound table nested in a tab resolved no rows (a container-local collectData cannot see the card-level `data` carrier either) and degraded to a bare header — identical symptom to the RG-090 sanitizer fix, different layer; (2) a bound table with NO authored columns was rejected by BOTH parser and sanitizer although the referenced data block defines the columns (now synthesised from the sibling dataset, fail-soft when unresolvable); (3) the `from` shorthand normalised to bind.$from and carried for every block type. Guards the exact reported card shape through parser+sanitizer, root-datasets-through-props.ctx (asserting the tab-local collection is NOT the source), the container recursion in isReactiveBlock (structural, over the shipped source), columns synthesis, the shorthand, the static-empty degradation still holding, the full fence round-trip, and the streaming partial paint. Proven by reversal — reverting the three container views' ctx wiring fails the structural pin.",
+    guard: "src/lib/canvas-sanitize.nested-table.check.ts",
+  },
     ];
 
 // ---- gate -----------------------------------------------------------------

@@ -115,7 +115,10 @@ export interface LNode {
 
 export interface LEdge {
   i: number;
-  e: { from: string; to: string; label?: string; note?: string };
+  // `e` carries the SOURCE edge verbatim (DiagramSource edge, incl. the ER
+  // `cardinality` the renderer draws crow's feet from) — narrowing it to
+  // {from,to,label,note} made `edge.cardinality` unreachable in canvas-diagram.
+  e: DiagramSource["edges"][number];
   pts: { x: number; y: number }[];
   self: boolean;
 }
