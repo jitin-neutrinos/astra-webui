@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { ArrowLeft, Brain } from "lucide-react";
 import { StatusRow } from "./ops/status";
 import { useOpsPoll } from "./ops/use-ops-poll";
+import { FactStorePanel, AuditChecksPanel } from "./ops/audit-panels";
 
 type MemoryData = {
   providers?: any;
@@ -12,6 +13,9 @@ type MemoryData = {
   ovCli?: any;
   compSurv?: Record<string, unknown>;
   error?: string;
+  factStore?: any;
+  stateStore?: any;
+  auditChecks?: any;
 };
 
 export function MemoryPage({ onBack }: { onBack: () => void }) {
@@ -91,6 +95,8 @@ export function MemoryPage({ onBack }: { onBack: () => void }) {
               )) : <span>—</span>}
             </div>
           </section>
+          <FactStorePanel fs={d.factStore} />
+          <AuditChecksPanel checks={d.auditChecks} />
         </div>
       </div>
     </div>

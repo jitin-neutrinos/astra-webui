@@ -46,12 +46,14 @@ export default CanvasErrorBoundary;
 // Stale-deploy guard: a tab loaded BEFORE a deploy asks this deploy for old hashed chunks, the dynamic
 // import gets index.html (or a 404) — historically the "text/html is not a valid JavaScript MIME type"
 // white-screen. Auto-reload once per tab after a deploy so the referenced hashes match the served assets.
-function isStaleChunkError(e: unknown): boolean {
+// Exported because a rejected dynamic import does NOT reach an error boundary (see chat-timeline.tsx):
+// the lazy() import site must handle this itself.
+export function isStaleChunkError(e: unknown): boolean {
   const s = String((e as Error)?.message || e);
   return /dynamically imported module|Loading chunk \d+ failed|error loading.*chunk|MIME incompatible for unknown reason/i.test(s)
     || ("function" === typeof (e as any)?.name && /ChunkLoadError/.test((e as any).name));
 }
-function reloadOnce(): boolean {
+export function reloadOnce(): boolean {
   const key = "astra:chunk-reload";
   try {
     if (sessionStorage.getItem(key)) return false;

@@ -4,6 +4,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { DatabaseSync } from "node:sqlite";
 
 import { hermesCookieOrNull, clearHermesCookie } from "./hermes-proxy.mjs";
 
@@ -249,6 +250,126 @@ function scanSkillsDir(dir) {
   return list;
 }
 
+// ── 2026-10-04 audit additions ────────────────────────────────────────────────
+// The context/memory audit found defects that no status endpoint could see, because the
+// interesting numbers live in SQLite, not in a health JSON. These read the stores directly
+// and are strictly READ-ONLY (mode=ro), so a probe can never mutate memory.
+/** Row counts + integrity for a Hermes SQLite store, opened read-only. */
+function storeStats(dbPath, table) {
+  try {
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    const out = { path: dbPath, status: 'healthy' };
+    try {
+      out.count = db.prepare(`SELECT COUNT(*) c FROM ${table}`).get().c;
+    } catch (e) { out.status = 'unreachable'; out.reason = e.message; }
+    try {
+      out.size_mb = Number((statSync(dbPath).size / 1048576).toFixed(1));
+      out.mtime = statSync(dbPath).mtimeMs;
+    } catch(e) {}
+    db.close();
+    return out;
+  } catch (e) {
+    return { path: dbPath, status: 'unreachable', reason: e.message };
+  }
+}
+
+/** The fact store's live quality counters — the numbers the audit turned from red to green. */
+function factStoreHealth() {
+  const db = join(homedir(), ".hermes", "memory_store.db");
+  try {
+    const d = new DatabaseSync(db, { readOnly: true });
+    const one = (sql) => { try { return d.prepare(sql).get(); } catch { return null; } };
+    const trust = one("SELECT COUNT(DISTINCT trust_score) d FROM facts");
+    const retr = one("SELECT COALESCE(SUM(retrieval_count),0) s FROM facts");
+    const prov = one("SELECT COUNT(*) c FROM facts WHERE COALESCE(source_kind,'')=''");
+    const linked = one("SELECT COUNT(DISTINCT fact_id) c FROM fact_entities");
+    const framing = one(`SELECT COUNT(*) c FROM facts WHERE content LIKE '[System:%'
+      OR content LIKE '[Surface:%' OR content LIKE 'Gateway message origin%'
+      OR content LIKE '[OUT-OF-BAND%' OR content LIKE '[ASYNC DELEGATION%'`);
+    const trunc = one("SELECT COUNT(*) c FROM facts WHERE length(content)=400");
+    const total = one("SELECT COUNT(*) c FROM facts");
+    const dims = d.prepare("SELECT DISTINCT dim FROM memory_banks").all().map(r => r.dim);
+    d.close();   // every query must run BEFORE close — one() after it silently returns undefined
+    return {
+      status: 'healthy',
+      trust_values: trust?.d ?? 0,
+      retrieval_count_sum: retr?.s ?? 0,
+      facts_without_provenance: prov?.c ?? 0,
+      entity_linked: linked?.c ?? 0,
+      facts_total: total?.c ?? 0,
+      framing_facts: framing?.c ?? 0,
+      truncated_facts: trunc?.c ?? 0,
+      bank_dims: dims,
+      dim_uniform: dims.length <= 1,
+    };
+  } catch (e) {
+    return { status: 'unreachable', reason: e.message };
+  }
+}
+
+/** state.db growth + whether a retention policy is actually armed. */
+function stateStoreHealth() {
+  const db = join(homedir(), ".hermes", "state.db");
+  const base = storeStats(db, "messages");
+  try {
+    const d = new DatabaseSync(db, { readOnly: true });
+    const m = d.prepare("SELECT COUNT(*) c, MIN(timestamp) a, MAX(timestamp) b FROM messages").get();
+    const s = d.prepare("SELECT COUNT(*) c FROM sessions").get();
+    const role = d.prepare("SELECT role, COUNT(*) c, SUM(LENGTH(COALESCE(content,''))) b FROM messages GROUP BY role").all();
+    d.close();
+    const days = Math.max((m.b - m.a) / 86400, 0.001);
+    const tool = role.find(r => r.role === 'tool');
+    return {
+      ...base,
+      messages: m.c, sessions: s.c, days: Number(days.toFixed(1)),
+      per_day: Math.round(m.c / days),
+      projected_gb_year: Number(((base.size_mb / days) * 365 / 1024).toFixed(1)),
+      tool_row_share_pct: m.c ? Number((((tool?.b || 0)) / role.reduce((a, r) => a + (r.b || 0), 1) * 100).toFixed(1)) : 0,
+      retention: {
+        armed: existsSync(join(homedir(), ".config/systemd/user/state-retention.timer")),
+        schedule: "Sun 04:20",
+        archive_dir: join(homedir(), ".hermes", "sessions", "_archive"),
+        archived: (() => { try { return readdirSync(join(homedir(), ".hermes", "sessions", "_archive")).length; } catch { return 0; } })(),
+      },
+    };
+  } catch (e) { return { ...base, status: 'degraded', reason: e.message }; }
+}
+
+/** The three runnable health checks + the tracker that was silently dead. */
+function auditChecks() {
+  const H = join(homedir(), ".hermes", "cache", "scratch");
+  const out = [];
+  for (const [name, file, note] of [
+    ["Holographic memory fixes", "verify_holo_fixes.py", "34 assertions — LIKE escaping, min_trust, provenance, atomicity, dim migration"],
+    ["Laya compaction + headroom proxy", "check_laya_and_proxy.py", "15 assertions — bearer auth, keep-lines, proxy forwarding"],
+    ["Memory & context health", "check_memory_pass2.py", "22 assertions — budgets, trust signal, retention, tracker"],
+  ]) {
+    const p = join(H, file);
+    try {
+      const st = statSync(p);
+      out.push({ name, file, note, present: true, mtime: st.mtimeMs, age_days: Number(((Date.now() - st.mtimeMs) / 86400000).toFixed(1)) });
+    } catch { out.push({ name, file, note, present: false }); }
+  }
+  return out;
+}
+
+/** Token tracker: rows are the proof it is actually collecting (it did not for 9 days). */
+function trackerHealth() {
+  const db = join(homedir(), ".headroom-tracker", "tokens.db");
+  try {
+    const d = new DatabaseSync(db, { readOnly: true });
+    const rows = d.prepare("SELECT COUNT(*) c FROM usage_records").get().c;
+    const recent = d.prepare("SELECT MAX(timestamp) t FROM usage_records").get().t;
+    d.close();
+    return {
+      status: rows > 0 ? 'healthy' : 'degraded',
+      rows,
+      last_record_age_h: recent ? Number(((Date.now() - recent * 1000) / 3600000).toFixed(1)) : null,
+      note: rows === 0 ? "no usage_records — collector is not writing" : undefined,
+    };
+  } catch (e) { return { status: 'unreachable', reason: e.message }; }
+}
+
 export async function handleSysinfo(req, res, path) {
   const cacheKey = path;
   if (TTLCache.has(cacheKey)) {
@@ -340,9 +461,30 @@ export async function handleSysinfo(req, res, path) {
       const layaStatus = laya.statusCode === 401 ? 'auth-gated' : laya.status;
       if (layaStatus === 'auth-gated') laya.reason = 'service up, bearer-gated (laya-proxy on 8016 injects it for clients)';
 
+      const toolsets = toolsetsApi.ok && toolsetsApi.value?.data ? toolsetsApi.value.data : [];
+
+      const trackerData = tracker.data || {};
+      const optStatus = trackerData.optimization_status || {};
+      const trackerFlat = {
+        status: tracker.status,
+        ...optStatus,
+        aggregate_row_reliable: false,
+        leanctx_flag: 'hardcoded-not-measured',
+      };
+
+      // Laya compaction is the context path's own hot path: it fires on every tool-result
+      // summarisation, so its auth + latency belong on this page, not in a log.
+      let layaCompaction = { status: 'unknown' };
+      try {
+        const stats = JSON.parse(readFileSync(join(homedir(), ".hermes", "cache", "scratch", "laya_probe.json"), "utf8"));
+        layaCompaction = { status: stats.keep_lines_24h > 0 ? 'healthy' : 'degraded', ...stats };
+      } catch (e) { layaCompaction = { status: 'unknown', reason: 'no probe file' }; }
+
       return {
-        headroom, tracker, tbeacon, laya: { ...laya, status: layaStatus }, ollama,
-        configLive, ctxCache, router, leanctx
+        headroom, tracker: trackerFlat, tbeacon, laya: { ...laya, status: layaStatus }, ollama,
+        configLive, ctxCache, router, leanctx, toolsets,
+        factStore: factStoreHealth(), stateStore: stateStoreHealth(),
+        trackerDb: trackerHealth(), auditChecks: auditChecks(), layaCompaction,
       };
     }
 
@@ -396,9 +538,39 @@ export async function handleSysinfo(req, res, path) {
         }
       } catch (e) {}
 
+      // Normalize upstream shapes into clean frontend contracts
+      const providersRaw = memApi.ok ? memApi.value?.data : null;
+      const providers = providersRaw ? {
+        active: providersRaw.active,
+        rows: (providersRaw.providers || []).map((p) => ({
+          name: p.name,
+          description: p.description,
+          available: p.available,
+          configured: p.configured,
+          status: p.status,
+          dependencies_installed: p.setup?.dependencies_installed,
+          missing: [
+            ...(p.setup?.pip_dependencies || []),
+            ...(p.setup?.external_dependencies || []),
+            ...(p.setup?.required_env || []),
+          ].filter(Boolean),
+        })),
+      } : { status: 'unreachable', reason: memApi.error?.message || 'memory API unreachable' };
+
+      const openviking = ov.data ? {
+        status: ov.status,
+        version: ov.data.version,
+        auth_mode: ov.data.auth_mode,
+        healthy: ov.data.healthy,
+      } : ov;
+
       return {
-        providers: memApi.ok ? memApi.value : { status: memApi.error?.message || 'error' },
-        ov, ovgate, ovCli, ollama, stores, compSurv
+        providers,
+        openviking,
+        ovgate: ovgate.data ? { ...ovgate.data, status: ovgate.status } : ovgate,
+        ovCli, ollama, stores, compSurv,
+        factStore: factStoreHealth(), stateStore: stateStoreHealth(),
+        auditChecks: auditChecks(),
       };
     }
 
@@ -491,11 +663,25 @@ export async function handleSysinfo(req, res, path) {
         }
       } catch(e) {}
       
-      let mcpData = (mcpApi.ok && mcpApi.value.data?.servers) ? mcpApi.value.data.servers : [];
-      let toolsetsData = (toolsApi.ok && toolsApi.value.data) ? toolsApi.value.data : [];
+      let mcpData = (mcpApi.ok && mcpApi.value?.data?.servers) ? mcpApi.value.data.servers : [];
+      let toolsetsData = (toolsApi.ok && toolsApi.value?.data) ? toolsApi.value.data : [];
+
+      // Retention is a harness-owned background system: if it is not armed, nothing bounds
+      // the session store, and that is invisible anywhere else in the UI.
+      const retention = (() => {
+        try {
+          return {
+            armed: existsSync(join(homedir(), ".config/systemd/user/state-retention.timer")),
+            schedule: "Sun 04:20",
+            archived: readdirSync(join(homedir(), ".hermes", "sessions", "_archive")).length,
+          };
+        } catch { return { armed: false, archived: 0 }; }
+      })();
 
       return {
-        skills, mcpData, pluginsAPI, pluginsDisk, hooks, runtimes, userServices, toolsetsData
+        skills, mcpData, pluginsAPI, pluginsDisk, hooks, runtimes, userServices, toolsetsData,
+        retention, trackerDb: trackerHealth(), auditChecks: auditChecks(),
+        stateStore: stateStoreHealth(),
       };
     }
 

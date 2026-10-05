@@ -3,6 +3,7 @@ import { ArrowLeft, Gauge, Clock } from "lucide-react";
 import { StatusRow } from "./ops/status";
 import { cn } from "@/lib/utils";
 import { useOpsPoll } from "./ops/use-ops-poll";
+import { FactStorePanel, StateStorePanel, TrackerPanel, AuditChecksPanel } from "./ops/audit-panels";
 import type { OpsStatus } from "./ops/status";
 
 type ContextData = {
@@ -17,6 +18,11 @@ type ContextData = {
   ctxCache?: { count: number; samples: { key: string; value: number | string }[] };
   router?: any;
   toolsets?: any[];
+  factStore?: any;
+  stateStore?: any;
+  trackerDb?: any;
+  auditChecks?: any;
+  layaCompaction?: any;
 };
 
 export function ContextPage({ onBack }: { onBack: () => void }) {
@@ -101,6 +107,12 @@ export function ContextPage({ onBack }: { onBack: () => void }) {
               <div className="mt-2 text-xs text-muted">Router rebuilt <span className="text-brandtext">{(d.router.built_at ? d.router.stats?.built_at : "—")}</span> · breaker: {d.router.breaker?.map((b: any) => b.name).join(", ")}</div>
             )}
           </section>
+
+          {/* Audit-derived: what the 2026-10-04 context/memory audit fixed */}
+          <FactStorePanel fs={d.factStore} />
+          <StateStorePanel st={d.stateStore} />
+          <TrackerPanel tr={d.trackerDb} />
+          <AuditChecksPanel checks={d.auditChecks} />
 
           {/* Toolsets */}
           <section className="rounded-2xl border border-white/[0.08] bg-midnight/50 p-5 backdrop-blur-md">

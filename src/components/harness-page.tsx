@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { ArrowLeft, Terminal, Plug, Braces } from "lucide-react";
 import { useOpsPoll } from "./ops/use-ops-poll";
+import { StateStorePanel, TrackerPanel, AuditChecksPanel } from "./ops/audit-panels";
 
 type HarnessData = {
   skills?: any[];
@@ -12,6 +13,10 @@ type HarnessData = {
   userServices?: any[];
   toolsetsData?: any[];
   error?: string;
+  retention?: any;
+  trackerDb?: any;
+  auditChecks?: any;
+  stateStore?: any;
 };
 
 export function HarnessPage({ onBack }: { onBack: () => void }) {
@@ -148,6 +153,9 @@ export function HarnessPage({ onBack }: { onBack: () => void }) {
               </div>
             </div>
           </section>
+          <StateStorePanel st={d.stateStore} />
+          <TrackerPanel tr={d.trackerDb} />
+          <AuditChecksPanel checks={d.auditChecks} />
         </div>
       </div>
     </div>
