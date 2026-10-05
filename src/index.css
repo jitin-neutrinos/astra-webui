@@ -1025,8 +1025,8 @@ html.theme-fading body * {
 [data-theme="light"] .chat-bubble-user,
 [data-theme="light"] .chat-turn { box-shadow: none; }
 [data-theme="light"] .chat-bubble-ai { color: var(--color-brandtext); text-shadow: none; }
-[data-theme="light"] .chat-send { background:linear-gradient(180deg, rgb(var(--light-c-1)), rgb(var(--light-c-2))); color:#f8fafc; box-shadow: none }
-[data-theme="light"] .chat-send:hover { filter: brightness(1.08); box-shadow: none }
+[data-theme="light"] .chat-send { background: rgb(var(--light-c-1)); color:#f8fafc; box-shadow: none }
+[data-theme="light"] .chat-send:hover { background: color-mix(in srgb, rgb(var(--light-c-1)) 85%, #000000); box-shadow: none }
 [data-theme="light"] .chat-composer { background:color-mix(in srgb, var(--color-void) 96%, transparent); border-color:color-mix(in srgb, var(--color-accent) 22%, transparent); box-shadow: none }
 [data-theme="light"] .chat-composer:focus-within { border-color:rgb(var(--light-c-6) / 0.35); box-shadow: none }
 [data-theme="light"] .chat-composer::before { background:linear-gradient(135deg, rgb(var(--light-c-7) / 0.4), rgb(var(--light-c-8) / 0.18) 40%, transparent 60%, transparent); }
@@ -1133,34 +1133,36 @@ html.theme-fading body * {
    FILL with the contrast icon (void ink on accent in dark, fixed white in light).
    One block covers options + effort + attach (all share .chat-chip-icon and
    .chat-chip-options inside the bar card); hover deepens instead of glowing.
-   Scoped to .composer-bar-card: slash-command chips and other .chat-chip uses
-   elsewhere keep their quiet outline style. */
+   Owner 10-05 (2): NO outline — the fill is the border. Open state signals
+   through a brightness dip only, never a ring. Flat audit: ONE background layer
+   (no layered tints), uniform 1px-shadow elevation, no inner glows. */
 .composer-bar-card .chat-chip-icon,
 .composer-bar-card .chat-chip-options {
-  border-color: transparent;
-  background: linear-gradient(180deg, var(--color-accent), color-mix(in oklab, var(--color-accent) 62%, var(--color-void)));
+  border: none;
+  background: var(--color-accent);
   color: var(--color-void);
   box-shadow: 0 1px 2px rgba(0,0,0,.25);
 }
-/* Icons stay STROKE-ONLY (owner 10-05 correction): only the container is filled.
-   Glyphs inherit the contrast ink colour with no fill — the filled-chip look is
-   flat-by-design and stroke icons read crisper on the accent surface. */
 .composer-bar-card .chat-chip-icon svg,
 .composer-bar-card .chat-chip-options svg { color: var(--color-void); fill: none; }
 .composer-bar-card .chat-chip-icon:hover,
 .composer-bar-card .chat-chip-options:hover {
-  filter: brightness(1.12);
+  background: color-mix(in srgb, var(--color-accent) 82%, #ffffff);
+}
+.composer-bar-card .chat-chip-icon:active,
+.composer-bar-card .chat-chip-options:active {
+  transform: scale(0.96);
 }
 .composer-bar-card .chat-chip-icon[aria-expanded="true"],
 .composer-bar-card .chat-chip-options[aria-expanded="true"] {
-  border-color: var(--color-void);
-  filter: brightness(0.92);
+  background: color-mix(in srgb, var(--color-accent) 78%, var(--color-void));
+  border: none;
 }
 /* The legacy `chat-chip[aria-expanded]` ink swap (line ~1155) must NOT fire on
    the filled bar buttons: it recolours the GLYPH ink-on-ink (accent glyph on
    the accent fill) — the "icon disappears when the model selector opens"
-   report. The filled buttons already signal open state through the border +
-   brightness flip above; their svg keeps the contrast colour. */
+   report. The filled buttons already signal open state through the brightness
+   dip above; their svg keeps the contrast colour. */
 .composer-bar-card .chat-chip-icon[aria-expanded="true"] .cmenu-trigger-ico,
 .composer-bar-card .chat-chip-options[aria-expanded="true"] .cmenu-trigger-ico {
   color: var(--color-void);
@@ -2843,6 +2845,11 @@ html.theme-fading body * {
 .ast-chat-row.ast-row-active .ast-model-tag,
 .ast-chat-row.ast-row-active .ast-live-dot { color: var(--color-void); }
 .ast-chat-row.ast-row-active .ast-tok-chip { color: var(--color-void); border-color: color-mix(in srgb, var(--color-void) 35%, transparent); }
+.ast-chat-row.ast-row-active .ast-read-tick { color: var(--color-void); opacity: 1; }
+.ast-chat-row.ast-row-active:hover .ast-read-tick { opacity: 1; }
+/* Owner 10-05: on the accent-filled selected row, the read tick and the source
+   icon must flip to INK too (the muted tick was invisible on the fill, and the
+   legacy accent recolour above defeated the ink pass). */
 .ast-chat-row.ast-unread-row { background: color-mix(in oklab, var(--color-accent) 7%, transparent); }
 .ast-chat-row.ast-unread-row:hover { background: color-mix(in oklab, var(--color-accent) 11%, transparent); }
 
@@ -3033,6 +3040,7 @@ html.theme-fading body * {
 [data-theme="light"] .ast-chat-row.ast-row-active .ast-model-tag,
 [data-theme="light"] .ast-chat-row.ast-row-active .ast-live-dot,
 [data-theme="light"] .ast-chat-row.ast-row-active .ast-tok-chip { color: #f8fafc; }
+[data-theme="light"] .ast-chat-row.ast-row-active .ast-read-tick { color: #f8fafc; opacity: 1; }
 [data-theme="light"] .ast-chat-row:hover .ast-src-badge { color:rgb(var(--light-c-34)); }
 [data-theme="light"] .ast-chat-row.ast-row-active .ast-src-badge { color: #f8fafc; }
 [data-theme="light"] .ast-model-tag { background:rgb(var(--light-c-62) / 0.1); color:rgb(var(--light-c-34)); }
@@ -6103,6 +6111,261 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
   overflow-wrap: break-word; word-break: normal; hyphens: none;
   line-height: 1.4; text-wrap: balance;
 }
+
+/* ── Canvas paginated export (A4 portrait / 16:9 landscape) ─────────────────
+   The page stage holds EVERY page at once; only the current one is visible.
+   Non-current pages use `visibility: hidden` (NOT display:none) on purpose:
+   html-to-image renders through computed styles, so a display:none or
+   detached node captures as a blank rectangle. They are stacked in the same
+   grid cell so the stage's height never changes as you page through. */
+.ast-cv-x { display: flex; flex-direction: column; gap: 12px; width: 100%; }
+
+.ast-cv-x-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; flex-wrap: wrap;
+}
+.ast-cv-x-modes {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px; border-radius: 9px;
+  border: 1px solid rgb(var(--c-89) / 0.1); background: rgb(var(--c-65) / 0.04);
+}
+.ast-cv-x-mode {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 11px; border: none; border-radius: 6px;
+  background: transparent; color: var(--color-muted);
+  font: 500 11.5px/1 var(--font-sans); cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-brand), color var(--motion-fast) var(--ease-brand);
+}
+.ast-cv-x-mode:hover { color: var(--color-brandtext); background: rgb(var(--c-89) / 0.06); }
+.ast-cv-x-mode.is-on { background: var(--color-accent); color: var(--color-void); font-weight: 600; }
+.ast-cv-x-dim {
+  padding: 0 8px 0 4px; color: var(--color-muted);
+  font: 500 10.5px/1 var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase;
+}
+.ast-cv-x-acts { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+
+.ast-cv-x-scroll { overflow-x: auto; padding: 6px 2px 10px; }
+.ast-cv-x-stage { display: grid; justify-content: center; }
+.ast-cv-x-page {
+  grid-area: 1 / 1;                 /* every page shares one cell */
+  width: var(--pg-w, 794px); height: var(--pg-h, 1123px);
+  padding: 24px; position: relative; overflow: hidden;
+  display: flex; flex-direction: column;
+  border: 1px solid rgb(var(--c-89) / 0.14); border-radius: 8px;
+  background: var(--surface-raised);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 10px 30px -18px rgb(0 0 0 / 0.35);
+}
+.ast-cv-x-page.is-off { visibility: hidden; }
+.ast-cv-x-inner { flex: 1 1 auto; min-height: 0; }
+/* Folio is a viewer affordance only — hidden before capture so the export
+   matches the printed page rather than showing a screen-only page number. */
+.ast-cv-x-folio {
+  position: absolute; right: 16px; bottom: 10px;
+  font: 500 10px/1 var(--font-mono); color: var(--color-muted); opacity: 0.75;
+}
+
+.ast-cv-x-nav { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.ast-cv-x-count { font: 500 12px/1 var(--font-sans); color: var(--color-muted); }
+.ast-cv-x-count b { color: var(--color-brandtext); font-weight: 600; }
+.ast-cv-x-msg {
+  margin: 0; text-align: center; font: 500 12px/1.4 var(--font-sans); color: var(--color-accent);
+}
+.ast-cv-x-measure {
+  position: absolute; left: -20000px; top: 0;
+  width: var(--pg-w, 794px); visibility: hidden; pointer-events: none;
+}
+/* [data-cv-page] is captured by html-to-image; keep the folio out of the file. */
+.ast-cv-x.is-exporting .ast-cv-x-folio { display: none; }
+
+/* ── Export pages: keep content INSIDE the padding ──────────────────────────
+   The bug this closes: a page is a fixed-width box with `overflow:hidden`, so
+   any block wider than the content area (a 5-column table, a wide code line,
+   a 560px-min diagram, a heatmap with many columns) bled past the 24px
+   padding and was silently clipped at the page edge — data cropped off the
+   sides, which is worse than a scrollbar.
+
+   The fix is containment, not more padding: every block is capped to the
+   content width (100% of the padded box) and given its own internal scroll, so
+   a wide block scrolls INSIDE the page and never touches the page edge. Only
+   inside `.ast-cv-x-page` — the live chat card is unaffected. */
+.ast-cv-x-page .ast-cv-table-wrap,
+.ast-cv-x-page .ast-cv-heat,
+.ast-cv-x-page .ast-cv-diagram-scroll,
+.ast-cv-x-page .ast-cv-code,
+.ast-cv-x-page .ast-cv-term,
+.ast-cv-x-page .ast-cv-graph-scroll,
+.ast-cv-x-page .ast-cv-sheet-wrap,
+.ast-cv-x-page .ast-cv-fullscreen-host { max-width: 100%; min-width: 0; }
+
+/* A preformatted or monospace run has no soft-wrap opportunities, so it is the
+   main thing that pushes past the edge. It scrolls inside its own box. */
+.ast-cv-x-page pre,
+.ast-cv-x-page .ast-cv-code pre,
+.ast-cv-x-page code { max-width: 100%; overflow-x: auto; }
+
+/* Charts and graphs size from their container; without an explicit min-width:0
+   a flex/grid child refuses to shrink below its content and pushes the page. */
+.ast-cv-x-page .ast-cv-chart,
+.ast-cv-x-page .ast-cv-chart svg,
+.ast-cv-x-page .recharts-wrapper,
+.ast-cv-x-page .ast-cv-graph,
+.ast-cv-x-page .ast-cv-kpi { min-width: 0; max-width: 100%; }
+
+/* The page's own body must be allowed to scroll vertically rather than clip: a
+   block taller than the page (an oversized table) then stays readable instead
+   of vanishing below the fold. */
+.ast-cv-x-inner { overflow-y: auto; overflow-x: hidden; }
+
+/* Grid/flex children default to min-width:auto, which is what let a wide table
+   push the page box wider than --pg-w. Neutralise it for direct children. */
+.ast-cv-x-page > *,
+.ast-cv-x-inner > * { min-width: 0; max-width: 100%; }
+
+/* ── Export pages, take 2: nothing touches the page bounds ──────────────────
+   Two distinct causes, both visible as "content bleeding off the edge":
+
+   1. WIDTH. A 794px A4 page (or 1280px slide) is physically wider than a phone
+      or a narrow chat column, so the stage overflowed the viewport and the
+      outer part of the page — padding included — was cut off at the screen
+      edge. canvas-export.tsx now scales the stage to the available width, so
+      the page and its margins always fit. The capture path resets that
+      transform before rasterising, so files stay full-size and crisp.
+
+   2. OVERFLOW. A long unbroken token (a URL, a file path, a hash, a
+      `min-width` on a diagram) has no wrap opportunity and pushes past the
+   content box, where the page's overflow:hidden slices it. These rules give
+   such runs somewhere to break and cap every child at the content width. */
+.ast-cv-x-scroll { overflow-x: hidden; }   /* never scroll the page sideways */
+
+/* Long tokens break instead of pushing the box wider.
+   `break-word` (NOT `anywhere`): the print/page surface must never split a
+   word mid-character — text-wrap.check.ts pins this repo-wide, and `anywhere`
+   breaks ordinary words apart on a tight line. break-word still lets a single
+   unbreakable token wrap, which is the case this rule exists for.
+   hyphens:auto so ordinary words still prefer a proper hyphen. */
+.ast-cv-x-page,
+.ast-cv-x-page * {
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+/* …except code-ish runs, which scroll in place rather than fragmenting a
+   command or a hex dump into unreadable pieces. */
+.ast-cv-x-page pre,
+.ast-cv-x-page code,
+.ast-cv-x-page kbd,
+.ast-cv-x-page samp { overflow-wrap: normal; }
+
+/* Images and embeds never exceed the content box. */
+.ast-cv-x-page img,
+.ast-cv-x-page video,
+.ast-cv-x-page canvas,
+.ast-cv-x-page svg,
+.ast-cv-x-page iframe { max-width: 100%; height: auto; }
+
+/* A grid/flex child defaults to min-width:auto, which is what let a wide table
+   or a min-width:560px diagram push the page box wider than --pg-w. */
+.ast-cv-x-page,
+.ast-cv-x-inner,
+.ast-cv-x-inner > *,
+.ast-cv-x-page > * { min-width: 0; max-width: 100%; }
+.ast-cv-x-page .ast-cv-group,
+.ast-cv-x-page .ast-cv-group > * { min-width: 0; max-width: 100%; }
+
+/* Centre the scaled stage so a scaled-down A4 sits in the middle of a wide
+   column instead of hugging the left edge. */
+.ast-cv-x-stage { transform-origin: top left; margin-inline: auto; }
+
+/* ── Export pages, take 3: centre the page, and give the content room ───────
+   CENTRING. `transform: scale()` does NOT change layout size — the box keeps
+   its full 794px while only the paint shrinks, so `margin-inline:auto` had
+   nothing to centre inside and the page sat hard against the left edge. The
+   component now puts the scaled size on `.ast-cv-x-fit` (real px, this is what
+   centres) and the transform on `.ast-cv-x-stage` (this is what shrinks).
+
+   SPACING. Content was crammed: the page's own padding was 24px and blocks
+   were 12px apart, which is a screen density, not a document one. Margins now
+   come from canvas-pagination.ts (PAD_X/PAD_Y) so the painted box and the
+   measured height stay in agreement — a mismatch there mis-paginates every
+   report silently. */
+.ast-cv-x-fit { margin-inline: auto; }
+.ast-cv-x-stage { transform-origin: top left; }
+
+/* Margins come from the same constants the paginator subtracts. */
+.ast-cv-x-page { padding: var(--pad-y, 44px) var(--pad-x, 48px); }
+.ast-cv-x-measure { padding: var(--pad-y, 44px) var(--pad-x, 48px); }
+
+/* Block rhythm. The canvas group is the card's own flex column; on a page it
+   needs document spacing, not the tight 12px screen rhythm. */
+.ast-cv-x-inner .ast-cv-body,
+.ast-cv-x-inner .ast-canvas-body { gap: 18px; }
+.ast-cv-x-inner .ast-cv-group { gap: 14px; }
+.ast-cv-x-inner .ast-cv-group.kpis { gap: 12px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+
+/* A page is a document: give text blocks room to breathe rather than sitting
+   flush against the margin. */
+.ast-cv-x-page .ast-cv-table th,
+.ast-cv-x-page .ast-cv-table td { padding: 9px 12px; }
+.ast-cv-x-page .ast-cv-callout,
+.ast-cv-x-page .ast-cv-note { padding: 14px 16px; }
+.ast-cv-x-page .ast-cv-code { padding: 0; }
+
+/* Rules/dividers need breathing room or they read as a stray line. */
+.ast-cv-x-page .ast-cv-divider { margin-block: 6px; }
+
+/* Avoid a single orphan line at the foot of a page, and never split a card
+   across the fold mid-table where the page box clips it. */
+.ast-cv-x-page .ast-cv-table-wrap,
+.ast-cv-x-page .ast-cv-code,
+.ast-cv-x-page .ast-cv-heat { break-inside: avoid; }
+
+/* ── Export pages, take 4: the stage MUST be the true page width ─────────────
+   Measured defect (phone width, real browser, 380/360/430px cards):
+     .ast-cv-x-stage had no width, so it inherited the ALREADY-SCALED width of
+     `.ast-cv-x-fit` (318px at a 380px card). Its child page is forced to
+     794px, so `justify-content:center` centred a 794px box inside a 318px box
+     — pushing the page ~62px past the card's LEFT edge and equally off the
+     right. With `overflow-x:hidden` that left overflow was unreachable, so the
+     page looked cropped on the left with no way to scroll to it.
+
+   After: stageLayoutWidth 794, page sits fully inside the card on every phone
+   width measured (bleedLeft -33px, bleedRight -29px). transform only paints;
+   it never changes layout — so the layout box has to carry the real width. */
+.ast-cv-x-stage { width: var(--pg-w, 794px); }
+
+/* ── Export pages, take 5: real block rhythm ────────────────────────────────
+   The bug: the previous spacing rules targeted `.ast-cv-body` /
+   `.ast-canvas-body`, but `Blocks()` returns a bare fragment whose children
+   are `.ast-cv-group` siblings — no such wrapper is ever rendered inside a
+   page, so every one of those rules matched nothing and cards sat flush
+   against each other with zero separation.
+
+   A page is a document, so the rhythm is document rhythm: real air above and
+   below every block, never a card touching its neighbour. */
+.ast-cv-x-inner { display: flex; flex-direction: column; }
+
+/* Sibling groups (the row wrappers Blocks emits) get the document gap. */
+.ast-cv-x-inner > .ast-cv-group { margin-block: 0; }
+.ast-cv-x-inner > .ast-cv-group + .ast-cv-group { margin-top: var(--x-gap, 22px); }
+
+/* Anything Blocks renders that is not a group is spaced the same way, so the
+   rhythm does not depend on which branch produced the block. */
+.ast-cv-x-inner > * + * { margin-top: var(--x-gap, 22px); }
+/* …but a KPI/progress row's own tiles are laid out by the group, not stacked. */
+.ast-cv-x-inner > .ast-cv-group.rows > .ast-cv-item + .ast-cv-item { margin-top: 0; }
+
+/* Inside a group the row gap is the grid/flex gap already; keep tiles from
+   inheriting the document gap. */
+.ast-cv-x-inner .ast-cv-group { gap: 14px; }
+.ast-cv-x-inner .ast-cv-group.kpis { gap: 14px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.ast-cv-x-inner .ast-cv-group.rows { gap: 12px; }
+
+/* Nesting guard: an accordion/tabs body deep inside a page must not inherit
+   the 22px document gap between every one of its children. */
+.ast-cv-x-inner .ast-cv-acc-body,
+.ast-cv-x-inner .ast-cv-tab-body,
+.ast-cv-x-inner .ast-cv-group .ast-cv-group > * + * { margin-top: 0; }
+.ast-cv-x-inner .ast-cv-group .ast-cv-group { gap: 12px; }
+
 /* Owner 10-05: the mobile topbar must NEVER paint on desktop. Its `lg:hidden`
    utility lives in the @layer utilities cascade, which LOSES to the unlayered
    `.ast-topbar { display:flex }` rule (unlayered beats layered regardless of
@@ -6112,3 +6375,60 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
   div.lg\:hidden { display: none !important; }
 }
 
+/* ---- canvas pending placeholder (2026-10-05) ----
+   The quiet "Generating Data Points…" line that replaces raw canvas JSON while a
+   fence is still unreadable (rich-html.ts L1). It reuses the SAME shimmer law as
+   the skeleton sweep (.ast-sk::after, keyframes ast-sk-sweep) so it reads as
+   part of the same system as the thinking/loading surfaces, not a new idiom.
+
+   Text is a gradient clipped to the glyphs (the cmenu-shimmer technique), so the
+   light travels ACROSS the words rather than behind a box. Tokens only — no hex,
+   no colour names — so it follows the theme engine in both modes. */
+.ast-cv-pending {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in oklab, var(--color-accent) 22%, transparent);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--color-accent) 5%, transparent);
+  font: 500 12.5px/1.4 var(--font-sans);
+  color: var(--color-muted);
+  min-height: 38px;
+}
+.ast-cv-pending::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1.6px solid color-mix(in oklab, var(--color-accent) 40%, transparent);
+  border-top-color: var(--color-accent);
+  animation: ast-cv-pending-spin 720ms linear infinite;
+}
+.ast-cv-pending-label {
+  background: linear-gradient(
+    90deg,
+    var(--color-muted) 25%,
+    var(--color-accent) 50%,
+    var(--color-muted) 75%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: ast-cv-pending-sweep 1.6s linear infinite;
+}
+@keyframes ast-cv-pending-spin { to { transform: rotate(360deg); } }
+@keyframes ast-cv-pending-sweep {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+/* Reduced motion: keep the words, drop the movement. */
+@media (prefers-reduced-motion: reduce) {
+  .ast-cv-pending::before,
+  .ast-cv-pending-label { animation: none; }
+  /* color:transparent + background-clip would leave the text invisible once the
+     animation stops, so restore a solid ink for that case. */
+  .ast-cv-pending-label { background: none; color: var(--color-muted); -webkit-text-fill-color: currentColor; }
+}
