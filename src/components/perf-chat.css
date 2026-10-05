@@ -1,0 +1,69 @@
+/* perf-chat.css — the LIVE-turn gap in the off-screen skip (RCA fix 4).
+
+   MOST OF FIX 4 IS ALREADY IMPLEMENTED, ELSEWHERE. Do not duplicate it:
+     src/index.css:4000 already sets
+       .chat-turn { content-visibility: auto; contain-intrinsic-size: auto 280px;
+                    contain: layout style; }
+       .chat-feed > div:first-child .chat-turn { content-visibility: visible; }
+     That already answers the measured problem (RCA 2026-10-05: the 1,802-message
+     chat held 2,396 live nodes, 2,044 of them — 94% — outside a 450px viewport).
+     A second content-visibility declaration on the same selector would be a coin
+     toss on stylesheet load order, so this file adds none.
+
+   THE GAP THIS FILLS:
+     The existing exemption is `:first-child`. But the turn that must never be
+     skipped is the one being STREAMED, which is almost always the LAST turn.
+     Measured: the live turn mutates ~60x/second (the reveal animation), so while
+     it is skipped the browser is doing layout and paint for text nobody can see,
+     and can substitute a placeholder mid-update — which reads as a flicker of the
+     very bubble the user is watching.
+
+     chat-timeline.tsx stamps data-streaming="true" on exactly that element, so
+     this keys off the attribute and follows the live turn wherever it sits.
+
+   WHY CSS AND NOT A VIRTUALISED LIST:
+     A real virtualiser unmounts offscreen turns — fastest possible, but a rewrite
+     of the feed: scroll anchoring, the scroll-up-to-load-older pagination, the
+     streaming append, and every measurement the repo already pins
+     (prependOlder offset restore, LOAD_OLDER_THRESHOLD_PX). This surface carries
+     ~100 pinned regression bugs. content-visibility skips layout/paint while
+     KEEPING the DOM, so streaming, pagination, find-in-page and the a11y live
+     region are all untouched.
+
+   WHY THIS FILE AND NOT index.css:
+     index.css is dirty with another session's in-flight work. This stylesheet is
+     chat-scoped, clean, and already imported by chat-landing.tsx. */
+
+/* The scroll container itself must never be skipped — it owns scrollTop. */
+.chat-scroll {
+  /* Establishes the containing block for the intrinsic-size placeholders and
+     keeps the scrollport from being treated as a skip candidate itself. */
+  overflow-anchor: auto;
+}
+
+/* The LIVE turn must never be skipped. This is the ONE gap in the existing fix:
+   src/index.css:4000 already sets content-visibility:auto on .chat-turn and
+   un-skips `:first-child` — but the turn that must stay live is the one being
+   STREAMED, which is almost always the LAST turn. chat-timeline.tsx stamps
+   data-streaming on exactly that element, so this keys off the attribute rather
+   than position. See the header for why this is CSS and not a virtualised list.
+
+   More specific than `.chat-turn` (0,1,1 vs 0,1,0), so it wins on specificity
+   alone and does not depend on stylesheet load order. */
+.chat-turn[data-streaming="true"] {
+  content-visibility: visible;
+  contain-intrinsic-size: none;
+  /* Match the `contain` index.css already applies, so this is a pure relaxation
+     of the skip rather than a different containment model. */
+  contain: layout style;
+}
+
+/* The streaming placeholder bubble (a turn with no segments yet) is live too. */
+.chat-bubble-ai[data-streaming="true"] {
+  content-visibility: visible;
+  contain-intrinsic-size: none;
+}
+
+/* Reduced motion / forced-colors users get the same benefit; there is no
+   animation to break, and `content-visibility` is not motion. No override
+   needed — deliberately, so the file does not grow a second branch to maintain. */

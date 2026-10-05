@@ -1,4 +1,10 @@
 import { request as httpRequest } from "node:http";
+import { claim as claimUserMessageKey, sweep as sweepDedupeKeys, bindStoredForLive } from "./message-dedupe.mjs";
+import { recordEvent as recordStreamEvent, flushNow as flushStreamLog, closeStreamDb } from "./stream-log.mjs";
+import { handleStreamRoutes } from "./stream-routes.mjs";
+import { handleSessionTitle } from "./session-title.mjs";
+import { trimHistoryPayload } from "./history-trim.mjs";
+import { startRetentionSweeper } from "./retention.mjs";
 import { randomBytes } from "node:crypto";
 import { generateAcceptKey, encodeFrame, FrameDecoder } from "./ws-codec.mjs";
 
@@ -9,6 +15,74 @@ import { getCommandRegistry } from "./command-registry.mjs";
 
 const HERMES_URL = "http://127.0.0.1:9119";
 const PASSWORD = process.env.ASTRA_HERMES_PASSWORD;
+
+/**
+ * Resolve one session's TITLE from the gateway's session list (RCA fix 2).
+ *
+ * The list is the cheap endpoint: it carries titles for every session and is
+ * already fetched by the app on open. The expensive one — /api/sessions/<sid> —
+ * returns 154 KiB, of which 153 KiB are system_prompt and tool_names that no
+ * client ever reads. This exists so the header can show a title without paying
+ * that cost on every chat open.
+ *
+ * A short memo avoids re-fetching the list when two surfaces ask for titles in
+ * the same moment. It is deliberately tiny and time-boxed; on a miss it simply
+ * re-fetches, so a stale memo can never show a wrong title.
+ *
+ * Strategy, cheapest first:
+ *   1. The session LIST (limit=100 — the gateway 422s above 100, measured) when
+ *      the session is among the newest hundred. The list is already being fetched
+ *      by the app on open, so this is usually free.
+ *   2. Otherwise the single-session endpoint, whose 154 KiB stays on the loopback
+ *      and never crosses the tunnel. Necessary because the account has 621
+ *      sessions: a 100-row list cannot see an older one, and returning null there
+ *      would blank the header on exactly the chats most likely to be reopened.
+ */
+const TITLE_MEMO_MS = 1500;
+let titleMemo = { at: 0, rows: null };
+
+function gatewayGetJson(path, cookie) {
+  return new Promise((resolve, reject) => {
+    const r = httpRequest(`${HERMES_URL}${path}`, { headers: { Cookie: cookie } }, (res) => {
+      const chunks = [];
+      res.on("data", (c) => chunks.push(c));
+      res.on("end", () => {
+        const raw = Buffer.concat(chunks).toString();
+        // A non-2xx must not throw into the caller: resolve to null and let the
+        // route degrade to a title-less answer.
+        if (res.statusCode && res.statusCode >= 400) { resolve(null); return; }
+        try { resolve(JSON.parse(raw || "{}")); } catch { resolve(null); }
+      });
+      res.on("error", reject);
+    });
+    r.on("error", reject);
+    r.end();
+  });
+}
+
+async function gatewaySessionTitle(sid) {
+  const now = Date.now();
+  const cookie = await getHermesCookie();
+
+  if (!titleMemo.rows || now - titleMemo.at > TITLE_MEMO_MS) {
+    // limit=100 is the gateway's ceiling (measured: 200 -> 422).
+    const data = await gatewayGetJson("/api/sessions?limit=100&order=recent", cookie);
+    titleMemo = {
+      at: now,
+      rows: Array.isArray(data?.sessions) ? data.sessions.slice() : [],
+    };
+  }
+  const hit = titleMemo.rows.find((r) => String(r?.id || r?.session_id || "") === String(sid));
+  if (hit) return hit?.title ?? null;
+
+  // Older than the newest hundred — ask for that one session directly.
+  const one = await gatewayGetJson(`/api/sessions/${encodeURIComponent(sid)}`, cookie);
+  if (one && typeof one === "object" && one.title) {
+    // Cache it so a second surface asking in the same window is free.
+    titleMemo.rows.push(one);
+  }
+  return one?.title ?? null;
+}
 
 let hermesCookie = null;
 let loginPromise = null;
@@ -109,6 +183,45 @@ export { clearHermesCookie };
 export async function handleHxProxy(req, res) {
   // path prefix is /api/hx. Map to /api/...
   let targetPath = req.url.replace(/^\/api\/hx/, "/api");
+
+  // ---- title-only session lookup (RCA fix 2, 2026-10-05) ----
+  // The client's title fetch used /api/hx/sessions/<sid>, which returns the whole
+  // session record: 61 keys, 154 KiB, of which 153 KiB are system_prompt (90.8)
+  // and tool_names (62.7) — neither is read by any client. This returns tens of
+  // bytes. Auth is applied by the caller before this runs.
+  if (req.method === "GET" && req.url.startsWith("/api/hx/session-title/")) {
+    try {
+      const u = new URL(req.url, "http://x");
+      if (await handleSessionTitle(req, res, u, (sid) => gatewaySessionTitle(sid))) return;
+    } catch (e) {
+      console.error("[session-title] failed:", e?.message || e);
+      try {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ title: null, error: "title unavailable" }));
+      } catch { /* client gone */ }
+      return;
+    }
+  }
+
+  // ---- durable stream-log reads (Phase 3) ----
+  // Served from Astra's own disk, never forwarded: the gateway has no such
+  // route and cannot resume a stream (its ring is in-process memory, and the
+  // HTTP stream route emits no `id:` line so Last-Event-ID is impossible).
+  // Placed FIRST so it wins before the generic forwarding below. Auth is applied
+  // by the caller (server.mjs) before this runs.
+  try {
+    if (req.url.startsWith("/api/hx/stream")) {
+      const u = new URL(req.url, "http://x");
+      if (await handleStreamRoutes(req, res, u)) return;
+    }
+  } catch (e) {
+    console.error("[stream-routes] failed:", e?.message || e);
+    try {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ events: [], truncated: true, error: "stream log unavailable" }));
+    } catch { /* client gone */ }
+    return;
+  }
 
   // ---- live slash-command registry (dynamic command palette, 2026-10-02) ----
   // Served from the upstream Hermes CLI registry, never forwarded: the gateway
@@ -228,6 +341,41 @@ function proxyRest(req, res, targetPath, replayBody, enrich = false) {
         }
         cookie = await getHermesCookie();
         proxyRes = await doReq(true, null);
+      }
+
+      // History page: buffer, strip fields the client never reads, re-serialize
+      // (RCA fix 3, 2026-10-05). Saves ~20 KB per 100-row page.
+      //
+      // The URL is matched up to the QUERY STRING, not end-anchored. Every real
+      // history request carries one (`?order=latest&limit=100&offset=0`), so a
+      // `$`-anchored pattern never matches and the trim silently does nothing —
+      // which is exactly what happened before this was caught by a live check
+      // rather than by the unit test.
+      const isHistoryPage =
+        req.method === "GET" && /^\/api\/hx\/sessions\/[^/]+\/messages\/?(\?|$)/.test(req.url);
+      if (isHistoryPage && proxyRes.statusCode === 200) {
+        const chunks = [];
+        for await (const c of proxyRes) chunks.push(c);
+        try {
+          const data = JSON.parse(Buffer.concat(chunks).toString());
+          const trimmed = trimHistoryPayload(data);
+          const body = Buffer.from(JSON.stringify(trimmed.payload));
+          res.writeHead(200, {
+            "content-type": "application/json",
+            "content-length": String(body.length),
+          });
+          res.end(body);
+          return resolve();
+        } catch (e) {
+          console.error("[history-trim] re-serialize failed, passing through:", e?.message || e);
+          const raw = Buffer.concat(chunks);
+          res.writeHead(200, {
+            "content-type": "application/json",
+            "content-length": String(raw.length),
+          });
+          res.end(raw);
+          return resolve();
+        }
       }
 
       // Sessions list/search: buffer, enrich with read markers, re-serialize.
@@ -456,10 +604,55 @@ function broadcastStatus(state) {
 // fetch + deep link hit ids the history API can actually resolve.
 export const sidMap = new Map();
 export function recordSidMapping(liveSid, storedKey) {
-  if (liveSid && storedKey && liveSid !== storedKey) sidMap.set(String(liveSid), String(storedKey));
+  if (liveSid && storedKey && liveSid !== storedKey) {
+    sidMap.set(String(liveSid), String(storedKey));
+    // Idempotency keys claimed under this live session were recorded with
+    // `stored_sid = NULL` (the client only knows the live id). Now that the
+    // mapping is known, backfill them so a replay ack names the right chat.
+    // Never throws: a dedupe write must not break session bookkeeping.
+    try { bindStoredForLive(String(liveSid), String(storedKey)); } catch { /* best effort */ }
+  }
+}
+
+// Clean shutdown: flush the chunk-log buffer and checkpoint its WAL. Without
+// this the last ≤33ms of chunks would sit unwritten, and `closeStreamDb` would be
+// an unused export — the exact dead-code trap called out for src/lib/outbox.ts.
+// `once` so it cannot double-register; never let it throw on the way out.
+if (typeof process !== "undefined" && typeof process.once === "function") {
+  process.once("exit", () => { try { closeStreamDb(); } catch { /* best effort */ } });
+}
+
+// 14-day retention sweeper (Phase 6). Started HERE rather than in server.mjs
+// because server.mjs is shared with other in-flight work; this file is not.
+// It runs in DRY-RUN by design — the daily tick reports what it would delete and
+// removes nothing until ASTRA_RETENTION_ENABLED=1 is set deliberately.
+// Never let a retention failure stop the service from serving chat.
+try {
+  startRetentionSweeper();
+} catch (e) {
+  console.error("[retention] sweeper failed to start:", e?.message || e);
 }
 
 export function broadcastFrame(payload, opcode) {
+  // Durable stream capture (Phase 2, D9). BEFORE the socket write on purpose:
+  // the gateway coalesces token deltas at ~30fps and then DISCARDS them, so this
+  // is the only durable copy of an interrupted answer. If the socket write below
+  // fails, the log still has the chunk.
+  //
+  // recordEvent never throws and only logs frames that carry the gateway's own
+  // per-session `seq`, so this costs a substring test on frames that match and
+  // nothing at all on transport chatter.
+  if (opcode === 0x1) {
+    try {
+      const text = payload.toString();
+      if (text.includes("message.delta") || text.includes("thinking.delta")
+          || text.includes("reasoning.delta") || text.includes("tool.")
+          || text.includes("message.complete") || text.includes("message.error")) {
+        const msg = JSON.parse(text);
+        if (msg && msg.method === "event" && msg.params) recordStreamEvent(msg.params);
+      }
+    } catch { /* a bad frame is relayed anyway; never break the relay */ }
+  }
   let frame = encodeFrame(payload, { opcode, masked: false });
   // Filter leg: only when at least one sid-tagged or filter=complete socket is connected
   // do we pay for a JSON.parse. Untagged sockets are relayed opaquely (unchanged).
@@ -489,6 +682,12 @@ export function broadcastFrame(payload, opcode) {
       const p = msg && msg.params;
       if (p) {
         parsedType = p.type;
+        // A turn boundary is the natural flush point: everything buffered for
+        // this turn is on disk the moment the turn ends, so a crash seconds
+        // later cannot lose the final chunk. Cost: one write per turn.
+        if (p.type === "message.complete" || p.type === "message.error") {
+          try { flushStreamLog(); } catch { /* never break the relay */ }
+        }
         if (p.type === "message.complete" || p.type === "message.error") {
           passForTagged = true;
           parsedSid = p.session_id;
@@ -767,6 +966,61 @@ export function handleWsUpgrade(req, socket, head) {
         } catch { /* fall through to upstream */ }
       }
       if (handledLocally) return;
+      // Idempotency for outgoing user messages (Phase 1, D5). A client that
+      // flushed its outbox durably can replay prompt.submit after a crash or a
+      // retry; the client cannot tell "accepted, response lost" from "never
+      // arrived", so the SERVER decides. Claim BEFORE forwarding upstream — that
+      // ordering is what makes an at-least-once client safe. A replay is dropped
+      // and acknowledged locally, never re-applied upstream.
+      if (frame.payload.length < 65536 && frame.payload.includes("prompt.submit")) {
+        try {
+          const j = JSON.parse(frame.payload.toString());
+          if (j && j.method === "prompt.submit") {
+            const key = j.params?.idempotency_key ?? j.params?.client_msg_id ?? null;
+            // A dedupe-store failure must NEVER cost the user their message:
+            // on any error we fall through and forward normally. Losing
+            // idempotency is recoverable (a rare duplicate); losing a send is not.
+            let verdict = { fresh: true };
+            try {
+              // Resolve live->stored BEFORE claiming. In the real flow the client
+              // creates or resumes its session FIRST, so by the time the first
+              // prompt is submitted this mapping is already known and the ack can
+              // name the chat immediately. `bindStoredForLive` in
+              // recordSidMapping remains the backfill for the rarer case where the
+              // mapping is learned after the claim.
+              const liveSid = j.params?.session_id || null;
+              const resolvedStored = sid || (liveSid ? sidMap.get(String(liveSid)) || null : null);
+              verdict = claimUserMessageKey(key, {
+                storedSid: resolvedStored,
+                liveSid,
+              });
+              sweepDedupeKeys();
+            } catch (e) {
+              console.error("[dedupe] claim failed, forwarding anyway:", e?.message || e);
+            }
+            if (verdict.fresh === false) {
+              // Already accepted. Tell the client its message landed (with the
+              // session we recorded) so it can drop the outbox row and stop
+              // showing a pending chip — but do NOT forward it upstream.
+              try {
+                socket.write(encodeFrame(JSON.stringify({
+                  method: "event",
+                  params: {
+                    type: "message.deduped",
+                    session_id: j.params?.session_id || sid || null,
+                    payload: {
+                      idempotency_key: verdict.key,
+                      stored_session_id: verdict.storedSid ?? null,
+                      live_session_id: verdict.liveSid ?? null,
+                    },
+                  },
+                }), { opcode: 0x1, masked: false }));
+              } catch { /* gone */ }
+              return;
+            }
+          }
+        } catch { /* fall through to upstream — never block a send on a parse */ }
+      }
       // forward to upstream if connected, else buffer until it is
       // Chat-card gate answers ride this same path as JSON-RPC results —
       // feed the gate ledger before forwarding (fire-and-forget, never throws).
