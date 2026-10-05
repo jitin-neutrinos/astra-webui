@@ -218,7 +218,7 @@ function AstraSlide({ item }: { item: MediaItem }) {
 
   if ((k === "docx" || k === "xlsx" || k === "pptx" || k === "text") && item.path != null) {
     return (
-      <div className="mv-slide" ref={wrapRef} onPointerDown={(e) => e.stopPropagation()} onKeyDown={stopPlusMinus}>
+      <div className="mv-slide mv-slide-doc" ref={wrapRef} onPointerDown={(e) => e.stopPropagation()} onKeyDown={stopPlusMinus}>
         <DocPreview path={item.path} url={downloadUrl(item.path)} name={item.name} fill />
       </div>
     );

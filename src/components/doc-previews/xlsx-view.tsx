@@ -64,12 +64,14 @@ export default function XlsxView({ url, onLoad, onError }: Props) {
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-auto">
-        <table className="w-full border-collapse text-[11px]">
+        <table className="w-full table-auto border-collapse text-[11px]">
           <tbody>
             {shown.map((row, r) => (
               <tr key={r} className={r === 0 ? "bg-slate-100 font-semibold" : "hover:bg-slate-50"}>
                 {row.map((cell, c) => (
-                  <td key={c} className="max-w-[220px] truncate border border-slate-200 px-2 py-1 text-slate-700">
+                  // no max-width: cells take the width the container gives them,
+                  // so a wide sheet uses the full preview area instead of clipping
+                  <td key={c} className="truncate border border-slate-200 px-2 py-1 align-top text-slate-700">
                     {String(cell ?? "")}
                   </td>
                 ))}
