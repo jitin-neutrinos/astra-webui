@@ -182,21 +182,19 @@ say({ status: j.status, err: (j.last_error || "").slice(0, 60), attempts: j.atte
   const scenarioDone = runScenario(childEnv(okHermes), `${IMPORTS}
 startTrainingSweeper();
 startEndSession("sess_del", "Title D", "webui");
-let j = null; let sawDeleteRetry = false;
+let j = null;
+// Poll ONLY for terminal 'done'. The transient awaiting_retry window is
+// 100-200ms (RETRY_DELAY_MS=100, sweep=200ms) and a 200ms poll can miss it —
+// detecting the retry from the child is the documented R5 flake. The PARENT
+// proves the retry happened instead: it saw the first DELETE fail (count 1),
+// flipped 500->200, and asserts >=2 delete attempts + final 'deleted'.
 for (let i = 0; i < 400; i++) {
-  await sleep(200);
-  j = listReviewJobs(5).find(x => x.sid === "sess_del");
-  if (j && j.status === "awaiting_retry" && (j.last_error || "").includes("delete")) { sawDeleteRetry = true; break; }
-  if (j && j.status === "done") break;
-}
-if (!sawDeleteRetry) { say({ status: j ? j.status : "none", err: j && j.last_error, note: "no delete failure observed" }); process.exit(0); }
-for (let i = 0; i < 200; i++) {
   await sleep(200);
   j = listReviewJobs(5).find(x => x.sid === "sess_del");
   if (j && j.status === "done") break;
 }
 const d = getTrainingSession("sess_del");
-say({ status: j.status, review_status: d && d.session.review_status });
+say({ status: j ? j.status : "none", attempts: j ? j.attempts : -1, lastErr: j && j.last_error, review_status: d && d.session.review_status });
 `);
   // Parent flips DELETE 500→200 once the first (failing) attempt lands.
   for (let i = 0; i < 400 && (deleteCounts.sess_del || 0) < 1; i++) await new Promise((r) => setTimeout(r, 100));
@@ -204,8 +202,11 @@ say({ status: j.status, review_status: d && d.session.review_status });
   deleteStatus = 200;
   res = await scenarioDone;
   assert.equal(res.status, "done", JSON.stringify(res));
-  assert.equal(res.review_status, "deleted");
+  assert.equal(res.review_status, "deleted", JSON.stringify(res));
+  // Retry proven by the parent's OWN observation: attempt 1 failed (500),
+  // attempt 2 succeeded (200) — two delete calls minimum.
   assert.ok((deleteCounts.sess_del || 0) >= 2, `expected >=2 delete attempts, got ${deleteCounts.sess_del}`);
+  assert.ok((res.attempts ?? 0) >= 2, `job attempts should record the retry, got ${res.attempts}`);
   console.log("R5: delete-fail → awaiting_retry → delete-only retry → done ✓");
 
   console.log("training-pipeline.check: ALL PASSED");

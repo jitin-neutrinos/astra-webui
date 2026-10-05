@@ -57,11 +57,23 @@ export const SERIES_COLORS = [
 type AnyTooltip = TooltipProps<number, string> & { payload?: any[] };
 
 // ── axis/legend chrome (owner 2026-10-04) ────────────────────────────────────
-const AXIS_TICK = {
-  fontSize: 10,
-  fontFamily: "var(--font-sans)",
-  fill: "var(--color-muted)",
-} as const;
+//
+// THE FONT FLOOR (owner 2026-10-05: no painted text under 11px on a phone).
+// Measured at 360/390/412px (scripts/mobile-canvas-audit.mjs): axis ticks
+// painted at 10px on 468 tspans per sweep — the single largest block of
+// sub-11px text in the whole card set, and it is unreadable at arm's length on
+// a phone. 11px is the floor everywhere, desktop included, because a value that
+// is legible on a 27" monitor is not legible on a 6" screen and the tick is
+// chrome either way: a hairline label is not worth its own illegibility.
+//
+// The plot heights are phone-sized for the same reason — a taller plot buys
+// nothing once the tick is legible, and the space is better spent on the next
+// block in the card.
+const AXIS_MIN_PX = 11;
+/** The font the ticks actually get, given how much room the card has. */
+function axisFont(width: number, base = AXIS_MIN_PX): number {
+  return width >= 640 ? Math.max(base, 11.5) : base;
+}
 const AXIS_LINE = "rgb(var(--c-89) / 0.16)";
 const AXIS_TICKS = "rgb(var(--c-89) / 0.28)";
 // ── legend: rendered OUTSIDE the plot, in normal flow (owner 2026-10-04) ───
@@ -451,8 +463,33 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
   // Axis elements must be DIRECT children — recharts detects axes by walking its
   // own children, so wrapping them in a Fragment makes every axis vanish. That
   // is exactly what the owner saw: only the scatter (inline axes) drew one.
-  const X = <XAxis dataKey="name" tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: AXIS_LINE }} height={24} />;
-  const Y = <YAxis tick={AXIS_TICK} tickFormatter={(v: number) => fmt(v)} tickLine={false} axisLine={{ stroke: AXIS_LINE }} width={46} />;
+  //
+  // MEASURED (2026-10-05, mobile-canvas-audit.mjs at 360/390/412): the tick
+  // font is the floor, and tick DENSITY is the second half of it. At 270px of
+  // plot width an 11px mono label is ~7 characters, so nine daily labels
+  // overlapped into an unreadable band. Two derived values:
+  //   `tk`      — the tick font for this card's width (11px floor, 11.5+ on desktop)
+  //   `interval`— how many ticks to SKIP between drawn ones, so a 9-label
+  //               daily series draws 4 on a phone and all 9 on a desktop.
+  // `recharts` `interval` is an integer skip, not a pixel budget, so the
+  // derivation has to be a count: labels-per-phone ≈ plot width / 78px.
+  const PLOT_W = typeof window !== "undefined"
+    ? Math.max(160, (document.querySelector(".ast-cv-chart")?.clientWidth ?? 260) - 46 - 8)
+    : 260;
+  const phone = PLOT_W < 320;
+  const tk = { fontSize: axisFont(window?.innerWidth ?? PLOT_W), fontFamily: "var(--font-sans)", fill: "var(--color-muted)" };
+  // One label per ~78px of plot on a phone; never fewer than two drawn ticks,
+  // and every tick on a desktop. recharts 2.15 takes the SKIP as a number and
+  // the "always keep the first/last" behaviour INSIDE the same prop
+  // (`AxisInterval = number | 'preserveStart' | …`), so there is no separate
+  // intervalMode; a number skips, a string picks the keep-ends strategy.
+  const axisLabels = Array.isArray(block.labels) ? block.labels : [];
+  const skip = Math.max(0, Math.ceil(axisLabels.length / Math.max(2, Math.floor(PLOT_W / 78))) - 1);
+  const interval = phone ? Math.max(1, skip) : 0;
+  const X = <XAxis dataKey="name" tick={tk} tickLine={false} axisLine={{ stroke: AXIS_LINE }} height={24}
+    interval={interval} />;
+  const Y = <YAxis tick={tk} tickFormatter={(v: number) => fmt(v)} tickLine={false} axisLine={{ stroke: AXIS_LINE }} width={46}
+    tickCount={phone ? 5 : undefined} />;
   const TIP = <Tooltip content={<TT />} cursor={{ fill: "rgb(var(--c-89) / 0.04)" }} />;
   // The legend is rendered by <ChartLegend> BELOW the ResponsiveContainer, never
   // as a recharts child — see the comment on ChartLegend for the measurement.
@@ -460,12 +497,18 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
 
   const AX = scatterAxisTitles(block.labels, String(activeSeries[0]?.name ?? ""));
 
-  const H = block.chart === "radial" || block.chart === "pie" || block.chart === "donut" ? 210
-    : block.chart === "radar" ? 230
-    : block.chart === "funnel" ? 200
-    : block.chart === "treemap" ? 240
-    : block.chart === "sankey" ? 300
-    : block.chart === "box" || block.chart === "histogram" ? 200 : 180;
+  // Plot heights: a phone needs LESS height, not more. The whole card is a
+  // column on a 360px screen, so a 300px sankey is half the screen for one
+  // block; measured card heights at 360px were 275px for a line chart and 451px
+  // for the sankey, with the legend below. Shortening the phone plot keeps the
+  // data and the legend on one screen together.
+  const PH = phone ? 1 : 0;   // 1 = phone plot
+  const H = block.chart === "radial" || block.chart === "pie" || block.chart === "donut" ? (PH ? 180 : 210)
+    : block.chart === "radar" ? (PH ? 190 : 230)
+    : block.chart === "funnel" ? (PH ? 170 : 200)
+    : block.chart === "treemap" ? (PH ? 190 : 240)
+    : block.chart === "sankey" ? (PH ? 220 : 300)
+    : block.chart === "box" || block.chart === "histogram" ? (PH ? 170 : 200) : (PH ? 160 : 180);
 
 
   // Donut: single-series composition with the total in the hole. Slice colours
@@ -517,9 +560,10 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
                 ErrorBar. So the bound is stated from the computed extremes, which
                 are the only place the range exists. */}
             <YAxis
-              tick={AXIS_TICK} tickFormatter={(v: number) => fmt(v)} tickLine={false}
+              tick={tk} tickFormatter={(v: number) => fmt(v)} tickLine={false}
               axisLine={{ stroke: AXIS_LINE }} width={46}
               domain={[boxFloor(boxData), boxCeil(boxData)]}
+              tickCount={phone ? 5 : undefined}
             />
             <Tooltip content={<BoxTip rows={boxData} />} cursor={{ fill: "rgb(var(--c-89) / 0.04)" }} />
             <Bar dataKey="q3" shape={<BoxShape />} isAnimationActive={false}>
@@ -662,7 +706,7 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
               {fmt(Array.isArray(block.series[0].points) ? (block.series[0].points[0] ?? 0) : 0)}{block.title && /pct|%/i.test(block.title) ? "%" : ""}
             </text>
             <text x="50%" y="66%" textAnchor="middle"
-              fontSize="9.5" fontFamily="var(--font-mono)" fill="var(--color-muted)">of max</text>
+              fontSize={tk.fontSize} fontFamily="var(--font-mono)" fill="var(--color-muted)">of max</text>
             <Tooltip content={<TT />} isAnimationActive={false} />
           </RadialBarChart>
         ) : block.chart === "scatter" ? (
@@ -672,14 +716,16 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
                 empty box — the "Latency vs payload is blank" report. */}
             <XAxis
               dataKey="x" type="number" domain={["dataMin", "dataMax"]} allowDecimals={false}
-              tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: AXIS_LINE }} height={24}
-              label={AX.x ? { value: AX.x, position: "insideBottom", offset: -12, fill: "var(--color-muted)", fontSize: 10 } : undefined}
+              tick={tk} tickLine={false} axisLine={{ stroke: AXIS_LINE }} height={24}
+              tickCount={phone ? 5 : undefined}
+              label={AX.x ? { value: AX.x, position: "insideBottom", offset: -12, fill: "var(--color-muted)", fontSize: tk.fontSize } : undefined}
             />
             <YAxis
               dataKey="y" type="number" domain={["dataMin - 10%", "dataMax + 10%"]}
-              tick={AXIS_TICK} tickFormatter={(v: number) => fmt(v)}
+              tick={tk} tickFormatter={(v: number) => fmt(v)}
               tickLine={false} axisLine={{ stroke: AXIS_LINE }} width={48}
-              label={AX.y ? { value: AX.y, angle: -90, position: "insideLeft", offset: 14, fill: "var(--color-muted)", fontSize: 10 } : undefined}
+              tickCount={phone ? 5 : undefined}
+              label={AX.y ? { value: AX.y, angle: -90, position: "insideLeft", offset: 14, fill: "var(--color-muted)", fontSize: tk.fontSize } : undefined}
             />
             <ZAxis type="number" dataKey="z" range={[60, 260]} />
             <Tooltip cursor={{ stroke: "rgb(var(--c-89) / 0.25)" }} content={<TT />} />
@@ -696,12 +742,16 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
           </ScatterChart>
         ) : block.chart === "radar" ? (
           <RadarChart data={radarData} outerRadius="70%">
-            <PolarAngleAxis dataKey="axis" tick={{ ...AXIS_TICK, fontSize: 9.5 }} />
+            {/* The polar axes carried 9.5px / 9px ticks, both under the 11px
+                floor (measured 6 sub-11px findings per sweep at every phone
+                width); the axis font now carries the floor and the radar keeps
+                its tick count so the ring does not crowd. */}
+            <PolarAngleAxis dataKey="axis" tick={tk} />
             <PolarGrid stroke={AXIS_TICKS} />
             {/* The radial scale was hidden too — a radar with no scale is a web. */}
             <PolarRadiusAxis
               angle={90} domain={[0, "auto"]}
-              tick={{ ...AXIS_TICK, fontSize: 9 }}
+              tick={tk}
               tickFormatter={(v: number) => fmt(v)}
               axisLine={false} tickCount={4}
             />

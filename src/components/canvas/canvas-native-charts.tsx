@@ -57,6 +57,14 @@ function useMeasuredWidth(fallback = 600): [React.RefObject<HTMLDivElement | nul
   return [ref, w];
 }
 
+/** THE FONT FLOOR for every glyph these native charts draw themselves.
+ *  10.5px measured as the largest block of sub-11px text on a phone
+ *  (treemap cell labels, sankey node labels, funnel percentages — 4-6 findings
+ *  per fixture at every one of 360/390/412, dark and light). nivo's `fontSize` in
+ *  a theme object and recharts' `fontSize` on a shape are both plain numbers, so
+ *  the floor has to be stated here and cannot be inherited from a stylesheet. */
+const NATIVE_TICK = 11;
+
 const fmt = (n: unknown): string => {
   const v = typeof n === "number" ? n : Number(n);
   if (!Number.isFinite(v)) return String(n ?? "");
@@ -95,7 +103,7 @@ function TreemapCell(props: any) {
       />
       {width > 46 && height > 18 && (
         <text
-          x={x + 6} y={y + 13} fontSize={10.5} fill="var(--color-brandtext)"
+          x={x + 6} y={y + 13} fontSize={NATIVE_TICK} fill="var(--color-brandtext)"
           style={{ paintOrder: "stroke", stroke: "var(--cv-paper)", strokeWidth: 3, strokeLinejoin: "round" }}
         >
           {String(name ?? "")}
@@ -210,8 +218,8 @@ export default function NativeChart({
           animate={false}
           isInteractive
           theme={{
-            text: { fontSize: 10.5, fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fill: textColor },
-            labels: { text: { fontSize: 10.5, fontWeight: 500, fill: textColor } },
+            text: { fontSize: NATIVE_TICK, fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fill: textColor },
+            labels: { text: { fontSize: NATIVE_TICK, fontWeight: 500, fill: textColor } },
             tooltip: { container: { background: paperColor, color: textColor } },
           }}
         />

@@ -44,11 +44,13 @@ export function openTrainingDb() {
   mkdirSync(dirname(DB_PATH), { recursive: true });
   db = new DatabaseSync(DB_PATH);
   db.exec("PRAGMA journal_mode = WAL;");
-  // Migration: dbs created before ingested_at existed — ALTER ADD is idempotent-guarded.
+  // Migration: dbs created before these columns existed — guarded ALTER ADD.
   try {
     const cols = db.prepare("PRAGMA table_info(sessions)").all().map((c) => c.name);
-    if (!cols.includes("ingested_at")) db.exec("ALTER TABLE sessions ADD COLUMN ingested_at INTEGER");
-  } catch { /* fresh db created with it above */ }
+    for (const [col, def] of [["ingested_at", "INTEGER"], ["last_activity_at", "INTEGER"], ["analysis_status", "TEXT"], ["analysis", "TEXT"]]) {
+      if (!cols.includes(col)) db.exec(`ALTER TABLE sessions ADD COLUMN ${col} ${def}`);
+    }
+  } catch { /* fresh db created with them above */ }
   db.exec(`
     CREATE TABLE IF NOT EXISTS sessions (
       sid TEXT PRIMARY KEY,
@@ -61,7 +63,12 @@ export function openTrainingDb() {
       review_status TEXT NOT NULL DEFAULT 'dumped',
       /* ingest bookkeeping: NULL = never dumped for training. read by
          ingest.mjs / retention.mjs / backfill.mjs; fresh clones need it. */
-      ingested_at INTEGER
+      ingested_at INTEGER,
+      /* conversation-ordering + analysis fields (live db has carried them
+         since the ordering migration; fresh clones need them too). */
+      last_activity_at INTEGER,
+      analysis_status TEXT,
+      analysis TEXT
     );
     CREATE TABLE IF NOT EXISTS messages (
       sid TEXT NOT NULL,
@@ -105,15 +112,23 @@ function jobRow(database, sid) {
 
 // ---- Gateway plumbing ------------------------------------------------------
 
-function gatewayReq(method, path, cookie) {
+function gatewayReq(method, path, cookie, body) {
   const hermesUrl = process.env.ASTRA_HERMES_URL || "http://127.0.0.1:9119";
+  const headers = { Cookie: cookie };
+  let payload;
+  if (body !== undefined) {
+    payload = JSON.stringify(body);
+    headers["Content-Type"] = "application/json";
+    headers["Content-Length"] = Buffer.byteLength(payload);
+  }
   return new Promise((resolve, reject) => {
-    const req = httpRequest(`${hermesUrl}${path}`, { method, headers: { Cookie: cookie } }, (res) => {
+    const req = httpRequest(`${hermesUrl}${path}`, { method, headers }, (res) => {
       const chunks = [];
       res.on("data", (c) => chunks.push(c));
       res.on("end", () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString() }));
     });
     req.on("error", reject);
+    if (payload) req.write(payload);
     req.end();
   });
 }
@@ -401,6 +416,203 @@ async function finishReview(sid, logTail) {
   } catch (e) {
     scheduleRetry(sid, `gateway delete: ${e.message}`, logTail);
   }
+}
+
+// ---- Backfill / ingest / dataset adapters ----------------------------------
+//
+// The backfill, ingest and dataset pipelines (their own modules) all borrow
+// primitives from here. These exports are thin, AWAITABLE adapters over the
+// dump+review machinery above — they deliberately do NOT re-implement paging,
+// upserts or the worker.
+
+export const isReviewRunning = () => running.size > 0;
+
+export async function runReviewForSession(sid, title, source, opts = {}) {
+  const database = openTrainingDb();
+  if (running.has(sid)) return { skipped: "review in flight", sid };
+  running.add(sid);
+  const now = Date.now();
+  database.prepare(`
+    INSERT INTO review_jobs (sid, status, attempts, next_attempt_at, created_at, updated_at)
+    VALUES (?, 'dumping', 0, NULL, ?, ?)
+    ON CONFLICT(sid) DO UPDATE SET status='dumping', updated_at=excluded.updated_at, last_error=NULL
+  `).run(sid, now, now);
+  pushJob(jobRow(database, sid));
+  try {
+    // The dump is idempotent (upsert by sid,row_id) but the gateway may
+    // already have DELETED a reviewed session — run against the archive when
+    // messages exist, else pull them in.
+    const have = Number(database.prepare("SELECT COUNT(*) n FROM messages WHERE sid=?").get(sid).n) > 0;
+    if (have) {
+      database.prepare("UPDATE review_jobs SET status='reviewing', updated_at=? WHERE sid=?").run(Date.now(), sid);
+      pushJob(jobRow(database, sid));
+    } else {
+      const ins = database.prepare(`
+        INSERT INTO messages (sid, row_id, ts, role, content, tool_calls, reasoning)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(sid, row_id) DO UPDATE SET content=excluded.content, tool_calls=excluded.tool_calls, reasoning=excluded.reasoning, ts=excluded.ts
+      `);
+      let offset = 0, rows = 0, firstTs = null;
+      for (;;) {
+        const data = await historyPage(sid, offset);
+        const msgs = data.messages || [];
+        if (!msgs.length) break;
+        database.exec("BEGIN");
+        for (const m of msgs) {
+          ins.run(sid, String(m.id), m.timestamp ?? null, m.role ?? "unknown",
+            m.content ?? m.text ?? null,
+            m.tool_calls ? JSON.stringify(m.tool_calls) : null,
+            m.reasoning ?? null);
+          const ts = m.timestamp == null ? null : (m.timestamp < 1e12 ? m.timestamp * 1000 : m.timestamp);
+          if (firstTs === null && ts != null) firstTs = ts;
+          rows++;
+        }
+        database.exec("COMMIT");
+        offset += msgs.length;
+        if (msgs.length < DUMP_PAGE) break;
+      }
+      if (rows === 0) throw new Error("session has no history rows (already deleted?)");
+      const stats = statsFor(database.prepare("SELECT role, tool_calls, content, reasoning FROM messages WHERE sid = ?").all(sid));
+      database.prepare(`
+        INSERT INTO sessions (sid, title, source, created_at, ended_at, message_rows, token_stats, review_status, ingested_at, last_activity_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'dumped', ?, ?)
+        ON CONFLICT(sid) DO UPDATE SET title=COALESCE(excluded.title, sessions.title),
+          source=COALESCE(excluded.source, sessions.source),
+          created_at=COALESCE(sessions.created_at, excluded.created_at),
+          ended_at=excluded.ended_at, message_rows=excluded.message_rows, token_stats=excluded.token_stats,
+          ingested_at=COALESCE(sessions.ingested_at, excluded.ingested_at),
+          last_activity_at=COALESCE(excluded.last_activity_at, sessions.last_activity_at)
+      `).run(sid, title, source, firstTs, Date.now(), rows, JSON.stringify(stats), Date.now(), firstTs);
+      database.prepare("UPDATE review_jobs SET status='reviewing', updated_at=? WHERE sid=?").run(Date.now(), sid);
+      pushJob(jobRow(database, sid));
+    }
+    try { snapshotDocEstate(sid); } catch (e) {
+      console.error(`[training] ${sid}: snapshot failed (continuing):`, e && e.message);
+    }
+    // PARALLEL SLOTS: each backfill worker passes its own HERMES_HOME so
+    // concurrent reviewers do not contend on the shared state.db. The reviewer
+    // resolves skills/SOUL/AGENTS from HERMES_HOME rather than HOME when given
+    // (its prompt inventory uses one HOME root otherwise).
+    const analysis = await runReviewWorkerWithEnv(sid, opts);
+    // The backfillUi reads analysis_status / analysis — mark them here so a
+    // parallel reviewer's completion is as visible as the serial one's.
+    database.prepare("UPDATE sessions SET analysis_status='done', analysis=COALESCE(?, analysis) WHERE sid=?")
+      .run(JSON.stringify(analysis ?? { at: Date.now(), via: "review" }), sid);
+    return analysis;
+  } finally {
+    running.delete(sid);
+  }
+}
+
+/** Worker spawn with an overridable env (HERMES_HOME_FOR_REVIEW). */
+function runReviewWorkerWithEnv(sid, opts) {
+  return new Promise((resolve, reject) => {
+    const database = openTrainingDb();
+    const p = writeTranscriptExport(sid);
+    const promptFile = reviewPromptPath(sid);
+    mkdirSync(dirname(promptFile), { recursive: true });
+    writeFileSync(promptFile, buildReviewPrompt(sid, p));
+
+    const env = opts.hermesHome
+      ? { ...process.env, HOME: opts.hermesHome }
+      : process.env;
+    const child = spawn(HERMES_BIN, [
+      "chat", "--oneshot", "--query-file", promptFile,
+      "-m", REVIEW_MODEL, "--provider", REVIEW_PROVIDER,
+      "--in", opts.hermesHome || process.env.HOME || "/home/notjitin",
+    ], { env, stdio: ["ignore", "pipe", "pipe"], detached: true });
+
+    let out = "";
+    let timedOut = false;
+    const killTree = () => {
+      try { process.kill(-child.pid, "SIGKILL"); } catch { try { child.kill("SIGKILL"); } catch { /* dead */ } }
+    };
+    const timer = setTimeout(() => { timedOut = true; killTree(); }, REVIEW_TIMEOUT_MS);
+    child.stdout.on("data", (c) => { out += c; if (out.length > 200_000) out = out.slice(-100_000); });
+    child.stderr.on("data", (c) => { out += c; if (out.length > 200_000) out = out.slice(-100_000); });
+
+    const bail = (errText) => {
+      clearTimeout(timer);
+      try { child.kill("SIGKILL"); } catch { /* already dead */ }
+      reject(new Error(errText));
+    };
+    child.on("error", (e) => bail(`spawn: ${e.message}`));
+    child.on("close", (code, signal) => {
+      if (timedOut) return bail(`timeout after ${Math.round(REVIEW_TIMEOUT_MS / 60000)}min`);
+      if (signal === "SIGKILL") return bail(`killed (${signal}) — likely timeout racing exit`);
+      if (code !== 0) return bail(`exit ${code}`);
+      if (!out.trim()) return bail("empty output");
+      clearTimeout(timer);
+      // Unlike the fire-and-forget path, the backfill caller OWNS the result —
+      // resolve with the review output; scheduleRetry is the CALLER's job.
+      const analysis = { at: Date.now(), via: "backfill", gate: "hermes-oneshot", tail: out.slice(-4000) };
+      database.prepare("UPDATE sessions SET review_status='reviewed' WHERE sid=?").run(sid);
+      database.prepare("UPDATE review_jobs SET status='done', last_error=NULL, updated_at=? WHERE sid=?").run(Date.now(), sid);
+      pushJob(jobRow(database, sid));
+      resolve(analysis);
+    });
+  });
+}
+
+/** Generic gateway JSON GET/POST with the cookie + one 401 retry (ingest). */
+export async function gatewayJson(method, path, body) {
+  let cookie = await gatewayCookie();
+  let res = await gatewayReq(method, path, cookie, body);
+  if (res.status === 401) {
+    clearHermesCookie();
+    cookie = await gatewayCookie();
+    res = await gatewayReq(method, path, cookie, body);
+  }
+  if (res.status !== 200) throw new Error(`gateway ${path} HTTP ${res.status}`);
+  try { return JSON.parse(res.body); } catch { throw new Error(`gateway ${path} not JSON`); }
+}
+
+/**
+ * Dump one session's transcript into the archive tables WITHOUT reviewing —
+ * what the ingest sweeper wants (`status: "archived"` stamps review_status and
+ * marks it ingested). Fails when the gateway says the history is gone.
+ */
+export async function dumpSession(sid, title, source, opts = {}) {
+  const database = openTrainingDb();
+  const ins = database.prepare(`
+    INSERT INTO messages (sid, row_id, ts, role, content, tool_calls, reasoning)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(sid, row_id) DO UPDATE SET content=excluded.content, tool_calls=excluded.tool_calls, reasoning=excluded.reasoning, ts=excluded.ts
+  `);
+  let offset = 0, rows = 0, firstTs = null;
+  for (;;) {
+    const data = await historyPage(sid, offset);
+    const msgs = data.messages || [];
+    if (!msgs.length) break;
+    database.exec("BEGIN");
+    for (const m of msgs) {
+      ins.run(sid, String(m.id), m.timestamp ?? null, m.role ?? "unknown",
+        m.content ?? m.text ?? null,
+        m.tool_calls ? JSON.stringify(m.tool_calls) : null,
+        m.reasoning ?? null);
+      const ts = m.timestamp == null ? null : (m.timestamp < 1e12 ? m.timestamp * 1000 : m.timestamp);
+      if (firstTs === null && ts != null) firstTs = ts;
+      rows++;
+    }
+    database.exec("COMMIT");
+    offset += msgs.length;
+    if (msgs.length < DUMP_PAGE) break;
+  }
+  if (rows === 0) throw new Error("session has no history rows (already deleted?)");
+  const stats = statsFor(database.prepare("SELECT role, tool_calls, content, reasoning FROM messages WHERE sid = ?").all(sid));
+  const status = opts.status || "archived";
+  database.prepare(`
+    INSERT INTO sessions (sid, title, source, created_at, ended_at, message_rows, token_stats, review_status, ingested_at, last_activity_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(sid) DO UPDATE SET title=COALESCE(excluded.title, sessions.title),
+      source=COALESCE(excluded.source, sessions.source),
+      created_at=COALESCE(sessions.created_at, excluded.created_at),
+      ended_at=excluded.ended_at, message_rows=excluded.message_rows, token_stats=excluded.token_stats,
+      review_status=excluded.review_status,
+      ingested_at=COALESCE(sessions.ingested_at, excluded.ingested_at),
+      last_activity_at=COALESCE(excluded.last_activity_at, sessions.last_activity_at)
+  `).run(sid, title, source, firstTs, Date.now(), rows, JSON.stringify(stats), status, Date.now(), firstTs);
+  return { sid, rows };
 }
 
 // ---- Retry queue ----------------------------------------------------------
