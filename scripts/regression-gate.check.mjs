@@ -524,6 +524,48 @@ export const REGRESSIONS = [
       "Three chart faults and a text-etiquette sweep, all measured in a real browser. (1) 'Where the request budget goes' (a sankey) rendered BLANK: the plot sat inside the fixed-height ResponsiveContainer built for recharts, so the self-sizing nivo plot measured 0px tall (svg 0x0) and painted nothing. (2) 'Latency vs payload' (a scatter) was dropped by the parser: its natural data is [[x,y]] pairs or [{x,y}] objects, which failed the numeric-array test and silently discarded the whole card; its axis titles were also hard-coded to 'request (index)' / 'p95 (ms)' for every scatter. (3) Sankey node labels rendered black on the dark card (1.1:1): nivo's default label colour is a darker shade of the node colour, the node colour is var(--color-accent), d3 cannot parse it and returns rgb(0,0,0); fixed by passing a theme-resolved concrete colour. (4) Text etiquette: KPI labels were nowrap+ellipsis, the delta chip was capped at 46% width, titles left a lone figure on its own line, tables and heatmap headers broke mid-word. Guards the source-level rules the browser audit proved matter: prose surfaces wrap by word with no ellipsis and no silent clip, the KPI row wraps, legends sit at the bottom, the self-sizing charts render OUTSIDE the fixed-height container and the sankey plot carries an explicit pixel height, scatter axis titles come from the data. The browser half lives in scratch/canvas-v6/etiquette-e2e.mjs (4 widths, 40 assertions).",
     guard: "src/lib/etiquette.check.ts",
   },
+  {
+    id: "RG-079",
+    found: "2026-10-04",
+    symptom:
+      "Chat auto-ingestion or dataset build regressed: tool/system rows leaked into the SFT dataset, a conversation not starting with a user turn or not ending with an assistant turn was emitted, duplicate conversations were not deduplicated by content hash, or the ingested_at backfill left already-dumped sessions reading as un-ingested.",
+    guard: "scripts/ingest.check.mjs",
+  },
+  {
+    id: "RG-080",
+    found: "2026-10-04",
+    symptom:
+      "A `graph` block rendered as a broken/empty card instead of a map with context. Root cause was a silent field-name disagreement across two files: canvas-graph-view.tsx reads ele.data(\"detail\") for BOTH the tap payload and the a11y adjacency table, but the ported adapter canvas-cyto.ts toElements() only ever wrote `description` (the comindash field name it was ported from). The canvas `graph` schema, docs/canvas-directive.md and every agent emission use `detail`, so the two names never met and every node's context panel came up empty. Measured on a 31-node/59-edge payload: 0 of 31 nodes carried any text while the shape validator, the parser and the d3 layout all passed — which is exactly why it survived and read as a rendering fault rather than missing data. Guards that an authored `detail` reaches cytoscape as `detail`, that the legacy `description` shape still works (this adapter is a port and the dashboard still calls it that way), that a node with neither stays null rather than a coerced 'null', and — the structural guard — that every field the view reads via .data(\"…\") is a key toElements actually writes, so a future rename cannot silently split them again.",
+    guard: "src/lib/graph-node-detail.check.ts",
+  },
+  {
+    id: "RG-081",
+    found: "2026-10-04",
+    symptom:
+      "Training-dataset hygiene regressed: tool-result bodies leaked into the SFT set instead of a compact heading, a JSON envelope survived unwrapping, automation (cron/oneshot) or internal reviewer sessions were included, harness scaffolding (System/Surface/compaction/background-process notices) or greeting boilerplate reached the data, same-role turns were not merged, or an oversized turn was not truncated.",
+    guard: "scripts/dataset.check.mjs",
+  },
+  {
+    id: "RG-082",
+    found: "2026-10-04",
+    symptom:
+      "The job drill-down's change evidence regressed: the doc-estate diff mis-classified a created/edited/deleted skill, a same-size (mtime-only) edit stopped counting, a no-op was reported as a change, skill names were read from the category dir instead of the skill dir, or the reviewer's FILE: claims were parsed wrongly (mid-line prose taken as a claim, duplicates kept, 'none' counted) so undeclared real work went unreported.",
+    guard: "scripts/analysis.check.mjs",
+  },
+  {
+    id: "RG-083",
+    found: "2026-10-04",
+    symptom:
+      "Parallel chat analysis lost an edit: two concurrent reviewers both edited one SKILL.md (a shared doc estate, not under version control), so one write silently overwrote the other. Guards the collision rule — overlapping time windows AND intersecting changed-file sets are the only real collision; touching windows, different files, and no-op runs must NOT be flagged (over-reporting would needlessly re-run work, under-reporting would lose edits).",
+    guard: "scripts/backfill.check.mjs",
+  },
+  {
+    id: "RG-084",
+    found: "2026-10-05",
+    symptom:
+      "Sidebar nav rows stacked with zero vertical gap: after the filled-selected change the Work header and Chats row both paint a full accent fill, and with no spacing they read as one merged blob. Guards that the items container keeps flex flex-col gap-1.5 mt-1 so EVERY group (Work/Configure/Operate, expanded + rail) keeps header/row spacing.",
+    guard: "scripts/sidebar-gap.check.mjs",
+  },
 ];
 
 // ---- gate -----------------------------------------------------------------
