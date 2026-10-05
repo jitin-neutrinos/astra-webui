@@ -171,6 +171,9 @@ export function RichText({ text, onOpenMedia, streaming }: { text: string; onOpe
     }
   }, [text, streaming, openers, rendered]);
   const plainText = useMemo(() => parts.filter((p) => p.kind === "md").map((p) => (p as { text: string }).text).join(""), [parts]);
+  // Hoisted (perf item 1): true once any part is a card. Declared here rather
+  // than next to the render so the blockSig gate above can use it.
+  const hasCanvas = parts.some((p) => p.kind === "canvas");
   // R5: per-block split. Each block memoizes on its own source, so streaming
   // re-parses only the tail instead of the whole reply. Returns null whenever
   // the split can't be proven lossless, and we fall back to the single-blob
@@ -202,7 +205,11 @@ export function RichText({ text, onOpenMedia, streaming }: { text: string; onOpe
   // Blocks joined into one string, used ONLY as an effect dependency so the
   // copy-button + image-lightbox wiring re-runs whenever any block changes.
   // Not used for rendering when `blocks` is non-null.
-  const blockSig = blocks ? blocks.map((b) => b.source).join("") : html;
+  //
+  // 2026-10-05 (perf item 1): on the CANVAS path `blocks` is computed but never
+  // rendered (MdPart renders each part itself), so it was ~1.85 ms/render of pure
+  // waste on every delta. Gate it so it only runs for the fast path.
+  const blockSig = hasCanvas ? "" : blocks ? blocks.map((b) => b.source).join("") : html;
 
   useEffect(() => {
     const root = containerRef.current;
@@ -221,8 +228,6 @@ export function RichText({ text, onOpenMedia, streaming }: { text: string; onOpe
     });
   }, [blockSig, onOpenMedia]);
 
-  const hasCanvas = parts.some((p) => p.kind === "canvas");
-
   if (!hasCanvas) {
     // Fast path: exactly the pre-canvas render (copy button + one md region).
     // R5: when the split is lossless, render memoized blocks so streaming only
@@ -239,17 +244,33 @@ export function RichText({ text, onOpenMedia, streaming }: { text: string; onOpe
 
   // Canvas path: render parts in chronological order; all md parts share the
   // outer ref so copy-buttons/image-lightbox wiring covers every md chunk.
+  //
+  // 2026-10-05 (perf item 1): the md part used to call renderRichHtml INLINE in
+  // the render body, so every prose chunk around every visible card was re-parsed
+  // and re-sanitised on EVERY streaming delta — the R5 memo below (splitRichBlocks
+  // + memo'd RichBlockView) is only used on the no-canvas fast path, so any
+  // message containing a card threw the optimisation away. Measured on a 78 KB
+  // answer with a 29 KB card: 4.62 ms/render vs 2.37 ms on the fast path, and
+  // that is `marked` alone before DOMPurify runs over the same HTML.
+  // Fixed by rendering each md part through a memo'd component keyed on its own
+  // text, so an unchanged chunk costs nothing while the stream advances.
   return (
     <div className="relative group" ref={containerRef}>
       <AnimatedCopyButton sm className="!absolute top-2 right-2 z-10 !h-6 !w-6 opacity-0 group-hover:opacity-100 transition-opacity" text={text} />
       {parts.map((p, i) =>
         p.kind === "canvas"
           ? <CanvasHost key={`cv${i}`} spec={p.spec} id={`${uid}-${i}`} />
-          : <div key={`md${i}`} className="chat-md" dangerouslySetInnerHTML={{ __html: renderRichHtml(p.text, streaming) }} />
+          : <MdPart key={`md${i}`} source={p.text} streaming={streaming} />
       )}
     </div>
   );
 }
+
+/** One markdown chunk, memoised on its own source. */
+const MdPart = memo(function MdPart({ source, streaming }: { source: string; streaming?: boolean }) {
+  const html = useMemo(() => renderRichHtml(source, streaming), [source, streaming]);
+  return <div className="chat-md" dangerouslySetInnerHTML={{ __html: html }} />;
+});
 
 // ---- shared bits -----------------------------------------------------------
 
