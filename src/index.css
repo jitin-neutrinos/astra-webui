@@ -2729,7 +2729,8 @@ html.theme-fading body * {
    (member of an open group) > quiet. Dark + light twins; light mode remaps
    onto its own channel tokens per the standing light-theme rule. */
 .ast-nav-tinted {
-  background: color-mix(in oklab, var(--color-accent) 22%, transparent);
+  background: color-mix(in oklab, var(--color-accent) 26%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-accent) 55%, transparent);
   color: var(--color-accent);
 }
 .ast-nav-tinted > span:first-child svg,
@@ -6098,3 +6099,12 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
   overflow-wrap: break-word; word-break: normal; hyphens: none;
   line-height: 1.4; text-wrap: balance;
 }
+/* Owner 10-05: the mobile topbar must NEVER paint on desktop. Its `lg:hidden`
+   utility lives in the @layer utilities cascade, which LOSES to the unlayered
+   `.ast-topbar { display:flex }` rule (unlayered beats layered regardless of
+   media condition) — measured: computed display stayed flex at 1440px.
+   This unlayered media rule sits later in the file, so it wins the tie. */
+@media (min-width: 1024px) {
+  div.lg\:hidden { display: none !important; }
+}
+
