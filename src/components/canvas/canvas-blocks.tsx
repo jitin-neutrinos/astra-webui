@@ -295,12 +295,13 @@ export function StepsView({ block }: { block: StepsBlock }) {
 // block. The border was the ONLY tone signal, so the tone now rides on a small
 // leading dot — the callout still reads info/warn/danger at a glance.
 const CALLOUT_TONE: Record<string, string> = {
-  // Owner 2026-10-03: one accent everywhere — tone survives through the
-  // leading dot + title weight, not through separate hues.
+  // Owner 2026-10-05: semantic tone colours — success/warn/danger render green/
+  // amber/red from the active theme roles. Still NO edge rails (law 3): the tone
+  // rides the leading dot + title colour only.
   info: "var(--color-accent)",
-  success: "var(--color-accent)",
-  warn: "var(--color-accent)",
-  danger: "var(--color-accent)",
+  success: "var(--color-emerald)",
+  warn: "var(--color-amber)",
+  danger: "var(--color-redx)",
 };
 
 export function CalloutView({ block }: { block: CalloutBlock }) {
@@ -665,8 +666,8 @@ export function AccordionView({ block }: { block: AccordionBlock }) {
 // ---- Terminal -----------------------------------------------------------------
 
 const TERM_TONE: Record<string, string | undefined> = {
-  stdout: undefined, info: "var(--color-accent)", success: "var(--color-accent)",
-  stderr: "var(--color-accent)", dim: "var(--color-muted)",
+  stdout: undefined, info: "var(--color-accent)", success: "var(--color-emerald)",
+  stderr: "var(--color-redx)", dim: "var(--color-muted)",
 };
 
 export function TerminalView({ block }: { block: TerminalBlock }) {

@@ -31,15 +31,18 @@ import type { RenderCtx } from "./canvas-blocks";
 import { bindPoints } from "../../lib/canvas-bind";
 import { evaluate } from "../../lib/canvas-expr";
 
-// Owner 2026-10-03: ONE accent for all canvas charts. Series separate by
-// opacity tier (100/72/48%) + the always-on legend, not by hue.
+// Owner 2026-10-05: series separate by HUE — accent/emerald/amber/fuchsiax/redx
+// (theme roles, so every palette + mode inherits). Pre-2026-10-05 the series
+// ladder was one accent at 100/72/48% opacity, which read as one blue line.
 const NATIVE = new Set(["sankey", "treemap", "funnel"]);
 const NativeLazy = lazy(() => import("./canvas-native-charts"));
 
 export const SERIES_COLORS = [
   "var(--color-accent)",
-  "color-mix(in srgb, var(--color-accent) 72%, transparent)",
-  "color-mix(in srgb, var(--color-accent) 48%, transparent)",
+  "var(--color-emerald)",
+  "var(--color-amber)",
+  "var(--color-fuchsiax)",
+  "var(--color-redx)",
 ];
 
 type AnyTooltip = TooltipProps<number, string> & { payload?: any[] };
