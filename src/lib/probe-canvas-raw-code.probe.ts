@@ -115,6 +115,34 @@ for (const [name, md, shouldMount] of cases) {
   });
 }
 
+// The label must tell the two dead-end cases apart (2026-10-05): a body still
+// arriving says "Generating Data Points…"; a FINISHED-but-unusable payload says
+// so plainly, because no repair tier can rescue it (measured sync=0 async=0).
+{
+  const label = (body: string) => {
+    const box = document.createElement("div");
+    box.innerHTML = renderRichHtml("```astra-canvas\n" + body + "\n```", false);
+    // Read the TEXT, not the markup: an escaped ellipsis is still an ellipsis,
+    // and asserting on the raw HTML made this test lie about a working feature.
+    return (box.querySelector("[data-cv-pending]")?.textContent ?? "").trim();
+  };
+  const truncated = label('{"v":1,"blocks":[{"type":"kpi","label":"A","val');
+  // A COMPLETE but unusable payload: brackets balanced, but not a canvas spec.
+  // (The old probe used "not json at all {{{" — three unbalanced braces, so it was
+  // correctly classified as still-arriving. The input was wrong, not the code.)
+  const garbage = label("[1,2,3]");
+  results.push({
+    name: "label: truncated body says Generating",
+    ok: /Generating Data Points/.test(truncated),
+    detail: truncated,
+  });
+  results.push({
+    name: "label: balanced-but-unusable says so",
+    ok: /could not be read/i.test(garbage),
+    detail: garbage,
+  });
+}
+
 // Frame-by-frame sweep of a realistic streaming reveal: no frame may ever paint
 // the canvas body as code. This is the exact thing the user saw.
 {

@@ -31,6 +31,11 @@ import { parseCanvasSpec } from "./canvas-schema";
 // raw JSON is unreachable regardless of parser, streaming or segment state.
 const CANVAS_LANG = "astra-canvas";
 const MOUNT_ATTR = "data-cv-mount";
+// Class names live here so rich-html.ts (which emits the markup) and index.css
+// (which styles it) cannot drift — the CSS keys are asserted by
+// scripts/canvas-raw-code.browser.mts.
+const PENDING_CLASS = "ast-cv-pending";
+const PENDING_LABEL_CLASS = "ast-cv-pending-label";
 
 const md = new Marked({ gfm: true, breaks: true });
 
@@ -41,12 +46,48 @@ md.use({
       if (lang !== CANVAS_LANG) return false as unknown as string; // fall through to default
       const body = token.text ?? "";
       // A parsed body reaching here means the splitter already claimed it, so we
-      // only need to not paint it twice. Unparseable ⇒ placeholder, never the body.
+      // only need to not paint it twice.
       if (safeParse(body)) return `<div ${MOUNT_ATTR}></div>`;
-      return `<div class="ast-cv-pending" role="status" aria-live="polite" data-cv-pending>Card building…</div>`;
+      // Unparseable ⇒ placeholder, never the body. See pendingLabel() for why the
+      // copy says "Generating" rather than "Failed": measured, a TRUNCATED body
+      // (the model ran out of tokens mid-JSON) is rescued by NO repair tier —
+      // sync and async both return nothing — so this line can legitimately be the
+      // final state of a message whose fence never completed. Calling it
+      // "Failed" there would be a lie; calling it "Card building…" forever was a
+      // dead end with no way for the reader to tell the two apart.
+      return (
+        `<div class="${PENDING_CLASS}" role="status" aria-live="polite" data-cv-pending>` +
+        `<span class="${PENDING_LABEL_CLASS}">${pendingLabel(body)}</span>` +
+        `</div>`
+      );
     },
   },
 });
+
+/**
+ * "Generating Data Points…" for a body that is still arriving or incomplete,
+ * and an explicit "could not be read" only when we can prove the fence is FINISHED
+ * and still unusable. Measured against the real parser:
+ *   truncated body      sync=0 async=0  -> genuinely unrecoverable (dead end)
+ *   unquoted + prose    sync=0 async=1  -> the rescue WILL fix it
+ *   single quotes       sync=0 async=0 after repair rounds -> unrecoverable
+ *   empty / non-object  sync=0 async=0  -> nothing to render
+ * So: a body that looks cut off (no closing brace/bracket, ends mid-token) is the
+ * "still generating" case; anything else is reported as unreadable. Retrying is
+ * the caller's job (chat-timeline.tsx L4), so we never claim to have finished.
+ */
+function pendingLabel(body: string): string {
+  // A body still ARRIVING looks cut off: unbalanced brackets, or no closing
+  // bracket at all. A FINISHED-but-unusable body is complete but not JSON.
+  // (Garbage like "not json at all {{{" must NOT claim to be generating.)
+  const t = body.trim();
+  const opens = (t.match(/[{[]/g) ?? []).length;
+  const closes = (t.match(/[}\]]/g) ?? []).length;
+  const looksTruncated = opens !== closes;
+  return looksTruncated
+    ? "Generating Data Points…"
+    : "This card could not be read — the model sent an unreadable payload.";
+}
 
 /** Never throws: the placeholder path depends on it. */
 function safeParse(body: string): unknown | null {
