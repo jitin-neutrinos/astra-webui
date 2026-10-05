@@ -718,7 +718,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, isMobile: isMobileProp, ac
                 {group.icon}
                 {expanded && <span className="truncate">{group.label}</span>}
               </span>
-              {group.label === "Work" && unreadTotal > 0 && !open && (
+              {group.label === "Work" && unreadTotal > 0 && !open && expanded && (
                 <span
                   className={cn("ast-unread-badge", !expanded && "ast-unread-badge-rail")}
                   aria-label={`${unreadTotal} ${unreadTotal === 1 ? "chat" : "chats"} unread`}
@@ -771,17 +771,22 @@ function Sidebar({ activeView, collapsed, drawerOpen, isMobile: isMobileProp, ac
                   // In the collapsed rail the treatment moves onto the ICON
                   // (border + glow on the glyph and its box) and the number
                   // drops its container, so a 48px rail isn't crowded.
-                  item.name === "Chats" && unreadTotal > 0 && (open || expanded) ? (expanded ? "ast-nav-unread" : "ast-nav-unread-rail") : "",
+                  item.name === "Chats" && unreadTotal > 0 && (open || !expanded) ? (expanded ? "ast-nav-unread" : "ast-nav-unread-rail") : "",
                   active
-                    /* Owner 10-05: selected = FILLED, same mechanism as the
-                       composer bar buttons — full accent container, ink glyph
-                       and ink label, everywhere including the collapsed rail. */
-                    ? "ast-nav-selected text-void"
-                    : "text-slate-300 hover:bg-white/5 hover:text-white",
+                    /* Owner 10-05: an item inside an OPEN dropdown that is the
+                       focused page reads as "selected inside the group" — a
+                       LIGHT brand tint, distinct from the group header's solid
+                       fill. The header keeps the solid fill (selected = filled
+                       at the parent level). */
+                    ? (open ? "ast-nav-tinted" : "ast-nav-selected text-void")
+                    : /* Owner 10-05: members of an OPEN section get a lighter
+                         tint of the selected one so the parent-child wiring
+                         reads at a glance. */
+                    (open ? "ast-nav-soft" : "text-slate-300 hover:bg-white/5 hover:text-white"),
                 )}>
                 <span className="grid h-full w-12 shrink-0 place-content-center text-muted">{item.icon}</span>
                 {expanded && <span className="truncate text-sm font-medium">{item.name}</span>}
-                {item.name === "Chats" && unreadTotal > 0 && open && (
+                {item.name === "Chats" && unreadTotal > 0 && (open || !expanded) && (
                   <span
                     className={cn("ast-unread-badge", !expanded && "ast-unread-badge-rail")}
                     aria-label={`${unreadTotal} unread ${unreadTotal === 1 ? "message" : "messages"}`}
