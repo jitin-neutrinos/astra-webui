@@ -515,18 +515,10 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
   // the chat list listens on, so the two never disagree: a row clearing its pill
   // (locally or from another device) drops the aggregate in the same tick.
   const unreadTotal = useUnreadTotal();
-  // Total known chats (pending) for the Work badge — same seed + same events,
-  // so Work's number can never disagree with the Chats list's own total.
-  const [sessionTotal, setSessionTotal] = useState(() => notify.getTotalSessions());
-  useEffect(() => {
-    const sync = () => setSessionTotal(notify.getTotalSessions());
-    window.addEventListener("astra:unread-changed", sync);
-    window.addEventListener("astra-ws-event", sync);
-    return () => {
-      window.removeEventListener("astra:unread-changed", sync);
-      window.removeEventListener("astra-ws-event", sync);
-    };
-  }, []);
+  // Work badge parity (owner 10-05): Work and Chats must show the SAME number —
+  // the unread aggregate from ONE store (notify.getTotalUnread via useUnreadTotal).
+  // The old Work badge read getTotalSessions() (total known chats, ~605) which
+  // could never equal Chats' unread count; it existed as a separate counter.
 
   const groups: {
     label: string;
@@ -710,13 +702,13 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
                 {group.icon}
                 {expanded && <span className="truncate">{group.label}</span>}
               </span>
-              {group.label === "Work" && sessionTotal > 0 && (
+              {group.label === "Work" && unreadTotal > 0 && (
                 <span
                   className={cn("ast-unread-badge", !expanded && "ast-unread-badge-rail")}
-                  aria-label={`${sessionTotal} ${sessionTotal === 1 ? "chat" : "chats"}`}
-                  title={`${sessionTotal} pending ${sessionTotal === 1 ? "chat" : "chats"}`}
+                  aria-label={`${unreadTotal} ${unreadTotal === 1 ? "chat" : "chats"} unread`}
+                  title={`${unreadTotal} ${unreadTotal === 1 ? "chat" : "chats"} unread`}
                 >
-                  {sessionTotal > 99 ? "99+" : sessionTotal}
+                  {unreadTotal > 99 ? "99+" : unreadTotal}
                 </span>
               )}
               {expanded && (

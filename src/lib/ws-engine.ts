@@ -745,7 +745,11 @@ function onMessage(e: MessageEvent) {
   
   if (data.method === "event" && data.params && data.params.type === "message.complete") {
     const liveSid = data.params.session_id;
-    const mapped = notify.storedKeyFor(liveSid);
+    // Prefer the proxy-stamped stored_session_id (it survives even when this
+    // client's own sidmap has never seen the pair — bumped chats the user never
+    // opened this boot would otherwise key off the ephemeral live sid and read
+    // as orphans, invisible in the row list until the prune TTL ate them).
+    const mapped = data.params.payload?.stored_session_id || notify.storedKeyFor(liveSid);
     const fid = data.params.payload && data.params.payload.turn_id != null ? data.params.payload.turn_id : (data.id ?? liveSid + ":" + String(data.params.payload?.ts ?? 0));
     notify.handleComplete(liveSid, mapped, data.params.payload, fid);
   }

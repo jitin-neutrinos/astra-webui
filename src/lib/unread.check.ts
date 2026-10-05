@@ -1,4 +1,5 @@
 import assert from 'node:assert';
+import { readFileSync } from 'node:fs';
 
 // Mock localStorage / document / window / fetch
 const mockStore: Record<string, string> = {};
@@ -164,5 +165,36 @@ assert.equal(notify.isRemotelyFocused("tab-one-chat"), false, "tab one's stale f
 assert.equal(notify.isRemotelyFocused("tab-two-chat"), false, "tab two released");
 assert.equal(notify.isRemotelyFocused("tab-three-chat"), true, "tab three focused");
 assert.equal(notify.isRemotelyFocused("phone-chat"), true, "phone focus survives another device's move");
+
+// 15) WORK/CHATS BADGE PARITY (owner 10-05): both badges read the ONE aggregate
+// (getTotalUnread). The badge components render from useUnreadTotal in App.tsx —
+// asserted structurally so a second counter can never reappear on Work.
+{
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const workIdx = app.indexOf('group.label === "Work" && unreadTotal');
+  assert.notEqual(workIdx, -1, "Work badge renders from unreadTotal (the SAME source as Chats)");
+  const workBadge = app.slice(workIdx, workIdx + 400);
+  assert.doesNotMatch(workBadge, /sessionTotal/, "Work badge must not carry a second counter");
+}
+
+// 16) PROXY-STAMPED STORED ID WINS (owner bug: bumps keyed off the ephemeral
+// live sid sat invisible in the row list until orphan pruned). The ws-engine
+// funnel must prefer payload.stored_session_id over the client sidmap.
+{
+  const engine = readFileSync(new URL("./ws-engine.ts", import.meta.url), "utf8");
+  const i = engine.indexOf('type === "message.complete"');
+  const funnel = engine.slice(i, i + 600);
+  assert.match(funnel, /stored_session_id \|\| notify\.storedKeyFor/,
+    "handleComplete keyed from the proxy-stamped stored id FIRST");
+}
+
+// 17) FOCUSED CHAT NEVER COUNTS, cross-device: focus on one surface ⇒ a bump
+// arriving on ANOTHER surface is a markRead, not a bump (remote focus test at
+// 122-145 covers the same-device side; this pins the aggregate stays 0 while
+// any device holds focus).
+notify._test.reset();
+notify.applyPresence({ devices: [{ device: "android-x", focuses: ["cross-chat"] }] });
+notify.handleComplete("live-cross", "cross-chat", { text: "done" }, "fid-cross");
+assert.equal(notify.getTotalUnread(), 0, "bump while ANY device focuses the chat = read, not unread");
 
 console.log("unread.check.ts passed");
