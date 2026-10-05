@@ -1081,9 +1081,10 @@ html.theme-fading body * {
   .nc-btn-progress { animation-duration: 1s; }
 }
 /* stop button beside an always-live send: red-tinted, same geometry */
-.chat-send-stop { background:linear-gradient(180deg, var(--color-redx), color-mix(in oklab, var(--color-redx) 62%, var(--color-void))); color:#f8fafc; margin-left: -4px; box-shadow:0 1px 2px rgba(0,0,0,.25); }
-.chat-send-stop:hover { background:linear-gradient(180deg, color-mix(in oklab, var(--color-redx) 88%, #ffffff), var(--color-redx)); color:#f8fafc; box-shadow:0 2px 4px rgba(0,0,0,.28); }
-[data-theme="light"] .chat-send-stop { background:linear-gradient(180deg, var(--color-redx), color-mix(in oklab, var(--color-redx) 62%, var(--color-void))); color:#f8fafc; box-shadow: none; }
+/* flat red (owner 10-05): no gradient, no tint mix — one solid var(--color-redx) */
+.chat-send-stop { background: var(--color-redx); color:#f8fafc; margin-left: -4px; box-shadow:0 1px 2px rgba(0,0,0,.25); }
+.chat-send-stop:hover { background: color-mix(in oklab, var(--color-redx) 85%, #ffffff); color:#f8fafc; box-shadow:0 2px 4px rgba(0,0,0,.28); }
+[data-theme="light"] .chat-send-stop { background: var(--color-redx); color:#f8fafc; box-shadow: none; }
 [data-theme="light"] .chat-send-stop:hover { background:rgb(var(--light-c-11) / 0.2); box-shadow: none; }
 
 /* Stop/Send right-alignment works at EVERY width, not just <=1023px: iPad
@@ -5821,21 +5822,26 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
 /* Owner 10-05: yolo is the BUTTON-BAR INVERSE. Off: transparent outline
    container with a FILLED accent glyph (reads armed-but-not-active, opposite of
    the filled neighbours). On: accent-filled container with the void-ink glyph —
-   visually identical language to send, unmistakably "on". */
-.composer-bar-card .chat-chip-yolo {
+   visually identical language to send, unmistakably "on".
+   Specificity note: FIVE classes on the ON selectors. The legacy
+   `.composer-bar-card .chat-chip-icon.chat-chip-on` tint rule sits later in
+   this file at the same specificity and used to defeat the fill — in dark mode
+   that rendered a 14% tint with a void-ink glyph on it, i.e. an invisible icon.
+   4 classes beat every 3-class generic rule regardless of order. */
+.composer-bar-card .chat-chip.chat-chip-yolo {
   background: transparent;
   color: var(--color-accent);
   border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
   box-shadow: none;
 }
-.composer-bar-card .chat-chip-yolo:hover { filter: none; border-color: color-mix(in srgb, var(--color-accent) 75%, transparent); background: color-mix(in srgb, var(--color-accent) 8%, transparent); }
-.composer-bar-card .chat-chip-yolo.chat-chip-on {
+.composer-bar-card .chat-chip.chat-chip-yolo:hover { filter: none; border-color: color-mix(in srgb, var(--color-accent) 75%, transparent); background: color-mix(in srgb, var(--color-accent) 8%, transparent); }
+.composer-bar-card .chat-chip.chat-chip-yolo.chat-chip-on {
   background: linear-gradient(180deg, var(--color-accent), color-mix(in oklab, var(--color-accent) 62%, var(--color-void)));
   color: var(--color-void);
   border-color: transparent;
   box-shadow: 0 1px 2px rgba(0,0,0,.25);
 }
-[data-theme="light"] .composer-bar-card .chat-chip-yolo.chat-chip-on {
+[data-theme="light"] .composer-bar-card .chat-chip.chat-chip-yolo.chat-chip-on {
   background: linear-gradient(180deg, rgb(var(--light-c-1)), rgb(var(--light-c-2)));
   color: #f8fafc;
   box-shadow: none;
@@ -5845,9 +5851,9 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
    on the accent fill. Same specificity as the generic svg rule, later source
    order wins. */
 .composer-bar-card .chat-chip-yolo svg { color: var(--color-accent); fill: currentColor; }
-.composer-bar-card .chat-chip-yolo.chat-chip-on svg { color: var(--color-void); }
+.composer-bar-card .chat-chip.chat-chip-yolo.chat-chip-on svg { color: var(--color-void); }
 [data-theme="light"] .composer-bar-card .chat-chip-yolo svg { color: rgb(var(--light-c-34)); }
-[data-theme="light"] .composer-bar-card .chat-chip-yolo.chat-chip-on svg { color: #f8fafc; }
+[data-theme="light"] .composer-bar-card .chat-chip.chat-chip-yolo.chat-chip-on svg { color: #f8fafc; }
 /* The ON state must read at a glance without a label. */
 .composer-bar-card .chat-chip-icon.chat-chip-on {
   border-color: var(--color-accent);
