@@ -25,6 +25,27 @@ Emit one or more fenced blocks tagged `astra-canvas`:
 ```
 ````
 
+### Page format — declare it
+
+```
+{ "v": 1, "title": "Q3 report", "page": "a4",   "blocks": [ … ] }
+{ "v": 1, "title": "Pitch deck", "page": "slide", "blocks": [ … ] }
+{ "v": 1, "title": "Three KPIs",                 "blocks": [ … ] }
+```
+
+`page` is optional and has exactly three values: `"a4"`, `"slide"`, `"auto"`.
+Omit it for a short card — that is the default and nothing changes.
+
+- **`"a4"`** — a long report. Portrait A4, paginated, downloads as a PDF.
+- **`"slide"`** — a deck. 16:9 landscape, downloads as a PPTX or PNG set.
+- **`"auto"`** — let the renderer choose from measured content height.
+
+The card renders *inside* the page box, so the card on screen is literally the
+export. One card is one page format, so "portrait on desktop, landscape on
+mobile" is a mistake: pick the format that matches the content. Anything else in
+the key (`"portrait"`, `"letter"`, `"16:9"`) is dropped, not coerced — the card
+still renders, just in the default format.
+
 **Rule: never bury structured data in prose when a canvas block fits.** If the
 answer contains numbers, a comparison, a sequence, a relationship, a hierarchy,
 a status, a snippet or a citation list, it belongs in a block. Keep prose to
@@ -43,7 +64,7 @@ cards*.
 | `kpi` | `{label, value, delta?, trend?:"up"\|"down"\|"flat", spark?:number[3..24]}` | headline metrics, counts, deltas; `spark` adds an inline trend line |
 | `chart` | `{chart:"line"\|"area"\|"bar"\|"radial"\|"pie"\|"donut"\|"stack"\|"sankey"\|"treemap"\|"funnel"\|"radar"\|"scatter", title?, labels?, series:[{name, points:number[]}]}` | trends, distributions, compositions, before/after; `donut` shows the total in the hole; the last four (v5) accept their natural vocabulary instead of `series` — see below |
 | `table` | `{columns:string[], rows:string[][]}` | comparisons, matrices, option tables, findings |
-| `diagram` | `{layout:"flow"\|"relationship", direction?:"tb"\|"lr", nodes:[{id,label,detail?}], edges:[{from,to,label?}]}` | workflows, pipelines, dependency and relationship maps |
+| `diagram` | `{layout:"flow"\|"relationship", direction?:"tb"\|"lr", summary?, caption?, nodes:[{id,label,detail?,kind?,note?}], edges:[{from,to,label?,note?}]}` | workflows, pipelines, dependency and relationship maps; always give a `summary` (one-to-three sentences) so a reader can follow it, and `kind` on two or more nodes to earn a legend; the card scrolls and zooms and grows in BOTH axes rather than shrinking, and `direction` is only a hint — a narrow viewport overrides it with `"tb"` |
 | `checklist` | `{items:[{text, status?:"done"\|"open"\|"fail"}]}` | status, audit results, done/not-done |
 | `steps` | `{items:[{title, detail?, status?:"done"\|"active"\|"todo"\|"fail"}]}` | ordered procedures, phase results |
 | `callout` | `{tone:"info"\|"warn"\|"success"\|"danger", title?, body}` | the one thing that must not be missed |
@@ -89,10 +110,17 @@ Reader fields on EXISTING blocks (all optional, all resolve against `"state"`):
 - `kpi.value` / `progress.value` accept `{"$expr":"price * qty"}` — the
   expression language supports arithmetic, comparisons, `? :`, and helpers:
   `min max round abs clamp sum avg len at range compound fmt money pct compact`…
-  (`money(x)` → `$1,235`, `pct(0.12)` → `12%`, `compact(1284000)` → `1.3M`).
+  (`money(x)` → `$1,235`, `pct(0.12)` → `12%`, `compact(1284000)` → `1.3M` —
+  these resolve to FORMATTED STRINGS, so read them with `resolveBinding`, and
+  the KPI tile shows the string verbatim; `bindNumber` would strip `$`/`,`).
 - `table`/`chart` accept `bind`/`where` on a `data` block:
   `{"type":"table", "columns":["svc","p95"], "bind":{"$from":"latency","filter":[{"col":"env","op":"==","value":"$env"}],"sort":{"by":"p95","dir":"desc"},"top":8}}`
-  (op set: `== != < <= > >= in`).
+  (op set: `== != < <= > >= in`). A bound table may omit `rows` entirely
+  (they come from the dataset; when the dataset is missing you get the
+  "No rows" placeholder, not a dropped block).
+- `table` cells may be raw numbers/booleans/null — the parser coerces
+  `412`→`"412"`, `true`→`"true"`, `null`→`""` (M2, 2026-10-04). An
+  object/array cell still drops the block.
 - chart **series** accept `points: {"$expr":"…"}` (a number array) and
   `visible: {"$expr":"show2025"}` — toggles show/hide series live.
 - ANY block accepts `visible: {"$expr":"…"}` — a toggle can reveal a callout.
@@ -112,8 +140,13 @@ Expression safety laws (renderer-enforced): no property access, no `eval`, no
 globals — identifiers are ONLY your `state` keys. An expression that fails
 renders `—` (fail-soft per prop), never a broken card. Numeric strings
 (`"1,234"`, `"12%"`) coerce; `state` values that are objects are unsupported —
-keep them scalars. NEVER hand-write a control block without a matching `"state"`
-seed (the slider shows its own `value?` until first interaction, fine).
+keep them scalars. Matching a `"state"` seed to each control is still good
+practice (named values stay discoverable), but NOT required: the parser seeds
+every control's own default into the card scope (slider `value?`/min,
+select/segmented first option, toggle false, search "") so
+`{"$expr":"n*2"}` readers compute from the first render, not "—" until first
+touch. A card with controls but no top-level `state` still gets its own
+per-card store (proven M2, 2026-10-04; a bare reader-block card stays plain).
 
 ### Chart kinds beyond the usual seven (v5) — emit the NATURAL vocabulary
 
@@ -295,8 +328,11 @@ A `text` block is the same idea for plain content:
 ```astra-canvas
 { "v": 1, "title": "Agent turn pipeline", "blocks": [
   { "type": "diagram", "layout": "flow", "direction": "tb",
-    "nodes": [{ "id": "prompt", "label": "Prompt" }, { "id": "model", "label": "Model" },
-              { "id": "tools", "label": "Tools" }, { "id": "canvas", "label": "Canvas render" }],
+    "summary": "A turn starts at the prompt, runs on the model, calls tools if it needs them, and any canvas it emits renders inline instead of prose.",
+    "nodes": [{ "id": "prompt", "label": "Prompt", "kind": "input" },
+              { "id": "model", "label": "Model", "kind": "compute" },
+              { "id": "tools", "label": "Tools", "kind": "compute" },
+              { "id": "canvas", "label": "Canvas render", "kind": "output" }],
     "edges": [{ "from": "prompt", "to": "model" }, { "from": "model", "to": "tools", "label": "calls" },
               { "from": "tools", "to": "canvas", "label": "data" }] }
 ] }
@@ -345,6 +381,37 @@ fragment a single idea across five blocks.
 
 ---
 
+## Maintaining this doc — it is a rendered-surface target
+
+This file is **read by the prompt-surface generator**, not only by humans.
+`~/Work/infra/agent-fleet/rules/canvas-surface-sync.mjs` emits the literal path
+`~/Work/projects/astra-webui/docs/canvas-directive.md` into every harness
+rulebook (`.claude/CLAUDE.md`, `.gemini/GEMINI.md`, `.config/opencode/AGENTS.md`,
+`~/AGENTS.md`) and into `~/.hermes/SOUL.md`, as the "shapes, aliases and worked
+examples" pointer at the end of each canvas block.
+
+Consequences, verified 2026-10-04:
+
+- **Do not rename or move this file** without editing that path in the generator
+  (two occurrences: harness block and soul block). The generator will not warn —
+  it writes the string, and every surface then points at a dead path.
+- **The 37-type count and the 12 chart kinds here are pinned to the parser.**
+  `src/lib/canvas-schema.ts` declares `BLOCK_TYPES` (37) and `CHART_KINDS` (12);
+  `canvas-surface-sync.mjs` extracts both by regex, compares them against
+  `rules/canvas-surface-data.mjs`, and exits **2** naming every missing/extra
+  name if they disagree. Adding or removing a block type in the parser therefore
+  breaks every prompt surface until the data module is updated in the same pass.
+- **The generator does not render this file.** It is hand-written; the copy in
+  SOUL.md and the harness blocks is generated from the data module. Keep the two
+  consistent when either changes.
+
+Gates: `node ~/Work/infra/agent-fleet/rules/canvas-surface-sync.check.mjs`
+(22 assertions), and
+`node ~/Work/infra/agent-fleet/rules/canvas-surface-sync.mjs --check` for drift
+(exit 1).
+
+---
+
 ## Gates, reviews, approvals and clarifying questions
 
 - **Review gates** are rendered as canvas: severity KPI row + findings table.
@@ -358,3 +425,28 @@ fragment a single idea across five blocks.
 When you emit a review or plan gate, the body is canvas content — build it with
 the block types above so the approval surface is reviewable at a glance rather
 than a wall of markdown.
+## Tone colours (2026-10-05) — semantic, not monochrome
+
+Success/warn/danger SHOW as green/amber/red (theme roles) — across callout dots+titles,
+terminal info/stderr lines, badges, checklist done/fail glyphs, step done/fail markers,
+compare pro/con marks, kpi up/down deltas, timeline done/fail dots. Chart series use
+5 distinct hues (accent/emerald/amber/fuchsiax/redx) — never the pre-2026-10-05
+one-accent opacity ladder. Rule stands: NO coloured edge rails (owner law 3); tone
+rides dots, glyphs, chips, fills — not left borders. All tone colours are theme roles,
+so all 5 palettes × 2 modes inherit automatically.
+
+## Stream recipes — pick the block sequence by domain (2026-10-05)
+
+Map the request to its stream and compose blocks in this order:
+
+- **STATUS / REPORT**: `badges → progress×N → table(blocked/at-risk only) → checklist(shipped vs deferred) → callout danger(the gate)`. Failures go in the SAME card as wins.
+- **REVIEW / APPROVAL GATE**: `badges → table(findings, severity, evidence) → checklist(must-fix before approve) → callout warn(what would reopen) → steps(next)`. Severity: danger=critical, warn=major, info=minor.
+- **UX AUDIT / DESIGN REPORT**: `image(screenshot per page) → kpi×3(scores) → table(before→after tokens) → compare(option A vs B) → checklist(compliance) → accordion(skip-able decisions)`. Always give before/after hex pairs; WCAG numbers in KPIs.
+- **BACKEND / DATA REPORT**: `diagram(architecture flow) → tree(data/file structure) → keyvalue(connection strings as env names, ports — never secrets) → table(schema: table, column, type, index) → terminal(migration/seed output as evidence)`. Use `graph` for service dependency maps.
+- **DATA SCIENCE / STATS**: `kpi(mean/median/n) → chart(histogram=bar of binned data, box→use table of quartiles until native box plot) → scatter(correlations) → table(summary stats per column) → callout(method notes)`. Regression coefficients → table with a `danger` badge for p>0.05.
+- **MATH / SCIENCE**: `text` or `code` block with the formula (LaTeX-capable renderer pending — emit plain Unicode math: ×, ∑, √, superscripts) → `table(worked example)` → `callout(the intuition)`.
+- **COMMERCE / FINANCE**: `kpi(revenue/growth) → chart:funnel(conversion stages) → chart:line(revenue trend) → table(cohort/segment breakdown) → badges(period/segment tone)`.
+- **CODING / DEV REPORT**: `diff(per-file change) → tree(touched paths) → terminal(test output) → checklist(passed/failed) → callout danger(known risks)`.
+- **RESEARCH**: `badges(sources count) → callout(answer first) → kpi×3(key numbers) → table(claim, evidence, confidence) → callout warn(what would change it) → references(real hrefs)`.
+
+
