@@ -6496,6 +6496,31 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
    holds a whole block (chart, table, code), so only the areas/columns are
    inherited and the ratio is dropped. */
 .ast-cv-layout.bento > .ast-cv-layout-cell { aspect-ratio: auto !important; max-height: none; }
+/* BENTO ON A PHONE IS ONE COLUMN (measured 2026-10-05). The .mg-N breakpoints
+   are for image tiles in a media grid: a 2-up tile of images reads fine at
+   360px, but a canvas cell holds a whole block, so two side-by-side cells are
+   ~130px of content each. `.mg-5` measured cols=2 with cells [132,132,132,132]
+   at 390px. One column, natural auto-placement, aspect ratio already dropped.
+
+   THE CELL HALF MATTERS AS MUCH AS THE CONTAINER HALF: LayoutView writes
+   `grid-area: a` inline on every bento cell (that is what makes the desktop
+   template deterministic), and `grid-area: <name>` with no matching
+   `grid-template-areas` invents a named LINE and collapses the cell onto it —
+   the same defect the container rule just removed, reintroduced one level down.
+   Measured after the container half alone: cols=3 with every cell 30px wide.
+   `!important` is the only thing that beats an inline style, so it is load-
+   bearing here and must stay. */
+@media (max-width: 639px) {
+  .ast-cv-layout.bento,
+  .ast-cv-layout.bento.mg-1, .ast-cv-layout.bento.mg-2, .ast-cv-layout.bento.mg-3,
+  .ast-cv-layout.bento.mg-4, .ast-cv-layout.bento.mg-5 {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-template-areas: none;
+    gap: 8px;
+  }
+  .ast-cv-layout.bento > .ast-cv-layout-cell { grid-area: auto !important; }
+}
 @media (max-width: 639px) {
   .ast-cv-layout.grid, .ast-cv-layout.split { grid-template-columns: minmax(0, 1fr); }
   .ast-cv-layout.masonry { columns: 1; }
