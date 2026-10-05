@@ -20,7 +20,7 @@ const KNOWN_TYPES = new Set([
   "accordion", "terminal", "badges", "divider",
   "spreadsheet", "slides", "document", "text",
   "slider", "select", "multiselect", "segmented", "toggle", "search", "data",
-  "graph", "image", "gallery", "video",
+  "graph", "image", "gallery", "video", "layout",
 ]);
 
 // Valid enum values
@@ -31,6 +31,10 @@ const VALID_CHART_KINDS = new Set([
   "line", "area", "bar", "radial", "pie", "donut", "stack",
   "sankey", "treemap", "funnel", "radar", "scatter",
 ]);
+
+// Layout composite modes. An unknown mode degrades to "stack" (always correct),
+// never drops the container — the children are the content, not the frame.
+const VALID_LAYOUTS = new Set(["stack", "bento", "split", "masonry", "grid"]);
 
 // Maximum string lengths (prevent overflow)
 const MAX_STRING = 10000;
@@ -732,6 +736,26 @@ function sanitizeBlock(b: unknown, depth = 0): CanvasBlock | null {
       }
       if (items.length === 0) return null;
       sanitized.items = items;
+      break;
+    }
+    case "layout": {
+      // Composite container: children are BLOCKS, sanitized by the same
+      // per-block validator at the same MAX_NEST_DEPTH as tabs/accordion — a
+      // nested block is not a lesser citizen and must not route around the caps.
+      // Without this case the block falls through to `default: return null` and
+      // vanishes from the card — the exact bug class that shipped twice.
+      const raw = Array.isArray(obj.blocks) ? obj.blocks : Array.isArray(obj.items) ? obj.items : null;
+      if (!raw) return null;
+      const blocks = sanitizeBlockList(raw, depth + 1);
+      // Fail-soft: an empty frame is not a layout — the children ARE the content.
+      if (blocks === undefined) return null;
+      const layout = typeof obj.layout === "string" && VALID_LAYOUTS.has(obj.layout) ? obj.layout : "stack";
+      const cols = typeof obj.cols === "number" && Number.isFinite(obj.cols)
+        ? Math.max(2, Math.min(4, Math.round(obj.cols)))
+        : undefined;
+      sanitized.layout = layout;
+      if (cols !== undefined) sanitized.cols = cols;
+      sanitized.blocks = blocks;
       break;
     }
     case "diff": {

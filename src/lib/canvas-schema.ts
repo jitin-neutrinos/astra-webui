@@ -321,6 +321,24 @@ export interface VideoBlock {
 }
 
 
+// ── layout composite (canvas v1 expansion) ────────────────────────────────────
+// A container whose CHILDREN are blocks, so a card can say "KPI row + chart +
+// image" as one coherent surface instead of three stacked blocks. It reuses the
+// .mg-* grid templates that already exist for the media grid, so the two
+// surfaces cannot drift; masonry is CSS multi-column (no JS measurement on a
+// streaming surface).
+
+export type LayoutMode = "stack" | "bento" | "split" | "masonry" | "grid";
+
+export interface LayoutBlock {
+  type: "layout";
+  layout: LayoutMode;
+  /** Grid columns for `grid`/`split` (2-4); masonry ignores it. */
+  cols?: number;
+  blocks: CanvasBlock[];
+}
+
+
 // ── Editable + downloadable blocks (v4) ──────────────────────────────────────
 // Every one of these is BOTH embedded and expandable to fullscreen, and has a
 // working Download. The shape stays plain JSON: an agent emits rows/slides/text,
@@ -390,6 +408,7 @@ export type CanvasBlock = (
   | SpreadsheetBlock | SlidesBlock | DocumentBlock | TextBlock
   | SliderBlock | SelectBlock | MultiSelectBlock | SegmentedBlock | ToggleBlock | SearchBlock | DataBlock
   | GraphBlock | ImageBlock | GalleryBlock | VideoBlock
+  | LayoutBlock
 ) & { visible?: unknown };
 
 export interface CanvasSpec {
@@ -420,6 +439,8 @@ const BLOCK_TYPES = new Set([
   // v5 reactive + media
   "slider", "select", "multiselect", "segmented", "toggle", "search", "data",
   "graph", "image", "gallery", "video",
+  // canvas v1 expansion
+  "layout",
 ]);
 const CHART_KINDS = new Set(["line", "area", "bar", "radial", "pie", "donut", "stack", "sankey", "treemap", "funnel", "radar", "scatter"]);
 const TONES = new Set(["info", "warn", "success", "danger"]);
@@ -474,6 +495,16 @@ const TYPE_ALIASES: Record<string, string> = {
   // v5 graph
   network: "graph", "knowledge-graph": "graph", relationmap: "graph", "force-graph": "graph",
   topology: "graph", nodegraph: "graph", websvg: "graph",
+  // v1 expansion: the LAYOUT MODES are the near-miss names a model reaches for
+  // when it means "compose these blocks" (see LAYOUT_MODE_ALIAS below).
+  bento: "layout", "grid-layout": "layout", columns: "layout", masonry: "layout",
+};
+
+/** A `layout` block whose TYPE is one of these carries its mode in the type
+ *  itself (`{type:"bento", blocks:[…]}`) — the alias above normalises the type to
+ *  "layout", so the mode has to be rescued from the original name. */
+const LAYOUT_MODE_ALIAS: Record<string, LayoutMode> = {
+  bento: "bento", masonry: "masonry", columns: "masonry", "grid-layout": "grid",
 };
 
 // kpi `trend` is a DIRECTION. Models reuse severity/status words for it
@@ -981,6 +1012,29 @@ function validateBlockInner(b: any): CanvasBlock | null {
       // nothing open by default → open the first, so the block is not a wall of headers
       if (!items.some((x) => x.open)) items[0].open = true;
       return { type: "accordion", items };
+    }
+    case "layout": {
+      // Composite container — the same composition contract as tabs/accordion:
+      // `blocks` hold blocks, each validated by validateBlock, so a nested
+      // block keeps its own caps, enum normalisation and lazy-load dispatch.
+      // A layout with no usable child is not a layout.
+      if (!Array.isArray(b.items) && !Array.isArray(b.blocks)) return null;
+      const raw = (Array.isArray(b.blocks) ? b.blocks : Array.isArray(b.items) ? b.items : []) as unknown[];
+      const inner: CanvasBlock[] = [];
+      for (const x of raw) {
+        const v = validateBlock(x);
+        if (v) inner.push(v);
+      }
+      if (inner.length === 0) return null;
+      // Mode: explicit `layout` wins; a mode named in the block TYPE (the
+      // LAYOUT_MODE_ALIAS rescue) is next; anything unknown degrades to stack,
+      // which always reads correctly. cols is clamped to a sane 2-4.
+      const fromType = LAYOUT_MODE_ALIAS[T];
+      const mode = b.layout === "bento" || b.layout === "split" || b.layout === "masonry" || b.layout === "grid" ? b.layout
+        : b.layout === "stack" ? "stack"
+        : fromType ?? "stack";
+      const cols = isNum(b.cols) ? Math.max(2, Math.min(4, Math.round(b.cols))) : undefined;
+      return { type: "layout", layout: mode, cols, blocks: inner };
     }
     case "terminal": {
       const lines: TerminalBlock["lines"] = [];

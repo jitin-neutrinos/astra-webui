@@ -1524,3 +1524,143 @@ test("scatter: [[x,y]] pairs and [{x,y}] objects parse to canonical pairs (no si
   const bar = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "chart", chart: "bar", series: [{ name: "s", points: [[1, 2], [3, 4]] }] }] }));
   assert.equal(bar, null, "pairs must not leak into non-scatter charts");
 });
+
+
+// ── layout composite (canvas v1 expansion) ─────────────────────────────────────
+// `layout` is a CONTAINER whose children are blocks, so it has the same
+// composition contract as tabs/accordion — and the same two failure modes that
+// shipped as real bugs: a missing SANITIZER case drops the block entirely, and
+// a sanitizer that rebuilds the block without `blocks` leaves an empty frame.
+const lay = (b: unknown) => parseCanvasSpec(JSON.stringify({ v: 1, blocks: [b] }));
+
+test("layout: nested blocks parse and SURVIVE the sanitizer (both sides asserted)", () => {
+  const spec = lay({ type: "layout", layout: "bento", blocks: [
+    { type: "kpi", label: "A", value: 1 },
+    { type: "callout", tone: "warn", body: "b" },
+  ] });
+  assert.ok(spec, "a layout with valid children parses");
+  const p = spec!.blocks[0] as any;
+  assert.equal(p.type, "layout");
+  assert.equal(p.layout, "bento");
+  assert.equal(p.blocks.length, 2);
+
+  // The sanitizer is ONE call on the render path (chat-timeline.tsx:70). A card
+  // asserted only on the parser side stayed green through the accordion bug,
+  // where the parser was correct and the sanitizer threw the children away.
+  const s = sanitizeCanvasSpec(spec) as any;
+  assert.ok(s, "the layout must survive the sanitizer");
+  const lb = s.blocks[0];
+  assert.equal(lb.type, "layout", "sanitizer must not drop the layout block");
+  assert.equal(lb.layout, "bento");
+  assert.equal(lb.blocks?.length, 2, "sanitizer must PRESERVE the nested blocks");
+  assert.deepEqual(lb.blocks.map((x: any) => x.type), ["kpi", "callout"]);
+});
+
+test("layout: every mode parses, an unknown mode degrades to stack, cols clamp to 2..4", () => {
+  for (const mode of ["stack", "bento", "split", "masonry", "grid"]) {
+    const spec = lay({ type: "layout", layout: mode, blocks: [{ type: "divider", label: "L" }] });
+    assert.ok(spec, `${mode} must parse`);
+    assert.equal((spec!.blocks[0] as any).layout, mode);
+  }
+  const bad = lay({ type: "layout", layout: "hologram-grid", blocks: [{ type: "divider" }] });
+  assert.ok(bad, "an unknown mode must not drop the block");
+  assert.equal((bad!.blocks[0] as any).layout, "stack", "unknown mode degrades to stack");
+  assert.equal((lay({ type: "layout", layout: "grid", cols: 99, blocks: [{ type: "divider" }] })!.blocks[0] as any).cols, 4);
+  assert.equal((lay({ type: "layout", layout: "grid", cols: 0, blocks: [{ type: "divider" }] })!.blocks[0] as any).cols, 2);
+});
+
+test("layout: the mode named in the block TYPE is rescued (bento/masonry aliases)", () => {
+  const b = lay({ type: "bento", blocks: [{ type: "kpi", label: "x", value: 2 }] });
+  assert.ok(b, "a `bento` block must parse rather than degrade the card");
+  assert.equal((b!.blocks[0] as any).type, "layout");
+  assert.equal((b!.blocks[0] as any).layout, "bento");
+  const m = lay({ type: "masonry", blocks: [{ type: "kpi", label: "x", value: 2 }] });
+  assert.equal((m!.blocks[0] as any).layout, "masonry");
+});
+
+test("layout: fail-soft — empty/all-invalid children drop the block, valid siblings survive", () => {
+  // A layout with nothing to show is not a layout (same law as a tab).
+  assert.equal(lay({ type: "layout", layout: "grid", blocks: [] }), null);
+  assert.equal(lay({ type: "layout", layout: "grid", blocks: [{ type: "hologram" }] }), null);
+  assert.equal(lay({ type: "layout", layout: "grid" }), null, "no blocks array at all is invalid");
+  // Fail-soft is per CHILD: one bad block must not cost the card its good ones.
+  const mixed = lay({ type: "layout", layout: "grid", blocks: [{ type: "hologram" }, { type: "divider", label: "kept" }] });
+  assert.ok(mixed, "a layout with one good child must survive");
+  assert.equal((mixed!.blocks[0] as any).blocks.length, 1);
+  // A junk mode/type must not throw.
+  assert.doesNotThrow(() => lay({ type: "layout", layout: 7, cols: "two", blocks: [{ type: "divider" }] }));
+});
+
+test("layout: nests inside accordion/tabs AND nests another layout (the render path)", () => {
+  const spec = parseCanvasSpec(JSON.stringify({
+    v: 1,
+    blocks: [{
+      type: "accordion",
+      items: [{
+        title: "t",
+        blocks: [{
+          type: "layout", layout: "split",
+          blocks: [
+            { type: "divider", label: "L" },
+            { type: "layout", layout: "stack", blocks: [{ type: "kpi", label: "deep", value: 3 }] },
+          ],
+        }],
+      }],
+    }],
+  }));
+  assert.ok(spec);
+  const s = sanitizeCanvasSpec(spec) as any;
+  // The accordion case sanitizes nested blocks, so the layout must arrive intact
+  // one level down — a layout dropped HERE is invisible to every test above.
+  const inner = s.blocks[0].items[0].blocks;
+  assert.equal(inner[0].type, "layout", "layout must survive inside an accordion");
+  assert.equal(inner[0].blocks.length, 2);
+  assert.equal(inner[0].blocks[1].type, "layout", "layouts may nest");
+  assert.equal(inner[0].blocks[1].blocks[0].label, "deep");
+  assert.equal(s.blocks[0].items[0].open, true, "the accordion still defaults its first item open");
+});
+
+test("layout: nesting deeper than MAX_NEST_DEPTH degrades instead of overflowing the stack", () => {
+  // The PARSER does not cap depth (an agent-authored card can nest arbitrarily),
+  // so the cap lives in the sanitizer — same MAX_NEST_DEPTH=6 as tabs/accordion.
+  // Measured contract: depth <= 6 survives intact; deeper degrades exactly the
+  // way an over-deep tab/accordion does — the empty result is dropped rather
+  // than recursed into. What must NEVER happen is an unbounded descent.
+  const chain = (n: number) => {
+    let inner: any = { type: "divider", label: "deepest" };
+    for (let i = 0; i < n; i++) inner = { type: "layout", layout: "stack", blocks: [inner] };
+    return inner;
+  };
+  const depthOf = (s: any) => {
+    let d = 0, node = s?.blocks?.[0];
+    while (node && node.type === "layout" && node.blocks?.length) { d++; node = node.blocks[0]; }
+    return d;
+  };
+  let spec: any;
+  assert.doesNotThrow(() => { spec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [chain(12)] })); });
+  assert.ok(spec, "the parser tolerates arbitrary depth");
+  let s: any;
+  assert.doesNotThrow(() => { s = sanitizeCanvasSpec(spec); }, "the sanitizer must never recurse without a bound");
+
+  // A chain within the cap survives whole.
+  const okSpec = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [chain(6)] }));
+  assert.equal(depthOf(sanitizeCanvasSpec(okSpec)), 6, "depth 6 is inside the cap and must survive intact");
+  // Beyond it the frame is dropped — an over-deep container is not a surface.
+  assert.equal(s, null, "depth 12 degrades like an over-deep tab, never a stack overflow");
+  // And a card with a SURVIVING sibling keeps that sibling: the cap is per branch.
+  const withSib = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [chain(9), { type: "kpi", label: "kept", value: 1 }] }));
+  const ws = sanitizeCanvasSpec(withSib) as any;
+  assert.ok(ws, "the sibling keeps the card alive");
+  assert.ok(ws.blocks.some((b: any) => b.type === "kpi"), "the sibling survives an over-deep branch");
+});
+
+test("layout: markdown copy serializes the children in document order", () => {
+  const spec = lay({ type: "layout", layout: "bento", blocks: [
+    { type: "kpi", label: "A", value: 1 },
+    { type: "code", language: "ts", code: "const x = 1;" },
+  ] });
+  assert.ok(spec);
+  const md = canvasToMarkdown(spec!);
+  assert.match(md, /Layout \(bento\)/);
+  assert.ok(md.indexOf("**A:**") < md.indexOf("const x = 1;"), "children keep document order");
+});

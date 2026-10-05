@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState, lazy, Suspense, Fragment } from "react";
 import { useReducedMotion, useSpring, motion } from "motion/react";
 import { cn } from "../../lib/utils";
+import { AREAS, bentoLayout } from "../../lib/bento";
 import { bindNumber, bindPoints, bindVisible, resolveBinding, resolveFrom, type FromBinding, type DataRow } from "../../lib/canvas-bind";
 import { useCanvasStateVersion, useCanvasScope, useCanvasSeeder, type StateValue } from "./canvas-state";
 
@@ -84,7 +85,7 @@ function reactiveRows(bindVal: unknown, ctx?: RenderCtx): { columns: string[]; r
 // recharts lives behind this boundary: chart blocks defer-load the engine, every
 // other block type (and the whole gate path) stays sync and dependency-free.
 const ChartBlockView = lazy(() => import("./canvas-chart").then((m) => ({ default: m.ChartBlockView })));
-import type { CanvasBlock, KpiBlock, TableBlock, ChecklistBlock, StepsBlock, CalloutBlock, ProgressBlock, TimelineBlock, CompareBlock, TreeBlock, CodeBlock, ReferencesBlock, QuoteBlock, KeyValueBlock, DiffBlock, HeatmapBlock, TabsBlock, AccordionBlock, TerminalBlock, BadgesBlock, DividerBlock } from "../../lib/canvas-schema";
+import type { CanvasBlock, KpiBlock, TableBlock, ChecklistBlock, StepsBlock, CalloutBlock, ProgressBlock, TimelineBlock, CompareBlock, TreeBlock, CodeBlock, ReferencesBlock, QuoteBlock, KeyValueBlock, DiffBlock, HeatmapBlock, TabsBlock, AccordionBlock, TerminalBlock, BadgesBlock, DividerBlock, LayoutBlock } from "../../lib/canvas-schema";
 
 
 // ---- KPI ---------------------------------------------------------------------
@@ -601,6 +602,39 @@ export function HeatmapView({ block }: { block: HeatmapBlock }) {
   );
 }
 
+// ---- Layout composite --------------------------------------------------------
+// A container whose children are blocks. Composition only — no data logic — so
+// it delegates straight back to <Blocks> and every child keeps its own lazy
+// dispatch (chart, diagram, docs) and grouping (KPI rows).
+//
+// LAYOUT LAW: the modes REUSE the .mg-* grid templates the media grid already
+// ships (src/lib/bento.ts picks one; index.css defines them with a <=639px
+// reflow), so the chat media grid and the canvas cannot drift apart. `masonry`
+// is CSS multi-column — no JS measurement on a streaming surface, which is what
+// makes a card paint correctly while it is still arriving.
+function LayoutView({ block }: { block: LayoutBlock }) {
+  const { layout, cols, blocks } = block;
+  // The bento templates address five NAMED grid areas (a..e — src/lib/bento.ts
+  // AREAS); each cell claims its own area name, so the grid is deterministic,
+  // print-safe and needs no JS measurement.
+  const { cls } = bentoLayout(blocks.length);
+  const items = blocks.map((b, i) => (
+    <div key={i} className="ast-cv-layout-cell" style={{ "gridArea": AREAS[i] ?? "auto" } as React.CSSProperties}>
+      <Blocks blocks={[b]} animate={false} canvasId={`lay-${i}`} />
+    </div>
+  ));
+  if (layout === "stack") return <div className="ast-cv-layout stack">{items}</div>;
+  if (layout === "masonry") return <div className="ast-cv-layout masonry">{items}</div>;
+  if (layout === "bento") return <div className={cn("ast-cv-layout bento", cls)}>{items}</div>;
+  // split / grid: an explicit column count, defaulting to a side-by-side pair.
+  const n = cols ?? 2;
+  return (
+    <div className={cn("ast-cv-layout", layout)} style={{ "--layout-cols": n } as React.CSSProperties}>
+      {items}
+    </div>
+  );
+}
+
 // ---- Tabs ---------------------------------------------------------------------
 
 export function TabsView({ block }: { block: TabsBlock }) {
@@ -829,6 +863,7 @@ function renderOne(b: CanvasBlock, id: string, bi: number, ctx?: RenderCtx): Rea
     case "diff": return <DiffView block={b} />;
     case "heatmap": return <HeatmapView block={b} />;
     case "tabs": return <TabsView block={b} />;
+    case "layout": return <LayoutView block={b} />;
     case "accordion": return <AccordionView block={b} />;
     case "terminal": return <TerminalView block={b} />;
     case "badges": return <BadgesView block={b} />;

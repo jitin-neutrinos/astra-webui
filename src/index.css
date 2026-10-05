@@ -27,6 +27,26 @@
   --stagger-base: 40ms;
   --kb: 0px;
 
+  /* Syntax-highlight tokens — the DARK values. shiki's CSS-variables theme emits
+     only `var(--code-token-<x>, <theme default>)`, so a light/dark switch (and
+     every palette) retints code WITHOUT re-running the highlighter. Declared
+     here and in the light scope, never inside @theme: they are not Tailwind
+     tokens and must never be painted by hue name. `--code-background` and
+     `--code-foreground` are shiki's own wrapper values on the inner <pre>. */
+  --code-background: transparent;
+  --code-foreground: #e6e8ef;
+  --code-comment: #8d929e;
+  --code-string: #6fddb0;
+  --code-number: #f0b978;
+  --code-keyword: #c9a2f0;
+  --code-function: #7cc4ff;
+  --code-type: #6fd6d0;
+  --code-variable: #f490b8;
+  --code-constant: #f490b8;
+  --code-punctuation: #a7adba;
+  --code-tag: #f490b8;
+  --code-attr: #7cc4ff;
+
   /* chat bubbles: Astra = LIGHT tint of the theme ACCENT with text that
      flips per theme (dark ink on light theme, light text on dark theme —
      owner 09-26: pale solid was too bright in dark mode, revert); user = light
@@ -2048,6 +2068,22 @@ html.theme-fading body * {
   --cv-tile: color-mix(in srgb, var(--color-midnight) 62%, var(--color-void));
   --cv-border-strong: color-mix(in srgb, var(--color-brandtext) 14%, transparent);
   --cv-border-hairline: color-mix(in srgb, var(--color-brandtext) 7%, transparent);}
+
+[data-theme="light"] {
+  --code-background: transparent;
+  --code-foreground: #2a2c33;
+  --code-comment: #6b7280;
+  --code-string: #0f7b52;
+  --code-number: #9a4a06;
+  --code-keyword: #7a3ea8;
+  --code-function: #1f5fbf;
+  --code-type: #0b6a72;
+  --code-variable: #b03060;
+  --code-constant: #b03060;
+  --code-punctuation: #4b5563;
+  --code-tag: #b03060;
+  --code-attr: #1f5fbf;
+}
 
 [data-theme="light"] body {
   background-color:rgb(var(--light-c-76));
@@ -6432,3 +6468,79 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
      animation stops, so restore a solid ink for that case. */
   .ast-cv-pending-label { background: none; color: var(--color-muted); -webkit-text-fill-color: currentColor; }
 }
+
+/* ── canvas v1 expansion surfaces ──────────────────────────────────────────── */
+
+/* layout composite — composition only. The modes REUSE the .mg-* grid templates
+   the media grid already ships, so chat media and canvas layouts cannot drift.
+   Masonry is CSS multi-column: no JS measurement, which is what lets a card
+   paint correctly while it is still streaming. Colours come from the canvas
+   surface tokens only, and there is deliberately NO coloured edge rail in this
+   block (owner law 3). */
+.ast-cv-layout { display: grid; gap: 8px; width: 100%; min-width: 0; }
+.ast-cv-layout.stack { grid-template-columns: minmax(0, 1fr); }
+.ast-cv-layout.grid,
+.ast-cv-layout.split { grid-template-columns: repeat(var(--layout-cols, 2), minmax(0, 1fr)); align-items: start; }
+/* One child must never sit in a narrow column. */
+.ast-cv-layout.grid:has(> .ast-cv-layout-cell:only-child),
+.ast-cv-layout.split:has(> .ast-cv-layout-cell:only-child) { grid-template-columns: minmax(0, 1fr); }
+.ast-cv-layout.masonry { display: block; columns: 2; column-gap: 8px; }
+.ast-cv-layout.masonry > .ast-cv-layout-cell { break-inside: avoid; margin-bottom: 8px; }
+.ast-cv-layout-cell { min-width: 0; }
+.ast-cv-layout-cell > .ast-cv-group { margin: 0; }
+.ast-cv-layout.bento { gap: 6px; }
+/* The .mg-* templates carry aspect ratios sized for IMAGE tiles; a canvas cell
+   holds a whole block (chart, table, code), so only the areas/columns are
+   inherited and the ratio is dropped. */
+.ast-cv-layout.bento > .ast-cv-layout-cell { aspect-ratio: auto !important; max-height: none; }
+@media (max-width: 639px) {
+  .ast-cv-layout.grid, .ast-cv-layout.split { grid-template-columns: minmax(0, 1fr); }
+  .ast-cv-layout.masonry { columns: 1; }
+}
+
+/* math (katex). katex.min.css carries ZERO hex colours, so every glyph inherits
+   from --color-brandtext; only the failure state is coloured. */
+.ast-cv-math { overflow-x: auto; padding: 4px 0; text-align: center; }
+.ast-cv-math .katex { color: var(--color-brandtext); font-size: 1.02em; }
+/* Bad TeX degrades to the SOURCE text in the danger role — never a thrown card. */
+.ast-cv-math-bad { color: var(--color-redx); font: 400 12.5px/1.5 var(--font-mono); text-align: left; white-space: pre-wrap; }
+.ast-cv-math-label { margin-top: 4px; color: var(--color-muted); font: 400 11px/1.4 var(--font-sans); text-align: center; }
+.ast-cv-math-inline { display: inline; }
+
+/* shiki: the highlighter emits `var(--code-<token>)` only, so the tokens
+   declared in the root/light scopes above drive every mode and palette. */
+.ast-cv-code-body .shiki { background: transparent; color: var(--code-foreground); }
+.ast-cv-code-body .shiki span { color: var(--code-foreground); }
+.ast-cv-diff .shiki, .ast-cv-term-body .shiki { background: transparent; }
+.ast-cv-term-line .shiki { display: inline; }
+
+/* gitgraph — lane colours ride the theme tier ramp, never hex. */
+.ast-cv-git { overflow-x: auto; }
+.ast-cv-git-svg { display: block; }
+.ast-cv-git-lane { fill: none; stroke-width: 2; }
+.ast-cv-git-lane.l0 { stroke: var(--color-accent); }
+.ast-cv-git-lane.l1 { stroke: var(--color-emerald); }
+.ast-cv-git-lane.l2 { stroke: var(--color-amber); }
+.ast-cv-git-lane.l3 { stroke: var(--color-fuchsiax); }
+.ast-cv-git-link { fill: none; stroke: var(--color-muted); stroke-width: 1.4; }
+.ast-cv-git-node { stroke-width: 1.6; }
+.ast-cv-git-node.merge { fill: var(--surface-raised); stroke: var(--color-brandtext); }
+.ast-cv-git-head { fill: var(--color-accent); stroke: var(--color-accent); }
+.ast-cv-git-tag { fill: var(--color-muted); font: 500 9.5px/1 var(--font-mono); }
+.ast-cv-git-msg { fill: var(--color-brandtext); font: 400 11px/1.2 var(--font-sans); }
+.ast-cv-git-meta { fill: var(--color-muted); font: 400 9.5px/1.2 var(--font-mono); }
+.ast-cv-git-head-label { fill: var(--color-accent); font: 600 9.5px/1 var(--font-mono); }
+
+/* table.stats footer — summary statistics computed by the RENDERER, never by
+   the model, so no arithmetic is ever done in the model's head. */
+.ast-cv-table-stats th { color: var(--color-muted); font-weight: 500; }
+.ast-cv-table-stats td { color: var(--color-brandtext); font: 400 11.5px/1.4 var(--font-mono); }
+
+/* diagram entity/ER field rows + circuit glyphs + cardinality terminators. */
+.ast-cv-dg-field-name { fill: var(--color-brandtext); font: 400 10.5px/1 var(--font-mono); }
+.ast-cv-dg-field-type { fill: var(--color-muted); font: 400 10px/1 var(--font-mono); }
+.ast-cv-dg-field-key { fill: var(--color-amber); font: 600 9px/1 var(--font-mono); }
+.ast-cv-dg-entity-head { fill: color-mix(in srgb, var(--color-accent) 12%, transparent); }
+.ast-cv-dg-entity-sep { stroke: var(--cv-border-hairline); }
+.ast-cv-dg-glyph { fill: none; stroke: var(--color-brandtext); stroke-width: 1.5; }
+.ast-cv-dg-card { fill: var(--color-muted); font: 500 9.5px/1 var(--font-mono); }

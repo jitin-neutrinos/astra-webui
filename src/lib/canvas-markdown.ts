@@ -163,6 +163,12 @@ function blockToMd(b: CanvasBlock): string {
       return `![${b.alt || ""}](${b.src})${b.caption ? `\n\n${b.caption}` : ""}`;
     case "gallery":
       return b.items.map((it) => `![${it.alt || ""}](${it.src})${it.caption ? ` — ${it.caption}` : ""}`).join("\n\n");
+    case "layout": {
+      // Composite container — the children serialize exactly as they would at the
+      // top level, so a copied card reads in document order.
+      const head = `**Layout (${b.layout})**\n`;
+      return head + b.blocks.map(blockToMd).join("\n\n");
+    }
     case "video":
       return `[video: ${b.src}]${b.caption ? `\n\n${b.caption}` : ""}`;
   }
