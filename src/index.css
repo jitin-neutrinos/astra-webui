@@ -896,11 +896,28 @@ html.theme-fading body * {
 .chat-composer:focus-within .composer-trace, .chat-composer.drag-over .composer-trace { opacity: 0; }
 .chat-composer::before { content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1px; background:linear-gradient(135deg, rgb(var(--c-8) / 0.35), rgb(var(--c-12) / 0.14) 40%, transparent 60%, transparent); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; opacity: 0; transition: opacity 260ms cubic-bezier(0.23,1,0.32,1); pointer-events: none; }
 .chat-composer:focus-within::before { opacity: 1; }
-/* The composer is TWO separate rounded cards now (owner 2026-10-04): the text
-   input and the buttons bar. .chat-composer-shell is just a layout wrapper (no
-   surface); each card keeps the full .chat-composer surface treatment, and the
-   running trace lives ONLY on the input card. Cards stack with a small gap. */
-.chat-composer-shell { position: relative; display: flex; flex-direction: column; gap: 8px; }
+/* The composer is TWO separate rounded cards (owner 2026-10-04): the text
+   input and the buttons bar. The running trace lives ONLY on the input card.
+
+   Owner 2026-10-05: the shell is now also the PARENT rounded rectangle — a
+   subtle plate wrapping both cards (hairline accent border, faint void fill,
+   its own focus ring). NO backdrop-filter here: nested backdrop blur is a
+   known jank trap on the Android APK and the inner cards already blur.
+   Gap tightened 8px -> 5px (owner: "minimal aesthetic subtle space").
+   Tokens, not channel vars: --color-accent/--color-void re-point per theme
+   mode, so the plate adapts to light/dark without a duplicate block. */
+.chat-composer-shell {
+  position: relative; display: flex; flex-direction: column; gap: 5px;
+  padding: 4px; border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 16%, transparent);
+  background: color-mix(in srgb, var(--color-void) 55%, transparent);
+  box-shadow: 0 1px 2px rgba(0,0,0,.15), 0 10px 32px -20px rgba(0,0,0,.5);
+  transition: border-color 220ms cubic-bezier(0.23,1,0.32,1), box-shadow 220ms cubic-bezier(0.23,1,0.32,1);
+}
+.chat-composer-shell:focus-within {
+  border-color: color-mix(in srgb, var(--color-accent) 32%, transparent);
+  box-shadow: 0 1px 2px rgba(0,0,0,.15), 0 0 0 3px color-mix(in srgb, var(--color-accent) 8%, transparent), 0 10px 32px -20px rgba(0,0,0,.5);
+}
 .chat-composer-shell.drag-over .chat-composer { border-color: rgb(var(--c-13) / 0.6); }
 /* Composer height: ONE line of text plus a subtle padding (owner 2026-10-04).
    Both cards solve to the SAME 38px total, so the typing field and the button bar

@@ -118,6 +118,22 @@ check('composer input scrollbar hidden (WebKit/Chromium)',
 check('composer input still scrolls once it exceeds max-height',
   valOf('.chat-composer-input', 'overflow-y') === 'auto');
 
+// --- 2b. composer parent plate (owner 10-05) ---------------------------------
+// The shell is the parent rounded rectangle wrapping both cards. NB: later
+// media-gated `.chat-composer-shell` rules exist (max-lg tweaks), and both
+// ruleFor and valOf ignore media context — so identify the PLATE rule by its
+// unique `border:1px…` declaration instead of by position.
+const shellRule = matches('.chat-composer-shell').find((r) => [...r.decls].some((d) => d.startsWith('border:1px')));
+check('composer shell is the parent plate (border + radius + padding)',
+  !!shellRule && shellRule.decls.has('border-radius:16px')
+    && shellRule.decls.has('padding:4px'),
+  shellRule ? [...shellRule.decls].filter((d) => d.startsWith('border') || d.startsWith('padding') || d.startsWith('border-radius')).join(' | ') : 'no rule');
+check('composer plate gap is the subtle 5px (not the old 8px)',
+  shellRule?.decls.has('gap:5px') === true,
+  'gap:' + valOf('.chat-composer-shell', 'gap'));
+check('composer plate carries NO backdrop-filter (nested blur janks the APK)',
+  !shellRule?.decls.size || ![...shellRule.decls].some((d) => d.startsWith('backdrop-filter')));
+
 // --- 3. chat scrollbars on brand accent primary, theme-reactive -------------
 // The @supports branch is the one real browsers take; assert the var() form is
 // what lives there (the bare-hex sibling is the pre-color-mix fallback).
