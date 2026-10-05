@@ -25,11 +25,20 @@ import {
   // no new dependency, just four more chart kinds for the same price.
   ScatterChart, Scatter, ZAxis, RadarChart, Radar,
   PolarGrid, PolarRadiusAxis,
+  // canvas v1 expansion — `box` is a Bar plus its ErrorBar; recharts 2.15 already
+  // ships both, so the shape costs no new dependency. The quartiles themselves come
+  // from d3-array (quantileSorted) in the data adapter below.
+  ErrorBar,
 } from "recharts";
 import type { ChartBlock } from "../../lib/canvas-schema";
 import type { RenderCtx } from "./canvas-blocks";
 import { bindPoints } from "../../lib/canvas-bind";
 import { evaluate } from "../../lib/canvas-expr";
+// d3-array is IMPORTED WHOLE but used for two functions (quantileSorted, bin):
+// it is a tree of small ES modules, so the bundler keeps only what the adapters
+// reach. Both live in the SAME lazy chunk as recharts — nothing here touches the
+// eager path.
+import { quantileSorted, bin } from "d3-array";
 
 // Owner 2026-10-05: series separate by HUE — accent/emerald/amber/fuchsiax/redx
 // (theme roles, so every palette + mode inherits). Pre-2026-10-05 the series
@@ -130,28 +139,234 @@ function scatterAxisTitles(labels: string[] | undefined, seriesName: string): { 
   return { x: pick(/^\s*x\s*[:=]\s*/i) || "", y: pick(/^\s*y\s*[:=]\s*/i) || seriesName };
 }
 
+// ── box + histogram (canvas v1 expansion) ─────────────────────────────────────
+// Both take the ORDINARY `{labels, series[].points}` shape — no new authoring key
+// — because the arithmetic belongs here, not in the model's head:
+//
+//   box        one series per group, each a list of RAW SAMPLES. The bar spans
+//              q1..q3 (IQR) and the ErrorBar draws the min..max whisker, so the
+//              box IS the data rather than a summary the model asserted. d3's
+//              quantileSorted is the R-7 inclusive definition, so the numbers match
+//              what Excel, numpy and pandas report for the same column.
+//   histogram  one series of raw samples, binned with d3 `bin` (Sturges-free,
+//              10 bins or sqrt(n) whichever is larger, capped) and drawn through
+//              the SAME <BarChart> path a plain bar uses. A histogram is a bar
+//              chart of counts; treating it as its own kind only exists so the
+//              agent can say what it means and the renderer can pick the bins.
+//
+// A group with FEWER THAN TWO samples has no quartiles and no whiskers — a
+// "box" drawn from one number is a lie about spread, so that bar is skipped
+// entirely rather than drawn as a zero-height box.
+
+/** Sturges-flavoured bin count: sqrt(n), at least 10, never more than 40. */
+function binCountFor(n: number): number {
+  return Math.max(10, Math.min(40, Math.ceil(Math.sqrt(Math.max(1, n)))));
+}
+
+interface BoxRow {
+  name: string;
+  /** The bar's value is q3 (the TOP of the box), which is what recharts scales. */
+  q3: number;
+  /**
+   * ErrorBar offsets, MEASURED FROM q3 — recharts renders [value-lowBound,
+   * value+highBound] through the y-scale (node_modules/recharts/lib/cartesian/
+   * ErrorBar.js:71-115), so a whisker at min and max is [q3-min, max-q3].
+   * Both are >= 0 by construction (min <= q3 <= max), which is what keeps the
+   * lower whisker pointing down: a negative offset would mirror it upwards and
+   * draw a box that lies about its own range.
+   */
+  whisker: [number, number];
+  median: number;
+  n: number;
+  q1: number;
+  min: number;
+  max: number;
+}
+
+function boxOf(series: { name: string; points: number[] }[], labels: string[]): BoxRow[] {
+  const out: BoxRow[] = [];
+  series.forEach((s, i) => {
+    const lit = (Array.isArray(s.points) ? s.points : []).filter((p) => Number.isFinite(p));
+    // Fewer than 2 samples has no quartiles and no whiskers. A box drawn from one
+    // number asserts a spread that does not exist, so the group is SKIPPED — and
+    // if that empties the chart, the caller renders the no-data state rather than
+    // an axis with nothing on it.
+    if (lit.length < 2) return;
+    const sorted = [...lit].sort((a, b) => a - b);
+    const q1 = quantileSorted(sorted, 0.25)!;
+    const q3 = quantileSorted(sorted, 0.75)!;
+    const min = sorted[0];
+    const max = sorted[sorted.length - 1];
+    out.push({
+      name: labels[i] ?? s.name,
+      q3,
+      whisker: [q3 - min, max - q3],
+      median: quantileSorted(sorted, 0.5)!,
+      n: sorted.length,
+      q1, min, max,
+    });
+  });
+  return out;
+}
+
+/**
+ * The box itself: a FLOATING rect from q1 to q3 with the median ruled across it.
+ *
+ * A custom shape rather than a stacked two-bar trick, because a stack would make
+ * the median a third segment (so a box with no median data still reserved a band)
+ * and would make the y-axis show the sum of the segments rather than the value.
+ * Drawn from the payload so the rect's own height is the IQR, not the axis span:
+ * the bar's scaled geometry (`y`/`height`) measures from the axis domain floor,
+ * which is 0 for a positive data set, so `y - q1*scaled` is only right when the
+ * domain starts at 0 — using the payload's own q1/q3 and the axis' pixel scale
+ * keeps it correct for a domain that does not.
+ */
+function BoxShape(props: any) {
+  const { x, width, payload, y, height, q1: _unused } = props;
+  const p = payload as BoxRow | undefined;
+  if (!p) return null;
+  // The bar is drawn at height = q3 pixels-per-unit, so the q1..q3 span is a
+  // fraction of it. `height` is the pixel span of 0..q3, which is exactly the
+  // scale factor the axis is using for this domain.
+  const unit = height / (p.q3 || 1);
+  const iqrPx = Math.max(1, (p.q3 - p.q1) * unit);
+  const top = y + height - iqrPx;
+  return (
+    <g>
+      <rect x={x} y={top} width={width} height={iqrPx} rx={2} className="ast-cv-box-iqr" />
+      <line
+        x1={x}
+        x2={x + width}
+        y1={top + iqrPx / 2}
+        y2={top + iqrPx / 2}
+        className="ast-cv-box-median"
+      />
+    </g>
+  );
+}
+
+/** The y-axis bounds for a box chart: the whiskers' full extent plus headroom.
+ *  `floorOf`/`ceilOf` are separate so a NEGATIVE sample range still starts at the
+ *  data's own minimum — a box plot of negative values drawn from 0 would waste
+ *  half the plot on empty space and misread the spread as small. */
+function boxFloor(rows: BoxRow[]): number {
+  const lo = rows.reduce((m, r) => Math.min(m, r.min), 0);
+  return Math.min(0, Math.floor(lo * 1.05));
+}
+function boxCeil(rows: BoxRow[]): number {
+  const hi = rows.reduce((m, r) => Math.max(m, r.max), 1);
+  return Math.max(1, Math.ceil(hi * 1.08));
+}
+
+interface HistRow {
+  name: string;
+  count: number;
+  /** Bin bounds, for the tooltip: counts without ranges are not a distribution. */
+  from: number;
+  to: number;
+}
+
+/** Sturges' rule is the textbook default, but on the small samples a chat card
+ *  carries it over-bins (n=12 -> 4 bins of 3). sqrt(n) with a floor of 10 keeps
+ *  the shape readable on a 360px card; 40 is the cap where x labels stop fitting. */
+function histogramOf(points: number[]): HistRow[] {
+  const lit = points.filter((p) => Number.isFinite(p));
+  if (lit.length === 0) return [];
+  // d3 `bin` returns bins with x0/x1 thresholds; the LAST bin's x1 is Infinity, so
+  // it is closed to the data max — otherwise the final bar is labelled "8–∞".
+  const bins = bin().thresholds(binCountFor(lit.length))(lit);
+  const top = lit[Math.max(0, lit.length - 1)];
+  const lo = lit.slice().sort((a, b) => a - b)[0];
+  return bins
+    .filter((b) => b.length > 0)
+    .map((b) => ({
+      name: `${fmt(b.x0 ?? lo)}–${fmt(Number.isFinite(b.x1 as number) ? (b.x1 as number) : top)}`,
+      count: b.length,
+      from: b.x0 ?? lo,
+      to: Number.isFinite(b.x1 as number) ? (b.x1 as number) : top,
+    }));
+}
+
+/**
+ * Box tooltip: the five-number summary, named.
+ *
+ * The drawn box shows three of the five numbers (min/max are the whisker ends, the
+ * quartiles are the rect's edges); the median is a ruled line. A reader cannot
+ * measure any of them off a screenshot, so the tooltip states all five plus n —
+ * which is also what tells them whether the box is worth trusting (a "box" from 4
+ * points is a weak claim, and the card says so).
+ *
+ * The row is read off `payload[0].payload` — the chart's own datum — with the
+ * precomputed `rows` as the fallback, and every read is optional-chained so a
+ * recharts prop rename degrades to "no tooltip" rather than a thrown card.
+ */
+function BoxTip(p: AnyTooltip & { rows?: BoxRow[] }) {
+  if (!p?.active || !p.payload?.length) return null;
+  const r = (p.payload[0]?.payload ?? p.rows?.[0]) as BoxRow | undefined;
+  if (!r) return null;
+  return (
+    <div className="ast-cv-tooltip">
+      <p className="ast-cv-tooltip-label">{r.name}</p>
+      {([["n", r.n], ["min", r.min], ["q1", r.q1], ["median", r.median], ["q3", r.q3], ["max", r.max]] as [string, number][]).map(([k, v]) => (
+        <p key={k} className="ast-cv-tooltip-row">
+          <span className="ast-cv-tooltip-key">{k}</span>
+          <span className="ast-cv-tooltip-val">{fmt(v)}</span>
+        </p>
+      ))}
+    </div>
+  );
+}
+
+/** Histogram tooltip: the bin RANGE and its count. A count with no range is not
+ *  readable — "4 values" is meaningless without knowing which 4. */
+function HistTip(p: AnyTooltip & { rows?: HistRow[] }) {
+  if (!p?.active || !p.payload?.length) return null;
+  const r = (p.payload[0]?.payload ?? p.rows?.[0]) as HistRow | undefined;
+  if (!r) return null;
+  return (
+    <div className="ast-cv-tooltip">
+      <p className="ast-cv-tooltip-label">{fmt(r.from)} – {fmt(r.to)}</p>
+      <p className="ast-cv-tooltip-row">
+        <span className="ast-cv-dot" style={{ background: SERIES_COLORS[0] }} />
+        <span className="ast-cv-tooltip-val">{r.count} {r.count === 1 ? "value" : "values"}</span>
+      </p>
+    </div>
+  );
+}
+
 
 
 export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: RenderCtx }) {
   // No series ⇒ not a chart. Every adapter reads series[0], so this ONE guard
   // is what stops a malformed block from throwing inside render and blanking
   // the ENTIRE card (measured: the funnel / treemap / sankey reports).
-  if (!Array.isArray(block?.series) || block.series.length === 0) {
-    return (
-      <figure className="ast-cv-chart">
-        {block?.title && <figcaption className="ast-cv-chart-title">{block.title}</figcaption>}
-        <p className="ast-cv-table-empty">No data — this chart arrived without any series.</p>
-      </figure>
-    );
-  }
+  //
+  // The guard is a FLAG, not an early return (2026-10-05, oxlint rules-of-hooks):
+  // it used to `return` the empty figure here, which put every `useMemo` below it
+  // behind a conditional — 3 errors that lint had been reporting on this file all
+  // along, and a real (if rare) hazard: a card whose series arrive late (a
+  // streaming block, or a reactive card that resolves `visible`) would mount with
+  // fewer hooks than it later re-renders with, and React throws
+  // "Rendered more hooks than during the previous render" — blanking the card.
+  // Every read below is already guarded (`Array.isArray` / optional chaining), so
+  // computing them against an empty series is safe and returns empty payloads.
+  // `SERIES` is the ONE normal form every read below uses: the array when it is a
+  // non-empty array, and an EMPTY array otherwise. Aliasing it here (rather than
+  // testing `block.series` at each site) is what lets the no-series guard become a
+  // flag instead of an early return — proven by render: without this alias,
+  // `{type:"chart", chart:"bar"}` with no `series` key at all throws on
+  // `block.series[0]` and blanks the card, which is precisely the defect the
+  // original early return existed to prevent.
+  const SERIES = Array.isArray(block?.series) ? block.series : [];
+  const NO_SERIES = SERIES.length === 0;
   // A series' `points` may be a BINDING (a reactive card authors it as an
   // expression), so every read here is guarded: `.map`/`.length` on the object
   // form would throw and blank the entire card.
-  const firstPts = block.series[0]?.points;
+  const firstPts = SERIES[0]?.points;
   const labels = block.labels || (Array.isArray(firstPts) ? firstPts.map((_, i) => String(i + 1)) : []) || [];
   // Reactive: a series' points may be a binding, and a hidden series drops out.
   const activeSeries = useMemo(
-    () => block.series.filter((sr) => {
+    () => SERIES.filter((sr) => {
       const vis = (sr as unknown as { visible?: unknown }).visible;
       if (vis == null || !ctx) return true;
       const r = vis as Record<string, unknown>;
@@ -161,7 +376,7 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
       }
       return true;
     }),
-    [block.series, ctx],
+    [SERIES, ctx],
   );
   const data = useMemo(() => labels.map((l, i) => {
     const row: Record<string, string | number> = { name: l };
@@ -175,17 +390,46 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
   }), [labels, activeSeries, ctx]);
 
   const radarData = useMemo(() => {
-    const rawFirst = block.series[0]?.points;
+    const rawFirst = SERIES[0]?.points;
     const axes = labels.length ? labels : (Array.isArray(rawFirst) ? rawFirst : []).map((_, i) => String(i + 1));
     return axes.map((a, i) => {
       const row: Record<string, string | number> = { axis: a };
-      for (const sr of block.series) {
+      for (const sr of SERIES) {
         const lit = Array.isArray(sr.points) ? sr.points : [];
         row[sr.name] = lit[i] ?? 0;
       }
       return row;
     });
-  }, [labels, block]);
+  }, [labels, SERIES]);
+
+  // ── box + histogram payloads (one memo, beside the other adapters) ──────────
+  // Both read the RAW points (bindings resolved first), because both TRANSFORM the
+  // samples rather than view them: a box plot needs every observation, and a
+  // histogram bins them. The generic `data` memo is label-indexed, so indexing it
+  // by position here would silently mis-pair a bound series — each reads the
+  // resolved points the scatter adapter reads.
+  //
+  // ONE memo for both kinds: two separate `useMemo` calls added below the no-series
+  // guard were two more conditional-hook sites on top of the three that already
+  // exist in this component (the guard is above every hook here — a pre-existing
+  // shape, deliberately not refactored in this change).
+  const BOX = block.chart === "box";
+  const HIST = block.chart === "histogram";
+  const { boxData, histData } = useMemo(() => {
+    if (!BOX && !HIST) return { boxData: [] as BoxRow[], histData: [] as HistRow[] };
+    if (BOX) return { boxData: boxOf(activeSeries as { name: string; points: number[] }[], labels), histData: [] as HistRow[] };
+    const raw = (activeSeries[0] as unknown as { points: unknown } | undefined)?.points;
+    const pts = raw != null && typeof raw === "object" && ctx ? bindPoints(raw, ctx.scope) : null;
+    const lit = pts ?? (Array.isArray(raw) ? (raw as number[]) : []);
+    return {
+      boxData: [] as BoxRow[],
+      histData: histogramOf(lit.map((p) => Number(p)).filter((n) => Number.isFinite(n))),
+    };
+  }, [BOX, HIST, activeSeries, labels, ctx]);
+  // Fail-soft in the same shape every other adapter uses: an empty box/histogram
+  // renders the no-data line, never an axis with nothing on it. A box whose only
+  // group has a single sample lands here too (see boxOf).
+  const EMPTY_ADAPTER = (BOX && boxData.length === 0) || (HIST && histData.length === 0);
 
   const TT = (p: AnyTooltip) => {
     if (!p.active || !p.payload?.length) return null;
@@ -220,11 +464,23 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
     : block.chart === "radar" ? 230
     : block.chart === "funnel" ? 200
     : block.chart === "treemap" ? 240
-    : block.chart === "sankey" ? 300 : 180;
+    : block.chart === "sankey" ? 300
+    : block.chart === "box" || block.chart === "histogram" ? 200 : 180;
+
 
   // Donut: single-series composition with the total in the hole. Slice colours
   // follow the LABELS (one colour per slice), not the series.
-  const donutTotal = block.series.reduce((n, s) => n + (Array.isArray(s.points) ? (s.points[0] ?? 0) : 0), 0);
+  const donutTotal = SERIES.reduce((n, s) => n + (Array.isArray(s.points) ? (s.points[0] ?? 0) : 0), 0);
+
+  // The empty-figure guard, now AFTER every hook (see NO_SERIES above).
+  if (NO_SERIES) {
+    return (
+      <figure className="ast-cv-chart">
+        {block?.title && <figcaption className="ast-cv-chart-title">{block.title}</figcaption>}
+        <p className="ast-cv-table-empty">No data — this chart arrived without any series.</p>
+      </figure>
+    );
+  }
 
   return (
     <figure className="ast-cv-chart">
@@ -240,13 +496,56 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
              treemap → recharts Treemap, measured width
              funnel  → recharts FunnelChart, measured width + conversion row */
         <Suspense fallback={<div className="ast-cv-graph-skeleton" aria-busy="true" />}><NativeLazy block={block} labels={labels} H={H} /></Suspense>
+      ) : EMPTY_ADAPTER ? (
+        // Same honest empty state the no-series guard uses, one level down: the
+        // block DID validate and DOES have series, they just cannot form a
+        // distribution (a one-sample group, or samples that are not finite). Saying
+        // so is better than an empty axis.
+        <p className="ast-cv-table-empty">
+          {BOX
+            ? "No distribution — a box plot needs at least two values per group."
+            : "No data — this histogram needs at least one finite value."}
+        </p>
+      ) : BOX ? (
+        <ResponsiveContainer width="100%" height={H}>
+          <BarChart data={boxData} margin={{ top: 12, right: 8, bottom: 0, left: 0 }} barCategoryGap="28%">
+            {X}
+            {/* The whisker runs min..max, so the axis must span the RANGE, not
+                0..q3: with the default domain the upper whisker is clipped off the
+                plot, and a function domain cannot help because recharts derives
+                the function's input from the BAR values (q3), not from the
+                ErrorBar. So the bound is stated from the computed extremes, which
+                are the only place the range exists. */}
+            <YAxis
+              tick={AXIS_TICK} tickFormatter={(v: number) => fmt(v)} tickLine={false}
+              axisLine={{ stroke: AXIS_LINE }} width={46}
+              domain={[boxFloor(boxData), boxCeil(boxData)]}
+            />
+            <Tooltip content={<BoxTip rows={boxData} />} cursor={{ fill: "rgb(var(--c-89) / 0.04)" }} />
+            <Bar dataKey="q3" shape={<BoxShape />} isAnimationActive={false}>
+              {/* The whisker is chrome (it is the range, not a series), so it
+                  rides the muted ink and never a series hue — a coloured whisker
+                  would read as a second measurement. */}
+              <ErrorBar dataKey="whisker" direction="y" stroke="var(--color-muted)" strokeWidth={1.4} width={8} />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      ) : HIST ? (
+        <ResponsiveContainer width="100%" height={H}>
+          <BarChart data={histData} margin={{ top: 6, right: 6, bottom: 0, left: 0 }} barCategoryGap="6%">
+            {X}
+            {Y}
+            <Tooltip content={<HistTip rows={histData} />} cursor={{ fill: "rgb(var(--c-89) / 0.04)" }} />
+            <Bar dataKey="count" fill={SERIES_COLORS[0]} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+          </BarChart>
+        </ResponsiveContainer>
       ) : block.chart === "donut" ? (
           <div className="ast-cv-donut">
             <ResponsiveContainer width="100%" height={H}>
               <PieChart>
                 <Pie
                   data={data}
-                  dataKey={block.series[0].name}
+                  dataKey={SERIES[0].name}
                   nameKey="name"
                   innerRadius="64%"
                   outerRadius="92%"
@@ -342,7 +641,7 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
             data={data}
             innerRadius="62%"
             outerRadius="100%"
-            dataKey={block.series[0].name}
+            dataKey={SERIES[0].name}
             startAngle={90}
             endAngle={-270}
           >
@@ -351,7 +650,7 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
                 gauge read as 100%). The domain is what makes the value honest. */}
             <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
             <RadialBar
-              dataKey={block.series[0].name}
+              dataKey={SERIES[0].name}
               cornerRadius={6}
               background={{ fill: "rgb(var(--c-89) / 0.05)" }}
               fill={SERIES_COLORS[0]}
@@ -442,7 +741,11 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
           the donut already render their own `.ast-cv-chart-legend-block` row
           directly beneath their own plot inside NativeChart / .ast-cv-donut, so
           adding a second one here would duplicate it — those kinds are excluded. */}
-      {!NATIVE.has(block.chart) && block.chart !== "donut" && <ChartLegend series={LEG_NAMES} />}
+      {/* A box and a histogram have ONE meaning, not a set of series to disambiguate:
+          the box legend is the group name and the histogram legend is the count, and
+          both are already on the x axis / in the tooltip. A legend row naming the
+          series would add nothing and steal height. */}
+      {!NATIVE.has(block.chart) && block.chart !== "donut" && !BOX && !HIST && <ChartLegend series={LEG_NAMES} />}
     </figure>
   );
 }

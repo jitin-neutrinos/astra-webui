@@ -21,10 +21,14 @@ export interface ColumnStat {
   values: StatValue[];
 }
 
-export const STAT_ORDER: TableStat[] = ["count", "mean", "sd", "min", "median", "p95", "max"];
-
 /** Human labels for the footer header. Abbreviations only where the word is long
- *  enough to crowd a column (`sd`, `p95`); everything else stays readable. */
+ *  enough to crowd a column (`sd`, `p95`); everything else stays readable.
+ *  `n` for count is the one non-obvious one: it is the convention every stats
+ *  table uses, and the footer's own row header already names the column.
+ *
+ *  There is deliberately NO fixed order here: the footer shows the statistics in
+ *  the order the card ASKED for (see `statNames` in canvas-blocks), so the header
+ *  is built from the request rather than from a canonical list. */
 export const STAT_LABEL: Record<TableStat, string> = {
   count: "n",
   mean: "mean",
