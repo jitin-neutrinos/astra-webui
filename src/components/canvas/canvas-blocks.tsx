@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState, lazy, Suspense, Fragment } from "react";
 import { useReducedMotion, useSpring, motion } from "motion/react";
 import { cn } from "../../lib/utils";
+import { cssColorOf } from "../../lib/color-chip";
 import { AREAS, bentoLayout } from "../../lib/bento";
 import { bindNumber, bindPoints, bindVisible, resolveBinding, resolveFrom, type FromBinding, type DataRow } from "../../lib/canvas-bind";
 import { useCanvasStateVersion, useCanvasScope, useCanvasSeeder, type StateValue } from "./canvas-state";
@@ -19,6 +20,25 @@ const isBinding = (v: unknown): boolean => v != null && typeof v === "object";
 function formatKpi(n: number): string {
   if (!Number.isFinite(n)) return "—";
   return Number.isInteger(n) ? n.toLocaleString("en-US") : n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
+// ---- Colour values ---------------------------------------------------------
+// A table cell or key/value that IS a CSS colour renders as its own colour plus
+// the code (whole-string match only — see lib/color-chip.ts). The swatch colour
+// is DATA: the literal authored value, never a theme token.
+function ColorChip({ color }: { color: string }) {
+  return (
+    <span className="ast-cv-swatch">
+      <span className="ast-cv-swatch-dot" style={{ background: color }} aria-hidden="true" />
+      <span className="ast-cv-swatch-val">{color}</span>
+    </span>
+  );
+}
+
+function CellValue({ value }: { value: unknown }) {
+  const color = cssColorOf(value);
+  if (color) return <ColorChip color={color} />;
+  return <>{typeof value === "string" ? value : String(value)}</>;
 }
 
 /** A card is reactive if any block declares a binding or a `visible`. */
@@ -262,7 +282,7 @@ export function TableBlockView({ block, ctx }: { block: TableBlock; ctx?: Render
           {rows.map((r, i) => (
             <tr key={i}>
               {r.map((cell, j) => (
-                <td key={j} className={numCols[j] ? "num" : undefined}>{cell}</td>
+                <td key={j} className={numCols[j] ? "num" : undefined}><CellValue value={cell} /></td>
               ))}
             </tr>
           ))}
@@ -582,7 +602,7 @@ export function KeyValueView({ block }: { block: KeyValueBlock }) {
         {block.items.map((it, i) => (
           <div key={i} className="ast-cv-kv-row">
             <dt className="ast-cv-kv-key">{it.key}</dt>
-            <dd className={cn("ast-cv-kv-val", it.mono && "mono")}>{String(it.value)}</dd>
+            <dd className={cn("ast-cv-kv-val", it.mono && "mono")}><CellValue value={it.value} /></dd>
           </div>
         ))}
       </dl>
@@ -728,14 +748,30 @@ function MathView({ block }: { block: MathBlock }) {
 // reflow), so the chat media grid and the canvas cannot drift apart. `masonry`
 // is CSS multi-column — no JS measurement on a streaming surface, which is what
 // makes a card paint correctly while it is still arriving.
+//
+// MEASURED DEFECT (2026-10-05, scripts/mobile-canvas-audit.mjs): only BENTO may
+// claim a named grid area. `grid-area: a` with no `grid-template-areas` on the
+// container makes the browser invent a NAMED line named `a` and collapse that
+// cell onto it — every other mode painted its children at the row GAP width.
+// Chromium, a 300px container, two children, measured identical in three
+// variants of the same file: with `grid-area: a` the grid resolved to
+// `288px 0px 11.5px` and both cells to 12px; without it, one 300px track and two
+// 300px cells. On the real card every KPI tile in a `stack`/`grid` collapsed to
+// 30px with its label hard-clipped, and `grid`/`split` resolved to THREE tracks
+// (the declared ones plus a phantom 0px one) instead of reflowing to one.
+// So: the area name is emitted for `bento` only, where .mg-N actually defines
+// `grid-template-areas`, and every other mode lets auto-placement do its job.
 function LayoutView({ block, ctx }: { block: LayoutBlock; ctx?: RenderCtx }) {
   const { layout, cols, blocks } = block;
   // The bento templates address five NAMED grid areas (a..e — src/lib/bento.ts
   // AREAS); each cell claims its own area name, so the grid is deterministic,
   // print-safe and needs no JS measurement.
   const { cls } = bentoLayout(blocks.length);
+  // `bento` is the ONE mode whose container declares grid-template-areas, so it
+  // is the only one that may address a named line (see the measurement above).
+  const named = layout === "bento";
   const items = blocks.map((b, i) => (
-    <div key={i} className="ast-cv-layout-cell" style={{ "gridArea": AREAS[i] ?? "auto" } as React.CSSProperties}>
+    <div key={i} className="ast-cv-layout-cell" style={named ? { "gridArea": AREAS[i] ?? "auto" } as React.CSSProperties : undefined}>
       <Blocks blocks={[b]} animate={false} canvasId={`lay-${i}`} ctx={ctx} />
     </div>
   ));
