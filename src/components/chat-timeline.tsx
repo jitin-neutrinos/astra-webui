@@ -50,16 +50,30 @@ import { lazy, Suspense, useId } from "react";
 
 // Canvas chunk (recharts + block renderers) loads only when a message
 // actually carries a valid canvas — the main bundle never pays for it.
-const CanvasView = lazy(() => import("./canvas/canvas-view"));
-import { CanvasErrorBoundary } from "./canvas/canvas-error-boundary";
+//
+// A rejected dynamic import does NOT reach an error boundary: the rejection is async, so
+// nothing throws during render, Suspense shows its fallback forever, and the card is
+// silently blank. That is exactly the "canvas not loading" symptom, and it is what a tab
+// loaded BEFORE a deploy sees when it asks for rotated chunk hashes. So the guard lives
+// HERE, on the promise, where the failure is observable.
+const CanvasView = lazy(() =>
+  import("./canvas/canvas-view").catch((err) => {
+    if (isStaleChunkError(err)) reloadOnce();
+    throw err;
+  }),
+);
+import { CanvasErrorBoundary, isStaleChunkError, reloadOnce } from "./canvas/canvas-error-boundary";
+import { sanitizeCanvasSpec } from "../lib/canvas-sanitize";
 
 function CanvasHost({ spec, partial, id }: { spec?: CanvasSpec; partial?: { title?: string; blocks: CanvasBlock[] }; id: string }) {
-  // The boundary (NOT Suspense) is the outer shell: a lazy chunk that fails to resolve or a render that
+  // Sanitize spec before rendering: strip invalid blocks, normalize enums, cap lengths.
+  const safeSpec = spec ? sanitizeCanvasSpec(spec) : undefined;
+    // The boundary (NOT Suspense) is the outer shell: a lazy chunk that fails to resolve or a render that
   // throws lands in the placeholder instead of unmounting the whole page (white-screen-of-death bug).
   return (
     <CanvasErrorBoundary id={id}>
       <Suspense fallback={<div className="ast-canvas ast-canvas-loading" aria-busy="true" />}>
-        <CanvasView spec={spec} partial={partial} canvasId={id} />
+        <CanvasView spec={safeSpec ?? undefined} partial={partial} canvasId={id} />
       </Suspense>
     </CanvasErrorBoundary>
   );
@@ -154,7 +168,7 @@ export function RichText({ text, onOpenMedia, streaming }: { text: string; onOpe
   // Blocks joined into one string, used ONLY as an effect dependency so the
   // copy-button + image-lightbox wiring re-runs whenever any block changes.
   // Not used for rendering when `blocks` is non-null.
-  const blockSig = blocks ? blocks.map((b) => b.source).join(" ") : html;
+  const blockSig = blocks ? blocks.map((b) => b.source).join("") : html;
 
   useEffect(() => {
     const root = containerRef.current;
