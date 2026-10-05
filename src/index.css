@@ -2731,6 +2731,21 @@ html.theme-fading body * {
 .ast-nav-unread.ast-nav-selected > span:first-child,
 .ast-nav-unread.ast-nav-selected > span:first-child svg { color: var(--color-void); }
 .ast-nav-selected > span:nth-child(2) { color: var(--color-void); }
+/* Owner 10-05: the unread COUNT CHIP must stay legible on the solid fill.
+   The badge's own accent-on-accent palette dissolves over the selected fill —
+   same weight as the other flipped children: void-tinted chip, void digits. */
+.ast-nav-selected .ast-unread-badge {
+  background: color-mix(in oklab, var(--color-void) 18%, transparent);
+  color: var(--color-void);
+  border-color: color-mix(in oklab, var(--color-void) 40%, transparent);
+  box-shadow: none;
+  text-shadow: none;
+}
+[data-theme="light"] .ast-nav-selected .ast-unread-badge {
+  background: rgba(248,250,252,.22);
+  color: #f8fafc;
+  border-color: rgba(248,250,252,.45);
+}
 .collapsed .ast-nav-selected,
 .ast-rail .ast-nav-selected { background: var(--color-accent); }
 /* Mobile: the badge sits under the header logo (the logo button is the only
@@ -2827,7 +2842,10 @@ html.theme-fading body * {
   margin-top: 3px;
   transition: color 130ms ease;
 }
-.ast-chat-row:hover .ast-row-title, .ast-chat-row.ast-row-active .ast-row-title { color: var(--color-brandtext); }
+/* Owner 10-05: hover recolour scoped to NON-active rows — on the filled
+   selected row the old unscoped rule snapped the ink title to white (the
+   reported bug). */
+.ast-chat-row:not(.ast-row-active):hover .ast-row-title { color: var(--color-brandtext); }
 .ast-row-sub {
   font: 400 10.5px/1.4 var(--font-sans);
   color: var(--color-muted);
@@ -2853,8 +2871,25 @@ html.theme-fading body * {
    are stroke-native; lucide icons render in their natural outline style. */
 .ast-src-badge svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .ast-src-badge { filter:drop-shadow(0 0 3px rgb(var(--c-8) / 0.35)); }
-.ast-chat-row:hover .ast-src-badge { color: color-mix(in oklab, var(--color-accent) 80%, var(--color-brandtext)); }
-.ast-chat-row.ast-row-active .ast-src-badge { color: var(--color-accent); }
+/* Owner 10-05 hover redesign (premium, non-white): a hover DEEPENS the row's
+   ink gently and lifts the surface — never snaps title/icon to plain white.
+   The mode badge gains weight (brighter accent mix), the title steps up one
+   tone; both stay inside the palette so the row still reads as one object. */
+.ast-chat-row:not(.ast-row-active):hover .ast-row-title { color: var(--color-brandtext); }
+.ast-chat-row:not(.ast-row-active):hover { background:rgb(var(--c-284) / 0.045); transition: background 130ms ease; }
+.ast-chat-row:not(.ast-row-active):hover .ast-src-badge {
+  color: var(--color-accent);
+  filter:drop-shadow(0 0 4px rgb(var(--c-8) / 0.5));
+}
+.ast-chat-row:not(.ast-row-active):hover .ast-model-tag {
+  background: color-mix(in oklab, var(--color-accent) 20%, transparent);
+  color: var(--color-accent);
+}
+/* The ACTIVE (filled) row keeps its ink children on hover — the fill brightens
+   a hair instead of recolouring anything. */
+.ast-chat-row.ast-row-active:hover { filter: brightness(1.06); }
+.ast-chat-row.ast-row-active:hover .ast-row-title,
+.ast-chat-row.ast-row-active:hover .ast-row-sub { color: var(--color-void); }
 .ast-model-tag {
   display: inline-block;
   max-width: 6rem;
