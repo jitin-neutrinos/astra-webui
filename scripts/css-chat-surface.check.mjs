@@ -134,6 +134,25 @@ check('composer plate gap is the subtle 5px (not the old 8px)',
 check('composer plate carries NO backdrop-filter (nested blur janks the APK)',
   !shellRule?.decls.size || ![...shellRule.decls].some((d) => d.startsWith('backdrop-filter')));
 
+// --- 2c. trace + glow (owner 10-05) ------------------------------------------
+// The comet now runs on the SHELL (parent plate), and focus-hiding is scoped
+// to the shell — the old .chat-composer-scoped rule could never fire once the
+// SVG re-parented. Assert the new selector exists and the stale one is gone.
+check('trace focus-hide scoped to the shell (comet runs on the plate)',
+  cssN.includes('.chat-composer-shell:focus-within.composer-trace{opacity:0}'),
+  'selector scoping rule');
+check('stale composer-scoped trace hide rule is gone',
+  !cssN.includes('.chat-composer:focus-within.composer-trace'));
+// Both cards carry a persistent accent glow: find each card rule that sets a
+// box-shadow containing the token-routed accent color-mix, resting + focus.
+const glowCards = ['.composer-input-card', '.composer-bar-card'];
+for (const card of glowCards) {
+  const sel = '.chat-composer' + card;
+  const glow = matches(sel).find((r) => [...r.decls].some((d) => d.startsWith('box-shadow:') && d.includes('color-mix(insrgb,var(--color-accent)')));
+  check(`persistent accent glow on ${card} (resting)`, !!glow,
+    glow ? (glow.decls.find ? [...glow.decls].find((d) => d.startsWith('box-shadow'))?.slice(0, 80) : '') : 'no rule');
+}
+
 // --- 3. chat scrollbars on brand accent primary, theme-reactive -------------
 // The @supports branch is the one real browsers take; assert the var() form is
 // what lives there (the bare-hex sibling is the pre-color-mix fallback).

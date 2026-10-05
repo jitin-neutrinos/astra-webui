@@ -1940,6 +1940,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
           </div>
         ))}
         <div className={cn("chat-composer-shell mx-auto w-full max-w-[52rem]", dragOver && "drag-over")}>
+          <ComposerTrace bands={LOW_SPEC ? 24 : 32} />
           {dragOver && (
             <div className="chat-drop-overlay" aria-hidden="true">Drop to attach</div>
           )}
@@ -1985,10 +1986,10 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
             }}
             onRunTui={(cmd) => void runTuiCommand(cmd.name)}
           />
-          {/* Input is its OWN rounded card — the running trace lives on this card,
-              not the buttons bar. Fewer comet bands on low-memory/low-core devices. */}
+          {/* Input is its OWN rounded card. The comet moved UP to the shell
+              (owner 10-05: run on the parent plate) — it measures its PARENT
+              element, so re-parenting is all it takes. */}
           <div className="chat-composer composer-input-card">
-            <ComposerTrace bands={LOW_SPEC ? 24 : 32} />
             <div className="composer-field">
             <textarea
               ref={taRef}
