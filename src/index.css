@@ -2778,6 +2778,21 @@ html.theme-fading body * {
 }
 .ast-chat-row:hover { background:rgb(var(--c-284) / 0.045); }
 .ast-chat-row.ast-row-active { background:rgb(var(--c-69) / 0.1); border-color:rgb(var(--c-230) / 0.3); }
+/* Owner 10-05: the SELECTED CHAT follows the filled convention too — full
+   accent container with ink text, identical to the nav's selected mechanism. */
+.ast-chat-row.ast-row-active {
+  background: var(--color-accent);
+  border-color: transparent;
+}
+.ast-chat-row.ast-row-active .ast-row-title,
+.ast-chat-row.ast-row-active .ast-row-sub,
+.ast-chat-row.ast-row-active .ast-row-time { color: var(--color-void); }
+.ast-chat-row.ast-row-active .ast-row-sub,
+.ast-chat-row.ast-row-active .ast-row-time { opacity: .85; }
+.ast-chat-row.ast-row-active .ast-src-badge,
+.ast-chat-row.ast-row-active .ast-model-tag,
+.ast-chat-row.ast-row-active .ast-live-dot { color: var(--color-void); }
+.ast-chat-row.ast-row-active .ast-tok-chip { color: var(--color-void); border-color: color-mix(in srgb, var(--color-void) 35%, transparent); }
 .ast-chat-row.ast-unread-row { background: color-mix(in oklab, var(--color-accent) 7%, transparent); }
 .ast-chat-row.ast-unread-row:hover { background: color-mix(in oklab, var(--color-accent) 11%, transparent); }
 
@@ -2935,8 +2950,21 @@ html.theme-fading body * {
 /* light theme */
 [data-theme="light"] .ast-chat-row:hover { background:rgb(var(--light-c-81) / 0.05); }
 [data-theme="light"] .ast-chat-row.ast-row-active { background:rgb(var(--light-c-45) / 0.09); border-color:rgb(var(--light-c-66) / 0.35); }
+/* Light twin of the filled selected chat (owner 10-05): accent container,
+   ink text — same mechanism as dark. */
+[data-theme="light"] .ast-chat-row.ast-row-active {
+  background: rgb(var(--light-c-1));
+  border-color: transparent;
+}
+[data-theme="light"] .ast-chat-row.ast-row-active .ast-row-title,
+[data-theme="light"] .ast-chat-row.ast-row-active .ast-row-sub,
+[data-theme="light"] .ast-chat-row.ast-row-active .ast-row-time { color: #f8fafc; }
+[data-theme="light"] .ast-chat-row.ast-row-active .ast-src-badge,
+[data-theme="light"] .ast-chat-row.ast-row-active .ast-model-tag,
+[data-theme="light"] .ast-chat-row.ast-row-active .ast-live-dot,
+[data-theme="light"] .ast-chat-row.ast-row-active .ast-tok-chip { color: #f8fafc; }
 [data-theme="light"] .ast-chat-row:hover .ast-src-badge { color:rgb(var(--light-c-34)); }
-[data-theme="light"] .ast-chat-row.ast-row-active .ast-src-badge { color:rgb(var(--light-c-50)); }
+[data-theme="light"] .ast-chat-row.ast-row-active .ast-src-badge { color: #f8fafc; }
 [data-theme="light"] .ast-model-tag { background:rgb(var(--light-c-62) / 0.1); color:rgb(var(--light-c-34)); }
 [data-theme="light"] .ast-row-menu { background:rgb(var(--light-c-118)); border-color:rgb(var(--light-c-56) / 0.14); box-shadow: none }
 [data-theme="light"] .ast-menu-item:hover { background:rgb(var(--light-c-31) / 0.06); }

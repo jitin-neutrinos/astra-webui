@@ -353,6 +353,14 @@ export function getTotalUnread(): number {
   return computeTotal();
 }
 
+/** Total known chats = the size of the last server row list (seedFromServer
+ *  also tracks it), falling back to the overlay size before any list loads.
+ *  Drives the Work badge (pending chats) — the sibling of getTotalUnread. */
+export function getTotalSessions(): number {
+  ensure();
+  return knownRowKeys ? knownRowKeys.size : Object.keys(overlay).length;
+}
+
 /** Server rows carry `unread` (bool) + `last_read_at`; seed the overlay for rows we
  *  have no local count for so devices that never saw the live event still show a pill.
  *  Read rows RECONCILE the overlay away — a read on another device clears ours.

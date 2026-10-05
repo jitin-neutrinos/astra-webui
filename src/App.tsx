@@ -52,6 +52,12 @@ function sidebarModeIs(name: string, mode: string): boolean | null {
   return null;
 }
 
+/** Is a Work-owned panel (chats/files) currently the sidebar's content?
+ *  Module-scope for the same narrowing reason as sidebarModeIs. */
+function workPanelOpen(mode: string): boolean {
+  return mode === "chats" || mode === "files";
+}
+
 /** Low-spec device probe (see composer-trace): set once, gates the expensive
  *  comet glow + band count + composer autosize on weak phones. */
 const LOW_SPEC = isLowSpec();
@@ -503,6 +509,18 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
   // the chat list listens on, so the two never disagree: a row clearing its pill
   // (locally or from another device) drops the aggregate in the same tick.
   const unreadTotal = useUnreadTotal();
+  // Total known chats (pending) for the Work badge — same seed + same events,
+  // so Work's number can never disagree with the Chats list's own total.
+  const [sessionTotal, setSessionTotal] = useState(() => notify.getTotalSessions());
+  useEffect(() => {
+    const sync = () => setSessionTotal(notify.getTotalSessions());
+    window.addEventListener("astra:unread-changed", sync);
+    window.addEventListener("astra-ws-event", sync);
+    return () => {
+      window.removeEventListener("astra:unread-changed", sync);
+      window.removeEventListener("astra-ws-event", sync);
+    };
+  }, []);
 
   const groups: {
     label: string;
@@ -658,20 +676,43 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
           // Group dropdowns are IDENTICAL in rail mode: same shared open state,
           // headers render as chevron-only toggles, items show icons only.
           const open = !!groupOpen[group.label];
+          // Owner 10-05: Work reads selected while a child of it is the focused
+          // page — a chat is open (activeView chat), or the chats/files panel
+          // is on screen in the sidebar (mode).
+          // mode is narrowed to 'nav' here (panel modes early-return above), so
+          // the panel half of the rule goes through module scope too. In the
+          // panel the Work header isn't painted; the flag still guards chat view.
+          const groupSelected = group.label === "Work"
+            && (activeView === "chat" || workPanelOpen(mode));
           return (
           <div key={group.label} className="mb-3">
-            {/* group header: icon+label+chevron expanded, icon-only in rail. Open = accent styling. */}
+            {/* group header: icon+label+chevron expanded, icon-only in rail.
+                Owner 10-05: Work is SELECTED while any of its children is the
+                focused page (chat/chats/files) and carries the pending-chats
+                aggregate with the same badge treatment as Chats, collapsed
+                and expanded. Fill/outline convention: selected = filled. */}
             <button type="button"
               onClick={() => setGroupOpen((o) => ({ ...o, [group.label]: !o[group.label] }))}
               aria-expanded={open}
               title={expanded ? `Toggle ${group.label}` : group.label}
               className={cn("flex h-8 w-full items-center rounded-md text-left font-sans text-[13px] font-medium tracking-[0.08em] transition-colors duration-200",
-                open ? "text-accent/90" : "text-slate-600 hover:text-slate-400",
+                group.label === "Work" && groupSelected
+                  ? "ast-nav-selected text-void"
+                  : open ? "text-accent/90" : "text-slate-600 hover:text-slate-400",
                 expanded ? "justify-between px-3" : "justify-center")}>
               <span className="flex min-w-0 items-center gap-1.5">
                 {group.icon}
                 {expanded && <span className="truncate">{group.label}</span>}
               </span>
+              {group.label === "Work" && sessionTotal > 0 && (
+                <span
+                  className={cn("ast-unread-badge", !expanded && "ast-unread-badge-rail")}
+                  aria-label={`${sessionTotal} ${sessionTotal === 1 ? "chat" : "chats"}`}
+                  title={`${sessionTotal} pending ${sessionTotal === 1 ? "chat" : "chats"}`}
+                >
+                  {sessionTotal > 99 ? "99+" : sessionTotal}
+                </span>
+              )}
               {expanded && (
                 <ChevronDown className={cn("h-3 w-3 shrink-0 transition-transform duration-200 motion-reduce:transition-none",
                   open && "rotate-180")} strokeWidth={1.5} />
