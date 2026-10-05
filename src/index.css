@@ -2700,13 +2700,14 @@ html.theme-fading body * {
   text-shadow:0 0 5px rgb(var(--c-278) / 0.8);
   transform: none;
 }
+/* Collapsed rail: the icon tile carries the unread weight of the fill family —
+   translucent accent fill, ink-bright glyph, no border, no glow. */
 .ast-nav-unread-rail > span:first-child {
   width: 36px; height: 36px; margin: 0 auto;
   border-radius: 10px;
-  background: color-mix(in oklab, var(--color-accent) 12%, transparent);
-  border: 1px solid color-mix(in oklab, var(--color-accent) 50%, transparent);
-  box-shadow: 0 0 10px color-mix(in oklab, var(--color-accent) 30%, transparent),
-              inset 0 0 6px color-mix(in oklab, var(--color-accent) 6%, transparent);
+  background: color-mix(in oklab, var(--color-accent) 14%, transparent);
+  border: none;
+  box-shadow: none;
 }
 /* ---- Selected state, filled mechanism (owner 10-05) ------------------------
    EVERYWHERE one rule: the selected/focused page's button or icon shows the
@@ -2720,6 +2721,16 @@ html.theme-fading body * {
 .ast-nav-selected > span:first-child { color: var(--color-void); }
 .ast-nav-selected > span:first-child svg { color: var(--color-void); }
 .ast-nav-selected > span:nth-child(2) { color: var(--color-void); }
+/* Selected beats unread when both apply (chat open + other chats unread):
+   full accent fill + ink glyph wins over the translucent unread weight. */
+.ast-nav-unread.ast-nav-selected {
+  background: var(--color-accent);
+  border: none;
+  box-shadow: 0 1px 2px rgba(0,0,0,.25);
+}
+.ast-nav-unread.ast-nav-selected > span:first-child,
+.ast-nav-unread.ast-nav-selected > span:first-child svg { color: var(--color-void); }
+.ast-nav-selected > span:nth-child(2) { color: var(--color-void); }
 .collapsed .ast-nav-selected,
 .ast-rail .ast-nav-selected { background: var(--color-accent); }
 /* Mobile: the badge sits under the header logo (the logo button is the only
@@ -2728,18 +2739,31 @@ html.theme-fading body * {
   position: absolute; left: 30px; bottom: 6px; margin: 0;
   transform: none;
 }
-/* The whole Chats button gets the brand-blue outline + subtle glow when unread. */
+/* Owner 10-05: unread Chats now uses the FILL mechanism, not outline+glow —
+   a translucent accent container (the "unread" weight of the fill family,
+   between quiet and the solid selected fill). No border, no glow. */
 .ast-nav-unread {
-  border: 1px solid color-mix(in oklab, var(--color-accent) 45%, transparent);
-  box-shadow: 0 0 10px color-mix(in oklab, var(--color-accent) 18%, transparent),
-              inset 0 0 8px color-mix(in oklab, var(--color-accent) 5%, transparent);
+  background: color-mix(in oklab, var(--color-accent) 14%, transparent);
+  border: none;
+  box-shadow: none;
 }
+/* Unread glyph reads accent over its translucent fill; the label too. */
+.ast-nav-unread > span:first-child svg { color: var(--color-accent); }
+.ast-nav-unread > span:first-child { color: var(--color-accent); }
 [data-theme="light"] .ast-unread-badge { background:rgb(var(--light-c-72) / 0.12); color:rgb(var(--light-c-34)); border-color:rgb(var(--light-c-43) / 0.4); box-shadow: none; }
-[data-theme="light"] .ast-nav-unread { border-color:rgb(var(--light-c-66) / 0.35); box-shadow: none; }
+[data-theme="light"] .ast-nav-unread { background: color-mix(in oklab, rgb(var(--light-c-34)) 12%, transparent); border: none; box-shadow: none; }
+[data-theme="light"] .ast-nav-unread > span:first-child svg,
+[data-theme="light"] .ast-nav-unread > span:first-child { color: rgb(var(--light-c-34)); }
+[data-theme="light"] .ast-nav-unread.ast-nav-selected {
+  background: rgb(var(--light-c-1));
+  box-shadow: none;
+}
+[data-theme="light"] .ast-nav-unread.ast-nav-selected > span:first-child,
+[data-theme="light"] .ast-nav-unread.ast-nav-selected > span:first-child svg { color: #f8fafc; }
 /* Light mode: an opaque BLACK chip is wrong on paper — invert it to the
    paper surface with an ink-toned border, same shape and placement. */
 [data-theme="light"] .ast-unread-badge-rail { background: var(--color-midnight); border-color:rgb(var(--light-c-66) / 0.35); box-shadow: none; text-shadow: none; }
-[data-theme="light"] .ast-nav-unread-rail > span:first-child { border-color:rgb(var(--light-c-42) / 0.45); background:rgb(var(--light-c-33) / 0.08); box-shadow: none; }
+[data-theme="light"] .ast-nav-unread-rail > span:first-child { border-color: transparent; background:color-mix(in oklab, rgb(var(--light-c-34)) 12%, transparent); box-shadow: none; }
 [data-theme="light"] .ast-unread-row { background:rgb(var(--light-c-33) / 0.08); }
 [data-theme="light"] .ast-unread-row:hover { background:rgb(var(--light-c-115) / 0.13); }
 [data-theme="light"] .ast-unread-pill { background:rgb(var(--light-c-72) / 0.12); color:rgb(var(--light-c-34)); border-color:rgb(var(--light-c-43) / 0.4); }

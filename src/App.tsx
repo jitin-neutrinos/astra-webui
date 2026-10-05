@@ -729,8 +729,18 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
               // comparison through a module-scope helper (params aren't narrowed),
               // instead of stacking @ts-ignore on an impossible comparison.
               const inSidebar = sidebarModeIs(item.name, mode);
-              const active = inSidebar !== null ? inSidebar
-                : item.name === "Astra" ? activeView === "chat"
+              // Owner 10-05: Chats is ALSO selected while a chat is actually
+              // open — not only when its panel is showing in the sidebar.
+              // location.pathname is the load-bearing signal: it is set
+              // synchronously for both entry paths (fresh /c/<id> load and
+              // row selection), while activeSessionId trails through the
+              // async session-resume chain. The URL is the SAME fact the
+              // chat view itself keys off.
+              const chatActive = activeView === "chat"
+                && (!!activeSessionId || /^\/c\/.+/.test(location.pathname));
+              const active = item.name === "Chats" ? (chatActive || inSidebar)
+                : inSidebar !== null ? inSidebar
+                : item.name === "Astra" ? activeView === "chat" && !chatActive
                 : item.name === "Global Token Tracker" ? activeView === "tracker"
                 : item.name === "Config" ? activeView === "config"
                 : item.name === "Approvals & Reviews" ? activeView === "approvals"
