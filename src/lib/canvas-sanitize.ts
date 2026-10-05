@@ -29,8 +29,12 @@ const VALID_TRENDS = new Set(["up", "down", "flat"]);
 const VALID_STATUSES = new Set(["done", "open", "fail", "active", "todo"]);
 const VALID_CHART_KINDS = new Set([
   "line", "area", "bar", "radial", "pie", "donut", "stack",
-  "sankey", "treemap", "funnel", "radar", "scatter",
+  "sankey", "treemap", "funnel", "radar", "scatter", "box", "histogram",
 ]);
+
+// `table.stats.compute` — the same closed set the parser uses, so a footer the
+// sanitizer keeps is a footer the renderer can actually compute.
+const VALID_TABLE_STATS = new Set(["mean", "median", "sd", "min", "max", "p95", "count"]);
 
 // Layout composite modes. An unknown mode degrades to "stack" (always correct),
 // never drops the container — the children are the content, not the frame.
@@ -236,11 +240,27 @@ function sanitizeBlock(b: unknown, depth = 0): CanvasBlock | null {
       break;
     }
     case "table": {
-      if (!Array.isArray(obj.columns) || !Array.isArray(obj.rows)) return null;
+      // BUG (pre-existing, found 2026-10-05 while adding table.stats): this case
+      // required BOTH `columns` and `rows` to be arrays, so a REACTIVE table —
+      // `{bind:{"$from":"name"}, rows:[]}` — was dropped from the card entirely.
+      // The parser has always accepted it (canvas-schema.ts returns early for
+      // `bind.$from` precisely because the rows are NOT in the block yet), and
+      // reactiveRows() in canvas-blocks resolves the carrier at render time, so a
+      // what-if table worked in every unit gate and rendered as nothing in
+      // production. Same bug class as tabs/accordion/tree/detail: the sanitizer is
+      // the only call on the render path, and it is the only layer that drops it.
+      //
+      // So: accept the block when it is a reactive one (columns present, bind is a
+      // $from binding) even with no rows, and carry the binding through REACTIVE_KEYS
+      // below as every other block does.
+      const bound = !!(obj.bind && typeof obj.bind === "object" && !Array.isArray(obj.bind)
+        && typeof (obj.bind as Record<string, unknown>).$from === "string");
+      if (!Array.isArray(obj.columns)) return null;
+      if (!Array.isArray(obj.rows) && !bound) return null;
       sanitized.columns = obj.columns
         .map((c: unknown) => String(c))
         .slice(0, 20);
-      sanitized.rows = obj.rows
+      sanitized.rows = (Array.isArray(obj.rows) ? obj.rows : [])
         .map((r: unknown) => {
           if (!Array.isArray(r)) return null;
           return r.map((c: unknown) => {
@@ -251,7 +271,35 @@ function sanitizeBlock(b: unknown, depth = 0): CanvasBlock | null {
         })
         .filter((r: unknown): r is string[] => r !== null)
         .slice(0, MAX_ITEMS);
-      if (sanitized.rows.length === 0) return null;
+      // A header with no body is still the "table looks mangled" defect — UNLESS the
+      // rows are coming from a `data` carrier at render time, in which case empty is
+      // exactly what the block should carry. The renderer prints its own "no rows"
+      // state if the carrier turns out to be empty, so the honest message wins.
+      if (sanitized.rows.length === 0 && !bound) return null;
+      // `stats` is a REQUEST for the renderer to compute, not data. It has to be
+      // carried through or the footer never appears — the same drop-the-key class
+      // as `detail` on a tree node (8d09c60) and `blocks` on an accordion item.
+      // A bad request is dropped here exactly as the parser drops it, so both
+      // layers agree on what "asked for stats" means — including `stats:true`,
+      // which both normalise to `{}` (the default footer).
+      if (obj.stats === true) {
+        sanitized.stats = {};
+      } else if (obj.stats && typeof obj.stats === "object" && !Array.isArray(obj.stats)) {
+        const so = obj.stats as Record<string, unknown>;
+        const st: Record<string, unknown> = {};
+        if (Array.isArray(so.columns)) {
+          const cols = so.columns.filter((c: unknown): c is string => typeof c === "string").map((c) => truncate(c, 60));
+          if (cols.length > 0) st.columns = [...new Set(cols)].slice(0, 20);
+        }
+        if (Array.isArray(so.compute)) {
+          const compute = so.compute
+            .filter((c: unknown): c is string => typeof c === "string")
+            .map((c) => truncate(c.trim().toLowerCase(), 30))
+            .filter((c) => VALID_TABLE_STATS.has(c));
+          if (compute.length > 0) st.compute = [...new Set(compute)];
+        }
+        sanitized.stats = st;
+      }
       break;
     }
     case "callout": {

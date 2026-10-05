@@ -24,10 +24,20 @@ function formatKpi(n: number): string {
 /** A card is reactive if any block declares a binding or a `visible`. */
 function isReactiveBlock(b: CanvasBlock): boolean {
   const o = b as unknown as Record<string, unknown>;
-  return o.visible != null || isBinding(o.value) || isBinding(o.delta) || isBinding(o.bind) ||
-    (b.type === "data") || isBinding(o.points) || isBinding(o.spark) ||
-    // a chart whose ONLY reactive part is a per-series binding still needs ctx
-    (Array.isArray(o.series) && (o.series as { points?: unknown; visible?: unknown }[]).some((s) => isBinding(s.points) || s.visible != null));
+  if (o.visible != null || isBinding(o.value) || isBinding(o.delta) || isBinding(o.bind) ||
+    (b.type === "data") || isBinding(o.points) || isBinding(o.spark)) return true;
+  // a chart whose ONLY reactive part is a per-series binding still needs ctx
+  if (Array.isArray(o.series) &&
+    (o.series as { points?: unknown; visible?: unknown }[]).some((s) => isBinding(s.points) || s.visible != null)) return true;
+  // Container blocks nest other blocks (tabs/accordion/layout): a reactive
+  // table inside a tab used to leave the WHOLE card non-reactive, so ctx was
+  // never built and the nested reader resolved nothing. Probe the children.
+  const kids = Array.isArray(o.blocks)
+    ? (o.blocks as CanvasBlock[])
+    : Array.isArray(o.items)
+      ? (o.items as { blocks?: CanvasBlock[] }[]).flatMap((it) => Array.isArray(it?.blocks) ? it.blocks : [])
+      : null;
+  return !!kids && kids.some(isReactiveBlock);
 }
 
 /** Write a control's authored default into the card scope. A control that
@@ -85,7 +95,11 @@ function reactiveRows(bindVal: unknown, ctx?: RenderCtx): { columns: string[]; r
 // recharts lives behind this boundary: chart blocks defer-load the engine, every
 // other block type (and the whole gate path) stays sync and dependency-free.
 const ChartBlockView = lazy(() => import("./canvas-chart").then((m) => ({ default: m.ChartBlockView })));
-import type { CanvasBlock, KpiBlock, TableBlock, ChecklistBlock, StepsBlock, CalloutBlock, ProgressBlock, TimelineBlock, CompareBlock, TreeBlock, CodeBlock, ReferencesBlock, QuoteBlock, KeyValueBlock, DiffBlock, HeatmapBlock, TabsBlock, AccordionBlock, TerminalBlock, BadgesBlock, DividerBlock, LayoutBlock, MathBlock } from "../../lib/canvas-schema";
+import type { CanvasBlock, KpiBlock, TableBlock, ChecklistBlock, StepsBlock, CalloutBlock, ProgressBlock, TimelineBlock, CompareBlock, TreeBlock, CodeBlock, ReferencesBlock, QuoteBlock, KeyValueBlock, DiffBlock, HeatmapBlock, TabsBlock, AccordionBlock, TerminalBlock, BadgesBlock, DividerBlock, LayoutBlock, MathBlock, TableStat } from "../../lib/canvas-schema";
+// table.stats: pure arithmetic on the rendered rows, no DOM and no chart engine —
+// so it rides the eager path (the table renderer itself is already eager) at
+// ~1.5 kB. Kept in lib/ so it is unit-testable without a DOM.
+import { tableStats, fmtStat, STAT_LABEL } from "../../lib/canvas-stats";
 
 
 // ---- KPI ---------------------------------------------------------------------
@@ -228,6 +242,12 @@ export function TableBlockView({ block, ctx }: { block: TableBlock; ctx?: Render
     );
   }
 
+  // `stats` is an instruction, not data: the numbers are computed from the rows
+  // actually RENDERED (reactive rows included), so a bound table summarises what
+  // the reader sees. `tableStats` returns undefined when no column is numeric, so
+  // a text table with `stats` set simply has no footer.
+  const stats = tableStats(cols, rows, block.stats);
+
   return (
     <div className="ast-cv-table-wrap">
       <table className="ast-cv-table">
@@ -248,8 +268,41 @@ export function TableBlockView({ block, ctx }: { block: TableBlock; ctx?: Render
           ))}
         </tbody>
       </table>
+      {stats && (
+        // Its OWN table, not a <tfoot> row: a tfoot here would have 1 + N columns
+        // while the body has C, and a browser stretches cells to fit the wider row —
+        // so the summary numbers would sit under columns they do not belong to. A
+        // separate table states the relationship in its header instead, and every
+        // stat gets its NAME, which the body columns do not have.
+        <table className="ast-cv-table ast-cv-table-stats">
+          <thead>
+            <tr>
+              <th scope="col">column</th>
+              {statNames(block.stats).map((s) => (
+                <th key={s} scope="col" className="num">{STAT_LABEL[s]}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {stats.map((s) => (
+              <tr key={s.column}>
+                <th scope="row">{s.column}</th>
+                {s.values.map((v, k) => (
+                  <td key={k} className="num">{fmtStat(v)}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
+}
+
+/** The statistics the footer shows, in request order — the same default set the
+ *  computation uses, so the header can never disagree with the cells under it. */
+function statNames(request: { compute?: TableStat[] } | undefined): TableStat[] {
+  return request?.compute?.length ? request.compute : ["mean", "median", "sd", "min", "max", "p95"];
 }
 
 // ---- Diagram -----------------------------------------------------------------
@@ -675,7 +728,7 @@ function MathView({ block }: { block: MathBlock }) {
 // reflow), so the chat media grid and the canvas cannot drift apart. `masonry`
 // is CSS multi-column — no JS measurement on a streaming surface, which is what
 // makes a card paint correctly while it is still arriving.
-function LayoutView({ block }: { block: LayoutBlock }) {
+function LayoutView({ block, ctx }: { block: LayoutBlock; ctx?: RenderCtx }) {
   const { layout, cols, blocks } = block;
   // The bento templates address five NAMED grid areas (a..e — src/lib/bento.ts
   // AREAS); each cell claims its own area name, so the grid is deterministic,
@@ -683,7 +736,7 @@ function LayoutView({ block }: { block: LayoutBlock }) {
   const { cls } = bentoLayout(blocks.length);
   const items = blocks.map((b, i) => (
     <div key={i} className="ast-cv-layout-cell" style={{ "gridArea": AREAS[i] ?? "auto" } as React.CSSProperties}>
-      <Blocks blocks={[b]} animate={false} canvasId={`lay-${i}`} />
+      <Blocks blocks={[b]} animate={false} canvasId={`lay-${i}`} ctx={ctx} />
     </div>
   ));
   if (layout === "stack") return <div className="ast-cv-layout stack">{items}</div>;
@@ -700,7 +753,7 @@ function LayoutView({ block }: { block: LayoutBlock }) {
 
 // ---- Tabs ---------------------------------------------------------------------
 
-export function TabsView({ block }: { block: TabsBlock }) {
+export function TabsView({ block, ctx }: { block: TabsBlock; ctx?: RenderCtx }) {
   const [active, setActive] = useState(0);
   const idx = Math.min(active, block.items.length - 1);
   const cur = block.items[idx];
@@ -721,7 +774,9 @@ export function TabsView({ block }: { block: TabsBlock }) {
         ))}
       </div>
       <div role="tabpanel" className="ast-cv-tabpanel">
-        <Blocks blocks={cur.blocks} />
+        {/* ctx passed down: a bound table inside the tab reads the ROOT card's
+            data carrier and scope, not this tab's own children (2026-10-05). */}
+        <Blocks blocks={cur.blocks} ctx={ctx} />
       </div>
     </div>
   );
@@ -729,7 +784,7 @@ export function TabsView({ block }: { block: TabsBlock }) {
 
 // ---- Accordion ----------------------------------------------------------------
 
-export function AccordionView({ block }: { block: AccordionBlock }) {
+export function AccordionView({ block, ctx }: { block: AccordionBlock; ctx?: RenderCtx }) {
   const [open, setOpen] = useState<Record<number, boolean>>(() => {
     const init: Record<number, boolean> = {};
     block.items.forEach((it, i) => { if (it.open) init[i] = true; });
@@ -751,7 +806,7 @@ export function AccordionView({ block }: { block: AccordionBlock }) {
           {open[i] && (
             <div className="ast-cv-acc-body">
               {it.body && <p className="ast-cv-acc-text">{it.body}</p>}
-              {it.blocks && it.blocks.length > 0 && <Blocks blocks={it.blocks} animate={false} />}
+              {it.blocks && it.blocks.length > 0 && <Blocks blocks={it.blocks} animate={false} ctx={ctx} />}
             </div>
           )}
         </div>
@@ -840,11 +895,19 @@ export function Blocks({
   blocks,
   animate = true,
   canvasId = "0",
+  ctx,
 }: {
   blocks: CanvasBlock[];
   animate?: boolean;
   /** Stable per-card prefix for fullscreen slot keys; unique within one canvas. */
   canvasId?: string;
+  /** Reactive context inherited from the card-level Blocks() — the ROOT card's
+   *  datasets and scope. Nested re-entries (tabs/accordion/layout) MUST pass
+   *  this down or a bound table inside a tab resolves no rows: it rebuilt
+   *  datasets from its OWN children (the data carrier lives at card level) and
+   *  lost the scope, so the reader resolved to null and the table degraded to
+   *  a bare header. Absent = compute a fresh context (top-level entry). */
+  ctx?: RenderCtx;
 }) {
   // The reactive context: current control values + this card's `data` datasets.
   // Built here (not per block) so every reader in the card sees one snapshot.
@@ -852,10 +915,13 @@ export function Blocks({
   // deliberately does not notify, so anything read earlier would be stale.
   const seedStore = useCanvasSeeder();
   for (const b of blocks) seedControlDefault(b, seedStore);
-  const reactiveBlocks = useMemo(() => blocks.some(isReactiveBlock), [blocks]);
   const scope = useCanvasScope();
-  const datasets = useMemo(() => collectData(blocks), [blocks]);
-  const ctx: RenderCtx | undefined = reactiveBlocks ? { scope, datasets } : undefined;
+  const localReactive = useMemo(() => blocks.some(isReactiveBlock), [blocks]);
+  const localDatasets = useMemo(() => collectData(blocks), [blocks]);
+  // Inherited context wins (nested entry): the datasets must be the ROOT card's
+  // — a `data` carrier rendered before the tab is invisible to a tab-local
+  // collectData — and the scope has to be the same store the controls write.
+  const fullCtx: RenderCtx | undefined = ctx ?? (localReactive ? { scope, datasets: localDatasets } : undefined);
   const groups: CanvasBlock[][] = [];
   let rowRun: CanvasBlock[] = [];
   const flush = () => { if (rowRun.length > 0) { groups.push(rowRun); rowRun = []; } };
@@ -882,7 +948,7 @@ export function Blocks({
         return (
           <div key={gi} className={cn("ast-cv-group", (rowKind === "kpi" || rowKind === "progress") && "rows")}>
             {g.map((b, bi) => {
-              const inner = renderOne(b, `${canvasId}-${gi}`, bi, ctx);
+              const inner = renderOne(b, `${canvasId}-${gi}`, bi, fullCtx);
               // --i drives the CSS stagger (no per-block JS timer) and keeps the
               // arrival index in the DOM for QA.
               const idx = { ["--i" as string]: bi } as React.CSSProperties;
@@ -948,8 +1014,8 @@ function renderOne(b: CanvasBlock, id: string, bi: number, ctx?: RenderCtx): Rea
     case "keyvalue": return <KeyValueView block={b} />;
     case "diff": return <DiffView block={b} />;
     case "heatmap": return <HeatmapView block={b} />;
-    case "tabs": return <TabsView block={b} />;
-    case "layout": return <LayoutView block={b} />;
+    case "tabs": return <TabsView block={b} ctx={ctx} />;
+    case "layout": return <LayoutView block={b} ctx={ctx} />;
     case "math": return <MathView block={b} />;
     case "gitgraph":
       return (

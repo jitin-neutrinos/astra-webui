@@ -6531,10 +6531,21 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
 .ast-cv-git-meta { fill: var(--color-muted); font: 400 9.5px/1.2 var(--font-mono); }
 .ast-cv-git-head-label { fill: var(--color-accent); font: 600 9.5px/1 var(--font-mono); }
 
+/* box plot (chart kind `box`). The rect is the IQR and the median is a rule — the
+   shapes recharts asks for as a custom Bar shape, so their ink is declared here
+   like every other canvas colour. No hex: the rect rides the accent at low alpha
+   with a full-alpha hairline, which keeps the box readable in both modes. */
+.ast-cv-box-iqr { fill: color-mix(in srgb, var(--color-accent) 18%, transparent); stroke: var(--color-accent); stroke-width: 1.3; }
+.ast-cv-box-median { stroke: var(--color-brandtext); stroke-width: 2; stroke-linecap: round; }
+/* histogram shares the bar path, so it needs no colour of its own. */
+
 /* table.stats footer — summary statistics computed by the RENDERER, never by
    the model, so no arithmetic is ever done in the model's head. */
 .ast-cv-table-stats th { color: var(--color-muted); font-weight: 500; }
 .ast-cv-table-stats td { color: var(--color-brandtext); font: 400 11.5px/1.4 var(--font-mono); }
+/* The summary is its OWN table (see TableBlockView), so it needs its own space —
+   without the margin the two tables' borders collapse into one unreadable grid. */
+.ast-cv-table-stats { margin-top: 8px; }
 
 /* diagram entity/ER field rows + circuit glyphs + cardinality terminators. */
 .ast-cv-dg-field-name { fill: var(--color-brandtext); font: 400 10.5px/1 var(--font-mono); }

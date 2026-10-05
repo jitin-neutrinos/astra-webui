@@ -2097,3 +2097,114 @@ test("gitgraph: type aliases normalise, and markdown copy carries the history", 
   assert.ok(md.includes("**(merge)**"), "a merge commit is marked as one");
   assert.ok(md.indexOf("c3") < md.indexOf("a0"), "rows copy newest-first, as drawn");
 });
+
+
+// ── table.stats + chart kinds box/histogram (canvas v1 expansion) ───────────────
+// `stats` is the block's arithmetic instruction. It is validated and carried
+// through BOTH layers, because a footer the sanitizer drops is exactly the
+// 8d09c60 tree-`detail` bug: the model asked for a mean, the card rendered
+// without one, and nothing anywhere reported a failure.
+const tbl = (b: unknown) => parseCanvasSpec(JSON.stringify({ v: 1, blocks: [b] }));
+
+test("table.stats: the request survives the parser AND the sanitizer", () => {
+  const spec = tbl({
+    type: "table",
+    columns: ["region", "latency_ms"],
+    rows: [["eu", "10"], ["us", "20"], ["apac", "30"]],
+    stats: { columns: ["latency_ms"], compute: ["mean", "median", "p95"] },
+  });
+  assert.ok(spec);
+  const s = sanitizeCanvasSpec(spec) as any;
+  assert.deepEqual(s.blocks[0].stats, { columns: ["latency_ms"], compute: ["mean", "median", "p95"] },
+    "the renderer's instruction survives the only call on the render path");
+});
+
+test("table.stats: an omitted request is `{}`, never undefined-after-ask", () => {
+  // `stats:true` / `stats:{}` mean "every statistic on every numeric column".
+  // The parser must distinguish "asked" from "did not ask" or the footer never
+  // appears for the simplest form of the request.
+  const s = sanitizeCanvasSpec(tbl({ type: "table", columns: ["a"], rows: [["1"]], stats: true })) as any;
+  assert.deepEqual(s.blocks[0].stats, {}, "an empty stats object IS a request for the defaults");
+  const none = sanitizeCanvasSpec(tbl({ type: "table", columns: ["a"], rows: [["1"]] })) as any;
+  assert.equal(none.blocks[0].stats, undefined, "a table that did not ask has no stats key");
+  // A reactive (bound) table keeps it too — otherwise a what-if table summarises
+  // nothing while its bound rows change under it.
+  const bound = tbl({
+    type: "table", columns: ["a"], rows: [], bind: { $from: "lat" }, stats: { compute: ["mean"] },
+  });
+  // This assertion is ALSO the regression test for a pre-existing drop: the
+  // sanitizer used to require `rows` to be an array and then reject the empty
+  // result, so a REACTIVE table (`bind.$from`, rows filled at render time) was
+  // deleted from the card — while every reactive gate, which tests the parser and
+  // the bind layer and never the sanitizer, stayed green.
+  const bs = sanitizeCanvasSpec(bound) as any;
+  assert.ok(bs, "a reactive table with no literal rows is NOT dropped from the card");
+  assert.deepEqual(bs.blocks[0].stats, { compute: ["mean"] }, "a bound table keeps its stats request");
+  assert.deepEqual(bs.blocks[0].rows, [], "the rows stay empty — the carrier fills them at render time");
+  assert.equal(bs.blocks[0].bind.$from, "lat", "the $from binding survives for reactiveRows()");
+
+  // The mangled-header defect is still caught when the rows are NOT coming from a
+  // carrier: a literal `{columns, rows:[]}` is the 2-of-51 real cards, and it
+  // still degrades.
+  assert.equal(sanitizeCanvasSpec(tbl({ type: "table", columns: ["a"], rows: [] })), null,
+    "a header with no body and no carrier still degrades — that is the mangled-header defect");
+});
+
+test("table.stats: a bad request costs a footer, never the table (fail-soft)", () => {
+  const spec = tbl({
+    type: "table", columns: ["a"], rows: [["1"], ["2"]],
+    stats: { columns: [1, null, "a"], compute: ["mean", "variance", 7, "MEDIAN", "stddev"] },
+  });
+  assert.ok(spec, "an unknown statistic name does not reject the table");
+  const s = sanitizeCanvasSpec(spec) as any;
+  assert.deepEqual(s.blocks[0].stats.columns, ["a"], "non-string column names are dropped");
+  // `variance`/`7` are unknown and dropped; `MEDIAN` and `stddev` are normalised to
+  // the closed set, so a model writing either gets the statistic it meant.
+  assert.deepEqual(s.blocks[0].stats.compute, ["mean", "median", "sd"]);
+  for (const bad of ["nope", 42, null, [1, 2]]) {
+    assert.doesNotThrow(() => tbl({ type: "table", columns: ["a"], rows: [["1"]], stats: bad }));
+  }
+  assert.equal((sanitizeCanvasSpec(tbl({ type: "table", columns: ["a"], rows: [["1"]], stats: "mean" })) as any)
+    .blocks[0].stats, undefined, "a non-object stats is no request at all");
+});
+
+test("chart kinds box and histogram validate from the ordinary {labels,series} shape", () => {
+  // No new authoring key: a box is one series per group of RAW samples, and a
+  // histogram is one series of raw samples the renderer bins. The statistics are
+  // the renderer's job, so the model never authors a quartile.
+  const box = tbl({ type: "chart", chart: "box", labels: ["eu", "us"], series: [
+    { name: "eu", points: [12, 15, 14, 30, 13] },
+    { name: "us", points: [40, 45, 42, 44] },
+  ] });
+  assert.ok(box, "a box plot with raw samples validates");
+  assert.equal((box!.blocks[0] as any).chart, "box");
+  assert.equal((box!.blocks[0] as any).series.length, 2, "one series per group is preserved");
+  assert.deepEqual((box!.blocks[0] as any).series[0].points, [12, 15, 14, 30, 13],
+    "the raw samples reach the renderer — the quartiles are computed, not authored");
+
+  const hist = tbl({ type: "chart", chart: "histogram", title: "p95 latency (ms)", series: [
+    { name: "samples", points: [12, 15, 14, 30, 13, 12, 14, 15] },
+  ] });
+  assert.ok(hist, "a histogram of raw samples validates");
+  assert.equal((hist!.blocks[0] as any).chart, "histogram");
+  // And both survive the sanitizer, or the chart chunk would receive nothing.
+  assert.equal((sanitizeCanvasSpec(box) as any).blocks[0].chart, "box");
+  assert.equal((sanitizeCanvasSpec(hist) as any).blocks[0].chart, "histogram");
+});
+
+test("chart kinds box and histogram: fail-soft on junk, and never an empty chart", () => {
+  // No series at all is not a chart (the shared guard every adapter relies on).
+  assert.equal(tbl({ type: "chart", chart: "box", series: [] }), null);
+  assert.equal(tbl({ type: "chart", chart: "histogram", series: [] }), null);
+  assert.equal(tbl({ type: "chart", chart: "histogram", series: [{ name: "s" }] }), null,
+    "a series with no points is not a histogram");
+  // A one-sample group still VALIDATES — the renderer's BoxShape needs 2 values
+  // for quartiles and degrades there, and a card that lost its whole block over
+  // one thin group would be a worse failure than an honest "needs 2 values".
+  const thin = tbl({ type: "chart", chart: "box", series: [{ name: "eu", points: [12] }] });
+  assert.ok(thin, "one thin group does not reject the card; the renderer says so instead");
+  assert.doesNotThrow(() => tbl({ type: "chart", chart: "box", series: [{ name: "s", points: "nope" }] }));
+  assert.doesNotThrow(() => tbl({ type: "chart", chart: "histogram", series: [{ name: "s", points: [{}] }] }));
+  assert.equal(tbl({ type: "chart", chart: "boxplot", series: [{ name: "s", points: [1, 2] }] }), null,
+    "an unknown kind is still rejected — the set is closed");
+});

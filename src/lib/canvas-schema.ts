@@ -29,7 +29,13 @@ export interface ChartBlock {
   chart: "line" | "area" | "bar" | "radial" | "pie" | "donut" | "stack"
     // v5: these four ride the ALREADY-INSTALLED recharts 2.15 components —
     // sankey/treemap/funnel/radar/scatter — so zero new bytes ship.
-    | "sankey" | "treemap" | "funnel" | "radar" | "scatter";
+    | "sankey" | "treemap" | "funnel" | "radar" | "scatter"
+    // canvas v1 expansion: `box` is recharts Bar + ErrorBar with the quartiles
+    // computed in the renderer; `histogram` is d3-array `bin` feeding the SAME
+    // bar path. Both take the ordinary `{labels, series[].points}` shape — a box
+    // is one series per group, a histogram is one series of raw samples — so
+    // neither needs a new authoring key.
+    | "box" | "histogram";
   title?: string;
   labels?: string[];
   series: {
@@ -51,6 +57,20 @@ export interface TableBlock {
   rows: string[][];
   /** Reactive: rows come from a `data` carrier through this reader. */
   bind?: unknown;
+  /** Renderer-computed summary footer. The MODEL NEVER does this arithmetic:
+   *  ask for the statistics instead of inventing a mean in prose. */
+  stats?: TableStats;
+}
+
+/** The summary statistics `table.stats` may request. All computed in the
+ *  renderer from the rendered rows, so a wrong number cannot be authored. */
+export type TableStat = "mean" | "median" | "sd" | "min" | "max" | "p95" | "count";
+
+export interface TableStats {
+  /** Which columns to summarise. Omitted = every numeric column. */
+  columns?: string[];
+  /** Omitted = every statistic, for the chosen columns. */
+  compute?: TableStat[];
 }
 
 export interface DiagramBlock {
@@ -378,6 +398,34 @@ export interface LayoutBlock {
 // contract: bad TeX degrades to the red SOURCE text the reader can correct,
 // never to a thrown card.
 
+// ── gitgraph (canvas v1 expansion) ─────────────────────────────────────────────
+// Hand-rolled SVG (~4-6 kB, no dependency). Both candidate libraries are
+// deprecated/archived and mermaid measured 5253 kB raw / 1490 kB gz — 5.3x the
+// whole main chunk. What a library would buy here is a DSL; this block keeps
+// structured JSON, which is the whole point of the canvas.
+
+export interface GitCommit {
+  /** Opaque short id; the only identity the renderer needs. */
+  id: string;
+  branch?: string;
+  message: string;
+  author?: string;
+  when?: string;
+  /** Parent commit ids. A parent on ANOTHER branch is what draws the fork. */
+  parents?: string[];
+  tags?: string[];
+  /** Rounds the row and merges lanes (a merge commit). */
+  merge?: boolean;
+}
+
+export interface GitGraphBlock {
+  type: "gitgraph";
+  title?: string;
+  branches?: { name: string; head?: string }[];
+  /** Newest first — the order they are drawn in. */
+  commits: GitCommit[];
+}
+
 export interface MathBlock {
   type: "math";
   tex: string;
@@ -456,7 +504,7 @@ export type CanvasBlock = (
   | SpreadsheetBlock | SlidesBlock | DocumentBlock | TextBlock
   | SliderBlock | SelectBlock | MultiSelectBlock | SegmentedBlock | ToggleBlock | SearchBlock | DataBlock
   | GraphBlock | ImageBlock | GalleryBlock | VideoBlock
-  | LayoutBlock | MathBlock
+  | LayoutBlock | MathBlock | GitGraphBlock
 ) & { visible?: unknown };
 
 export interface CanvasSpec {
@@ -488,10 +536,13 @@ const BLOCK_TYPES = new Set([
   "slider", "select", "multiselect", "segmented", "toggle", "search", "data",
   "graph", "image", "gallery", "video",
   // canvas v1 expansion
-  "layout", "math",
+  "layout", "math", "gitgraph",
 ]);
-const CHART_KINDS = new Set(["line", "area", "bar", "radial", "pie", "donut", "stack", "sankey", "treemap", "funnel", "radar", "scatter"]);
+const CHART_KINDS = new Set(["line", "area", "bar", "radial", "pie", "donut", "stack", "sankey", "treemap", "funnel", "radar", "scatter", "box", "histogram"]);
 const TONES = new Set(["info", "warn", "success", "danger"]);
+// `table.stats` requests. A closed set for the same reason CHART_KINDS is: an
+// unknown statistic name is dropped, so the renderer never has to guess.
+const TABLE_STATS = new Set(["mean", "median", "sd", "min", "max", "p95", "count"]);
 const TRENDS = new Set(["up", "down", "flat"]);
 
 // Alias table shared by validateBlock AND the top-level coercer, so "is this a
@@ -551,6 +602,8 @@ const TYPE_ALIASES: Record<string, string> = {
   // `math` itself is a real block type, so (like `graph` vs `plot`) it needs no
   // entry here — validateBlock checks TYPE_ALIASES BEFORE BLOCK_TYPES.
   equation: "math", latex: "math", tex: "math", formula: "math", "tex-block": "math",
+  // git graph near-misses
+  "git-graph": "gitgraph", gitlog: "gitgraph", history: "gitgraph", commitgraph: "gitgraph",
 };
 
 /** Block TYPES that are inherently relationship (ER) diagrams: an omitted layout
@@ -572,6 +625,48 @@ const TREND_ALIASES: Record<string, Trend> = {
   bad: "down", negative: "down", poor: "down", fail: "down", decrease: "down", lower: "down", worse: "down",
   warn: "flat", neutral: "flat", same: "flat", stable: "flat", none: "flat",
 };
+
+/** Model near-misses for `table.stats.compute` names (mean/avg, stddev, …). */
+const STAT_ALIASES: Record<string, TableStat> = {
+  avg: "mean", average: "mean", stdev: "sd", stddev: "sd", std: "sd", sigma: "sd",
+  q95: "p95", "95": "p95", p95th: "p95", lowest: "min", highest: "max",
+  n: "count", rows: "count", total: "count",
+};
+
+/**
+ * Normalise an authored `table.stats` request. NEVER throws and NEVER rejects:
+ * an unrecognised statistic is dropped and a `stats` that ends up with nothing
+ * usable returns `undefined`, which is the same as not asking for a footer.
+ *
+ * Why it is this forgiving: the statistics are the renderer's job. A typo in the
+ * request must cost the reader a footer line, never the table it sits under.
+ */
+function parseTableStats(v: unknown): TableStats | undefined {
+  // `stats:true` is the shortest useful form ("give me the default footer") and a
+  // boolean is exactly what a model writes when it wants it, so it is accepted and
+  // normalised to the empty request. `stats:false` means no footer, same as absent.
+  if (v === true) return {};
+  if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+  const o = v as Record<string, unknown>;
+  const out: TableStats = {};
+  if (Array.isArray(o.columns)) {
+    // Column names are matched against the table's own header by the renderer,
+    // so only strings are kept and the list is capped by the column count anyway.
+    const cols = o.columns.filter(isStr).map((c) => c.slice(0, 60));
+    if (cols.length > 0) out.columns = [...new Set(cols)].slice(0, 20);
+  }
+  if (Array.isArray(o.compute)) {
+    const names = o.compute
+      .filter(isStr)
+      .map((c) => STAT_ALIASES[c.trim().toLowerCase()] ?? (TABLE_STATS.has(c.trim().toLowerCase()) ? c.trim().toLowerCase() as TableStat : undefined))
+      .filter((c): c is TableStat => c !== undefined);
+    if (names.length > 0) out.compute = [...new Set(names)];
+  }
+  // `stats: true` / `stats: {}` means "every statistic on every numeric column",
+  // which is the same as asking for the default — emit the empty object so the
+  // renderer can tell "asked" from "did not ask".
+  return out.columns || out.compute ? out : {};
+}
 
 function looksLikeBlockType(v: unknown): boolean {
   return isStr(v) && (TYPE_ALIASES[v] !== undefined || BLOCK_TYPES.has(v));
@@ -788,10 +883,16 @@ function validateBlockInner(b: any): CanvasBlock | null {
     }
     case "table": {
       if (!isStrArr(b.columns) || b.columns.length === 0) return null;
+      // `stats` is validated HERE and stored on both return paths. It is an
+      // instruction to the renderer ("compute these numbers for me"), not data,
+      // so it must never be able to reject an otherwise valid table: a bad stat
+      // name is DROPPED, not fatal. Losing a footer is recoverable; losing the
+      // table is not.
+      const stats = parseTableStats(b.stats);
       // Reactive table: rows come from a `data` carrier through `bind.$from`,
       // so an absent/empty `rows` is EXPECTED, not the mangled-header defect.
       if (isBind(b.bind) && isStr(b.bind.$from)) {
-        return { type: "table", columns: b.columns, rows: [], bind: b.bind };
+        return { type: "table", columns: b.columns, rows: [], bind: b.bind, stats };
       }
       if (!Array.isArray(b.rows) || b.rows.length === 0) return null;
       // A header row with NO body is the "table looks mangled" report (measured:
@@ -813,7 +914,7 @@ function validateBlockInner(b: any): CanvasBlock | null {
         }
         rows.push(out);
       }
-      return { type: "table", columns: b.columns, rows };
+      return { type: "table", columns: b.columns, rows, stats };
     }
     case "diagram": {
       if (b.layout !== "flow" && b.layout !== "relationship") return null;
@@ -1149,6 +1250,50 @@ function validateBlockInner(b: any): CanvasBlock | null {
         tex: b.tex.slice(0, 4000),
         display: b.display === false ? false : true,
         label: isStr(b.label) ? b.label.slice(0, 200) : undefined,
+      };
+    }
+    case "gitgraph": {
+      // Lanes are assigned here, not in the renderer: a commit with no `branch`
+      // joins the lane of its first parent, which is what makes a fork draw as a
+      // fork instead of a column of unrelated rows.
+      if (!Array.isArray(b.commits) || b.commits.length === 0) return null;
+      const commits: GitGraphBlock["commits"] = [];
+      const seen = new Set<string>();
+      for (const c of b.commits) {
+        if (!c || !isStr(c.id) || !c.id.trim()) return null;
+        if (seen.has(c.id)) continue;                       // a repeated id is a duplicate row
+        seen.add(c.id);
+        commits.push({
+          id: c.id.slice(0, 40),
+          branch: isStr(c.branch) ? c.branch.slice(0, 40) : undefined,
+          message: isStr(c.message) ? c.message.slice(0, 200) : "",
+          author: isStr(c.author) ? c.author.slice(0, 60) : undefined,
+          when: isStr(c.when) ? c.when.slice(0, 40) : undefined,
+          parents: Array.isArray(c.parents) ? c.parents.filter(isStr).slice(0, 8).map((p: string) => p.slice(0, 40)) : undefined,
+          tags: Array.isArray(c.tags) ? c.tags.filter(isStr).slice(0, 6).map((t: string) => t.slice(0, 30)) : undefined,
+          merge: c.merge === true ? true : undefined,
+        });
+        if (commits.length >= 40) break;                     // maxRows cap: see MAX_GIT_ROWS
+      }
+      if (commits.length === 0) return null;
+      let branches: GitGraphBlock["branches"];
+      if (Array.isArray(b.branches)) {
+        const out: { name: string; head?: string }[] = [];
+        const bn = new Set<string>();
+        for (const br of b.branches) {
+          if (!br || !isStr(br.name) || !br.name.trim()) continue;
+          if (bn.has(br.name)) continue;
+          bn.add(br.name);
+          out.push({ name: br.name.slice(0, 40), head: isStr(br.head) ? br.head.slice(0, 40) : undefined });
+          if (out.length >= 12) break;
+        }
+        branches = out.length > 0 ? out : undefined;
+      }
+      return {
+        type: "gitgraph",
+        title: isStr(b.title) ? b.title.slice(0, 200) : undefined,
+        branches,
+        commits,
       };
     }
     case "terminal": {
