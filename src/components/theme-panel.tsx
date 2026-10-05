@@ -69,8 +69,8 @@ export function ThemePanel({ onUpload: _legacyOnUpload }: { onUpload?: (file: Fi
 
   // builder draft
   const [bName, setBName] = useState("");
-  const [bPrimary, setBPrimary] = useState("#22d3ee");
-  const [bSecondary, setBSecondary] = useState("#34d399");
+  const [bPrimary, setBPrimary] = useState("#2bc8f3");
+  const [bSecondary, setBSecondary] = useState("#49cc95");
 
   const [theme, toggleTheme] = useTheme();
   const isLight = theme === "light";

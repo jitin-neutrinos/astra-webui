@@ -233,7 +233,7 @@ export default function VaultPage() {
           className="w-full max-w-sm rounded-2xl border border-white/[0.07] bg-midnight/80 p-6 backdrop-blur-2xl"
         >
           <div className="mb-5 flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[rgba(34,211,238,0.1)] text-[color:var(--color-accent)]">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10 text-[color:var(--color-accent)]">
               <LockKeyhole className="h-5 w-5" strokeWidth={1.5} aria-hidden />
             </span>
             <div>
@@ -292,7 +292,7 @@ export default function VaultPage() {
       <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6">
         {/* header */}
         <div className="mb-5 flex flex-wrap items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[rgba(34,211,238,0.1)] text-[color:var(--color-accent)]">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10 text-[color:var(--color-accent)]">
             <Vault className="h-5 w-5" strokeWidth={1.5} aria-hidden />
           </span>
           <div className="min-w-0 flex-1">
@@ -325,7 +325,7 @@ export default function VaultPage() {
                 {active && (
                   <motion.span
                     layoutId="vault-tab-pill"
-                    className="absolute inset-0 rounded-lg bg-[rgba(34,211,238,0.14)] ring-1 ring-[rgba(34,211,238,0.3)]"
+                    className="absolute inset-0 rounded-lg bg-accent/15 ring-1 ring-accent/30"
                     transition={reduce ? { duration: 0 } : { type: "spring", duration: 0.45, bounce: 0.18 }}
                   />
                 )}
@@ -376,7 +376,7 @@ export default function VaultPage() {
               aria-pressed={revealAll}
               className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-medium transition-colors active:scale-[0.98] ${
                 revealAll
-                  ? "border-[rgba(34,211,238,0.3)] bg-[rgba(34,211,238,0.1)] text-[color:var(--color-accent)]"
+                  ? "border-accent/30 bg-accent/10 text-[color:var(--color-accent)]"
                   : "border-white/[0.09] text-muted hover:bg-void/60"
               }`}
             >
@@ -396,7 +396,7 @@ export default function VaultPage() {
                   <p className="truncate text-sm font-medium">{d.name}</p>
                   <p className="truncate text-xs text-muted">{d.projects.join(", ")}</p>
                 </div>
-                <span className="rounded-[6px] bg-[rgba(34,211,238,0.1)] px-2 py-0.5 text-[11px] font-medium text-[color:var(--color-accent)]">
+                <span className="rounded-[6px] bg-accent/10 px-2 py-0.5 text-[11px] font-medium text-[color:var(--color-accent)]">
                   {d.count} {d.count === 1 ? "var" : "vars"}
                 </span>
               </div>
@@ -449,7 +449,7 @@ export default function VaultPage() {
                       return (
                         <li
                           key={e.id}
-                          className="group rounded-xl border border-white/[0.07] bg-midnight/60 p-3.5 transition-colors hover:border-[rgba(34,211,238,0.2)]"
+                          className="group rounded-xl border border-white/[0.07] bg-midnight/60 p-3.5 transition-colors hover:border-accent/20"
                         >
                           {/* key + where it is used */}
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">

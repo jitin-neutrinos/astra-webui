@@ -47,10 +47,10 @@ ok(/var\(--ast-sk-fill/.test((css.match(/\.ast-sk\s*\{[^}]*\}/) || [""])[0]), "s
 // The dark tokens live in the @theme block (where every --color-* default lives), not in :root.
 const themeBlock = (css.match(/@theme\s*\{[^}]*\}/) || [""])[0];
 ok(/--ast-sk-fill:\s*#353535/.test(themeBlock), "@theme defines --ast-sk-fill (dark)");
-ok(/--ast-sk-sweep:\s*#505050/.test(themeBlock), "@theme defines --ast-sk-sweep (dark)");
+ok(/--ast-sk-sweep:\s*#4f4f4f/.test(themeBlock), "@theme defines --ast-sk-sweep (dark)");
 const lightBlock = (css.match(/\[data-theme="light"\]\s*\{[^}]*\}/) || [""])[0];
-ok(/--ast-sk-fill:\s*#dadada/.test(lightBlock), "[data-theme=light] defines --ast-sk-fill");
-ok(/--ast-sk-sweep:\s*#b2b2b2/.test(lightBlock), "[data-theme=light] defines --ast-sk-sweep");
+ok(/--ast-sk-fill:\s*#d9d9d9/.test(lightBlock), "[data-theme=light] defines --ast-sk-fill");
+ok(/--ast-sk-sweep:\s*#adadad/.test(lightBlock), "[data-theme=light] defines --ast-sk-sweep");
 
 // ---- 3. the derivation is chroma-free and matches the published literals ----------------
 // Same maths as neutralGrey() in theme-store.ts, re-derived here so the two cannot drift.
@@ -88,13 +88,13 @@ const ratio = (a: string, b: string) => {
 };
 
 const cases: Array<[string, string, number, string]> = [
-  ["dark fill", "#f8fafc", 0.22, "#353535"],
-  ["dark sweep", "#f8fafc", 0.34, "#505050"],
-  ["light fill", "#0f172a", 0.10, "#dadada"],
-  ["light sweep", "#0f172a", 0.26, "#b2b2b2"],
+  ["dark fill", "#f2f3f7", 0.22, "#353535"],
+  ["dark sweep", "#f2f3f7", 0.34, "#4f4f4f"],
+  ["light fill", "#040408", 0.10, "#d9d9d9"],
+  ["light sweep", "#040408", 0.26, "#adadad"],
 ];
 for (const [label, ink, pct, expected] of cases) {
-  const got = neutralGrey(ink, ink === "#f8fafc" ? "#0a0a0f" : "#f5f2ec", pct);
+  const got = neutralGrey(ink, ink === "#f2f3f7" ? "#090c12" : "#f3f6fb", pct);
   ok(got === expected, `${label}: neutralGrey = ${got}, stylesheet literal = ${expected}`);
 }
 

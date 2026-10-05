@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/astra-logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
-    <meta name="theme-color" content="#0a0a0f" />
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f2ec" />
+    <meta name="theme-color" content="#090c12" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f3f6fb" />
     <script>
       // Pre-paint theme: no flash. Default dark; restore saved preference.
       // The runtime toggle (theme-toggle.tsx apply()) keeps the FIRST
@@ -16,7 +16,7 @@
           var t = localStorage.getItem("astra-theme");
           if (t === "light") {
             document.documentElement.setAttribute("data-theme", "light");
-            document.querySelector('meta[name="theme-color"]:not([media])').setAttribute("content", "#f5f2ec");
+            document.querySelector('meta[name="theme-color"]:not([media])').setAttribute("content", "#f3f6fb");
           }
         } catch (e) {}
       })();

@@ -34,9 +34,9 @@ function themeTokens() {
   const cs = getComputedStyle(document.documentElement);
   const v = (n: string, fb: string) => (cs.getPropertyValue(n).trim() || fb);
   return {
-    accent: v("--color-accent", "#22d3ee"),
-    label: v("--color-brandtext", "#f8fafc"),
-    muted: v("--color-muted", "#8b8c93"),
+    accent: v("--color-accent", "#2bc8f3"),
+    label: v("--color-brandtext", "#f2f3f7"),
+    muted: v("--color-muted", "#8d929e"),
     paper: v("--surface-raised", "#12121a"),
   };
 }

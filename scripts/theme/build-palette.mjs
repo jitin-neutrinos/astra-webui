@@ -109,21 +109,21 @@ const ASTRA_UI = {
   id: "astra-ui", name: "Astra UI", source: "owner", license: "—",
   variants: {
     dark: {
-      "--color-void": "#0a0a0f", "--color-midnight": "#12121a", "--color-depth": "#1a1a2e", "--color-surface": "#252538",
+      "--color-void": "#090c12", "--color-midnight": "#11151d", "--color-depth": "#1a1f29", "--color-surface": "#252b39",
       // muted raised from #6b7280: it read 4.09:1 on void and only 3.63:1 on the welcome card
       // (white/6% over void), below the 4.5 AA floor for the sub-heading, suggestion hints,
       // placeholder and composer hint that all use it.
-      "--color-brandtext": "#f8fafc", "--color-muted": "#8b8c93",
-      "--color-cyanx": "#22d3ee", "--color-violetx": "#34d399", "--color-fuchsiax": "#d946ef", "--color-redx": "#f87171",
-      "--color-emerald": "#34d399", "--color-amber": "#fbbf24",
-      "--glow-accent": "0 0 10px rgba(34,211,238,.25)", "--glow-accent-strong": "0 0 16px rgba(34,211,238,.4)",
+      "--color-brandtext": "#f2f3f7", "--color-muted": "#8d929e",
+      "--color-cyanx": "#2bc8f3", "--color-violetx": "#8f9eef", "--color-fuchsiax": "#dc6dd4", "--color-redx": "#ef6661",
+      "--color-emerald": "#49cc95", "--color-amber": "#e6b14e",
+      "--glow-accent": "0 0 10px rgba(43,200,243,.25)", "--glow-accent-strong": "0 0 16px rgba(43,200,243,.4)",
       "--bg-url": "", "--bg-video": "",
     },
     light: {
-      "--color-void": "#f5f2ec", "--color-midnight": "#fdfcf9", "--color-depth": "#ece8df", "--color-surface": "#e1dcd1",
-      "--color-brandtext": "#0f172a", "--color-muted": "#5b6472",
-      "--color-cyanx": "#0369a1", "--color-violetx": "#047857", "--color-fuchsiax": "#a21caf", "--color-redx": "#b91c1c",
-      "--color-emerald": "#047857", "--color-amber": "#b45309",
+      "--color-void": "#f3f6fb", "--color-midnight": "#f9fbff", "--color-depth": "#e9edf4", "--color-surface": "#dbe0ea",
+      "--color-brandtext": "#040408", "--color-muted": "#545b69",
+      "--color-cyanx": "#015ba6", "--color-violetx": "#424b9c", "--color-fuchsiax": "#80257b", "--color-redx": "#b02a2d",
+      "--color-emerald": "#0a6c49", "--color-amber": "#945f0e",
       "--glow-accent": "none", "--glow-accent-strong": "none",
       "--bg-url": "", "--bg-video": "",
     },

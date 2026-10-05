@@ -39,7 +39,7 @@ export class RootErrorBoundary extends Component<Props, State> {
           <button
             type="button"
             onClick={() => location.reload()}
-            style={{ marginTop: 18, padding: "10px 18px", borderRadius: 9999, border: "0", background: "var(--color-accent, #22d3ee)", color: "#06121a", font: "600 14px var(--font-sans, sans-serif)", cursor: "pointer" }}
+            style={{ marginTop: 18, padding: "10px 18px", borderRadius: 9999, border: "0", background: "var(--color-accent, #2bc8f3)", color: "#06121a", font: "600 14px var(--font-sans, sans-serif)", cursor: "pointer" }}
           >Reload</button>
         </div>
       </div>

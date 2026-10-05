@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as notify from "@/lib/notify";
+import { fetchSessionsOnce, invalidateSessions } from "@/lib/sessions-cache";
 import { ChatLanding } from "./components/chat-landing";
 import { ThemeToggle, ThemeIconButton } from "./components/theme-toggle";
 import { ChatsPanel } from "./components/chats-panel";
@@ -148,7 +149,7 @@ function LoginScreen({ password, setPassword, clearError, error, busy, submit }:
               <img
                 src="/astra-logo.png"
                 alt="Astra"
-                className="h-[38px] w-[38px] object-contain drop-shadow-[0_0_14px_rgba(34,211,238,0.35)]"
+                className="h-[38px] w-[38px] object-contain drop-shadow-[0_0_14px_color-mix(in_srgb,var(--color-accent)_35%,transparent)]"
               />
               <h1 className="font-display text-[38px] leading-none tracking-tight text-brandtext">
                 Astra
@@ -197,7 +198,7 @@ function LoginScreen({ password, setPassword, clearError, error, busy, submit }:
             ) : null}
             <button
               type="submit" disabled={busy}
-              className="mt-2 w-full rounded-lg border border-accent/25 bg-accent/10 py-3 text-base text-accent transition-all hover:bg-accent/20 hover:shadow-[0_0_24px_rgba(34,211,238,0.2)] disabled:opacity-50"
+              className="mt-2 w-full rounded-lg border border-accent/25 bg-accent/10 py-3 text-base text-accent transition-all hover:bg-accent/20 hover:shadow-[0_0_24px_color-mix(in_srgb,var(--color-accent)_20%,transparent)] disabled:opacity-50"
             >
               {busy ? "Signing in..." : "Let me in"}
             </button>
@@ -239,9 +240,10 @@ function useUnreadTotal() {
 
     const seedFromServer = async () => {
       try {
-        const res = await fetch("/api/hx/sessions?limit=100&order=recent", { credentials: "same-origin" });
-        if (!res.ok) return;
-        const data = await res.json();
+        // Coalesced with chats-panel's identical list fetch (RCA 2026-10-05).
+        // These two fired within the same open and downloaded the same 25 KiB
+        // twice, ~307 ms each through the tunnel.
+        const data = await fetchSessionsOnce("/api/hx/sessions?limit=100&order=recent");
         const rows = Array.isArray(data?.sessions) ? data.sessions : [];
         if (!alive || !rows.length) return;
         notify.seedFromServer(rows, null);
@@ -252,7 +254,13 @@ function useUnreadTotal() {
     const onUnread = () => sync();
     const onWs = (e: Event) => {
       const t = (e as CustomEvent<{ type?: string }>).detail?.type;
-      if (t === "sessions.changed" || t === "session.started") { sync(); void seedFromServer(); }
+      if (t === "sessions.changed" || t === "session.started") {
+        // Drop the coalescing cache BEFORE re-seeding, so this refresh is a real
+        // fetch and the next open cannot serve a pre-change list (RCA 2026-10-05).
+        invalidateSessions();
+        sync();
+        void seedFromServer();
+      }
     };
     window.addEventListener("astra:unread-changed", onUnread);
     window.addEventListener("astra-ws-event", onWs);

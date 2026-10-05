@@ -77,7 +77,7 @@ function syncThemeColorMeta(mode: ThemeMode) {
     meta?.setAttribute("content", voidHex);
   }
   const root = document.documentElement;
-  const ink = v["--color-brandtext"] || (mode === "light" ? "#0f172a" : "#f8fafc");
+  const ink = v["--color-brandtext"] || (mode === "light" ? "#040408" : "#f2f3f7");
   const ground = voidHex || (mode === "light" ? "#f5f2ec" : "#0a0a0f");
   // keep% = how much INK remains after mixing toward the ground.
   // Light (ink is dark): lighter steps keep LESS ink. Dark (ink is light): lighter steps keep MORE.
@@ -175,7 +175,7 @@ export function applyPalette(p: Palette, mode: ThemeMode = getMode()) {
   for (const [token, hex] of Object.entries(source)) {
     if (token.startsWith("--color-") && /^#[0-9a-fA-F]{6}$/.test(hex)) root.style.setProperty(token, hex);
   }
-  root.style.setProperty("--color-accent", source["--color-cyanx"] || astraMode["--color-cyanx"] || "#22d3ee");
+  root.style.setProperty("--color-accent", source["--color-cyanx"] || astraMode["--color-cyanx"] || "#2bc8f3");
   // Non-color tokens the palettes carry (--glow-accent, --glow-accent-strong, --bg-url,
   // --bg-video). These differ per MODE — dark defines a glow, light sets "none" — so skipping
   // them left dark-mode glows burning on light paper after a toggle. Write them verbatim.

@@ -115,7 +115,7 @@ export default function NativeChart({
   H: number;
 }) {
   const [ref, w] = useMeasuredWidth();
-  const textColor = useResolvedColor("--color-brandtext", "#f8fafc");
+  const textColor = useResolvedColor("--color-brandtext", "#f2f3f7");
   const paperColor = useResolvedColor("--cv-paper", "#12121a");
   const first = block.series?.[0];
   const points = Array.isArray(first?.points) ? first!.points : [];
