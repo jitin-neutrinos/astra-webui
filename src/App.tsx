@@ -36,6 +36,7 @@ import { ContextPage } from "./components/context-page";
 import { MemoryPage } from "./components/memory-page";
 import { HarnessPage } from "./components/harness-page";
 import { TrainingPage } from "./components/training-page";
+import { JobDetail } from "./components/job-detail";
 import TokenTrackerPage from "./components/token-tracker";
 import { useMobileViewport } from "./hooks/use-mobile-viewport";
 import { isLowSpec } from "./components/composer-trace";
@@ -282,7 +283,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
   // address bar, browser back/forward, and reload all land on the right page —
   // previously non-chat views were just an in-memory flag with no URL of their own,
   // so navigating away and back (or reloading) always dropped you back into chat.
-  const parsePath = (): { view: 'chat' | 'files' | 'tracker' | 'config' | 'approvals' | 'vault' | 'context' | 'memory' | 'harness' | 'training'; sessionId: string | null } => {
+  const parsePath = (): { view: 'chat' | 'files' | 'tracker' | 'config' | 'approvals' | 'vault' | 'context' | 'memory' | 'harness' | 'training' | 'job'; sessionId: string | null } => {
     const p = location.pathname;
     if (p === "/files") return { view: "files", sessionId: null };
     if (p === "/tracker") return { view: "tracker", sessionId: null };
@@ -297,7 +298,8 @@ function Shell({ onLogout }: { onLogout: () => void }) {
     return { view: "chat", sessionId: match ? match[1] : null };
   };
   const initial = parsePath();
-  const [view, setView] = useState<'chat' | 'files' | 'tracker' | 'config' | 'approvals' | 'vault' | 'context' | 'memory' | 'harness' | 'training'>(initial.view as 'chat' | 'files' | 'tracker' | 'config' | 'approvals' | 'vault' | 'context' | 'memory' | 'harness' | 'training');
+  const [view, setView] = useState<'chat' | 'files' | 'tracker' | 'config' | 'approvals' | 'vault' | 'context' | 'memory' | 'harness' | 'training' | 'job'>(initial.view as 'chat' | 'files' | 'tracker' | 'config' | 'approvals' | 'vault' | 'context' | 'memory' | 'harness' | 'training' | 'job');
+  const [jobSid, setJobSid] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("astra-sidebar-collapsed") === "1");
   const toggleSidebar = () => setSidebarCollapsed((c) => {
     localStorage.setItem("astra-sidebar-collapsed", c ? "0" : "1");
@@ -309,13 +311,14 @@ function Shell({ onLogout }: { onLogout: () => void }) {
   // Non-chat views own their own path + title directly (chat's own path/title
   // effect only runs while it is the active view — see ChatLanding's isActiveView).
   useEffect(() => {
-    const TITLES: Record<typeof view, string> = { chat: "Astra", files: "Files — Astra", tracker: "Global Token Tracker — Astra", config: "Config — Astra", approvals: "Approvals & Reviews — Astra", vault: "Vault — Astra", context: "Context — Astra", memory: "Memory — Astra", harness: "Harness — Astra", training: "Training & Reviews — Astra" };
+    const TITLES: Record<typeof view, string> = { chat: "Astra", files: "Files — Astra", tracker: "Global Token Tracker — Astra", config: "Config — Astra", approvals: "Approvals & Reviews — Astra", vault: "Vault — Astra", context: "Context — Astra", memory: "Memory — Astra", harness: "Harness — Astra", training: "Training & Reviews — Astra", job: "Job detail — Astra" };
     if (view === "files" && location.pathname !== "/files") history.pushState({}, "", "/files");
     else if (view === "tracker" && location.pathname !== "/tracker") history.pushState({}, "", "/tracker");
     else if (view === "context" && location.pathname !== "/context") history.pushState({}, "", "/context");
     else if (view === "memory" && location.pathname !== "/memory") history.pushState({}, "", "/memory");
     else if (view === "harness" && location.pathname !== "/harness") history.pushState({}, "", "/harness");
     else if (view === "training" && location.pathname !== "/training") history.pushState({}, "", "/training");
+    else if (view === "job" && jobSid && location.pathname !== `/job/${jobSid}`) history.pushState({}, "", `/job/${jobSid}`);
     else if (view === "config" && location.pathname !== "/config") history.pushState({}, "", "/config");
     else if (view === "approvals" && location.pathname !== "/approvals") history.pushState({}, "", "/approvals");
     else if (view === "vault" && location.pathname !== "/vault") history.pushState({}, "", "/vault");
@@ -440,14 +443,17 @@ function Shell({ onLogout }: { onLogout: () => void }) {
           <HarnessPage onBack={() => setView('chat')} />
         )}
         {view === 'training' && (
-          <TrainingPage onBack={() => setView('chat')} />
+          <TrainingPage onBack={() => setView('chat')} onOpenJob={(sid) => { setJobSid(sid); setView('job'); }} />
+        )}
+        {view === 'job' && jobSid && (
+          <JobDetail sid={jobSid} onBack={() => setView('training')} />
         )}
       </div>
     </div>
   );
 }
 
-function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDrawer, onToggleCollapse, onLogout, onSelectSession, onEndSession, onOpenTracker, onOpenConfig, onOpenApprovals, onOpenVault, onOpenContext, onOpenMemory, onOpenHarness, onOpenTraining }: { activeView: 'chat' | 'files' | 'tracker' | 'config' | 'approvals' | 'vault' | 'context' | 'memory' | 'harness' | 'training'; collapsed: boolean; drawerOpen: boolean; activeSessionId: string | null; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onSelectSession: (id: string) => void; onEndSession?: (id: string) => Promise<void>; onOpenTracker?: () => void; onOpenConfig?: () => void; onOpenApprovals?: () => void; onOpenVault?: () => void; onOpenContext?: () => void; onOpenMemory?: () => void; onOpenHarness?: () => void; onOpenTraining?: () => void; }) {
+function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDrawer, onToggleCollapse, onLogout, onSelectSession, onEndSession, onOpenTracker, onOpenConfig, onOpenApprovals, onOpenVault, onOpenContext, onOpenMemory, onOpenHarness, onOpenTraining }: { activeView: 'chat' | 'files' | 'tracker' | 'config' | 'approvals' | 'vault' | 'context' | 'memory' | 'harness' | 'training' | 'job'; collapsed: boolean; drawerOpen: boolean; activeSessionId: string | null; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onSelectSession: (id: string) => void; onEndSession?: (id: string) => Promise<void>; onOpenTracker?: () => void; onOpenConfig?: () => void; onOpenApprovals?: () => void; onOpenVault?: () => void; onOpenContext?: () => void; onOpenMemory?: () => void; onOpenHarness?: () => void; onOpenTraining?: () => void; }) {
   const [mode, setMode] = useState<'nav' | 'chats' | 'files'>('nav');
   
   const asideChatsRef = useRef<HTMLElement>(null);
@@ -721,7 +727,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
             <div className={cn("grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none",
               open ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
               <div className="overflow-hidden">
-                <div className={cn(expanded ? "pb-1.5" : "pb-0", open && "rounded-md bg-white/[0.02]")}>
+                <div className={cn("flex flex-col gap-1.5 mt-1", expanded ? "pb-1.5" : "pb-0", open && "rounded-md bg-white/[0.02]")}>
             {group.items.map((item) => {
               // Chats/Files render INSIDE the sidebar (early-return above), so the
               // NAV rows for them are only ever painted when mode === 'nav' — and
@@ -804,4 +810,3 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
     </aside>
   );
 }
-
