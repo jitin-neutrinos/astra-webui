@@ -1664,3 +1664,90 @@ test("layout: markdown copy serializes the children in document order", () => {
   assert.match(md, /Layout \(bento\)/);
   assert.ok(md.indexOf("**A:**") < md.indexOf("const x = 1;"), "children keep document order");
 });
+
+
+// ── math (canvas v1 expansion) ────────────────────────────────────────────────
+// A new block type ships with THREE obligations or it does not ship: a schema
+// case, a sanitizer case, and regression tests that assert on BOTH sides of the
+// sanitizer (the one call on the render path). A missing sanitizer case silently
+// drops the block — that bug class has shipped twice already.
+const math = (b: unknown) => parseCanvasSpec(JSON.stringify({ v: 1, blocks: [b] }));
+
+test("math: tex parses and SURVIVES the sanitizer (both sides asserted)", () => {
+  const spec = math({ type: "math", tex: "\\int_0^\\infty x^2\\,dx", display: true, label: "area" });
+  assert.ok(spec, "a formula parses");
+  const m = spec!.blocks[0] as any;
+  assert.equal(m.type, "math");
+  assert.equal(m.tex, "\\int_0^\\infty x^2\\,dx");
+  assert.equal(m.display, true);
+  assert.equal(m.label, "area");
+  const s = sanitizeCanvasSpec(spec) as any;
+  assert.ok(s, "the formula survives the sanitizer");
+  assert.equal(s.blocks[0].type, "math", "sanitizer must not drop the math block");
+  assert.equal(s.blocks[0].tex, m.tex);
+  assert.equal(s.blocks[0].label, "area");
+});
+
+test("math: display defaults to true, inline is the explicit opt-out", () => {
+  assert.equal((math({ type: "math", tex: "x" })!.blocks[0] as any).display, true, "display defaults on");
+  assert.equal((math({ type: "math", tex: "x", display: false })!.blocks[0] as any).display, false);
+  const s = sanitizeCanvasSpec(math({ type: "math", tex: "x" })) as any;
+  assert.equal(s.blocks[0].display, true, "the default survives the sanitizer");
+  assert.equal((sanitizeCanvasSpec(math({ type: "math", tex: "x", display: false })) as any).blocks[0].display, false);
+});
+
+test("math: fail-soft — empty/whitespace tex and junk fields never throw", () => {
+  assert.equal(math({ type: "math" }), null, "no tex at all is not a formula");
+  assert.equal(math({ type: "math", tex: "" }), null);
+  assert.equal(math({ type: "math", tex: "   " }), null, "whitespace is not a formula");
+  assert.equal(math({ type: "math", tex: 42 }), null, "a non-string tex is malformed");
+  // A junk label/display must not reject a formula that is otherwise valid, and
+  // must not throw.
+  assert.doesNotThrow(() => math({ type: "math", tex: "x^2", label: { a: 1 }, display: "yes" }));
+  assert.ok(math({ type: "math", tex: "x^2" }), "the valid formula still parses alongside junk");
+});
+
+test("math: tex is capped (one formula cannot bloat a card)", () => {
+  const long = "x".repeat(9000);
+  const m = math({ type: "math", tex: long })!.blocks[0] as any;
+  assert.equal(m.tex.length, 4000, "the parser caps tex at 4000");
+  const s = sanitizeCanvasSpec(math({ type: "math", tex: long })) as any;
+  assert.ok(s.blocks[0].tex.length <= 4000, "the sanitizer caps tex too");
+});
+
+test("math: type aliases (equation/latex/tex/formula) all normalise to math", () => {
+  for (const alias of ["equation", "latex", "tex", "formula"]) {
+    const spec = math({ type: alias, tex: "a+b" });
+    assert.ok(spec, `${alias} must parse rather than degrade the card`);
+    assert.equal((spec!.blocks[0] as any).type, "math", `${alias} normalises to math`);
+    assert.equal((spec!.blocks[0] as any).tex, "a+b");
+  }
+});
+
+test("math: nests inside a layout and inside an accordion (the render path)", () => {
+  const spec = parseCanvasSpec(JSON.stringify({
+    v: 1,
+    blocks: [{
+      type: "layout", layout: "split",
+      blocks: [
+        { type: "math", tex: "E=mc^2" },
+        { type: "accordion", items: [{ title: "derivation", body: "…", open: true }] },
+      ],
+    }],
+  }));
+  assert.ok(spec);
+  const s = sanitizeCanvasSpec(spec) as any;
+  const inner = s.blocks[0].blocks;
+  assert.equal(inner[0].type, "math", "a formula inside a layout survives the sanitizer");
+  assert.equal(inner[0].tex, "E=mc^2");
+  assert.equal(inner[1].type, "accordion");
+});
+
+test("math: markdown copy round-trips the TeX source", () => {
+  const spec = math({ type: "math", tex: "\\frac{a}{b}", label: "ratio" });
+  assert.ok(spec);
+  const md = canvasToMarkdown(spec!);
+  assert.ok(md.includes("\\frac{a}{b}"), "the exact TeX source is copied, not flattened glyphs");
+  assert.ok(md.includes("$$"), "display math copies as a $$ block");
+  assert.ok(md.includes("ratio"), "the label is kept");
+});

@@ -169,6 +169,12 @@ function blockToMd(b: CanvasBlock): string {
       const head = `**Layout (${b.layout})**\n`;
       return head + b.blocks.map(blockToMd).join("\n\n");
     }
+    case "math":
+      // TeX is copied verbatim inside a `$$` fence: that is what every markdown
+      // reader (and GitHub) understands, and it round-trips the exact source the
+      // card rendered from rather than the flattened glyphs. Inline formulas use
+      // the single-dollar form so the copy is usable inline too.
+      return (b.display === false ? `$${b.tex}$` : `$$\n${b.tex}\n$$`) + (b.label ? `\n*${b.label}*` : "");
     case "video":
       return `[video: ${b.src}]${b.caption ? `\n\n${b.caption}` : ""}`;
   }

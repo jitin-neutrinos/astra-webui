@@ -20,7 +20,7 @@ const KNOWN_TYPES = new Set([
   "accordion", "terminal", "badges", "divider",
   "spreadsheet", "slides", "document", "text",
   "slider", "select", "multiselect", "segmented", "toggle", "search", "data",
-  "graph", "image", "gallery", "video", "layout",
+  "graph", "image", "gallery", "video", "layout", "math",
 ]);
 
 // Valid enum values
@@ -761,6 +761,21 @@ function sanitizeBlock(b: unknown, depth = 0): CanvasBlock | null {
       sanitized.layout = layout;
       if (cols !== undefined) sanitized.cols = cols;
       sanitized.blocks = blocks;
+      break;
+    }
+    case "math": {
+      // TeX source, capped. katex renders it in a lazy chunk with
+      // throwOnError:false, so bad TeX degrades to source text at paint time;
+      // a block with no TeX at all is a formula-less formula and is dropped.
+      if (typeof obj.tex !== "string" || !obj.tex.trim()) return null;
+      sanitized.tex = truncate(obj.tex, 4000);
+      // Emit the SAME shape the parser does: `display` is always an explicit
+      // boolean there (default true), so writing it only when false left the two
+      // layers disagreeing about an omitted key. The renderer treats `!== false`
+      // as display, so both forms painted the same — but "the serialized shape
+      // is what a consumer sees" is the rule, so the sanitizer matches.
+      sanitized.display = obj.display === false ? false : true;
+      if (typeof obj.label === "string") sanitized.label = truncate(obj.label, 200);
       break;
     }
     case "diff": {

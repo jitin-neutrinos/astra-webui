@@ -344,6 +344,20 @@ export interface LayoutBlock {
   blocks: CanvasBlock[];
 }
 
+// ── math (canvas v1 expansion) ────────────────────────────────────────────────
+// LaTeX/TeX, rendered by katex in a lazy chunk. `throwOnError:false` is the
+// contract: bad TeX degrades to the red SOURCE text the reader can correct,
+// never to a thrown card.
+
+export interface MathBlock {
+  type: "math";
+  tex: string;
+  /** Display (centred, own lines). Default true. */
+  display?: boolean;
+  label?: string;
+}
+
+
 // ── Editable + downloadable blocks (v4) ──────────────────────────────────────
 // Every one of these is BOTH embedded and expandable to fullscreen, and has a
 // working Download. The shape stays plain JSON: an agent emits rows/slides/text,
@@ -413,7 +427,7 @@ export type CanvasBlock = (
   | SpreadsheetBlock | SlidesBlock | DocumentBlock | TextBlock
   | SliderBlock | SelectBlock | MultiSelectBlock | SegmentedBlock | ToggleBlock | SearchBlock | DataBlock
   | GraphBlock | ImageBlock | GalleryBlock | VideoBlock
-  | LayoutBlock
+  | LayoutBlock | MathBlock
 ) & { visible?: unknown };
 
 export interface CanvasSpec {
@@ -445,7 +459,7 @@ const BLOCK_TYPES = new Set([
   "slider", "select", "multiselect", "segmented", "toggle", "search", "data",
   "graph", "image", "gallery", "video",
   // canvas v1 expansion
-  "layout",
+  "layout", "math",
 ]);
 const CHART_KINDS = new Set(["line", "area", "bar", "radial", "pie", "donut", "stack", "sankey", "treemap", "funnel", "radar", "scatter"]);
 const TONES = new Set(["info", "warn", "success", "danger"]);
@@ -503,6 +517,10 @@ const TYPE_ALIASES: Record<string, string> = {
   // v1 expansion: the LAYOUT MODES are the near-miss names a model reaches for
   // when it means "compose these blocks" (see LAYOUT_MODE_ALIAS below).
   bento: "layout", "grid-layout": "layout", columns: "layout", masonry: "layout",
+  // math: every name a model reaches for when it means "render this formula".
+  // `math` itself is a real block type, so (like `graph` vs `plot`) it needs no
+  // entry here — validateBlock checks TYPE_ALIASES BEFORE BLOCK_TYPES.
+  equation: "math", latex: "math", tex: "math", formula: "math", "tex-block": "math",
 };
 
 /** A `layout` block whose TYPE is one of these carries its mode in the type
@@ -1042,7 +1060,20 @@ function validateBlockInner(b: any): CanvasBlock | null {
       const cols = isNum(b.cols) ? Math.max(2, Math.min(4, Math.round(b.cols))) : undefined;
       return { type: "layout", layout: mode, cols, blocks: inner };
     }
-
+    case "math": {
+      // TeX source. It is NOT rendered here — katex runs in a lazy chunk at
+      // paint time with throwOnError:false — so the parser only has to reject a
+      // block that carries no formula at all. A formula the highlighter cannot
+      // typeset is the RENDERER's problem to degrade, never the parser's.
+      if (!isStr(b.tex) || b.tex.trim() === "") return null;
+      if (b.display != null && typeof b.display !== "boolean") return null;
+      return {
+        type: "math",
+        tex: b.tex.slice(0, 4000),
+        display: b.display === false ? false : true,
+        label: isStr(b.label) ? b.label.slice(0, 200) : undefined,
+      };
+    }
     case "terminal": {
       const lines: TerminalBlock["lines"] = [];
       const rawLines = Array.isArray(b.lines) ? b.lines : isStr(b.lines) ? b.lines.split("\n") : null;

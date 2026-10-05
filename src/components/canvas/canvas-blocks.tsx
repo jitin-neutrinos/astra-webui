@@ -85,7 +85,7 @@ function reactiveRows(bindVal: unknown, ctx?: RenderCtx): { columns: string[]; r
 // recharts lives behind this boundary: chart blocks defer-load the engine, every
 // other block type (and the whole gate path) stays sync and dependency-free.
 const ChartBlockView = lazy(() => import("./canvas-chart").then((m) => ({ default: m.ChartBlockView })));
-import type { CanvasBlock, KpiBlock, TableBlock, ChecklistBlock, StepsBlock, CalloutBlock, ProgressBlock, TimelineBlock, CompareBlock, TreeBlock, CodeBlock, ReferencesBlock, QuoteBlock, KeyValueBlock, DiffBlock, HeatmapBlock, TabsBlock, AccordionBlock, TerminalBlock, BadgesBlock, DividerBlock, LayoutBlock } from "../../lib/canvas-schema";
+import type { CanvasBlock, KpiBlock, TableBlock, ChecklistBlock, StepsBlock, CalloutBlock, ProgressBlock, TimelineBlock, CompareBlock, TreeBlock, CodeBlock, ReferencesBlock, QuoteBlock, KeyValueBlock, DiffBlock, HeatmapBlock, TabsBlock, AccordionBlock, TerminalBlock, BadgesBlock, DividerBlock, LayoutBlock, MathBlock } from "../../lib/canvas-schema";
 
 
 // ---- KPI ---------------------------------------------------------------------
@@ -639,6 +639,32 @@ export function HeatmapView({ block }: { block: HeatmapBlock }) {
   );
 }
 
+// ---- Math --------------------------------------------------------------------
+// katex lives in a lazy chunk. Until it lands — and forever, if it fails to — the
+// formula is painted as its own SOURCE in the danger role, which is the honest
+// degradation: a reader can see and correct the TeX.
+function MathView({ block }: { block: MathBlock }) {
+  const [html, setHtml] = useState<string | null>(null);
+  const display = block.display !== false;
+  useEffect(() => {
+    let alive = true;
+    setHtml(null);
+    void import("./canvas-math")
+      .then((m) => m.renderMath(block.tex, display))
+      .then((out) => { if (alive) setHtml(out); })
+      .catch(() => { if (alive) setHtml(null); });
+    return () => { alive = false; };
+  }, [block.tex, display]);
+  return (
+    <figure className={cn("ast-cv-math", display && "display")}>
+      {html
+        ? <div dangerouslySetInnerHTML={{ __html: html }} />
+        : <pre className="ast-cv-math-bad">{block.tex}</pre>}
+      {block.label && <figcaption className="ast-cv-math-label">{block.label}</figcaption>}
+    </figure>
+  );
+}
+
 // ---- Layout composite --------------------------------------------------------
 // A container whose children are blocks. Composition only — no data logic — so
 // it delegates straight back to <Blocks> and every child keeps its own lazy
@@ -921,6 +947,7 @@ function renderOne(b: CanvasBlock, id: string, bi: number, ctx?: RenderCtx): Rea
     case "heatmap": return <HeatmapView block={b} />;
     case "tabs": return <TabsView block={b} />;
     case "layout": return <LayoutView block={b} />;
+    case "math": return <MathView block={b} />;
     case "accordion": return <AccordionView block={b} />;
     case "terminal": return <TerminalView block={b} />;
     case "badges": return <BadgesView block={b} />;
