@@ -4007,6 +4007,18 @@ html.theme-fading body * {
   text-decoration: none;
   border-bottom: 1px solid rgb(var(--c-89) / 0.2);
 }
+/* TAP TARGET (measured 2026-10-05, mobile-canvas-audit.mjs): the reference link
+   measured 174×17px — under the 24px WCAG 2.2 floor in one axis, on the only
+   interactive element in a references card. The rule is inline (an <a> inside a
+   text block), so its box is exactly its line box; the fix is to give it a real
+   24px-tall box and let the underline sit where it reads as a link, rather than
+   inflating the type or padding the whole row. Inline-block + a 24px min-height
+   is the smallest change that satisfies the floor without moving the note text. */
+.ast-cv-ref-link {
+  display: inline-block;
+  min-height: 24px;
+  padding: 3px 0;
+}
 a.ast-cv-ref-link:hover { border-bottom-color: var(--color-accent); }
 /* A reference NOTE is prose that follows its title; it wraps by word so a long
    sentence is never cut mid-word or hidden with no ellipsis. */
