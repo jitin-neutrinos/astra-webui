@@ -117,6 +117,8 @@ export interface CodeBlock {
   language?: string;
   filename?: string;
   code: string;
+  /** false = skip the (lazy) syntax highlighter; render the bare <pre>. */
+  highlight?: boolean;
 }
 
 export interface ReferencesBlock {
@@ -146,6 +148,8 @@ export interface DiffBlock {
   filename?: string;
   /** One hunk = one titled change. `lines` carries the unified-diff rows. */
   hunks: { header?: string; lines: { op: DiffOp; text: string }[] }[];
+  /** false = skip the (lazy) syntax highlighter on the row text. */
+  highlight?: boolean;
 }
 
 export interface HeatmapBlock {
@@ -177,6 +181,8 @@ export interface TerminalBlock {
   /** Raw output lines; accept {text, tone} objects or plain strings. */
   lines: { text: string; tone?: TermTone }[];
   exitCode?: number;
+  /** false = skip the (lazy) syntax highlighter on the command / flagged lines. */
+  highlight?: boolean;
 }
 
 export interface BadgesBlock {
@@ -337,7 +343,6 @@ export interface LayoutBlock {
   cols?: number;
   blocks: CanvasBlock[];
 }
-
 
 // ── Editable + downloadable blocks (v4) ──────────────────────────────────────
 // Every one of these is BOTH embedded and expandable to fullscreen, and has a
@@ -879,7 +884,7 @@ function validateBlockInner(b: any): CanvasBlock | null {
       if (!isStr(b.code) || b.code.trim() === "") return null;
       if (b.language != null && !isStr(b.language)) return null;
       if (b.filename != null && !isStr(b.filename)) return null;
-      return { type: "code", code: b.code, language: isStr(b.language) ? b.language : undefined, filename: isStr(b.filename) ? b.filename : undefined };
+      return { type: "code", code: b.code, language: isStr(b.language) ? b.language : undefined, filename: isStr(b.filename) ? b.filename : undefined, highlight: b.highlight === false ? false : undefined };
     case "references": {
       if (!Array.isArray(b.items) || b.items.length === 0) return null;
       const items: ReferencesBlock["items"] = [];
@@ -957,6 +962,7 @@ function validateBlockInner(b: any): CanvasBlock | null {
         language: isStr(b.language) ? b.language : undefined,
         filename: isStr(b.filename) ? b.filename : undefined,
         hunks,
+        highlight: b.highlight === false ? false : undefined,
       };
     }
     case "heatmap": {
@@ -1036,6 +1042,7 @@ function validateBlockInner(b: any): CanvasBlock | null {
       const cols = isNum(b.cols) ? Math.max(2, Math.min(4, Math.round(b.cols))) : undefined;
       return { type: "layout", layout: mode, cols, blocks: inner };
     }
+
     case "terminal": {
       const lines: TerminalBlock["lines"] = [];
       const rawLines = Array.isArray(b.lines) ? b.lines : isStr(b.lines) ? b.lines.split("\n") : null;
@@ -1056,6 +1063,7 @@ function validateBlockInner(b: any): CanvasBlock | null {
         command: isStr(b.command) ? b.command : undefined,
         lines,
         exitCode: isNum(b.exitCode) ? b.exitCode : undefined,
+        highlight: b.highlight === false ? false : undefined,
       };
     }
     case "badges": {
@@ -1415,9 +1423,145 @@ function lenientJson(raw: string): unknown {
   try { return attempt(repaired); } catch { /* try bare-key quoting */ }
   try { return attempt(quoteBareKeys(repaired)); } catch { /* fall through to depth repair */ }
 
+  // Tier 1.5: unescaped newlines inside string literals (LLM emits literal
+  // newlines in markdown content instead of \n escapes). Scan string-aware.
+  const newlineFixed = fixUnescapedNewlines(repaired);
+  try { return attempt(newlineFixed); } catch { /* fall through */ }
+
+  // Tier 1.6: missing commas between array elements (LLM forgets commas
+  // between table rows). Insert commas between ]/} and [/{.
+  const commaFixed = fixMissingCommas(newlineFixed);
+  try { return attempt(commaFixed); } catch { /* fall through to depth repair */ }
+
+  // Tier 1.7: truncated string (LLM ran out of tokens mid-emission).
+  // Close any unterminated string at the end of the JSON.
+  const truncated = fixTruncatedString(commaFixed);
+  try { return attempt(truncated); } catch { /* fall through to depth repair */ }
+
   // Tier 2: bracket-depth repair (see balanceBrackets). Handles the surplus
   // trailing closer the model emits at the end of a card.
-  return attempt(balanceBrackets(quoteBareKeys(repaired)));
+  return attempt(balanceBrackets(quoteBareKeys(truncated)));
+}
+
+/**
+ * Replace literal newline characters inside JSON string literals with \\n.
+ * Scans character-by-character tracking whether we're inside a string.
+ */
+function fixUnescapedNewlines(s: string): string {
+  let result = "";
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (escaped) {
+      result += c;
+      escaped = false;
+      continue;
+    }
+    if (c === "\\" && inString) {
+      result += c;
+      escaped = true;
+      continue;
+    }
+    if (c === '"') {
+      inString = !inString;
+      result += c;
+      continue;
+    }
+    if (inString && (c === "\n" || c === "\r")) {
+      result += c === "\n" ? "\\n" : "\\r";
+      continue;
+    }
+    result += c;
+  }
+  return result;
+}
+
+/**
+ * Fix truncated JSON where the LLM ran out of tokens mid-string.
+ * Closes the unterminated string, then closes any open brackets/braces.
+ */
+function fixTruncatedString(s: string): string {
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (escaped) { escaped = false; continue; }
+    if (c === "\\" && inString) { escaped = true; continue; }
+    if (c === '"') {
+      inString = !inString;
+    }
+  }
+
+  // If we're still inside a string, close it
+  let result = s;
+  if (inString) {
+    result += '"';
+  }
+
+  // Count open brackets/braces and close them
+  let openBraces = 0;
+  let openBrackets = 0;
+  inString = false;
+  escaped = false;
+  for (let i = 0; i < result.length; i++) {
+    const c = result[i];
+    if (escaped) { escaped = false; continue; }
+    if (c === "\\" && inString) { escaped = true; continue; }
+    if (c === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (c === "{") openBraces++;
+    if (c === "}") openBraces--;
+    if (c === "[") openBrackets++;
+    if (c === "]") openBrackets--;
+  }
+
+  // Close in reverse order (braces first, then brackets)
+  result += "}".repeat(Math.max(0, openBraces));
+  result += "]".repeat(Math.max(0, openBrackets));
+
+  return result;
+}
+
+/**
+ * Insert missing commas between array elements. Finds places where a ] or }
+ * is followed by a [ or { (with only whitespace between) and inserts a comma.
+ * String-aware: does not modify commas inside string literals.
+ */
+function fixMissingCommas(s: string): string {
+  let result = "";
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (escaped) {
+      result += c;
+      escaped = false;
+      continue;
+    }
+    if (c === "\\" && inString) {
+      result += c;
+      escaped = true;
+      continue;
+    }
+    if (c === '"') {
+      inString = !inString;
+      result += c;
+      continue;
+    }
+    if (!inString && (c === "]" || c === "}")) {
+      // Look ahead for [ or { (skip whitespace)
+      let j = i + 1;
+      while (j < s.length && /\s/.test(s[j])) j++;
+      if (j < s.length && (s[j] === "[" || s[j] === "{")) {
+        result += c + ",";
+        continue;
+      }
+    }
+    result += c;
+  }
+  return result;
 }
 
 /**
@@ -1691,12 +1835,31 @@ export function parseCanvasSpec(raw: string): CanvasSpec | null {
   if (!data || typeof data !== "object") return null;
   const list = coerceToBlocks(data);
   if (list.length === 0) return null;
+  // KPI fan-out: a model naturally writes one kpi block carrying an items/kpis
+  // array of tiles (label+value rows). The schema's kpi is a SINGLE tile — the
+  // composite block used to fail validation and drop silently (KPI cards
+  // rendered as raw JSON). Fan it out into one kpi block per tile here so the
+  // per-block validator sees tiles it accepts. Applies to every collection key
+  // models reach for (items, kpis, tiles).
+  const list2: any[] = [];
+  for (const b of list) {
+    if (b && b.type === "kpi" && !isStr(b.label) && Array.isArray(b.items) && b.items.length > 0) {
+      for (const tile of b.items) {
+        if (tile && typeof tile === "object" && (isStr(tile.label) || isStr(tile.name))) {
+          list2.push({ type: "kpi", label: isStr(tile.label) ? tile.label : tile.name, value: tile.value, delta: tile.delta, trend: tile.trend, spark: tile.spark });
+        }
+      }
+      continue;
+    }
+    list2.push(b);
+  }
+
   // PER-BLOCK tolerance: one malformed block must not sink a whole card. Keep
   // every block that validates; degrade to markdown only if NONE do (otherwise
   // a single unexpected block shape silently turned the entire canvas into a
   // wall of raw JSON in the chat).
   const blocks: CanvasBlock[] = [];
-  for (const b of list) {
+  for (const b of list2) {
     const v = validateBlock(b);
     if (v) blocks.push(v);
   }
@@ -1745,10 +1908,15 @@ function scanFences(text: string): FenceMatch[] {
     anyRe.lastIndex = bodyStart;
     let close: RegExpExecArray | null = null;
     let fallback: RegExpExecArray | null = null; // earliest lone-line run
+    // Collect ALL parseable closers; prefer the LAST (longest body).
+    // fixTruncatedString makes truncated JSON parseable, so inner triple
+    // backticks in code blocks now parse as valid — we must skip them.
+    const parseable: RegExpExecArray[] = [];
     for (let c = anyRe.exec(text); c; c = anyRe.exec(text)) {
       if (/^[ \t]*(?=\r?$)/.test(text.slice(c.index + c[0].length)) && !fallback) fallback = c;
-      if (parseCanvasSpec(text.slice(bodyStart, c.index))) { close = c; break; }
+      if (parseCanvasSpec(text.slice(bodyStart, c.index))) parseable.push(c);
     }
+    if (parseable.length > 0) close = parseable[parseable.length - 1];
     if (!close) {
       // No closer at all — genuinely unterminated. The stream/finalized
       // distinction depends on this staying true, so `continue`.

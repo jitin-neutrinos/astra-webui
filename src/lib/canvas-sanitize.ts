@@ -363,6 +363,10 @@ function sanitizeBlock(b: unknown, depth = 0): CanvasBlock | null {
       sanitized.code = truncate(obj.code, MAX_STRING);
       if (typeof obj.language === "string") sanitized.language = truncate(obj.language, 20);
       if (typeof obj.filename === "string") sanitized.filename = truncate(obj.filename, 200);
+      // `highlight:false` opts a block out of the lazy syntax highlighter; the
+      // block then always renders the bare <pre>. Unknown keys are dropped, so
+      // this cannot become a way to smuggle data through.
+      if (obj.highlight === false) sanitized.highlight = false;
       break;
     }
     case "references": {
@@ -664,6 +668,7 @@ function sanitizeBlock(b: unknown, depth = 0): CanvasBlock | null {
     case "terminal": {
       if (typeof obj.command !== "string") return null;
       sanitized.command = truncate(obj.command, 500);
+      if (obj.highlight === false) sanitized.highlight = false;
       if (Array.isArray(obj.lines)) {
         sanitized.lines = obj.lines
           .map((l: unknown) => {

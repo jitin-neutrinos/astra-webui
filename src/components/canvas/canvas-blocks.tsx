@@ -424,14 +424,38 @@ export function TreeView({ block }: { block: TreeBlock }) {
 
 // ---- Code --------------------------------------------------------------------
 
+// Syntax highlighting is a LAZY ENHANCEMENT, never a gate: the block paints the
+// bare <pre><code> it always painted, then upgrades in place once the engine
+// chunk lands. `highlight()` returns null for an unknown language or any
+// tokenizer failure, and null means "keep what you have".
+function useHighlighted(code: string, language?: string, enabled = true): string | null {
+  const [html, setHtml] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    setHtml(null);
+    if (!enabled) return () => { alive = false; };
+    void import("./canvas-code-hl")
+      .then((m) => m.highlight(code, language))
+      .then((out) => { if (alive) setHtml(out); })
+      .catch(() => { if (alive) setHtml(null); });   // never throws into the card
+    return () => { alive = false; };
+  }, [code, language, enabled]);
+  return html;
+}
+
 export function CodeView({ block }: { block: CodeBlock }) {
+  const html = useHighlighted(block.code, block.language, block.highlight !== false);
   return (
     <figure className="ast-cv-code">
       <figcaption className="ast-cv-code-head">
         <span className="ast-cv-code-name">{block.filename || block.language || "code"}</span>
         {block.language && <span className="ast-cv-code-lang">{block.language}</span>}
       </figcaption>
-      <pre className="ast-cv-code-body"><code>{block.code}</code></pre>
+      {/* shiki emits its own <pre class="shiki">; the fallback is the same markup
+          minus the tokens, so swapping them changes nothing else. */}
+      {html
+        ? <div className="ast-cv-code-body" dangerouslySetInnerHTML={{ __html: html }} />
+        : <pre className="ast-cv-code-body"><code>{block.code}</code></pre>}
     </figure>
   );
 }
@@ -517,6 +541,17 @@ export function KeyValueView({ block }: { block: KeyValueBlock }) {
 
 const DIFF_MARK: Record<string, string> = { add: "+", del: "−", ctx: "" };
 
+/** One highlighted diff line. Highlighting a diff row's TEXT through the
+ *  block's language colours identifiers inside it, while the +/− tone stays the
+ *  job of the row class — the two signals never overwrite each other. */
+function DiffLine({ text, language, enabled }: { text: string; language?: string; enabled: boolean }) {
+  const html = useHighlighted(text, language, enabled);
+  if (!html) return <>{text}</>;
+  // Strip shiki's wrapper <pre>/<code>; the row is already a block-level line.
+  const inner = html.replace(/^<pre[^>]*>/, "").replace(/<\/pre>\s*$/, "").replace(/^\s*<code>/, "").replace(/<\/code>\s*$/, "");
+  return <span dangerouslySetInnerHTML={{ __html: inner }} />;
+}
+
 export function DiffView({ block }: { block: DiffBlock }) {
   const adds = block.hunks.reduce((n, h) => n + h.lines.filter((l) => l.op === "add").length, 0);
   const dels = block.hunks.reduce((n, h) => n + h.lines.filter((l) => l.op === "del").length, 0);
@@ -536,7 +571,9 @@ export function DiffView({ block }: { block: DiffBlock }) {
             {h.lines.map((l, j) => (
               <div key={j} className={cn("ast-cv-dl", l.op)}>
                 <span className="ast-cv-dl-mark" aria-hidden="true">{DIFF_MARK[l.op]}</span>
-                <span className="ast-cv-dl-text">{l.text || " "}</span>
+                <span className="ast-cv-dl-text">
+                  <DiffLine text={l.text || " "} language={block.language} enabled={block.highlight !== false} />
+                </span>
               </div>
             ))}
           </div>
@@ -704,18 +741,38 @@ const TERM_TONE: Record<string, string | undefined> = {
   stderr: "var(--color-redx)", dim: "var(--color-muted)",
 };
 
+/** A terminal row highlighted through the bash grammar. Terminal output is
+ *  mostly not code, so this is applied to the COMMAND and to rows the author
+ *  flags `info`/`success` — i.e. only where a shell token actually appears.
+ *  Everything else keeps the block's tone colouring untouched. */
+function TermLine({ text, language, enabled }: { text: string; language?: string; enabled: boolean }) {
+  const html = useHighlighted(text, language, enabled);
+  if (!html) return <>{text}</>;
+  const inner = html.replace(/^<pre[^>]*>/, "").replace(/<\/pre>\s*$/, "").replace(/^\s*<code>/, "").replace(/<\/code>\s*$/, "");
+  return <span dangerouslySetInnerHTML={{ __html: inner }} />;
+}
+
 export function TerminalView({ block }: { block: TerminalBlock }) {
+  const hl = block.highlight !== false;
   return (
     <figure className="ast-cv-term">
       {(block.title || block.command) && (
         <figcaption className="ast-cv-term-head">
           <span className="ast-cv-term-title">{block.title || "terminal"}</span>
-          {block.command && <code className="ast-cv-term-cmd">$ {block.command}</code>}
+          {block.command && (
+            <code className="ast-cv-term-cmd">
+              $ <TermLine text={block.command} language="bash" enabled={hl} />
+            </code>
+          )}
         </figcaption>
       )}
       <pre className="ast-cv-term-body">
         {block.lines.map((l, i) => (
-          <span key={i} className="ast-cv-term-line" style={{ color: TERM_TONE[l.tone || "stdout"] }}>{l.text || " "}</span>
+          <span key={i} className="ast-cv-term-line" style={{ color: TERM_TONE[l.tone || "stdout"] }}>
+            {l.tone === "info" || l.tone === "success"
+              ? <TermLine text={l.text || " "} language="bash" enabled={hl} />
+              : l.text || " "}
+          </span>
         ))}
       </pre>
       {block.exitCode != null && (
