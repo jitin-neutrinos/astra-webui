@@ -2140,14 +2140,16 @@ html.theme-fading body * {
 [data-theme="light"] .composer-bar-card .chat-chip-options[aria-expanded="true"] .cmenu-trigger-ico {
   color: #f8fafc;
 }
-/* Yolo off in light: transparent container, accent stroke bolt — no ring. */
+/* Yolo off in light: OUTLINE container + OUTLINE bolt (same steer as dark —
+   the light twin of the mechanism above). */
 [data-theme="light"] .composer-bar-card .chat-chip.chat-chip-yolo {
   background: transparent;
   color: rgb(var(--light-c-34));
-  border: none;
+  border: 1px solid color-mix(in srgb, rgb(var(--light-c-34)) 45%, transparent);
   box-shadow: none;
 }
-[data-theme="light"] .composer-bar-card .chat-chip.chat-chip-yolo:hover { filter: none; color: color-mix(in srgb, rgb(var(--light-c-34)) 78%, #000000); }
+[data-theme="light"] .composer-bar-card .chat-chip.chat-chip-yolo svg { color: rgb(var(--light-c-34)); fill: none; stroke: currentColor; }
+[data-theme="light"] .composer-bar-card .chat-chip.chat-chip-yolo:hover { filter: none; border-color: color-mix(in srgb, rgb(var(--light-c-34)) 75%, transparent); color: color-mix(in srgb, rgb(var(--light-c-34)) 78%, #000000); }
 [data-theme="light"] .chat-head-link { color:rgb(var(--light-c-77)); }
 [data-theme="light"] .chat-head-link:hover { color:rgb(var(--light-c-34)); background:rgb(var(--light-c-31) / 0.06); }
 [data-theme="light"] .chat-suggest { background: var(--color-midnight); border-color:rgb(var(--light-c-5) / 0.12); }
@@ -5830,19 +5832,26 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
    this file at the same specificity and used to defeat the fill — in dark mode
    that rendered a 14% tint with a void-ink glyph on it, i.e. an invisible icon.
    4 classes beat every 3-class generic rule regardless of order. */
+/* Owner 10-05 steer: YOLO OFF (disabled by definition — tool calls need approval)
+   keeps an OUTLINE on the container AND the glyph inside. The bolt flips from
+   solid (previous spec) to outline-only: transparent fill, accent stroke.
+   Enabling yolo removes the outline and goes full accent fill + ink bolt.
+   (Light twins at line ~2150 follow both halves of the mechanism.) */
 .composer-bar-card .chat-chip.chat-chip-yolo {
   background: transparent;
   color: var(--color-accent);
-  border: none;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 45%, transparent);
   box-shadow: none;
 }
-.composer-bar-card .chat-chip.chat-chip-yolo:hover { filter: none; background: transparent; color: color-mix(in srgb, var(--color-accent) 78%, #ffffff); }
+.composer-bar-card .chat-chip.chat-chip-yolo svg { color: var(--color-accent); fill: none; stroke: currentColor; }
+.composer-bar-card .chat-chip.chat-chip-yolo:hover { filter: none; border-color: color-mix(in srgb, var(--color-accent) 75%, transparent); background: transparent; color: color-mix(in srgb, var(--color-accent) 78%, #ffffff); }
 .composer-bar-card .chat-chip.chat-chip-yolo.chat-chip-on {
   background: var(--color-accent);
   color: var(--color-void);
   border: none;
   box-shadow: 0 1px 2px rgba(0,0,0,.25);
 }
+.composer-bar-card .chat-chip.chat-chip-yolo.chat-chip-on svg { color: var(--color-void); fill: currentColor; }
 [data-theme="light"] .composer-bar-card .chat-chip.chat-chip-yolo.chat-chip-on {
   background: rgb(var(--light-c-1));
   color: #f8fafc;

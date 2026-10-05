@@ -349,11 +349,11 @@ export function ComposerControls({ setAttachments, disabled, sessionInfo, catalo
           title={yolo ? "Yolo on — tool calls run without asking" : "Yolo off — tool calls need your approval"}
           onClick={() => onToggleYolo()}>
           {/* Owner 10-05: yolo is the OUTLINE inverse of the filled bar buttons —
-              off: outline button with FILLED accent glyph; on: accent-filled
-              container with the contrast (void ink) glyph. `fill=currentColor`
-              (lucide's default is stroke-only Zap; the CSS already sets
-              fill:currentColor on filled chips) makes the bolt solid. */}
-          <Zap className="chat-chip-ico-solid h-4 w-4" strokeWidth={1.5} fill="currentColor" />
+              off (disabled): outline container + OUTLINE bolt glyph (CSS sets
+              fill:none + stroke accent); on (enabled): accent-filled container
+              with the solid ink bolt (CSS fill:currentColor). NO fill attribute
+              here — the CSS state rules own the glyph in both modes. */}
+          <Zap className="chat-chip-ico-solid h-4 w-4" strokeWidth={1.7} />
         </button>
       )}
 
