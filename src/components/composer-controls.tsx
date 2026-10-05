@@ -311,23 +311,15 @@ export function ComposerControls({ setAttachments, disabled, sessionInfo, catalo
         <Cpu className="cmenu-trigger-ico h-4 w-4" strokeWidth={1.5} />
       </button>
 
-      {/* ---- controls that FIT stay on the bar ---- */}
-      {onBar("yolo") && (
-        /* ICON-ONLY (owner 2026-10-04): every control on the bar is a square glyph. The
-           state a label used to carry now rides the icon's COLOUR and the aria-label, so
-           nothing is lost — a screen reader still announces "Yolo mode on", and the
-           title gives the same detail on hover. */
-        <button type="button" role="switch" aria-checked={yolo} data-bar="yolo"
-          className={cn("chat-chip chat-chip-icon chat-chip-yolo", yolo && "chat-chip-on")}
-          aria-label={yolo ? "Yolo mode on" : "Yolo mode off"}
-          title={yolo ? "Yolo on — tool calls run without asking" : "Yolo off — tool calls need your approval"}
-          onClick={() => onToggleYolo()}>
-          {/* Owner 10-05: yolo is the OUTLINE inverse of the filled bar buttons —
-              off: outline button with FILLED accent glyph; on: accent-filled
-              container with the contrast (void ink) glyph. `fill=currentColor`
-              (lucide's default is stroke-only Zap; the CSS already sets
-              fill:currentColor on filled chips) makes the bolt solid. */}
-          <Zap className="chat-chip-ico-solid h-4 w-4" strokeWidth={1.5} fill="currentColor" />
+      {/* ---- controls that FIT stay on the bar ----
+          Owner 10-05 order: options(model selector) FIRST, attach, effort,
+          yolo LAST. The splitVisible fit decision is unaffected: it works on
+          keys, not DOM position (COLLAPSE_ORDER decides what sheds first). */}
+      {onBar("attach") && (
+        <button type="button" data-bar="attach" className="chat-chip chat-chip-icon"
+          aria-label="Attach files" title="Attach files"
+          onClick={() => { pickFiles(); }}>
+          <Paperclip className="h-4 w-4" strokeWidth={1.5} />
         </button>
       )}
       {onBar("effort") && (
@@ -346,11 +338,22 @@ export function ComposerControls({ setAttachments, disabled, sessionInfo, catalo
           <Gauge className="h-4 w-4" strokeWidth={1.5} />
         </button>
       )}
-      {onBar("attach") && (
-        <button type="button" data-bar="attach" className="chat-chip chat-chip-icon"
-          aria-label="Attach files" title="Attach files"
-          onClick={() => { pickFiles(); }}>
-          <Paperclip className="h-4 w-4" strokeWidth={1.5} />
+      {onBar("yolo") && (
+        /* ICON-ONLY (owner 2026-10-04): every control on the bar is a square glyph. The
+           state a label used to carry now rides the icon's COLOUR and the aria-label, so
+           nothing is lost — a screen reader still announces "Yolo mode on", and the
+           title gives the same detail on hover. */
+        <button type="button" role="switch" aria-checked={yolo} data-bar="yolo"
+          className={cn("chat-chip chat-chip-icon chat-chip-yolo", yolo && "chat-chip-on")}
+          aria-label={yolo ? "Yolo mode on" : "Yolo mode off"}
+          title={yolo ? "Yolo on — tool calls run without asking" : "Yolo off — tool calls need your approval"}
+          onClick={() => onToggleYolo()}>
+          {/* Owner 10-05: yolo is the OUTLINE inverse of the filled bar buttons —
+              off: outline button with FILLED accent glyph; on: accent-filled
+              container with the contrast (void ink) glyph. `fill=currentColor`
+              (lucide's default is stroke-only Zap; the CSS already sets
+              fill:currentColor on filled chips) makes the bolt solid. */}
+          <Zap className="chat-chip-ico-solid h-4 w-4" strokeWidth={1.5} fill="currentColor" />
         </button>
       )}
 

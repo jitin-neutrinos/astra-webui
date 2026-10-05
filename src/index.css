@@ -2117,8 +2117,8 @@ html.theme-fading body * {
    button. Specificity matches the dark block one-for-one. */
 [data-theme="light"] .composer-bar-card .chat-chip-icon,
 [data-theme="light"] .composer-bar-card .chat-chip-options {
-  border-color: transparent;
-  background: linear-gradient(180deg, rgb(var(--light-c-1)), rgb(var(--light-c-2)));
+  border: none;
+  background: rgb(var(--light-c-1));
   color: #f8fafc;
   box-shadow: none;
 }
@@ -2126,26 +2126,26 @@ html.theme-fading body * {
 [data-theme="light"] .composer-bar-card .chat-chip-options svg { color: #f8fafc; fill: none; }
 [data-theme="light"] .composer-bar-card .chat-chip-icon:hover,
 [data-theme="light"] .composer-bar-card .chat-chip-options:hover {
-  filter: brightness(1.08);
+  background: color-mix(in srgb, rgb(var(--light-c-1)) 85%, #000000);
   box-shadow: none;
 }
 [data-theme="light"] .composer-bar-card .chat-chip-icon[aria-expanded="true"],
 [data-theme="light"] .composer-bar-card .chat-chip-options[aria-expanded="true"] {
-  border-color: #f8fafc;
-  filter: brightness(0.95);
+  background: color-mix(in srgb, rgb(var(--light-c-1)) 80%, #000000);
+  border: none;
 }
 [data-theme="light"] .composer-bar-card .chat-chip-icon[aria-expanded="true"] .cmenu-trigger-ico,
 [data-theme="light"] .composer-bar-card .chat-chip-options[aria-expanded="true"] .cmenu-trigger-ico {
   color: #f8fafc;
 }
-/* Yolo off keeps the outline style in light too: accent glyph on transparent. */
-[data-theme="light"] .composer-bar-card .chat-chip-yolo {
+/* Yolo off in light: transparent container, accent stroke bolt — no ring. */
+[data-theme="light"] .composer-bar-card .chat-chip.chat-chip-yolo {
   background: transparent;
   color: rgb(var(--light-c-34));
-  border-color: color-mix(in srgb, rgb(var(--light-c-34)) 45%, transparent);
+  border: none;
   box-shadow: none;
 }
-[data-theme="light"] .composer-bar-card .chat-chip-yolo:hover { filter: none; border-color: rgb(var(--light-c-34) / 0.75); }
+[data-theme="light"] .composer-bar-card .chat-chip.chat-chip-yolo:hover { filter: none; color: color-mix(in srgb, rgb(var(--light-c-34)) 78%, #000000); }
 [data-theme="light"] .chat-head-link { color:rgb(var(--light-c-77)); }
 [data-theme="light"] .chat-head-link:hover { color:rgb(var(--light-c-34)); background:rgb(var(--light-c-31) / 0.06); }
 [data-theme="light"] .chat-suggest { background: var(--color-midnight); border-color:rgb(var(--light-c-5) / 0.12); }
@@ -5831,18 +5831,18 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
 .composer-bar-card .chat-chip.chat-chip-yolo {
   background: transparent;
   color: var(--color-accent);
-  border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+  border: none;
   box-shadow: none;
 }
-.composer-bar-card .chat-chip.chat-chip-yolo:hover { filter: none; border-color: color-mix(in srgb, var(--color-accent) 75%, transparent); background: color-mix(in srgb, var(--color-accent) 8%, transparent); }
+.composer-bar-card .chat-chip.chat-chip-yolo:hover { filter: none; background: transparent; color: color-mix(in srgb, var(--color-accent) 78%, #ffffff); }
 .composer-bar-card .chat-chip.chat-chip-yolo.chat-chip-on {
-  background: linear-gradient(180deg, var(--color-accent), color-mix(in oklab, var(--color-accent) 62%, var(--color-void)));
+  background: var(--color-accent);
   color: var(--color-void);
-  border-color: transparent;
+  border: none;
   box-shadow: 0 1px 2px rgba(0,0,0,.25);
 }
 [data-theme="light"] .composer-bar-card .chat-chip.chat-chip-yolo.chat-chip-on {
-  background: linear-gradient(180deg, rgb(var(--light-c-1)), rgb(var(--light-c-2)));
+  background: rgb(var(--light-c-1));
   color: #f8fafc;
   box-shadow: none;
 }
