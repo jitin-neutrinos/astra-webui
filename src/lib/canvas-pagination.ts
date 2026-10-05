@@ -226,9 +226,21 @@ export function packSections(blocks: readonly BlockMeta[], mode: PageMode): [num
     // Rule 3, the other direction: a page holding only a section heading (its
     // body did not fit) carries the heading down with that body unit rather
     // than stranding the heading alone at the foot.
+    //
+    // 2026-10-05 CRITICAL: ranges are HALF-OPEN [start, end) — pages.push([start,u])
+    // at the line below, where u is the first unit that did NOT fit. So when the
+    // page holds exactly the heading, u - start === 1 and the old push
+    // [start, u - 1] collapsed to [start, start] — an EMPTY range. Measured 396 of
+    // 840 realistic 3-block configurations (47%): the report's first page rendered
+    // nothing at all, and the folio printed "1 / 2" over a blank sheet. The
+    // shipped assertPartition could not see it: first starts 0, last ends n, the
+    // ranges abut (0 === 0) and covered === n — every assertion holds on the
+    // broken output.
+    //
+    // Fix: never emit a zero-width range. The heading simply moves DOWN to join
+    // its body unit on the next page, which is what Rule 3 already asks for.
     if (u - start === 1 && units[start]!.section) {
-      pages.push([start, u - 1]);
-      start = u - 1;
+      start = u - 1;                       // heading travels with its body
       used = units[u - 1]!.h + GAP + unit.h;
       continue;
     }

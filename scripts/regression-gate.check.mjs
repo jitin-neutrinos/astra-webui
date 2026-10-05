@@ -789,6 +789,13 @@ id: "RG-114",
     symptom:
       "A message containing a canvas card re-parsed and re-sanitised ALL of its prose on EVERY streaming delta, so the stream visibly lagged after a card appeared and worsened with answer length. The canvas render path called renderRichHtml inline in the render body; the memo the file documents (splitRichBlocks + memo'd RichBlockView) only serves the no-canvas fast path, so any card threw the optimisation away. Measured then: 4.62 ms/render vs 2.37 ms on the fast path — `marked` alone, before DOMPurify over the same HTML — i.e. 116% of one core at 25 deltas/s versus 59%. Fixed with MdPart, memo'd on its own source, and blockSig gated on hasCanvas (on the canvas path `blocks` is computed but never rendered: ~1.85 ms/render of pure waste). Verified in Chromium by COUNTING parser invocations: 50 -> 26 over 25 deltas (1.9x), plus that a changed part still re-parses so the memo cannot serve stale HTML, and that no part is blanked.",
     guard: "scripts/canvas-render-perf.browser.mts",
+      },
+      {
+    id: "RG-117",
+    found: "2026-10-05",
+    symptom:
+      "The paginated A4/slide export emitted a BLANK FIRST PAGE. Page ranges are half-open [start, end) — packSections pushes [start, u] where u is the first unit that did not fit — so when a page held exactly a section heading, u - start === 1 and the push [start, u - 1] collapsed to [start, start], a ZERO-WIDTH range. Measured 396 of 840 realistic 3-block configurations across both page modes (47%): page one rendered nothing and the folio printed '1 / 2' over a blank sheet. The shipped assertPartition could NOT see it — first starts 0, last ends n, ranges abut (0 === 0) and covered === n all hold on the broken output, which is the 'green geometry audit hid a real defect' class recorded in AGENTS.md. Fix: never emit a zero-width range; the heading simply travels down to join its body, which is what Rule 3 already required. Guards a full 3-block sweep per page mode for empty ranges, the headline divider+oversized-table shape, that a heading and its body never split across pages, complete non-duplicated unit coverage, that a lone heading still paginates, and that an empty document still yields exactly one page. Proven by reversal — restoring the push fails 161 of 420 configs in the a4 sweep alone.",
+    guard: "src/lib/canvas-pagination.blankpage.check.ts",
   },
     ];
 
