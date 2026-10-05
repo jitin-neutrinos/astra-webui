@@ -20,7 +20,7 @@ const KNOWN_TYPES = new Set([
   "accordion", "terminal", "badges", "divider",
   "spreadsheet", "slides", "document", "text",
   "slider", "select", "multiselect", "segmented", "toggle", "search", "data",
-  "graph", "image", "gallery", "video", "layout", "math",
+  "graph", "image", "gallery", "video", "layout", "math", "gitgraph",
 ]);
 
 // Valid enum values
@@ -35,6 +35,12 @@ const VALID_CHART_KINDS = new Set([
 // Layout composite modes. An unknown mode degrades to "stack" (always correct),
 // never drops the container — the children are the content, not the frame.
 const VALID_LAYOUTS = new Set(["stack", "bento", "split", "masonry", "grid"]);
+
+// gitgraph caps. The PARSER caps commits at 40 (canvas-schema.ts `MAX_GIT_ROWS`),
+// so this repeats the same ceiling rather than inventing one — the two layers
+// agreeing on the cap is what makes "which layer dropped it" answerable.
+const MAX_GIT_COMMITS = 40;
+const MAX_GIT_BRANCHES = 12;
 
 // Maximum string lengths (prevent overflow)
 const MAX_STRING = 10000;
@@ -834,6 +840,85 @@ function sanitizeBlock(b: unknown, depth = 0): CanvasBlock | null {
       // is what a consumer sees" is the rule, so the sanitizer matches.
       sanitized.display = obj.display === false ? false : true;
       if (typeof obj.label === "string") sanitized.label = truncate(obj.label, 200);
+      break;
+    }
+    case "gitgraph": {
+      // BUG (2026-10-05): this case did not exist while the parser, the CSS and
+      // the markdown projection all knew `gitgraph`, so the block fell through to
+      // `default: return null` and was DROPPED from the card entirely — a gitgraph
+      // card rendered with the commit history silently missing. This is the third
+      // instance of the same bug class (tabs b1ec4e9, accordion/tree 2026-10-05):
+      // a type exists in the parser but not in this switch, so the ONLY call on
+      // the render path (chat-timeline.tsx:70) throws the block away.
+      //
+      // Every field the renderer reads is kept, and each is capped:
+      //   commits  → 40 rows, deduped by id (React keys the node circles by id,
+      //              so a duplicate id would lose a row)
+      //   message  → 200 chars (the label column; a log line is not a paragraph)
+      //   parents  → strings only. A non-string parent is DROPPED, not coerced:
+      //              the renderer does indexOf on it, so a number would silently
+      //              resolve to no lane and fake a root commit.
+      if (!Array.isArray(obj.commits)) return null;
+      const commits: Record<string, unknown>[] = [];
+      const seen = new Set<string>();
+      for (const c of obj.commits) {
+        if (commits.length >= MAX_GIT_COMMITS) break;
+        if (!c || typeof c !== "object") continue;
+        const co = c as Record<string, unknown>;
+        const id = typeof co.id === "string" ? truncate(co.id, 40) : "";
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        const out: Record<string, unknown> = {
+          id,
+          message: typeof co.message === "string" ? truncate(co.message, 200) : "",
+        };
+        const branch = typeof co.branch === "string" ? truncate(co.branch, 40) : "";
+        if (branch) out.branch = branch;
+        const author = typeof co.author === "string" ? truncate(co.author, 60) : "";
+        if (author) out.author = author;
+        const when = typeof co.when === "string" ? truncate(co.when, 40) : "";
+        if (when) out.when = when;
+        if (Array.isArray(co.parents)) {
+          const parents = co.parents
+            .filter((p: unknown): p is string => typeof p === "string")
+            .slice(0, 8)
+            .map((p: string) => truncate(p, 40));
+          if (parents.length > 0) out.parents = parents;
+        }
+        if (Array.isArray(co.tags)) {
+          const tags = co.tags
+            .filter((t: unknown): t is string => typeof t === "string")
+            .slice(0, 6)
+            .map((t: string) => truncate(t, 30));
+          if (tags.length > 0) out.tags = tags;
+        }
+        // `merge` is a DRAW directive (the node is hollow, the lane merges). Only
+        // an explicit true means merge; anything else leaves it unset, matching the
+        // parser's `c.merge === true ? true : undefined`.
+        if (co.merge === true) out.merge = true;
+        commits.push(out);
+      }
+      // Fail-soft at the block level: a graph with no row left is not a graph.
+      if (commits.length === 0) return null;
+      sanitized.commits = commits;
+      if (Array.isArray(obj.branches)) {
+        const branches: { name: string; head?: string }[] = [];
+        const bn = new Set<string>();
+        for (const br of obj.branches) {
+          if (branches.length >= MAX_GIT_BRANCHES) break;
+          if (!br || typeof br !== "object") continue;
+          const bo = br as Record<string, unknown>;
+          const name = typeof bo.name === "string" ? truncate(bo.name, 40) : "";
+          if (!name || bn.has(name)) continue;
+          bn.add(name);
+          const head = typeof bo.head === "string" ? truncate(bo.head, 40) : "";
+          branches.push(head ? { name, head } : { name });
+        }
+        // A declared-but-empty branch list is not a branch list — omit the key so
+        // the renderer derives lanes from the commits (which is always correct).
+        if (branches.length > 0) sanitized.branches = branches;
+      }
+      if (typeof obj.title === "string") sanitized.title = truncate(obj.title, MAX_TITLE);
       break;
     }
     case "diff": {

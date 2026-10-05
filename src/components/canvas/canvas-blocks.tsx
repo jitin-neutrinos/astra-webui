@@ -921,6 +921,9 @@ const GraphLazy = lazy(() => import("./canvas-graph-view"));
 // v6 diagram — one SVG from the pure layout. dagre (~17 kB gz) lives HERE, so
 // it must never enter the main chunk; same eager-path rule as GraphLazy.
 const DiagramLazy = lazy(() => import("./canvas-diagram").then((m) => ({ default: m.DiagramView })));
+// gitgraph — hand-rolled SVG, own chunk so the geometry stays out of the main
+// bundle alongside the other drawing surfaces.
+const GitGraphLazy = lazy(() => import("./canvas-gitgraph").then((m) => ({ default: m.GitGraphView })));
 
 function DocSkeleton() {
   // No spinner: the owner reads a loader artifact as a broken card.
@@ -948,6 +951,12 @@ function renderOne(b: CanvasBlock, id: string, bi: number, ctx?: RenderCtx): Rea
     case "tabs": return <TabsView block={b} />;
     case "layout": return <LayoutView block={b} />;
     case "math": return <MathView block={b} />;
+    case "gitgraph":
+      return (
+        <Suspense fallback={<div className="ast-cv-git ast-cv-graph-skeleton" aria-busy="true" />}>
+          <GitGraphLazy block={b} />
+        </Suspense>
+      );
     case "accordion": return <AccordionView block={b} />;
     case "terminal": return <TerminalView block={b} />;
     case "badges": return <BadgesView block={b} />;

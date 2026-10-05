@@ -181,6 +181,23 @@ function blockToMd(b: CanvasBlock): string {
       // card rendered from rather than the flattened glyphs. Inline formulas use
       // the single-dollar form so the copy is usable inline too.
       return (b.display === false ? `$${b.tex}$` : `$$\n${b.tex}\n$$`) + (b.label ? `\n*${b.label}*` : "");
+    case "gitgraph": {
+      // A commit history has no markdown equivalent, so the copy is the thing a
+      // reader would otherwise have to reconstruct by hand: newest-first rows with
+      // the branch, the short id, the message and who/when — plus a one-line
+      // branch summary with each head. A FORK only exists in the parents list, so
+      // it is written out explicitly (`← ab12cd, ef34gh`); a reader who never sees
+      // that cannot tell a merge from a linear run of commits.
+      const head = b.title ? `**${b.title}**` : "";
+      const lanes = (b.branches ?? []).map((br) => `- **${br.name}**${br.head ? ` @ ${br.head}` : ""}`);
+      const rows = b.commits.map((c) => {
+        const meta = [c.branch, c.author, c.when].filter(Boolean).join(" · ");
+        const fork = c.parents && c.parents.length > 0 ? ` ← ${c.parents.join(", ")}` : "";
+        const tags = c.tags && c.tags.length > 0 ? ` \`${c.tags.join("` `")}\`` : "";
+        return `- \`${c.id}\`${c.merge ? " **(merge)**" : ""} ${c.message}${fork}${tags}${meta ? ` — _${meta}_` : ""}`;
+      });
+      return [head, ...lanes, ...rows].filter(Boolean).join("\n");
+    }
     case "video":
       return `[video: ${b.src}]${b.caption ? `\n\n${b.caption}` : ""}`;
   }

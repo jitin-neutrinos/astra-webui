@@ -1964,3 +1964,136 @@ test("tree: string caps hold on id, label and the newly-preserved detail", () =>
   assert.ok(s.blocks[0].nodes[0].label.length <= 200, "label is capped");
   assert.ok(s.blocks[0].nodes[0].detail.length <= 500, "detail is capped — the newly-kept field is capped too");
 });
+
+
+// ── gitgraph (canvas v1 expansion) ────────────────────────────────────────────
+// The block was HALF-BUILT: BLOCK_TYPES, the validator case and the aliases
+// landed, the CSS landed, and the SANITIZER case did not. `sanitizeCanvasSpec` is
+// the ONE call on the render path (chat-timeline.tsx:70), so a gitgraph validated
+// perfectly and was then DROPPED — the card rendered with the history silently
+// missing. Third instance of the same bug class (tabs b1ec4e9, accordion/tree
+// 2026-10-05): a type in the parser that no sanitizer case knows.
+const git = (b: unknown) => parseCanvasSpec(JSON.stringify({ v: 1, blocks: [b] }));
+
+const FORK = {
+  type: "gitgraph",
+  title: "Release 2.1",
+  branches: [{ name: "main", head: "a1" }, { name: "feat/layout", head: "c3" }],
+  commits: [
+    { id: "c3", branch: "feat/layout", message: "lane geometry", author: "rit", when: "2d", parents: ["a1"] },
+    { id: "a1", branch: "main", message: "v2.1.0", author: "ana", when: "3d", parents: ["b2"], tags: ["v2.1.0"] },
+    { id: "b2", branch: "main", message: "merge feat/layout", author: "ana", when: "3d", parents: ["a0", "c2"], merge: true },
+    { id: "c2", branch: "feat/layout", message: "sanitize case", author: "rit", when: "4d", parents: ["a0"] },
+    { id: "a0", branch: "main", message: "root", author: "ana", when: "9d" },
+  ],
+};
+
+test("gitgraph: a validated gitgraph SURVIVES the sanitizer (the drop bug)", () => {
+  const spec = git(FORK);
+  assert.ok(spec, "the block validates");
+  const s = sanitizeCanvasSpec(spec) as any;
+  assert.ok(s, "a card whose only block is a gitgraph is NOT degraded to markdown");
+  assert.equal(s.blocks.length, 1, "the gitgraph is still in the card");
+  assert.equal(s.blocks[0].type, "gitgraph", "and it is still a gitgraph");
+  // Without this assertion the whole bug is invisible: the block parsed, and the
+  // spec existed, so every parser-only gate stayed green while the card was blank.
+  assert.equal(s.blocks[0].commits.length, 5, "all five commits reach the renderer");
+  assert.equal(s.blocks[0].branches.length, 2, "the branch list reaches the renderer");
+  assert.deepEqual(s.blocks[0].branches[1], { name: "feat/layout", head: "c3" });
+  // Fields the SVG reads one by one — a lane assignment that lost `branch` would
+  // collapse the graph into a single column, and a lost `parents` would erase
+  // every fork and merge.
+  assert.equal(s.blocks[0].commits[0].branch, "feat/layout");
+  assert.deepEqual(s.blocks[0].commits[2].parents, ["a0", "c2"], "both merge parents survive");
+  assert.equal(s.blocks[0].commits[2].merge, true);
+  assert.deepEqual(s.blocks[0].commits[1].tags, ["v2.1.0"]);
+  assert.equal(s.blocks[0].commits[1].author, "ana");
+  assert.equal(s.blocks[0].commits[1].when, "3d");
+});
+
+test("gitgraph: an unlabelled commit inherits its parent's lane (a fork reads as a fork)", () => {
+  // No `branch` on the feature commits: they must take the lane of their first
+  // parent, NOT lane 0 — otherwise every row lands in one column and the graph
+  // draws as a straight line with no fork at all.
+  const spec = git({
+    type: "gitgraph",
+    branches: [{ name: "main" }, { name: "feat" }],
+    commits: [
+      { id: "f2", message: "no branch key", parents: ["f1"] },
+      { id: "f1", branch: "feat", message: "declared", parents: ["m1"] },
+      { id: "m1", branch: "main", message: "main row" },
+    ],
+  });
+  assert.ok(spec);
+  const s = sanitizeCanvasSpec(spec) as any;
+  assert.equal(s.blocks[0].commits[0].branch, undefined, "the sanitizer does not invent a branch");
+  assert.deepEqual(s.blocks[0].commits[0].parents, ["f1"], "the parent link it inherits by is kept");
+});
+
+test("gitgraph: caps hold — 40 commits, duplicate ids collapsed, strings truncated", () => {
+  const many = Array.from({ length: 120 }, (_, i) => ({ id: `c${i}`, message: "m" }));
+  const s = sanitizeCanvasSpec(git({ type: "gitgraph", commits: many })!) as any;
+  assert.equal(s.blocks[0].commits.length, 40, "the sanitizer caps the history at 40 rows");
+
+  const dup = sanitizeCanvasSpec(git({
+    type: "gitgraph",
+    commits: [{ id: "a", message: "first" }, { id: "a", message: "second" }],
+  })!) as any;
+  assert.equal(dup.blocks[0].commits.length, 1, "a repeated id is one row — React keys nodes by id");
+  assert.equal(dup.blocks[0].commits[0].message, "first", "the first commit wins");
+
+  const long = sanitizeCanvasSpec(git({
+    type: "gitgraph",
+    commits: [{ id: "i".repeat(400), message: "m".repeat(9000), author: "a".repeat(400), when: "w".repeat(400), parents: ["p".repeat(400)] }],
+  })!) as any;
+  const c = long.blocks[0].commits[0];
+  assert.ok(c.id.length <= 40, "id is capped");
+  assert.ok(c.message.length <= 200, "message is capped — a log line is not a paragraph");
+  assert.ok(c.author.length <= 60, "author is capped");
+  assert.ok(c.when.length <= 40, "when is capped");
+  assert.ok(c.parents[0].length <= 40, "a parent id is capped");
+
+  // A non-string parent is DROPPED, never coerced: the renderer looks the id up
+  // in the commit index, so String(7) would resolve to nothing and fake a root.
+  const junk = sanitizeCanvasSpec(git({
+    type: "gitgraph",
+    commits: [{ id: "a", message: "m", parents: [7, null, { id: "x" }, "b"] }],
+  })!) as any;
+  assert.deepEqual(junk.blocks[0].commits[0].parents, ["b"], "only string parents survive");
+});
+
+test("gitgraph: fail-soft — no commits degrades, junk fields never throw", () => {
+  assert.equal(git({ type: "gitgraph" }), null, "no commits is not a history");
+  assert.equal(git({ type: "gitgraph", commits: [] }), null);
+  assert.equal(git({ type: "gitgraph", commits: "nope" }), null);
+  assert.equal(git({ type: "gitgraph", commits: [{ message: "no id" }] }), null, "an idless commit is not a commit");
+  // A junk branch list is not a reason to reject a valid history: the parser keeps
+  // the commits and omits the branch key, and the renderer then derives lanes from
+  // the commits. Rejecting here would lose a real history over a bad optional key.
+  const noBranches = git({ type: "gitgraph", commits: [{ id: "a", message: "m" }], branches: "nope" });
+  assert.ok(noBranches, "a junk branch list does not reject the history");
+  assert.equal((noBranches!.blocks[0] as any).branches, undefined, "the bad branch list is simply omitted");
+  // The other side: a card whose only block is unusable degrades to markdown
+  // rather than rendering an empty card.
+  assert.equal(sanitizeCanvasSpec(git({ type: "gitgraph", commits: [] })), null);
+  assert.doesNotThrow(() => git({ type: "gitgraph", commits: [{ id: "a", message: "m", parents: 5, tags: {}, merge: "yes" }], branches: [null, 3] }));
+  assert.equal(git({ type: "gitgraph", commits: [{ id: "a", message: "m", merge: "yes" }] })!.blocks[0].merge, undefined,
+    "only an explicit true is a merge");
+});
+
+test("gitgraph: type aliases normalise, and markdown copy carries the history", () => {
+  for (const alias of ["git-graph", "gitlog", "history", "commitgraph"]) {
+    const spec = git({ ...FORK, type: alias });
+    assert.ok(spec, `${alias} must parse rather than degrade the card`);
+    assert.equal((spec!.blocks[0] as any).type, "gitgraph", `${alias} normalises to gitgraph`);
+  }
+  const md = canvasToMarkdown(git(FORK)!);
+  assert.ok(md.includes("Release 2.1"), "the title is kept");
+  assert.ok(md.includes("**feat/layout** @ c3"), "branches and their heads are named");
+  // A fork exists ONLY in the parents list, so a copy that omitted it would read
+  // as a linear history and be wrong.
+  assert.ok(md.includes("← a0, c2"), "the merge's two parents are written out");
+  assert.ok(md.includes("v2.1.0"), "the tag survives the copy");
+  assert.ok(md.includes("**(merge)**"), "a merge commit is marked as one");
+  assert.ok(md.indexOf("c3") < md.indexOf("a0"), "rows copy newest-first, as drawn");
+});
