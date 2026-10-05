@@ -763,11 +763,17 @@ html.theme-fading body * {
    terminal + tool-card regions, subagent tail, and the composer command
    surfaces. Anything added to chat later joins here rather than getting the
    browser's default grey rail. */
+/* Owner 10-05: scrollbars INVISIBLE everywhere on the chat surface — scrolling
+   still works (wheel/touch/drag), the rail is just never painted. Two
+   mechanisms because Chrome ignores vendor scroll-styling when width is 0:
+   standard `scrollbar-width: none` (FF + modern Chromium) and the webkit
+   `display: none` fallback. Overlay scrollbars' hover affordance is gone by
+   design — that IS the request. */
 .chat-scroll, .chat-think-text, .chat-term-out, .suba-tail, .ai-term-body,
 .ai-io-val.tall, .ai-io-val > .ai-io-md.tall, .cmdpal-list, .cmdsheet-list,
 .chat-menu, .cmenu-body {
-  scrollbar-width: thin;
-  scrollbar-color: var(--sb-thumb) transparent;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   overscroll-behavior: contain;
 }
 .chat-scroll::-webkit-scrollbar, .chat-think-text::-webkit-scrollbar,
@@ -775,33 +781,7 @@ html.theme-fading body * {
 .ai-term-body::-webkit-scrollbar, .ai-io-val.tall::-webkit-scrollbar,
 .ai-io-val > .ai-io-md.tall::-webkit-scrollbar, .cmdpal-list::-webkit-scrollbar,
 .cmdsheet-list::-webkit-scrollbar, .chat-menu::-webkit-scrollbar,
-.cmenu-body::-webkit-scrollbar { width: 8px; height: 8px; }
-.chat-scroll::-webkit-scrollbar-track, .chat-think-text::-webkit-scrollbar-track,
-.chat-term-out::-webkit-scrollbar-track, .suba-tail::-webkit-scrollbar-track,
-.ai-term-body::-webkit-scrollbar-track, .ai-io-val.tall::-webkit-scrollbar-track,
-.ai-io-val > .ai-io-md.tall::-webkit-scrollbar-track, .cmdpal-list::-webkit-scrollbar-track,
-.cmdsheet-list::-webkit-scrollbar-track, .chat-menu::-webkit-scrollbar-track,
-.cmenu-body::-webkit-scrollbar-track { background: var(--sb-track); border-radius: 8px; }
-.chat-scroll::-webkit-scrollbar-thumb, .chat-think-text::-webkit-scrollbar-thumb,
-.chat-term-out::-webkit-scrollbar-thumb, .suba-tail::-webkit-scrollbar-thumb,
-.ai-term-body::-webkit-scrollbar-thumb, .ai-io-val.tall::-webkit-scrollbar-thumb,
-.ai-io-val > .ai-io-md.tall::-webkit-scrollbar-thumb, .cmdpal-list::-webkit-scrollbar-thumb,
-.cmdsheet-list::-webkit-scrollbar-thumb, .chat-menu::-webkit-scrollbar-thumb,
-.cmenu-body::-webkit-scrollbar-thumb {
-  background: var(--sb-thumb);
-  border-radius: 8px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-.chat-scroll::-webkit-scrollbar-thumb:hover, .chat-think-text::-webkit-scrollbar-thumb:hover,
-.chat-term-out::-webkit-scrollbar-thumb:hover, .suba-tail::-webkit-scrollbar-thumb:hover,
-.ai-term-body::-webkit-scrollbar-thumb:hover, .ai-io-val.tall::-webkit-scrollbar-thumb:hover,
-.ai-io-val > .ai-io-md.tall::-webkit-scrollbar-thumb:hover, .cmdpal-list::-webkit-scrollbar-thumb:hover,
-.cmdsheet-list::-webkit-scrollbar-thumb:hover, .chat-menu::-webkit-scrollbar-thumb:hover,
-.cmenu-body::-webkit-scrollbar-thumb:hover { background: var(--sb-thumb-hover); }
-/* .chat-think-text keeps the owner's wider bar (must be SEEABLE, not hidden) */
-.chat-think-text { scrollbar-width: auto; scrollbar-color: var(--sb-thumb) transparent; }
-.chat-think-text::-webkit-scrollbar { width: 10px; }
+.cmenu-body::-webkit-scrollbar { width: 0; height: 0; display: none; }
 /* The composer textarea scrolls as it grows past max-height — keep that
    behaviour, drop the rail (owner 10-03): a visible bar inside a 1-line-tall
    field read as a stray widget. */
@@ -824,16 +804,9 @@ html.theme-fading body * {
 
 /* Minimal brand-tinted scrollbar for the nav rail and chats list — thin, transparent
    track, cyanx thumb at low opacity so it reads as a hairline, not chrome. */
-.sidebar-scroll { scrollbar-width: thin; scrollbar-color:rgb(var(--c-3) / 0.2) transparent; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
-.sidebar-scroll::-webkit-scrollbar { width: 6px; }
-.sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
-.sidebar-scroll::-webkit-scrollbar-thumb {
-  background-color:rgb(var(--c-3) / 0.2);
-  border-radius: 3px;
-  border: 1.5px solid transparent;
-  background-clip: padding-box;
-}
-.sidebar-scroll::-webkit-scrollbar-thumb:hover { background-color:rgb(var(--c-4) / 0.4); }
+/* Owner 10-05: sidebar scrollbar hidden too — same dual mechanism. */
+.sidebar-scroll { scrollbar-width: none; -ms-overflow-style: none; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.sidebar-scroll::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
 .chat-welcome { max-width: 640px; margin: 0 auto; padding: 32px 28px 24px; display: flex; flex-direction: column; align-items: flex-start; border: 1px solid rgb(255 255 255 / 0.14); border-radius: 20px; background: rgb(255 255 255 / 0.06); backdrop-filter: blur(24px) saturate(1.3); box-shadow: 0 24px 64px rgb(0 0 0 / 0.35); }
 [data-theme="light"] .chat-welcome { border-color: rgb(15 23 42 / 0.10); background: rgb(255 255 255 / 0.45); box-shadow: 0 24px 64px rgb(15 23 42 / 0.12); }
@@ -2526,7 +2499,7 @@ html.theme-fading body * {
 [data-theme="light"] .chat-drop-overlay { background:rgb(var(--light-c-107) / 0.88); border-color:rgb(var(--light-c-86) / 0.5); }
 
 /* ── attachment tray (W4) ── */
-.at-tray { display:flex; align-items:center; gap:8px; overflow-x:auto; padding:2px 2px 10px; margin-bottom:6px; border-bottom:1px solid rgb(var(--c-89) / 0.08); scrollbar-width:thin; }
+.at-tray { display:flex; align-items:center; gap:8px; overflow-x:auto; padding:2px 2px 10px; margin-bottom:6px; border-bottom:1px solid rgb(var(--c-89) / 0.08); scrollbar-width:none; }
 .at-item { position:relative; flex:0 0 64px; height:64px; border-radius:10px; overflow:hidden; background:var(--color-midnight); border:1px solid rgb(var(--c-150) / 0.12); display:flex; align-items:center; justify-content:center; animation:chat-pop 180ms cubic-bezier(0.23,1,0.32,1) both; }
 .at-item img { width:100%; height:100%; object-fit:cover; }
 .at-item[data-status="error"] { border-color:rgb(var(--c-206) / 0.55); }
@@ -5292,7 +5265,7 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
   overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
   padding-bottom: 4px;
-  scrollbar-width: thin;
+  scrollbar-width: none;
 }
 .ast-cv-diagram-scroll.is-compact .ast-cv-diagram { min-width: 0; }
 .ast-cv-diagram { min-width: 560px; }
