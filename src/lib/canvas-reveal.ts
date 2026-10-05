@@ -18,6 +18,54 @@
 const CANVAS_FENCE_RE = /`{3,}astra-canvas/g;
 
 /**
+ * Is the last astra-canvas fence in `s` still open?
+ *
+ * Used by the live incremental canvas (chat-timeline.tsx) to decide whether a
+ * provisional card should be painted. A CLOSED fence must NOT be claimed here:
+ * the turn planner deliberately leaves contained fences inline so following prose
+ * stays below the card, and RichText splits them — so claiming a closed one too
+ * renders the same card twice.
+ *
+ * Two rules that are easy to get wrong:
+ *  - a closer counts ANYWHERE after the opener, because prose may follow it (an
+ *    end-anchored test reports a closed fence as open);
+ *  - the closer must be at least as long as the opener's backtick run, so a ```
+ *    inside the JSON body is not mistaken for the real closer.
+ */
+export function openCanvasFence(s: string): { open: boolean; closed: boolean; at: number } {
+  const at = s.lastIndexOf("astra-canvas");
+  if (at === -1 || at < 1 || s.slice(0, at).trimEnd().slice(-1) !== "`") {
+    return { open: false, closed: false, at: -1 };
+  }
+  let runStart = at;
+  while (runStart > 0 && s[runStart - 1] === "`") runStart--;
+  const runLen = at - runStart;
+
+  // Scan the body STRING-AWARE: a ``` inside a JSON string value (a code block
+  // in the card) is data, not the closer. Measured: counting raw runs reported
+  // `closed:true` for a still-open fence whose card contained a code block.
+  const body = s.slice(at + "astra-canvas".length);
+  let inStr = false;
+  let esc = false;
+  let closed = false;
+  for (let i = 0; i < body.length; i++) {
+    const c = body[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c !== "`") continue;
+    let n = 0;
+    while (i + n < body.length && body[i + n] === "`") n++;
+    if (n >= Math.max(3, runLen)) { closed = true; break; }
+    i += n - 1;
+  }
+  return { open: true, closed, at: runStart };
+}
+/**
  * If `shown` (a prefix of `full`) stops inside an astra-canvas fence, return the
  * prefix with that fence removed. Otherwise return `shown` unchanged.
  *

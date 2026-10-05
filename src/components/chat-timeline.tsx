@@ -103,7 +103,7 @@ const RichBlockView = memo(function RichBlockView({ source }: { source: string }
 });
 
 import { splitRichBlocks } from "../lib/rich-blocks";
-import { withholdOpenCanvasFence } from "../lib/canvas-reveal";
+import { withholdOpenCanvasFence, openCanvasFence } from "../lib/canvas-reveal";
 
 export function RichText({ text, onOpenMedia, streaming }: { text: string; onOpenMedia?: (items: MediaItem[], index: number) => void; streaming?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -805,16 +805,35 @@ export const TurnTimeline = memo(function TurnTimeline({ segments, streaming, se
       // the user watches the card build instead of waiting for the closing fence.
       // The moment the fence closes, the turn planner takes over and the final
       // spec replaces this provisional one (same position, no flash).
+      //
+      // 2026-10-05: this read `mdFor.get(tailIdx)`, which is the planner's
+      // OUTPUT — and the planner already cuts an open tail fence away, so the
+      // search always found nothing and the whole live path was unreachable.
+      // Measured: parse(mdFor) -> null, parse(raw segment) -> 3 blocks.
+      // Fix: parse the RAW segment text, then strip the fence from the MARKDOWN
+      // copy so the payload is never painted while the provisional card shows it.
       let liveCanvas: { title?: string; blocks: CanvasBlock[] } | null = null;
       if (streaming && isRunning) {
         const tailIdx = textIdx[textIdx.length - 1];
         if (tailIdx != null && !bySeg.has(tailIdx)) {
-          const tailText = mdFor.get(tailIdx) ?? "";
-          liveCanvas = parseStreamingCanvas(tailText);
-          if (liveCanvas) {
-            // strip the partial fence from the markdown so raw JSON never shows
-            const open = tailText.lastIndexOf("```astra-canvas");
-            if (open !== -1) mdFor.set(tailIdx, tailText.slice(0, open));
+          const rawTail = segments[tailIdx]?.text ?? "";
+          // ONLY a genuinely UNTERMINATED fence is live. Without this check a
+          // CLOSED contained fence double-renders: the planner deliberately
+          // leaves those inline (canvas-schema.ts:2141, so following prose stays
+          // below the card) and RichText splits them — so the live path claiming
+          // one too would paint the same card twice.
+          // A closer counts ANYWHERE after the opener (prose may follow it), and
+          // must be at least as long as the opener's run so a ``` inside the JSON
+          // body is not mistaken for the closer.
+          const live = openCanvasFence(rawTail);
+          if (live.open && !live.closed) {
+            liveCanvas = parseStreamingCanvas(rawTail);
+            if (liveCanvas) {
+              // strip the partial fence from the markdown so raw JSON never shows
+              const mdTail = mdFor.get(tailIdx) ?? rawTail;
+              const open = mdTail.lastIndexOf("```astra-canvas");
+              if (open !== -1) mdFor.set(tailIdx, mdTail.slice(0, open));
+            }
           }
         }
       }
@@ -828,7 +847,16 @@ export const TurnTimeline = memo(function TurnTimeline({ segments, streaming, se
     if (!segments.length) return null;
 
     return (
-      <div className={cn("chat-turn", isRunning && "running")} aria-busy={isRunning}>
+      <div
+        className={cn("chat-turn", isRunning && "running")}
+        aria-busy={isRunning}
+        // perf-chat.css skips layout/paint for offscreen turns. The LIVE turn must
+        // never be skipped: it mutates ~60x/second, and a skipped subtree would
+        // either do that work for nothing or render mid-skip while its text
+        // changes (the flicker this rule exists to prevent). There is only ever
+        // one live turn, so forcing it visible costs nothing.
+        data-streaming={isRunning ? "true" : undefined}
+      >
         <div className="chat-turn-head">
           <img src="/astra-logo.png" alt="" aria-hidden="true" className="chat-turn-logo" />
           {ts != null && (
