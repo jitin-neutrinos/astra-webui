@@ -2708,7 +2708,20 @@ html.theme-fading body * {
   box-shadow: 0 0 10px color-mix(in oklab, var(--color-accent) 30%, transparent),
               inset 0 0 6px color-mix(in oklab, var(--color-accent) 6%, transparent);
 }
-.ast-nav-unread-rail > span:first-child svg { color: var(--color-accent); }
+/* ---- Selected state, filled mechanism (owner 10-05) ------------------------
+   EVERYWHERE one rule: the selected/focused page's button or icon shows the
+   FULL accent container with the contrast ink glyph/label — the same language
+   as the composer bar's filled buttons, so "selected" reads identically on
+   the nav list, the collapsed rail, and the chat bar. No tint-of-accent dirs. */
+.ast-nav-selected { background: var(--color-accent); }
+/* The icon well and the label must BOTH flip to ink over the fill. The icon
+   well carries its own `text-muted` class — override it under the selected
+   parent (one extra class wins without !important). */
+.ast-nav-selected > span:first-child { color: var(--color-void); }
+.ast-nav-selected > span:first-child svg { color: var(--color-void); }
+.ast-nav-selected > span:nth-child(2) { color: var(--color-void); }
+.collapsed .ast-nav-selected,
+.ast-rail .ast-nav-selected { background: var(--color-accent); }
 /* Mobile: the badge sits under the header logo (the logo button is the only
    child, 44px wide starting at the bar's 12px padding). */
 .ast-unread-badge-mobile {

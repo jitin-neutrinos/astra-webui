@@ -601,6 +601,8 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
         // >= lg: inline sidebar; width animates on collapse (vendor: w-64 / w-16)
         "lg:static lg:z-auto lg:h-full lg:w-64 lg:max-w-none lg:shrink-0 lg:translate-x-0 lg:transition-[width] lg:duration-200 lg:ease-in-out",
         collapsed && "lg:w-16",
+        // owner 10-05: the collapsed rail is addressable in CSS
+        collapsed && "ast-rail",
       )}>
       {/* Logo row. Height is driven by the SAME --astra-topbar-h token the chat
           header uses, so the two top bars can never drift apart (owner 10-02).
@@ -706,7 +708,10 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
                   // drops its container, so a 48px rail isn't crowded.
                   item.name === "Chats" && unreadTotal > 0 && (expanded ? "ast-nav-unread" : "ast-nav-unread-rail"),
                   active
-                    ? "bg-accent/10 text-accent"
+                    /* Owner 10-05: selected = FILLED, same mechanism as the
+                       composer bar buttons — full accent container, ink glyph
+                       and ink label, everywhere including the collapsed rail. */
+                    ? "ast-nav-selected text-void"
                     : "text-slate-300 hover:bg-white/5 hover:text-white",
                 )}>
                 <span className="grid h-full w-12 shrink-0 place-content-center text-muted">{item.icon}</span>
