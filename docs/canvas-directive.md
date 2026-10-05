@@ -57,13 +57,13 @@ answer. 2–4 cards in one reply is normal. The anti-slop rule is about
 *fragmenting a single idea* across five blocks, never about *using enough
 cards*.
 
-### Block types (closed set — 37)
+### Block types (closed set — 40)
 
 | type | shape | use for |
 |---|---|---|
 | `kpi` | `{label, value, delta?, trend?:"up"\|"down"\|"flat", spark?:number[3..24]}` | headline metrics, counts, deltas; `spark` adds an inline trend line |
-| `chart` | `{chart:"line"\|"area"\|"bar"\|"radial"\|"pie"\|"donut"\|"stack"\|"sankey"\|"treemap"\|"funnel"\|"radar"\|"scatter", title?, labels?, series:[{name, points:number[]}]}` | trends, distributions, compositions, before/after; `donut` shows the total in the hole; the last four (v5) accept their natural vocabulary instead of `series` — see below |
-| `table` | `{columns:string[], rows:string[][]}` | comparisons, matrices, option tables, findings |
+| `chart` | `{chart:"line"\|"area"\|"bar"\|"radial"\|"pie"\|"donut"\|"stack"\|"sankey"\|"treemap"\|"funnel"\|"radar"\|"scatter"\|"box"\|"histogram", title?, labels?, series:[{name, points:number[]}]}` | trends, distributions, compositions, before/after; `donut` shows the total in the hole; the last six accept their natural vocabulary instead of `series` — see below |
+| `table` | `{columns:string[], rows:string[][], stats?:{columns?:string[], compute?:("mean"\|"median"\|"sd"\|"min"\|"max"\|"p95"\|"count")[]}}` | comparisons, matrices, option tables, findings; `stats:true` or `stats:{compute:[…]}` makes the **renderer** compute a summary footer from the rows — never do that arithmetic yourself |
 | `diagram` | `{layout:"flow"\|"relationship", direction?:"tb"\|"lr", summary?, caption?, nodes:[{id,label,detail?,kind?,note?}], edges:[{from,to,label?,note?}]}` | workflows, pipelines, dependency and relationship maps; always give a `summary` (one-to-three sentences) so a reader can follow it, and `kind` on two or more nodes to earn a legend; the card scrolls and zooms and grows in BOTH axes rather than shrinking, and `direction` is only a hint — a narrow viewport overrides it with `"tb"` |
 | `checklist` | `{items:[{text, status?:"done"\|"open"\|"fail"}]}` | status, audit results, done/not-done |
 | `steps` | `{items:[{title, detail?, status?:"done"\|"active"\|"todo"\|"fail"}]}` | ordered procedures, phase results |
@@ -80,6 +80,9 @@ cards*.
 | `heatmap` | `{title?, rows:string[], cols:string[], values:number[][]}` | intensity grids: usage by day×hour, commit activity, coverage maps |
 | `tabs` | `{items:[{label, blocks:[…]}]}` | multiple views of one subject; each tab holds other blocks |
 | `accordion` | `{items:[{title, body?, blocks?, open?}]}` | collapsible detail sections; first item defaults open; aliases: `collapsible`, `details`, `faq` |
+| `layout` | `{layout:"stack"\|"bento"\|"split"\|"masonry"\|"grid", cols?:2..4, blocks:[…]}` | several blocks composed in ONE grid instead of a stack — a dashboard row, a 2-up comparison of charts, a metric beside its detail. The children are ordinary blocks, so each keeps its own behaviour (a chart inside a layout still lazy-loads). `cols` applies to `split`/`grid` only. Aliases: `bento`, `columns`→`masonry` |
+| `math` | `{tex, display?:true, label?}` | a formula, derivation or closed-form expression; rendered by KaTeX, and bad TeX degrades to the **source text** in red rather than a broken card. Emit plain Unicode (`×`, `∑`, `√`, `²`) if you cannot write TeX. Aliases: `equation`, `latex`, `tex`, `formula` |
+| `gitgraph` | `{title?, branches?:[{name, head?}], commits:[{id, branch?, message, parents?:string[], author?, when?, tags?:string[], merge?}]}` | branch history with real forks and merges: one lane per branch, newest first, a parent on another branch draws the arc. `commits` is required and ordered newest-first; 40 rows max. `parents` is what makes a fork — omit it and the card reads as a straight line. Aliases: `git-graph`, `gitlog`, `history`, `commitgraph` |
 | `terminal` | `{title?, command?, lines:[{text, tone?:"stdout"\|"stderr"\|"info"\|"success"\|"dim"}], exitCode?}` | command + output evidence card; also accepts plain-string `lines` |
 | `badges` | `{items:[{label, tone?:"info"\|"warn"\|"success"\|"danger"\|"neutral"}]}` | status chip row: service health, entity tags, quick triage |
 | `divider` | `{label?}` | labeled section separator inside a long card |
@@ -148,9 +151,9 @@ select/segmented first option, toggle false, search "") so
 touch. A card with controls but no top-level `state` still gets its own
 per-card store (proven M2, 2026-10-04; a bare reader-block card stays plain).
 
-### Chart kinds beyond the usual seven (v5) — emit the NATURAL vocabulary
+### Chart kinds beyond the usual seven — emit the NATURAL vocabulary
 
-Four more chart kinds ship, all driven by the chart engine already in the bundle.
+Six more chart kinds ship, all driven by the chart engine already in the bundle.
 For these you do NOT need `series` — give the data the way the chart is normally
 described and the parser normalizes it:
 
@@ -162,11 +165,19 @@ described and the parser normalizes it:
 | `funnel` | `{type:"chart", chart:"funnel", stages:[{label:"Visits", value:1000}, {label:"Signup", value:120}]}` | stage-by-stage drop-off (label each stage; include the % you computed) |
 | `radar` | `{type:"chart", chart:"radar", labels:["speed","cost","quality"], series:[{name:"us", points:[8,5,9]}]}` | multi-axis profile, 2 series max on a phone |
 | `scatter` | `{type:"chart", chart:"scatter", labels:["a","b","c"], series:[{name:"s", points:[1,4,9]}]}` | correlation / distribution (x = label order, y = value) |
+| `box` | `{type:"chart", chart:"box", labels:["eu-west","us-east"], series:[{name:"eu-west", points:[12,15,14,30,13]}, …]}` | spread per group. **One series per group of RAW samples** — the renderer computes min/q1/median/q3/max, so never send a pre-computed median; a group needs ≥2 values or it is skipped |
+| `histogram` | `{type:"chart", chart:"histogram", title:"p95 latency (ms)", series:[{name:"samples", points:[12,15,14,30,13,12]}]}` | the distribution of ONE series of raw samples, binned by the renderer. Send the samples, never the bins |
 
 Laws still apply: ONE accent with opacity tiers (no per-slice hue), legend always
 on, no gridlines/axis lines, values formatted with the `compact`/`money` helpers
 when they get large. Aliases accepted: `flow`→sankey, `sunburst`/`icicle`→treemap,
-`conversion`/`pyramid`→funnel, `bubble`/`xy`→scatter, `spider`→radar.
+`conversion`/`pyramid`→funnel, `bubble`/`xy`→scatter, `spider`→radar,
+`boxplot`/`iqr`→box, `dist`/`distribution`→histogram.
+
+Two exceptions to "legend always on", because the label is already on the card
+itself: `box` names its GROUPS on the x axis (and states all five numbers in the
+tooltip), and `histogram`'s bars ARE the counts. A legend row there would add
+nothing and steal height from a 200px plot.
 
 ### Knowledge graph (v5) — relationship maps and topology
 
@@ -395,8 +406,8 @@ Consequences, verified 2026-10-04:
 - **Do not rename or move this file** without editing that path in the generator
   (two occurrences: harness block and soul block). The generator will not warn —
   it writes the string, and every surface then points at a dead path.
-- **The 37-type count and the 12 chart kinds here are pinned to the parser.**
-  `src/lib/canvas-schema.ts` declares `BLOCK_TYPES` (37) and `CHART_KINDS` (12);
+- **The 40-type count and the 14 chart kinds here are pinned to the parser.**
+  `src/lib/canvas-schema.ts` declares `BLOCK_TYPES` (40) and `CHART_KINDS` (14);
   `canvas-surface-sync.mjs` extracts both by regex, compares them against
   `rules/canvas-surface-data.mjs`, and exits **2** naming every missing/extra
   name if they disagree. Adding or removing a block type in the parser therefore
@@ -425,6 +436,60 @@ Gates: `node ~/Work/infra/agent-fleet/rules/canvas-surface-sync.check.mjs`
 When you emit a review or plan gate, the body is canvas content — build it with
 the block types above so the approval surface is reviewable at a glance rather
 than a wall of markdown.
+## `table.stats` — let the renderer do the arithmetic
+
+A mean written in prose is a number **you** produced, and a wrong one is
+indistinguishable from a right one. `stats` makes the card compute it:
+
+```
+{ "type": "table", "columns": ["region", "latency_ms"],
+  "rows": [["eu","12"], ["us","31"], ["apac","18"]],
+  "stats": { "compute": ["mean", "p95"] } }
+```
+
+- `stats: true` (or `{}`) = every statistic on every numeric column.
+- `stats.columns` picks the columns; omit it and every numeric column is summarised.
+- `compute` picks the statistics, and the card shows them **in the order you ask**:
+  `mean` `median` `sd` (sample, n−1) `min` `max` `p95` `count`.
+- Near-misses are normalised, not rejected: `avg`→mean, `stddev`/`sigma`→sd, `n`→count.
+- **A column is skipped when any of its cells is not a number.** `n/a` beside `9`
+  means the column is not a distribution, and a mean over the 70% that parsed
+  describes a sample the reader never sees. Blanks are fine — they are missing,
+  not wrong — and `count` tells you how much you actually summarised.
+- An unknown statistic costs the footer line, never the table.
+
+Reach for `stats` whenever a table carries measurements. Do NOT quote an average,
+median or p95 in prose next to a table that could have shown it — a reader cannot
+tell which number was computed and which was guessed.
+
+## `math` and `gitgraph` — the two blocks that save prose
+
+**`math`** renders TeX through KaTeX, and malformed TeX degrades to the source text
+in red rather than throwing the card away — so you can emit a formula without
+pre-validating it. Emit `tex`, and `label` for what the expression *is*.
+
+**`gitgraph`** draws real branch history: one lane per branch, newest commit first,
+a bezier where a commit's parent sits on another lane. That last part is the whole
+point — `parents` is what makes a fork a fork:
+
+```
+{ "type": "gitgraph", "title": "v2.1",
+  "branches": [{ "name": "main", "head": "a1" }, { "name": "feat/layout", "head": "c3" }],
+  "commits": [
+    { "id": "c3", "branch": "feat/layout", "message": "lane geometry", "parents": ["a1"] },
+    { "id": "a1", "branch": "main", "message": "v2.1.0", "parents": ["b2"], "tags": ["v2.1.0"] },
+    { "id": "b2", "branch": "main", "message": "merge feat/layout", "parents": ["a0","c2"], "merge": true },
+    { "id": "a0", "branch": "main", "message": "root" }
+  ] }
+```
+
+- `commits` newest-first, max 40 rows; `id` is any short opaque handle.
+- `merge: true` draws a hollow node and merges the lanes — use it on a real merge commit.
+- `tags` renders inline (release markers); `head` puts the HEAD marker on that branch.
+- A commit with no `branch` joins its first parent's lane, so partial branch names still draw correctly.
+- Reach for it for a release history, a bisect, an incident timeline of who-merged-what.
+  For a single-file diff use `diff`; for "what calls what" use `graph`.
+
 ## Tone colours (2026-10-05) — semantic, not monochrome
 
 Success/warn/danger SHOW as green/amber/red (theme roles) — across callout dots+titles,
@@ -443,10 +508,13 @@ Map the request to its stream and compose blocks in this order:
 - **REVIEW / APPROVAL GATE**: `badges → table(findings, severity, evidence) → checklist(must-fix before approve) → callout warn(what would reopen) → steps(next)`. Severity: danger=critical, warn=major, info=minor.
 - **UX AUDIT / DESIGN REPORT**: `image(screenshot per page) → kpi×3(scores) → table(before→after tokens) → compare(option A vs B) → checklist(compliance) → accordion(skip-able decisions)`. Always give before/after hex pairs; WCAG numbers in KPIs.
 - **BACKEND / DATA REPORT**: `diagram(architecture flow) → tree(data/file structure) → keyvalue(connection strings as env names, ports — never secrets) → table(schema: table, column, type, index) → terminal(migration/seed output as evidence)`. Use `graph` for service dependency maps.
-- **DATA SCIENCE / STATS**: `kpi(mean/median/n) → chart(histogram=bar of binned data, box→use table of quartiles until native box plot) → scatter(correlations) → table(summary stats per column) → callout(method notes)`. Regression coefficients → table with a `danger` badge for p>0.05.
-- **MATH / SCIENCE**: `text` or `code` block with the formula (LaTeX-capable renderer pending — emit plain Unicode math: ×, ∑, √, superscripts) → `table(worked example)` → `callout(the intuition)`.
+- **DATA SCIENCE / STATS**: `kpi(mean/median/n) → chart:histogram(the raw samples) → chart:box(one series per group of samples) → scatter(correlations) → table(rows, stats:{compute:["mean","sd","p95"]}) → callout(method notes)`. Send RAW SAMPLES to `box`/`histogram` and let the renderer compute the quartiles and the bins; the table footer computes the summary. Regression coefficients → table with a `danger` badge for p>0.05.
+- **MATH / SCIENCE**: `math({tex, label})` for each expression → `table(worked example, stats:{compute:["mean","max"]})` → `callout(the intuition)`. KaTeX renders the TeX; malformed TeX degrades to red source text, so emit it without pre-checking.
 - **COMMERCE / FINANCE**: `kpi(revenue/growth) → chart:funnel(conversion stages) → chart:line(revenue trend) → table(cohort/segment breakdown) → badges(period/segment tone)`.
 - **CODING / DEV REPORT**: `diff(per-file change) → tree(touched paths) → terminal(test output) → checklist(passed/failed) → callout danger(known risks)`.
+- **UX AUDIT / SCORE REPORT**: `layout(split: kpi×3(scores) | compare(option A vs B)) → table(before→after tokens, stats:{compute:["mean","max"]}) → image(screenshot of the fixed state) → checklist(WCAG items) → accordion(skip-able rationale)`. The layout earns its place here: the score row and the option comparison are ONE idea, and a stack of four blocks reads as four.
+- **RELEASE / CHANGELOG**: `badges(version, date, stability) → gitgraph(branch history: forks + merges, tags on releases) → timeline(milestones shipped) → table(breaking changes) → callout warn(what to do before upgrading)`. `gitgraph` beats a prose changelog whenever the story is *how* the work branched.
+- **INCIDENT / POST-MORTEM**: `callout danger(root cause + blast radius) → timeline(what happened when, disproven hypotheses as fail) → gitgraph(the fix's branch history, if the fix merged) → table(affected rows, stats:{compute:["max","p95"]}) → steps(one active) → callout warn(conditions, never people)`.
 - **RESEARCH**: `badges(sources count) → callout(answer first) → kpi×3(key numbers) → table(claim, evidence, confidence) → callout warn(what would change it) → references(real hrefs)`.
 
 
