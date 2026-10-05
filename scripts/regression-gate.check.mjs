@@ -650,6 +650,27 @@ export const REGRESSIONS = [
       "Charts silently dropped data the parser had already accepted: a scatter whose natural data is [[x,y]] pairs or [{x,y}] objects failed the numeric-array test and the WHOLE card was discarded rather than degraded. The sankey/treemap/funnel/radar/scatter kinds also accept a natural vocabulary (nodes+links, items, stages, labels+series) instead of `series`, so those shapes parsed to nothing.",
     guard: "src/lib/canvas-pagination.check.ts",
   },
+  {
+    id: "RG-097",
+    found: "2026-10-05",
+    symptom:
+      "A reconnecting client could not learn what it missed, so an interrupted answer stayed unreachable even once it was durably logged. The gateway cannot serve this: its replay ring is in-process memory that dies with a restart, and the HTTP stream route emits no `id:` line, so Last-Event-ID resume is structurally impossible. stream-routes.mjs adds the durable read side. Guards the HTTP contract, where the dangerous failure is a read that LOOKS complete while having a hole in it — worse than an error, because the transcript then renders as whole while missing text: `truncated` must be TRUE after a retention purge, and FALSE for a live session, an unknown session and a caught-up cursor (otherwise the client refetches forever). Also guards cursor resume returning only seq>since, byte-identical reassembly across the HTTP boundary, the body-vs-reference split holding over the wire, pagination via limit+more+next_cursor, bad cursors returning a clean 400 rather than a silent empty answer, unrelated /api/hx paths passing through to the gateway, and bounded session keys. Two real defects were caught while writing it: /api/hx/stream/stats was swallowed by the /stream/<sid> pattern and answered session_id:'stats'; and isTruncated compared the cursor against min(seq), which reports EVERY session as truncated because the gateway's seq is sparse (measured: 966 stored rows spanning seq 8289..9553), forcing a full history refetch on every fresh load.",
+    guard: "server/stream-routes.check.mjs",
+  },
+  {
+    id: "RG-098",
+    found: "2026-10-05",
+    symptom:
+      "Chart point data silently emptied. sanitizeCanvasSpec's chart branch rebuilt each series' points and any non-numeric or pair-shaped array ([[x,y]] or [{x,y}]) failed the numeric test, so the series rendered with NO points instead of degrading visibly — a plot frame with an empty interior and no error anywhere. Guards that numeric points survive sanitisation, that pair-shaped data is normalised rather than dropped, and that a series with unusable data degrades that SERIES rather than silently painting nothing.",
+    guard: "src/lib/canvas-sanitize.points.check.ts",
+  },
+  {
+    id: "RG-099",
+    found: "2026-10-05",
+    symptom:
+      "A KPI whose value is computed by an expression stopped updating: the fan-out that recomputes a bound kpi.value from the reactive scope lost its dependency on the scope version, so the tile kept painting the value captured at first render even after the controlling slider moved. Guards that a bound KPI re-evaluates when its controlling state key changes.",
+    guard: "src/lib/canvas-kpi-fanout.check.ts",
+  },
 ];
 
 // ---- gate -----------------------------------------------------------------
