@@ -112,8 +112,34 @@ function carryBinding(v: unknown): unknown {
   return sanitizeValue(v);
 }
 
+/** How deep container blocks (tabs / accordion) may nest. The PARSER does not
+ *  cap depth, so an agent-authored card can nest arbitrarily; without a cap here
+ *  the recursive descent below (and the renderer's own recursion through
+ *  `Blocks`) is a stack-overflow crash on a card that parsed fine. */
+const MAX_NEST_DEPTH = 6;
+
+/**
+ * Sanitize a NESTED block list (the `blocks` of a tab / accordion item).
+ *
+ * These are the very same blocks the card dispatcher renders, so they must be
+ * sanitized by the very same function — a nested block is not a lesser citizen
+ * and must not be a way around the caps, the enum normalisation or the
+ * binding carry-over. Returns `undefined` when nothing usable is left, which is
+ * the caller's signal to degrade that item to its own body text.
+ */
+function sanitizeBlockList(v: unknown, depth: number): CanvasBlock[] | undefined {
+  if (!Array.isArray(v) || depth > MAX_NEST_DEPTH) return undefined;
+  const out: CanvasBlock[] = [];
+  for (const b of v) {
+    const s = sanitizeBlock(b, depth);
+    if (s) out.push(s);
+    if (out.length >= MAX_BLOCKS) break;
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 /** Sanitize a single block. Returns null if block is invalid. */
-function sanitizeBlock(b: unknown): CanvasBlock | null {
+function sanitizeBlock(b: unknown, depth = 0): CanvasBlock | null {
   if (!b || typeof b !== "object") return null;
   const obj = b as Record<string, unknown>;
   const type = obj.type;
@@ -652,18 +678,60 @@ function sanitizeBlock(b: unknown): CanvasBlock | null {
     }
     case "accordion": {
       if (!Array.isArray(obj.items)) return null;
-      sanitized.items = obj.items
-        .map((item: unknown) => {
-          if (!item || typeof item !== "object") return null;
-          const io = item as Record<string, unknown>;
-          const title = typeof io.title === "string" ? truncate(io.title, 200) : "";
-          if (!title) return null;
-          const body = typeof io.body === "string" ? truncate(io.body, MAX_STRING) : undefined;
-          return { title, body };
-        })
-        .filter((x: unknown): x is { title: string; body?: string } => x !== null)
-        .slice(0, 20);
-      if (sanitized.items.length === 0) return null;
+      // Items nest OTHER BLOCKS (docs: `{title, body?, blocks?, open?}`), so they
+      // are sanitized with the same per-block validator as a top-level card.
+      //
+      // BUG (2026-10-05, "accordion dropdown renders with NO content"): this case
+      // used to rebuild each item as `{ title, body }` only. The parser preserved
+      // `blocks` and `AccordionView` rendered them, but sanitizeCanvasSpec — the
+      // ONE call on the render path (chat-timeline.tsx:70) — threw the blocks away
+      // on the way to the renderer. An item whose only content was nested blocks
+      // therefore arrived as a title with `body: undefined`, i.e. an empty
+      // dropdown. Same rebuild also discarded `open`, so an explicitly-opened item
+      // lost its state. Proved: sanitizer is the only drop; parser and renderer
+      // were both already correct.
+      const items: Record<string, unknown>[] = [];
+      for (const item of obj.items) {
+        if (!item || typeof item !== "object") continue;
+        const io = item as Record<string, unknown>;
+        const title = typeof io.title === "string" ? truncate(io.title, 200) : "";
+        if (!title) continue;
+        const body = typeof io.body === "string" ? truncate(io.body, MAX_STRING) : undefined;
+        const blocks = sanitizeBlockList(io.blocks, depth + 1);
+        // Fail-soft per ITEM: an item that has nothing to reveal is not a
+        // disclosure at all, so drop it rather than render a dead header. This
+        // never reaches the card as a whole — the other items survive.
+        if (body === undefined && blocks === undefined) continue;
+        const out: Record<string, unknown> = { title };
+        if (body !== undefined) out.body = body;
+        if (blocks !== undefined) out.blocks = blocks;
+        if (io.open === true) out.open = true;
+        items.push(out);
+        if (items.length >= 20) break;
+      }
+      if (items.length === 0) return null;
+      sanitized.items = items;
+      break;
+    }
+    case "tabs": {
+      // Same class of bug, same fix: `tabs` items nest blocks too, and this case
+      // was absent entirely, so EVERY tabs card fell through to `default: return
+      // null` and vanished from the card. Nested blocks are sanitized the same
+      // way, so a chart inside a tab keeps its lazy-load dispatch and its caps.
+      if (!Array.isArray(obj.items)) return null;
+      const items: Record<string, unknown>[] = [];
+      for (const item of obj.items) {
+        if (!item || typeof item !== "object") continue;
+        const io = item as Record<string, unknown>;
+        const label = typeof io.label === "string" ? truncate(io.label, 200) : "";
+        if (!label) continue;
+        const blocks = sanitizeBlockList(io.blocks, depth + 1);
+        if (blocks === undefined) continue; // a tab with nothing to show is not a tab
+        items.push({ label, blocks });
+        if (items.length >= 20) break;
+      }
+      if (items.length === 0) return null;
+      sanitized.items = items;
       break;
     }
     case "diff": {

@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { splitCanvasBlocks, splitCanvasBlocksAsync, parseCanvasSpec, parseCanvasSpecAsync, extractOutermostJson, hasCanvas, planTurnCanvases, parseStreamingBlocks, parseStreamingCanvas, validateBlock } from "./canvas-schema.ts";
+// The sanitizer is part of the RENDER path (chat-timeline.tsx:70 is its one
+// production call site), so the pipeline is only proven end-to-end if a card is
+// asserted on BOTH sides of it. A parser-only suite stayed green through the
+// 2026-10-05 accordion bug: the parser preserved the nested blocks perfectly and
+// the sanitizer dropped them.
+import { sanitizeCanvasSpec } from "./canvas-sanitize.ts";
 import { canvasToMarkdown } from "./canvas-markdown.ts";
 
 const VALID = JSON.stringify({
@@ -753,6 +759,217 @@ test("v4: accordion item with neither body nor blocks is invalid", () => {
   assert.equal(parseCanvasSpec(JSON.stringify({ v: 1, blocks: [
     { type: "accordion", items: [{ title: "Nothing inside" }, { title: "Also nothing" }] },
   ] })), null);
+});
+
+// ---- accordion items render NESTED BLOCKS end-to-end (2026-10-05) -------------------------------------------------------------
+// User-reported symptom: an accordion item carrying `blocks` rendered as a
+// dropdown with NO content on the live site. The parser and the renderer were
+// both already correct; `sanitizeCanvasSpec` — the one call on the render path
+// (chat-timeline.tsx:70) — rebuilt each item as `{title, body}` and dropped
+// `blocks` (and `open`) on the way to the renderer. So the card that reaches
+// `AccordionView` had an item with no body and no blocks: an empty disclosure.
+//
+// These cases pin the WHOLE pipeline, because any one layer can silently drop
+// the nesting again and the symptom is an empty dropdown, not an error.
+
+test("accordion: the reported card shape keeps its nested blocks through parse AND sanitize", () => {
+  // EXACT shape from the bug report.
+  const json = JSON.stringify({
+    v: 1,
+    title: "Delivery",
+    blocks: [{
+      type: "accordion",
+      items: [{
+        title: "Design decisions (skippable)",
+        blocks: [{ type: "checklist", items: [{ text: "Skip the theming step", status: "done" }] }],
+      }],
+    }],
+  });
+
+  // (a) the parser preserves the nesting…
+  const spec = parseCanvasSpec(json);
+  assert.ok(spec, "the user card must parse");
+  const parsedItem = (spec!.blocks[0] as any).items[0];
+  assert.equal(parsedItem.blocks.length, 1, "parser must keep item.blocks");
+  assert.equal(parsedItem.blocks[0].type, "checklist", "the nested block keeps its type");
+  assert.equal(parsedItem.blocks[0].items[0].text, "Skip the theming step");
+  assert.equal(parsedItem.open, true, "the first item still defaults open");
+
+  // …and the sanitizer, which is where the content used to die, keeps it too.
+  // This is the assertion that failed before the fix: blocks came back undefined.
+  const safe = sanitizeCanvasSpec(spec) as any;
+  assert.ok(safe, "the card must survive sanitization");
+  const safeItem = safe.blocks[0].items[0];
+  assert.ok(Array.isArray(safeItem.blocks), "item.blocks must reach the renderer (was dropped)");
+  assert.equal(safeItem.blocks[0].type, "checklist");
+  assert.equal(safeItem.blocks[0].items[0].status, "done", "nested block is fully sanitized, not just carried");
+  assert.equal(safeItem.body, undefined, "an item with only blocks must not gain a fake body");
+});
+
+test("accordion: an explicit open:true survives sanitization (it was discarded too)", () => {
+  const spec = parseCanvasSpec(JSON.stringify({
+    v: 1,
+    blocks: [{ type: "accordion", items: [
+      { title: "First, left closed", body: "a" },
+      { title: "Second, authored open", open: true, body: "b" },
+    ] }],
+  }));
+  assert.ok(spec);
+  assert.equal((spec!.blocks[0] as any).items[1].open, true, "parser keeps the authored open flag");
+  const safe = sanitizeCanvasSpec(spec) as any;
+  assert.equal(safe.blocks[0].items[1].open, true, "sanitizer must not drop open");
+  assert.equal(safe.blocks[0].items[0].open, undefined, "an unopened item stays unopened (no invented open)");
+});
+
+test("accordion without blocks is unchanged by the fix (body-only path)", () => {
+  const json = JSON.stringify({
+    v: 1,
+    blocks: [{ type: "accordion", items: [
+      { title: "Methodology", body: "How the numbers were computed." },
+      { title: "Caveats", body: "Two sources lag by a quarter." },
+    ] }],
+  });
+  const spec = parseCanvasSpec(json);
+  assert.ok(spec);
+  const safe = sanitizeCanvasSpec(spec) as any;
+  const items = safe.blocks[0].items;
+  assert.equal(items.length, 2);
+  assert.deepEqual(items.map((i: any) => i.title), ["Methodology", "Caveats"]);
+  assert.equal(items[0].body, "How the numbers were computed.");
+  assert.equal(items[0].blocks, undefined, "a body-only item must not gain an empty blocks array");
+  assert.equal(items[1].body, "Two sources lag by a quarter.");
+});
+
+test("accordion: an invalid nested block degrades fail-soft — the card is never lost", () => {
+  // One unusable nested block between two good ones. The bad one is dropped; its
+  // siblings AND the card itself survive. (No throw, no whole-card loss.)
+  const spec = parseCanvasSpec(JSON.stringify({
+    v: 1,
+    blocks: [{ type: "accordion", items: [
+      { title: "Mixed", body: "kept text", blocks: [
+        { type: "kpi", value: 3 },                                        // no label -> invalid
+        { type: "checklist", items: [{ text: "ok" }] },                  // valid
+        { type: "hologram" },                                            // unknown type
+      ] },
+      { title: "Sibling", body: "survives too" },
+    ] }],
+  }));
+  assert.ok(spec, "one bad nested block must not sink the card");
+  const item = (spec!.blocks[0] as any).items[0];
+  assert.equal(item.blocks.length, 1, "only the invalid nested blocks are dropped");
+  assert.equal(item.blocks[0].type, "checklist");
+  assert.equal(item.body, "kept text", "the item keeps its body when nested blocks degrade");
+
+  const safe = sanitizeCanvasSpec(spec) as any;
+  assert.ok(safe, "the card survives sanitization");
+  assert.equal(safe.blocks[0].items.length, 2, "the sibling item is untouched");
+  assert.equal(safe.blocks[0].items[0].blocks[0].type, "checklist");
+});
+
+test("accordion: an item with no body AND only-invalid blocks degrades to its body or is dropped, never crashes", () => {
+  // Degradation ladder for one item: nested-only + all nested invalid -> the
+  // item has nothing to reveal, so it is dropped; its siblings stay.
+  const spec = parseCanvasSpec(JSON.stringify({
+    v: 1,
+    blocks: [{ type: "accordion", items: [
+      { title: "Dead item", blocks: [{ type: "kpi", value: 3 }] },
+      { title: "Live item", body: "still here" },
+    ] }],
+  }));
+  // The PARSER is stricter: an all-invalid item makes the whole card invalid.
+  assert.equal(spec, null, "a card whose only content is unusable is not renderable");
+
+  // The SANITIZER is the fail-soft layer: fed that shape directly it drops the
+  // dead item and keeps the live one. No throw either way.
+  const safe = sanitizeCanvasSpec({
+    v: 1,
+    blocks: [{ type: "accordion" as const, items: [
+      { title: "Dead item", blocks: [{ type: "kpi", value: 3 }] },
+      { title: "Live item", body: "still here" },
+    ] }],
+  } as never) as any;
+  assert.ok(safe, "must not throw and must not lose the whole card");
+  assert.equal(safe.blocks[0].items.length, 1);
+  assert.equal(safe.blocks[0].items[0].title, "Live item");
+  assert.equal(safe.blocks[0].items[0].body, "still here");
+});
+
+test("accordion: serialization keeps the nested blocks (round-trip through the fence)", () => {
+  const json = JSON.stringify({
+    v: 1,
+    blocks: [{ type: "accordion", items: [
+      { title: "Design decisions (skippable)", blocks: [
+        { type: "checklist", items: [{ text: "Skip the theming step", status: "done" as const }] },
+      ] },
+    ] }],
+  });
+  const parts = splitCanvasBlocks("```astra-canvas\n" + json + "\n```");
+  assert.equal(parts.length, 1);
+  assert.equal(parts[0].kind, "canvas", "the card must split as a canvas, not degrade to markdown");
+  const item = (parts[0] as any).spec.blocks[0].items[0];
+  assert.equal(item.blocks[0].type, "checklist", "the fence round-trip keeps the nested block");
+  assert.equal(item.blocks[0].items[0].text, "Skip the theming step");
+
+  // And the markdown fallback projection (used by CLI / non-Astra surfaces)
+  // must still describe the item rather than dropping it silently.
+  const md = canvasToMarkdown((parts[0] as any).spec);
+  assert.ok(md.includes("Design decisions (skippable)"), "the accordion title survives to markdown");
+});
+
+test("accordion: nesting is depth-capped so a pathological card cannot stack-overflow the renderer", () => {
+  // The parser does not cap depth, so this card parses fine. The sanitizer must
+  // bound it — otherwise the recursive descent (and the renderer's own recursion
+  // through `Blocks`) is a crash on a card that parsed.
+  let deep: any = { type: "checklist", items: [{ text: "leaf" }] };
+  for (let i = 0; i < 40; i++) deep = { type: "accordion", items: [{ title: `L${i}`, blocks: [deep] }] };
+  const parsed = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [deep] }));
+  assert.ok(parsed, "the parser itself does not cap depth");
+  let out: any = null;
+  assert.doesNotThrow(() => { out = sanitizeCanvasSpec(parsed); }, "sanitizing deep nesting must not throw");
+  // Degrades fail-soft: past the cap the content is dropped rather than crashing.
+  assert.equal(out, null, "an unrenderably deep card degrades to null (caller shows markdown)");
+});
+
+test("tabs: nested blocks survive sanitization (same bug class as accordion)", () => {
+  // `tabs` had NO case in the sanitizer at all, so every tabs card fell through
+  // to `default: return null` and vanished from the card entirely. Same root
+  // cause: a nested-blocks container rebuilt without its blocks.
+  const spec = parseCanvasSpec(JSON.stringify({
+    v: 1,
+    blocks: [{ type: "tabs", items: [
+      { label: "Before", blocks: [{ type: "checklist", items: [{ text: "old" }] }] },
+      { label: "After", blocks: [{ type: "checklist", items: [{ text: "new" }] }] },
+    ] }],
+  }));
+  assert.ok(spec, "tabs with nested blocks must parse");
+  const safe = sanitizeCanvasSpec(spec) as any;
+  assert.ok(safe, "a tabs card must survive sanitization (was dropped whole)");
+  assert.equal(safe.blocks[0].items.length, 2);
+  assert.equal(safe.blocks[0].items[0].blocks[0].items[0].text, "old");
+  assert.equal(safe.blocks[0].items[1].blocks[0].items[0].text, "new");
+});
+
+test("accordion: a chart nested in an item keeps its lazy-load dispatch shape", () => {
+  // The renderer dispatches nested blocks through the same `Blocks` dispatcher,
+  // so a lazy chart inside an accordion must arrive with the fields the chart
+  // renderer reads — otherwise it renders an empty plot frame (RG-098's bug).
+  const spec = parseCanvasSpec(JSON.stringify({
+    v: 1,
+    blocks: [{
+      type: "accordion",
+      items: [{
+        title: "Throughput",
+        blocks: [{ type: "chart", chart: "bar", labels: ["a", "b"], series: [{ name: "tok/s", points: [167, 50] }] }],
+      }],
+    }],
+  }));
+  assert.ok(spec);
+  const safe = sanitizeCanvasSpec(spec) as any;
+  const chart = safe.blocks[0].items[0].blocks[0];
+  assert.equal(chart.type, "chart");
+  assert.equal(chart.chart, "bar", "the chart kind must survive so the lazy renderer picks it");
+  assert.deepEqual(chart.series[0].points, [167, 50], "points must survive (canvas-chart reads series[i].points)");
+  assert.deepEqual(chart.series[0].data, [167, 50], "and the legacy data mirror, for the same reason");
 });
 
 test("v4: terminal accepts objects and plain strings; bare string lines split", () => {
