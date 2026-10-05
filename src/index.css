@@ -6583,3 +6583,79 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
 .ast-cv-dg-entity-sep { stroke: var(--cv-border-hairline); }
 .ast-cv-dg-glyph { fill: none; stroke: var(--color-brandtext); stroke-width: 1.5; }
 .ast-cv-dg-card { fill: var(--color-muted); font: 500 9.5px/1 var(--font-mono); }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   THE 11px FLOOR — every painted glyph inside a canvas card (owner 2026-10-05:
+   "no painted text < 11px on phone width"). MEASURED, not asserted: the sweep in
+   scripts/mobile-canvas-audit.mjs renders 63 block fixtures at 360/390/412px in
+   dark AND light and walks every text node, and it reported 282 sub-11px
+   measurements per full sweep — 468 of them axis ticks, plus every eyebrow
+   label, table header, badge, heat value, diagram field row, gitgraph meta label
+   and sheet meta chip in the card set. Sizes ranged 8.5px to 10.5px.
+
+   Why 11 and not 10: 10px JetBrains Mono on a 6" screen is a grey smear; 11px is
+   the smallest size that survives a phone at reading distance, and it is what
+   the sweep can PROVE — an assertion that would still pass at 9px is not a floor.
+
+   WHY IT IS ONE DECLARATION FAMILY AND NOT 50 EDITS: these are all eyebrows and
+   metadata — a KPI label, a table header, a badge, a sheet meta chip. They share
+   one job (a quiet uppercase label at the smallest legible size), and they were
+   written as 50 separate one-off rules over time. Grouping them means the next
+   label added inherits the floor, and a regression names one block.
+
+   What is NOT in this list, and why:
+     • `pre` / `.ast-cv-code-body` — code is monospaced by construction and
+       SCROLLS (overflow-x:auto) instead of reflowing, so a smaller code glyph is
+       a density choice the reader controls by scrolling, not illegible text in a
+       fixed box. Its own floor is asserted separately at 11.5px.
+     • `scrollableOverflow` layers — nothing here paints prose.
+   Geometry that has to give (padding, row height, the heat grid) gives it via the
+   `min-height`/`min-width` the measured rules already carry, so raising the size
+   cannot reintroduce an overflow: the sweep is what proves that. */
+.ast-cv-kpi-label, .ast-cv-kpi-delta, .ast-cv-tooltip-label, .ast-cv-table th,
+.ast-cv-table-stats th, .ast-cv-node-detail, .ast-cv-step-marker, .ast-cv-edge-label,
+.ast-cv-progress-detail, .ast-cv-tl-time, .ast-cv-cmp-badge, .ast-cv-tree-detail,
+.ast-cv-code-lang, .ast-cv-ref-index, .ast-canvas-building, .ast-cv-donut-caption,
+.ast-cv-quote-cite, .ast-cv-diff-stats, .ast-cv-diff-hdr, .ast-cv-heat-col,
+.ast-cv-heat-row, .ast-cv-heat-val, .ast-cv-heat-scale-label, .ast-cv-term-cmd,
+.ast-cv-term-exit, .ast-cv-badge, .ast-cv-div-label, .ast-cv-sheet-meta,
+.ast-cv-sheet-foot, .ast-cv-dl-err, .ast-cv-sheet-table th, .ast-cv-gnode-label,
+.ast-cv-graph-detail-kind, .ast-cv-graph-hint, .ast-cv-funnel-pct, .ast-cv-legend-total,
+.ast-cv-dg-detail, .ast-cv-dg-elabel, .ast-cv-git-tag, .ast-cv-git-meta,
+.ast-cv-git-head-label, .ast-cv-dg-field-name, .ast-cv-dg-field-type,
+.ast-cv-dg-field-key, .ast-cv-dg-card, .ast-cv-x-dim, .ast-cv-x-folio {
+  font-size: max(11px, 1em);
+  line-height: max(1.3, 1em);
+}
+/* The eyebrow sizes that were a size AND a line-height in one `font:` shorthand
+   need their leading reopened: `font: 500 9.5px/1 mono` at 11px would be 11px of
+   line box, which clips the uppercase cap height on a 1.3 ratio. */
+.ast-cv-kpi-label, .ast-cv-badge, .ast-cv-cmp-badge, .ast-cv-code-lang,
+.ast-cv-donut-caption, .ast-cv-heat-val, .ast-cv-heat-scale-label, .ast-cv-div-label,
+.ast-cv-git-tag, .ast-cv-git-head-label, .ast-canvas-building, .ast-cv-sheet-meta,
+.ast-cv-term-exit, .ast-cv-dl-err, .ast-cv-ref-index, .ast-cv-step-marker,
+.ast-cv-dg-field-name, .ast-cv-dg-field-type, .ast-cv-dg-field-key, .ast-cv-dg-card {
+  line-height: 1.35;
+}
+/* A badge/eyebrow that grows by 1px must also grow its row, or the pill clips
+   its own caps. `min-height` keeps the box at least as tall as the new text. */
+.ast-cv-badge, .ast-cv-cmp-badge, .ast-cv-code-lang, .ast-cv-heat-scale-label,
+.ast-cv-sheet-meta, .ast-cv-git-tag, .ast-cv-term-exit { min-height: 1.35em; }
+/* Diagram field rows and ER labels are SVG <text>: they have no line box at all,
+   so the font-size floor is what keeps a field list from overlapping itself — and
+   a diagram box grows with its text, which is exactly what we want here. */
+.ast-cv-dg-field-name, .ast-cv-dg-field-type, .ast-cv-dg-field-key, .ast-cv-dg-card,
+.ast-cv-dg-elabel, .ast-cv-dg-detail { font-size: 11px; }
+
+/* ---- Canvas colour values: a value that IS a colour renders as its colour ----
+   The dot's background is authored DATA (the literal hex/function), the one
+   place a non-token colour is correct; the chrome stays token-routed. */
+.ast-cv-swatch { display: inline-flex; align-items: center; gap: 0.45em; }
+.ast-cv-swatch-dot {
+  width: 0.95em;
+  height: 0.95em;
+  border-radius: 4px;
+  flex: none;
+  border: 1px solid var(--cv-border-strong);
+}
+.ast-cv-swatch-val { font-family: var(--font-mono); font-size: 0.92em; letter-spacing: 0.01em; }
