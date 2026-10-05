@@ -502,6 +502,33 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       .filter((msg) => !(msg.role === "assistant" && msg.id === id && msg.segments.length === 0)));
   }, []);
 
+  // L3 (2026-10-05) — a turn can end with NO active id and stay `status:"run"`.
+  //
+  // chat-landing.tsx:672 skips the `text-final` op when `activeIdRef.current ==
+  // null` (the turn was settled and re-pulled from history, or the frame
+  // replayed). finalizeActive then early-returns on `if (!id) return`, so
+  // finalizeSegments never runs for that message.
+  //
+  // Consequence, measured: the segment keeps status "run", so `streaming` stays
+  // true forever, so the async repair tier (gated OFF while streaming,
+  // chat-timeline.tsx:124) never runs, so a slightly-malformed astra-canvas
+  // fence keeps painting as a code block until a reload. That is the reported
+  // "I had to reload the page".
+  //
+  // Fix: close EVERY streaming assistant turn, not only the tracked one. Cheap
+  // (a map over messages on a path that already runs once per turn) and it makes
+  // the invariant unconditional: after a turn ends, nothing is still "run".
+  const finalizeAnyStreaming = useCallback(() => {
+    setMessages((m) => {
+      if (!m.some((msg) => msg.role === "assistant" && msg.isStreaming)) return m;
+      return m.map((msg) =>
+        msg.role === "assistant" && msg.isStreaming
+          ? { ...msg, segments: finalizeSegments(msg.segments), isStreaming: false }
+          : msg,
+      );
+    });
+  }, []);
+
   const resolveApproval = useCallback((reqId: string, choice: string | null) => {
     setMessages((m) => m.map((msg) => {
       if (msg.role !== "assistant") return msg;
@@ -687,6 +714,9 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       // chat turn after a bg turn must paint into the feed normally again.
       bgTurnRef.current = null;
       finalizeActive();
+      // L3: close any OTHER turn still flagged streaming (the active id can be
+      // null when the turn was settled and re-pulled — see finalizeActive).
+      finalizeAnyStreaming();
       return;
     }
 
@@ -780,7 +810,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       }
       return;
     }
-  }, [ensureActive, pushOp, finalizeActive, resolveApproval, resolveClarify, resolveGate, noteHarness, applyTitle, refreshTitle]);
+  }, [ensureActive, pushOp, finalizeActive, finalizeAnyStreaming, resolveApproval, resolveClarify, resolveGate, noteHarness, applyTitle, refreshTitle]);
 
   const { isStreaming, submitPrompt, submitBg, submitSteer, retryConnection, conn, interrupt, storedSessionId, setStoredSessionId, sendApprovalResponse, sendServerResponse, sessionInfo, setSessionInfo, rpc, liveSessionId, resetSession } = useHermesWS(handleEvent);
   // Per-session drafts (R8f): keyed astra:draft:<sid>, debounced 400ms. The old

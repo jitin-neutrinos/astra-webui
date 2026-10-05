@@ -103,6 +103,7 @@ const RichBlockView = memo(function RichBlockView({ source }: { source: string }
 });
 
 import { splitRichBlocks } from "../lib/rich-blocks";
+import { withholdOpenCanvasFence } from "../lib/canvas-reveal";
 
 export function RichText({ text, onOpenMedia, streaming }: { text: string; onOpenMedia?: (items: MediaItem[], index: number) => void; streaming?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -117,6 +118,11 @@ export function RichText({ text, onOpenMedia, streaming }: { text: string; onOpe
   // async tier — which is the only path that pulls the repair library in, so a
   // chat with no canvas never loads it.
   const [parts, setParts] = useState<CanvasPart[]>(() => splitCanvasBlocks(text, streaming));
+  // Hoisted (L4 needs them): how many astra-canvas fences the text declares, and
+  // how many the sync tiers actually rendered. A gap means a fence the parser
+  // could not read — the only situation that may pull in the repair library.
+  const openers = (text.match(/`{3,}astra-canvas/g) || []).length;
+  const rendered = parts.filter((p) => p.kind === "canvas").length;
   useEffect(() => {
     const sync = splitCanvasBlocks(text, streaming);
     setParts(sync);
@@ -128,14 +134,42 @@ export function RichText({ text, onOpenMedia, streaming }: { text: string; onOpe
     // chunk's mount gate and is false for exactly the cards we want rescued, but
     // it is also false for prose that merely MENTIONS the fence, which would
     // load the repair library on chats that never needed it.
-    const openers = (text.match(/`{3,}astra-canvas/g) || []).length;
-    const rendered = sync.filter((p) => p.kind === "canvas").length;
     if (openers <= rendered) return;
     void splitCanvasBlocksAsync(text, streaming).then((rescued) => {
       if (alive && rescued.filter((p) => p.kind === "canvas").length > rendered) setParts(rescued);
     });
     return () => { alive = false; };
   }, [text, streaming]);
+
+  // L4 (2026-10-05) — give a stream that never reported `done` one debounced
+  // second chance.
+  //
+  // The rescue above is gated on `!streaming` (the line above), which is right:
+  // running it per frame would load the repair library on every live reply. But
+  // a turn whose `text-final` never arrives used to stay streaming forever, so
+  // the rescue never ran and a slightly-malformed canvas fence stayed as raw
+  // code until a reload. L3 closes those turns, and this is the belt to that
+  // braces: after the text stops changing, retry once even while `streaming` is
+  // still true.
+  //
+  // Debounced, so a burst of deltas costs one retry, not one per frame — the
+  // repair library is only pulled in for a message that has a fence the sync
+  // tiers could not read AND has stopped moving.
+  useEffect(() => {
+    if (openers > rendered && text.length > 0) {
+      const t = window.setTimeout(() => {
+        void splitCanvasBlocksAsync(text, streaming).then((rescued) => {
+          setParts((prev) =>
+            rescued.filter((p) => p.kind === "canvas").length >
+            prev.filter((p) => p.kind === "canvas").length
+              ? rescued
+              : prev,
+          );
+        });
+      }, 900);
+      return () => window.clearTimeout(t);
+    }
+  }, [text, streaming, openers, rendered]);
   const plainText = useMemo(() => parts.filter((p) => p.kind === "md").map((p) => (p as { text: string }).text).join(""), [parts]);
   // R5: per-block split. Each block memoizes on its own source, so streaming
   // re-parses only the tail instead of the whole reply. Returns null whenever
@@ -493,6 +527,9 @@ function TextRow({ seg, reveal, onOpenMedia, mdOverride, canvases, liveCanvas, l
   // history/reload restores — exactly the "latest streams, rest fade" ask.
   const n = useReveal(text, seg.status === "done", instant || reveal === false);
   const shown = useMemo(() => safeTail(text.slice(0, n)), [text, n]);
+  // L2: drop a partially-revealed canvas fence so no half-fence is ever handed
+  // to the renderer. A DONE segment keeps the full text (the fence is whole).
+  const shownSafe = useMemo(() => withholdOpenCanvasFence(text, shown), [text, shown]);
   const paths = useMemo(() => mediaPathsSpaced(text), [text]);
   // A DONE segment always renders its FULL text. The old `n >= text.length` gate
   // meant a sweep that never finished — killed by a backgrounded WebView timer,
@@ -501,7 +538,7 @@ function TextRow({ seg, reveal, onOpenMedia, mdOverride, canvases, liveCanvas, l
   // asterisks. Correct markdown beats a tidy sweep: sweeping is a live-only nicety.
   const isDone = seg.status === "done";
   const fullyRevealed = n >= text.length;
-  const displayRaw = isDone ? text : shown;
+  const displayRaw = isDone ? text : shownSafe;
   const display = useMemo(() => stripMediaLines(displayRaw), [displayRaw]);
 
   if (!text && !canvases?.length && !liveCanvas) return null;

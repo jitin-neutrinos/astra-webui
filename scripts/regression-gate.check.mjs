@@ -671,6 +671,55 @@ export const REGRESSIONS = [
       "A KPI whose value is computed by an expression stopped updating: the fan-out that recomputes a bound kpi.value from the reactive scope lost its dependency on the scope version, so the tile kept painting the value captured at first render even after the controlling slider moved. Guards that a bound KPI re-evaluates when its controlling state key changes.",
     guard: "src/lib/canvas-kpi-fanout.check.ts",
   },
+  {
+    id: "RG-100",
+    found: "2026-10-05",
+    symptom:
+      "A message the user watched 'send' was eaten by an Android app kill (swipe away, memory pressure). src/lib/ws-store.ts persisted queued prompts to sessionStorage while its own header comment claimed they 'persist to localStorage so an Android app kill no longer eats a message the user watched send' — two fixes collided, a per-tab change (so tab A's prompt stopped leaking into tab B's chat) and a durability change, and the durability claim was silently lost. durable-outbox.ts restores it on IndexedDB (async, unbounded, worker-reachable; localStorage fails on all three and has a ~5 MiB ceiling that means QuotaExceededError — total transcript loss, not degradation). Guards the whole at-least-once contract: a failed attempt RETAINS the row with monotonic capped backoff (1s..30s) rather than dropping it, and the row is removed only when the server accepted it; the resume cursor NEVER rewinds, so a stale tab cannot replay chunks forever; uuidv7 is time-ordered and unique even within one millisecond, with its 48-bit timestamp asserted to round-trip exactly; the row cap evicts the OLDEST so what was just typed survives; oversized text truncates rather than rejecting; an expired row is never offered for sending; and a throwing subscriber cannot break a write.",
+    guard: "src/lib/durable-outbox.check.ts",
+  },
+  {
+    id: "RG-101",
+    found: "2026-10-05",
+    symptom:
+      "Making the prompt queue durable silently BROKE per-tab isolation. IndexedDB is shared by every tab on the origin, so moving ws-store.ts's queue off sessionStorage reintroduced exactly the bug src/lib/concurrent-queue.check.ts exists to prevent — tab A's pending prompt flushing into tab B's chat — while looking like a pure improvement. ws-store.ts therefore stamps a per-tab owner id (held in sessionStorage, deliberately, so a fresh tab never inherits an old tab's pending messages) and filters the shared store on it. Guards the WIRING, which is the only layer where either property exists: durability through the unchanged public API (wsQueuePush/Remove/All/Set still take and return QueuedPrompt[], so ws-engine.ts needs no edits), insertion order preserved, remove/replace reaching disk, two simulated tabs over one shared IndexedDB never seeing each other's rows, an UNOWNED row staying adoptable so a crash between write and ownership-stamp can never orphan a pending message, and ownership being write-once so a second tab cannot steal a claimed row.",
+    guard: "src/lib/ws-durable-queue.check.ts",
+  },
+  {
+    id: "RG-102",
+    found: "2026-10-05",
+    symptom:
+      "The transcript reordered itself. Ordering by anything a CLIENT controls is unsafe: a phone whose clock is four seconds slow emits a user message that sorts before one actually sent later. Every major platform assigns order server-side for this reason — Slack's `ts` IS the id, Discord uses a snowflake, Telegram's per-chat `message_id` keeps `date` display-only, Google Chat's `createTime` is output-only — and upstream Hermes already decided it ('Load messages in insertion order, id, never timestamp: clocks regress', hermes_state_messages.py:1061). Guards the two properties that make 'compile the chronology' true: ORDER-INDEPENDENCE (all 720 permutations of six rows produce an identical transcript, so reload / new window / new device agree regardless of arrival order) and CLOCK-INDIFFERENCE (a row carrying a deliberately hour-skewed timestamp still lands in its true position). Also: committed rows always sort before optimistic ones, so a pending send can never jump ahead of the reply it triggered; dedupe runs BEFORE sort, so a reconnect double-delivery renders once; same-millisecond optimistic ids tie-break stably; the turn fold yields ONE assistant bubble broken only by user messages (tool and assistant rows sharing a span merge, assistant-only output is a single bubble); and a late-arriving row reports which turn it SPLITS, so only two DOM nodes change instead of re-flowing the transcript.",
+    guard: "src/lib/message-order.check.ts",
+  },
+  {
+    id: "RG-103",
+    found: "2026-10-05",
+    symptom:
+      "A gateway restart silently DESTROYED logged stream chunks. event_replay.py states it outright: 'Seq counters live in-process, so a restart resets them to 1 while clients hold high watermarks' — which is why the gateway hands out replay_epoch. So (sid, seq) is NOT unique across a restart, and the INSERT OR IGNORE on that primary key dropped every post-restart chunk: measured 2 of 2 lost, a permanent hole in the one log that exists to prevent exactly that. Fixed by adding `epoch` (a per-gateway-process discriminator) to the primary key and `mono` (Astra's own per-session monotonic counter) as the replay cursor, since a cursor on the gateway's seq would skip a whole post-restart turn. Also fixes two locateInsertion bugs found alongside it: a late user message landing INSIDE an assistant turn returned splitsTurnAt=null (it only scanned same-kind turns, so it missed the turn it actually breaks), and a trailing message returned the FIRST same-kind turn it sorted after instead of the last, placing it mid-transcript.",
+    guard: "server/stream-log.check.mjs",
+  },
+  {
+    id: "RG-104",
+    found: "2026-10-05",
+    symptom:
+      "A transcript the training pipeline had never read was deleted by retention. The gate is the whole point: a session is deletable only when ingested_at IS NOT NULL AND it is older than 14 days (matching the gateway's own auto_archive_days) AND it is not pinned. Guards that a 20-day-old UN-INGESTED session appears in no plan and survives a real delete — the property that matters most — alongside: the plan is a receipt that deletes nothing, sessions still inside the window are kept, a session with a NULL ended_at never ages out, one ending in the future is never deletable, the boundary is inclusive of the last safe day, the plan is ordered oldest-first so a batch trims from the far end, a disabled sweeper REFUSES an explicit delete, force+dryRun still deletes nothing, a real delete removes sessions AND their messages with no orphans and is idempotent, work is batch-bounded, and the scheduled sweeper is dry-run so an unattended timer can never surprise anyone. secure_delete is enabled so freed pages are overwritten rather than left readable.",
+    guard: "server/retention.check.mjs",
+  },
+  {
+    id: "RG-105",
+    found: "2026-10-05",
+    symptom:
+      "A canvas card was displayed as a raw JSON code block, and only reloading the page fixed it. Mechanism, measured: a slightly-malformed astra-canvas fence fails the sync parser, the fail-soft rule leaves it in the markdown, and marked faithfully paints it as a language-astra-canvas code block. The rescue tier (splitCanvasBlocksAsync) is deliberately gated off while a turn streams, and a turn whose text-final never arrived stayed status 'run' forever, so the rescue never ran. Shapes that hit it: unquoted keys wrapped in prose, single quotes, and a truncated body (repaired by NEITHER tier). Four layers now prevent it: the markdown renderer claims the fence type so the code renderer never sees it (rich-html.ts), the reveal withholds a half-arrived fence (canvas-reveal.ts), every streaming turn is closed at turn end (finalizeAnyStreaming), and a stream that stops moving gets one debounced rescue. Verified in a real browser: 23 assertions over a 299-frame streaming sweep, zero leaking frames.",
+    guard: "src/lib/canvas-reveal.check.ts",
+  },
+  {
+    id: "RG-106",
+    found: "2026-10-05",
+    symptom:
+      "A half-revealed canvas fence reached the markdown renderer. TextRow passes the revealed PREFIX of a message, so a cut landing inside a fence produced a fence with no closer, which the parser rejects and marked then paints as code. Guards two invariants swept over EVERY reveal position across five fence shapes (3-tick, 4-tick, an ordinary code fence, two cards in one message, and a card containing backticks in its body): no frame may leak a partial fence, and prose before the first fence must never be lost. Also guards that a ``` inside the JSON body is not mistaken for the closer. Proven by reversal — disabling the guard fails 5 of 9 subtests with '1/91 frames leaked a partial fence'.",
+    guard: "src/lib/canvas-reveal.check.ts",
+  },
 ];
 
 // ---- gate -----------------------------------------------------------------
