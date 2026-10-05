@@ -318,11 +318,16 @@ export function ComposerControls({ setAttachments, disabled, sessionInfo, catalo
            nothing is lost — a screen reader still announces "Yolo mode on", and the
            title gives the same detail on hover. */
         <button type="button" role="switch" aria-checked={yolo} data-bar="yolo"
-          className={cn("chat-chip chat-chip-icon", yolo && "chat-chip-on")}
+          className={cn("chat-chip chat-chip-icon chat-chip-yolo", yolo && "chat-chip-on")}
           aria-label={yolo ? "Yolo mode on" : "Yolo mode off"}
           title={yolo ? "Yolo on — tool calls run without asking" : "Yolo off — tool calls need your approval"}
           onClick={() => onToggleYolo()}>
-          <Zap className={cn("h-4 w-4", yolo && "chat-chip-ico-on")} strokeWidth={1.5} />
+          {/* Owner 10-05: yolo is the OUTLINE inverse of the filled bar buttons —
+              off: outline button with FILLED accent glyph; on: accent-filled
+              container with the contrast (void ink) glyph. `fill=currentColor`
+              (lucide's default is stroke-only Zap; the CSS already sets
+              fill:currentColor on filled chips) makes the bolt solid. */}
+          <Zap className="chat-chip-ico-solid h-4 w-4" strokeWidth={1.5} fill="currentColor" />
         </button>
       )}
       {onBar("effort") && (
