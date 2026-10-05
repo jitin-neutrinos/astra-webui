@@ -76,21 +76,38 @@ const check = (name, cond, extra = '') => {
   else { console.log(`  FAIL ${name}${extra ? ' — ' + extra : ''}`); bad++; }
 };
 
-// --- 1. landing intro card sits at the bottom of the free space -------------
+// --- 1. landing intro card floats centered in the free space -----------------
 // The parent turns into a flex column ONLY in the landing state (the transcript
-// must stay a plain block scroll container), and the card gets margin-top:auto.
+// must stay a plain block scroll container), and the card gets auto/auto
+// margins — centered between header and composer. (Owner 10-05: the old
+// margin-top:auto bottom-anchor piled ALL leftover space above the card,
+// 341px vs 10px — uneven.) Media-query rules are skipped: valOf scans every
+// matching rule without media context, and `width` in a mobile block would
+// read back as the card's width at desktop too.
 const LANDING = '.chat-scroll:has(>.chat-welcome)';
 check('landing state turns the scroller into a flex column',
   valOf(LANDING, 'display') === 'flex' && valOf(LANDING, 'flex-direction') === 'column',
   `display:${valOf(LANDING, 'display')} flex-direction:${valOf(LANDING, 'flex-direction')}`);
 check('welcome card is a flex item of it', ruleFor('.chat-scroll>.chat-welcome') !== null);
-check('welcome card bottom-anchored (margin-top:auto)',
-  valOf('.chat-scroll>.chat-welcome', 'margin-top') === 'auto',
-  'margin-top:' + valOf('.chat-scroll>.chat-welcome', 'margin-top'));
-// margin-top:auto only bottom-anchors inside a FLEX container: guard against a
-// later edit dropping display:flex and silently reverting the card to the top.
+check('welcome card centered (margin-top:auto + margin-bottom:auto)',
+  valOf('.chat-scroll>.chat-welcome', 'margin-top') === 'auto'
+    && valOf('.chat-scroll>.chat-welcome', 'margin-bottom') === 'auto',
+  `margin-top:${valOf('.chat-scroll>.chat-welcome', 'margin-top')}`
+  + ` margin-bottom:${valOf('.chat-scroll>.chat-welcome', 'margin-bottom')}`);
+check('no stale fixed bottom gap (old margin-bottom:10px must not return)',
+  !matches('.chat-scroll>.chat-welcome').some((r) => r.decls.has('margin-bottom:10px')));
+// auto margins only center inside a FLEX container: guard against a later edit
+// dropping display:flex and silently reverting the card to the top.
 check('the two rules coexist (auto cannot resolve without flex)',
   !!ruleFor(LANDING) && !!ruleFor('.chat-scroll>.chat-welcome'));
+// Mobile (owner 10-05): the welcome card must never bleed wider than the chat
+// bubbles. Emitted inside @media — grep the media-gated rule directly, on the
+// whitespace-normalised css (the built form keeps `calc(100vw - 32px)`).
+const cssN = norm(css);
+const MEDIA_ONE = /@media\(max-width:1023px\)\{\.chat-welcome\{[^}]*max-width:calc\(100vw-32px\)/;
+check('mobile welcome card clamps to the bubble rail (max-width:100vw-32px)',
+  MEDIA_ONE.test(cssN),
+  (cssN.match(MEDIA_ONE)?.[0] ?? '').slice(0, 120));
 
 // --- 2. composer input: no visible scrollbar, scroll behaviour intact -------
 check('composer input scrollbar hidden (Firefox/standards)',

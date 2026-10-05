@@ -809,12 +809,16 @@ html.theme-fading body * {
 .chat-composer-input::-webkit-scrollbar { display: none; }
 
 .chat-scroll { overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
-/* Landing state: the intro card hugs the BOTTOM of the free space instead of
-   floating at the top. `margin-top:auto` (not `justify-content:flex-end`) —
-   flex-end in a scroll container makes the overflow ABOVE the start unreachable,
-   and the suggestion grid wraps to two rows on narrow viewports. */
+/* Landing state: the intro card floats CENTERED in the free space between the
+   header and the composer instead of hugging the bottom. The old
+   `margin-top:auto` bottom-anchor piled all leftover space on top of the card
+   (341px above / 10px below at desktop) — Jitin 10-05: uneven spacing. Two
+   auto margins split the free space evenly above and below the card.
+   (Not justify-content:center: flex-end/center in a scroll container makes the
+   overflow ABOVE the start unreachable, and the suggestion grid wraps to two
+   rows on narrow viewports.) */
 .chat-scroll:has(> .chat-welcome) { display: flex; flex-direction: column; }
-.chat-scroll > .chat-welcome { margin-top: auto; margin-bottom: 10px; }
+.chat-scroll > .chat-welcome { margin-top: auto; margin-bottom: auto; }
 
 /* brand shape: composer is a rounded rectangle, not a pill */
 
@@ -833,6 +837,15 @@ html.theme-fading body * {
 
 .chat-welcome { max-width: 640px; margin: 0 auto; padding: 32px 28px 24px; display: flex; flex-direction: column; align-items: flex-start; border: 1px solid rgb(255 255 255 / 0.14); border-radius: 20px; background: rgb(255 255 255 / 0.06); backdrop-filter: blur(24px) saturate(1.3); box-shadow: 0 24px 64px rgb(0 0 0 / 0.35); }
 [data-theme="light"] .chat-welcome { border-color: rgb(15 23 42 / 0.10); background: rgb(255 255 255 / 0.45); box-shadow: 0 24px 64px rgb(15 23 42 / 0.12); }
+/* Mobile: the welcome card must match the chat-bubble column width (the
+   16px-inset composer/bubble rail), never bleed edge-to-edge WIDER than the
+   bubbles — Jitin 10-05. The transcript feed is a full-width rail inset 16px
+   per side on mobile (`.chat-feed px-4` / composer's px-3 rail), which is
+   narrower than this card's old 640px cap, so clamp to that rail. Must live
+   AFTER the base rule (same specificity, later source order wins). */
+@media (max-width: 1023px) {
+  .chat-welcome { width: 100%; max-width: calc(100vw - 32px); padding: 24px 20px 20px; }
+}
 .chat-welcome-glyph { width: 44px; height: 44px; object-fit: contain; filter:drop-shadow(0 0 14px rgb(var(--c-5) / 0.33)); margin-bottom: 22px; }
 .chat-welcome-title { font: 500 34px/1.2 var(--font-display); color: var(--color-brandtext); margin: 0 0 6px; letter-spacing: -0.02em; }
 .chat-welcome-sub { font: 400 15px/1.5 var(--font-sans); color: var(--color-muted); margin: 0 0 28px; letter-spacing: 0.01em; }
