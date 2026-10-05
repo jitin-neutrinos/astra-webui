@@ -403,14 +403,17 @@ const isDefect = (b) => {
     if (typeof sel === "number") { if (sel === 0) d.push(`${key} painted nothing`); }
   }
   for (const c of b.paint.charts || []) if (c.shapes === 0) d.push(`chart[${c.i}] "${c.title.slice(0, 22)}" painted nothing`);
-  // A composed layout on a phone must be ONE column: `repeat(n, …)` at 360px
+  // A composed layout on a PHONE must be one column. `repeat(n, …)` at 360px
   // packs a chart, a callout and three KPI tiles into sub-120px tracks, so the
   // cells stop being readable at all (measured: every KPI cell collapsed to
-  // 30px wide with its label clipped). More than one track is a defect; the
-  // cell width is reported because "1 track" alone would miss the empty-track
-  // case where a phantom track is still sized.
-  for (const l of b.layoutCols || []) {
-    if (l.cols > 1) d.push(`${l.mode} has ${l.cols} tracks at ${b.width}px (cells ${Math.min(...(l.cells || [0]))}px)`);
+  // 30px wide with its label clipped). Above the 640px breakpoint multi-track
+  // IS the design — bento's 6 tracks at 1280px and masonry's 2 columns are the
+  // point of those modes — so the rule is scoped to the phone widths, not to
+  // "more than one track" in general.
+  if (b.width < 640) {
+    for (const l of b.layoutCols || []) {
+      if (l.cols > 1) d.push(`${l.mode} has ${l.cols} tracks at ${b.width}px (cells ${Math.min(...(l.cells || [0]))}px)`);
+    }
   }
   return d;
 };
