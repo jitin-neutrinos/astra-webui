@@ -601,7 +601,10 @@ function Sidebar({ activeView, collapsed, drawerOpen, isMobile: isMobileProp, ac
           onBack={() => setMode('nav')}
           onSelect={(id) => {
             onSelectSession(id);
-            setMode('nav');
+            // Owner 10-05: selecting a chat NO LONGER auto-resets the panel to
+            // the global nav — the user stays in the chats list and returns
+            // via the Back button when they choose to. The drawer still closes
+            // on mobile so the chat shows.
             if (drawerOpen) onCloseDrawer();
           }}
         />
@@ -706,7 +709,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, isMobile: isMobileProp, ac
               onClick={() => setGroupOpen((o) => ({ ...o, [group.label]: !o[group.label] }))}
               aria-expanded={open}
               title={expanded ? `Toggle ${group.label}` : group.label}
-              className={cn("flex h-8 w-full items-center rounded-md text-left font-sans text-sm font-medium tracking-[0.08em] transition-colors duration-200",
+              className={cn("flex h-11 w-full items-center rounded-md text-left font-sans text-sm font-medium tracking-[0.08em] transition-colors duration-200",
                 group.label === "Work" && groupSelected
                   ? "ast-nav-selected text-void"
                   : open ? "text-accent/90" : "text-slate-600 hover:text-slate-400",
@@ -715,7 +718,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, isMobile: isMobileProp, ac
                 {group.icon}
                 {expanded && <span className="truncate">{group.label}</span>}
               </span>
-              {group.label === "Work" && unreadTotal > 0 && isMobile && (
+              {group.label === "Work" && unreadTotal > 0 && !open && (
                 <span
                   className={cn("ast-unread-badge", !expanded && "ast-unread-badge-rail")}
                   aria-label={`${unreadTotal} ${unreadTotal === 1 ? "chat" : "chats"} unread`}
@@ -768,7 +771,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, isMobile: isMobileProp, ac
                   // In the collapsed rail the treatment moves onto the ICON
                   // (border + glow on the glyph and its box) and the number
                   // drops its container, so a 48px rail isn't crowded.
-                  item.name === "Chats" && unreadTotal > 0 && (expanded || isMobile ? (expanded ? "ast-nav-unread" : "ast-nav-unread-rail") : ""),
+                  item.name === "Chats" && unreadTotal > 0 && (open || expanded) ? (expanded ? "ast-nav-unread" : "ast-nav-unread-rail") : "",
                   active
                     /* Owner 10-05: selected = FILLED, same mechanism as the
                        composer bar buttons — full accent container, ink glyph
@@ -778,7 +781,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, isMobile: isMobileProp, ac
                 )}>
                 <span className="grid h-full w-12 shrink-0 place-content-center text-muted">{item.icon}</span>
                 {expanded && <span className="truncate text-sm font-medium">{item.name}</span>}
-                {item.name === "Chats" && unreadTotal > 0 && (expanded || isMobile) && (
+                {item.name === "Chats" && unreadTotal > 0 && open && (
                   <span
                     className={cn("ast-unread-badge", !expanded && "ast-unread-badge-rail")}
                     aria-label={`${unreadTotal} unread ${unreadTotal === 1 ? "message" : "messages"}`}
