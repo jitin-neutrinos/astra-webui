@@ -278,6 +278,16 @@ function useUnreadTotal() {
 function Shell({ onLogout }: { onLogout: () => void }) {
   useMobileViewport();
   const unreadTotal = useUnreadTotal();
+  // Mobile signal (owner 10-05): rail-mode badges render ONLY on mobile
+  // drawer + the Android app — never on a desktop collapsed rail, where the
+  // logo shares the same 48px column and the chip read as stuck on the mark.
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia("(max-width: 1023px)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const onMq = () => setIsMobile(mq.matches);
+    mq.addEventListener("change", onMq);
+    return () => mq.removeEventListener("change", onMq);
+  }, []);
   const [resetSignal, setResetSignal] = useState(0);
   // Each view now owns a real path (/files, /tracker, /config, /c/<id> or /) so the
   // address bar, browser back/forward, and reload all land on the right page —
@@ -375,6 +385,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
           activeView={view}
           collapsed={sidebarCollapsed && !drawerOpen}
           drawerOpen={drawerOpen}
+          isMobile={isMobile}
           activeSessionId={activeSessionId}
           onCloseDrawer={closeDrawer}
           onToggleCollapse={toggleSidebar}
@@ -453,16 +464,18 @@ function Shell({ onLogout }: { onLogout: () => void }) {
   );
 }
 
-function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDrawer, onToggleCollapse, onLogout, onSelectSession, onEndSession, onOpenTracker, onOpenConfig, onOpenApprovals, onOpenVault, onOpenContext, onOpenMemory, onOpenHarness, onOpenTraining }: { activeView: 'chat' | 'files' | 'tracker' | 'config' | 'approvals' | 'vault' | 'context' | 'memory' | 'harness' | 'training' | 'job'; collapsed: boolean; drawerOpen: boolean; activeSessionId: string | null; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onSelectSession: (id: string) => void; onEndSession?: (id: string) => Promise<void>; onOpenTracker?: () => void; onOpenConfig?: () => void; onOpenApprovals?: () => void; onOpenVault?: () => void; onOpenContext?: () => void; onOpenMemory?: () => void; onOpenHarness?: () => void; onOpenTraining?: () => void; }) {
+function Sidebar({ activeView, collapsed, drawerOpen, isMobile: isMobileProp, activeSessionId, onCloseDrawer, onToggleCollapse, onLogout, onSelectSession, onEndSession, onOpenTracker, onOpenConfig, onOpenApprovals, onOpenVault, onOpenContext, onOpenMemory, onOpenHarness, onOpenTraining }: { activeView: 'chat' | 'files' | 'tracker' | 'config' | 'approvals' | 'vault' | 'context' | 'memory' | 'harness' | 'training' | 'job'; collapsed: boolean; drawerOpen: boolean; isMobile?: boolean; activeSessionId: string | null; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onSelectSession: (id: string) => void; onEndSession?: (id: string) => Promise<void>; onOpenTracker?: () => void; onOpenConfig?: () => void; onOpenApprovals?: () => void; onOpenVault?: () => void; onOpenContext?: () => void; onOpenMemory?: () => void; onOpenHarness?: () => void; onOpenTraining?: () => void; }) {
   const [mode, setMode] = useState<'nav' | 'chats' | 'files'>('nav');
-  
+
   const asideChatsRef = useRef<HTMLElement>(null);
   const asideNavRef = useRef<HTMLElement>(null);
-  const [isMobile, setIsMobile] = useState(() => window.matchMedia("(max-width: 1023px)").matches);
-  
+  const [isMobileS, setIsMobileS] = useState(() => window.matchMedia("(max-width: 1023px)").matches);
+  // Shell's signal wins when wired (SSR-safe fallback to the local one); in
+  // drawer mode both compute the same media query anyway.
+  const isMobile = isMobileProp ?? isMobileS;
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 1023px)");
-    const onMq = () => setIsMobile(mq.matches);
+    const onMq = () => setIsMobileS(mq.matches);
     mq.addEventListener("change", onMq);
     return () => mq.removeEventListener("change", onMq);
   }, []);
@@ -527,7 +540,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
   }[] = [
     {
       label: "Work",
-      icon: <Briefcase className="h-3.5 w-3.5" strokeWidth={1.5} />,
+      icon: <Briefcase className="h-4 w-4" strokeWidth={1.5} />,
       items: [
         { name: "Chats", icon: <MessageSquare className="h-4 w-4" strokeWidth={1.5} />, onClick: () => { setMode('chats'); if (collapsed) onToggleCollapse(); } },
         { name: "Files", icon: <Folder className="h-4 w-4" strokeWidth={1.5} />, onClick: () => { setMode('files'); if (collapsed) onToggleCollapse(); } },
@@ -535,7 +548,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
     },
     {
       label: "Configure",
-      icon: <Settings2 className="h-3.5 w-3.5" strokeWidth={1.5} />,
+      icon: <Settings2 className="h-4 w-4" strokeWidth={1.5} />,
       items: [
         { name: "Config", icon: <Settings2 className="h-4 w-4" strokeWidth={1.5} />, onClick: () => { onOpenConfig?.(); } },
         { name: "Vault", icon: <VaultIcon className="h-4 w-4" strokeWidth={1.5} />, onClick: () => { onOpenVault?.(); } },
@@ -551,7 +564,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
     },
     {
       label: "Operate",
-      icon: <Activity className="h-3.5 w-3.5" strokeWidth={1.5} />,
+      icon: <Activity className="h-4 w-4" strokeWidth={1.5} />,
       items: [
         { name: "Approvals & Reviews", icon: <ShieldCheck className="h-4 w-4" strokeWidth={1.5} />, onClick: () => { onOpenApprovals?.(); } },
         { name: "Cron Jobs", icon: <Clock className="h-4 w-4" strokeWidth={1.5} /> },
@@ -693,7 +706,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
               onClick={() => setGroupOpen((o) => ({ ...o, [group.label]: !o[group.label] }))}
               aria-expanded={open}
               title={expanded ? `Toggle ${group.label}` : group.label}
-              className={cn("flex h-8 w-full items-center rounded-md text-left font-sans text-[13px] font-medium tracking-[0.08em] transition-colors duration-200",
+              className={cn("flex h-8 w-full items-center rounded-md text-left font-sans text-sm font-medium tracking-[0.08em] transition-colors duration-200",
                 group.label === "Work" && groupSelected
                   ? "ast-nav-selected text-void"
                   : open ? "text-accent/90" : "text-slate-600 hover:text-slate-400",
@@ -702,7 +715,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
                 {group.icon}
                 {expanded && <span className="truncate">{group.label}</span>}
               </span>
-              {group.label === "Work" && unreadTotal > 0 && (
+              {group.label === "Work" && unreadTotal > 0 && isMobile && (
                 <span
                   className={cn("ast-unread-badge", !expanded && "ast-unread-badge-rail")}
                   aria-label={`${unreadTotal} ${unreadTotal === 1 ? "chat" : "chats"} unread`}
@@ -755,7 +768,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
                   // In the collapsed rail the treatment moves onto the ICON
                   // (border + glow on the glyph and its box) and the number
                   // drops its container, so a 48px rail isn't crowded.
-                  item.name === "Chats" && unreadTotal > 0 && (expanded ? "ast-nav-unread" : "ast-nav-unread-rail"),
+                  item.name === "Chats" && unreadTotal > 0 && (expanded || isMobile ? (expanded ? "ast-nav-unread" : "ast-nav-unread-rail") : ""),
                   active
                     /* Owner 10-05: selected = FILLED, same mechanism as the
                        composer bar buttons — full accent container, ink glyph
@@ -765,7 +778,7 @@ function Sidebar({ activeView, collapsed, drawerOpen, activeSessionId, onCloseDr
                 )}>
                 <span className="grid h-full w-12 shrink-0 place-content-center text-muted">{item.icon}</span>
                 {expanded && <span className="truncate text-sm font-medium">{item.name}</span>}
-                {item.name === "Chats" && unreadTotal > 0 && (
+                {item.name === "Chats" && unreadTotal > 0 && (expanded || isMobile) && (
                   <span
                     className={cn("ast-unread-badge", !expanded && "ast-unread-badge-rail")}
                     aria-label={`${unreadTotal} unread ${unreadTotal === 1 ? "message" : "messages"}`}
