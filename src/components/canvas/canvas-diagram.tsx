@@ -54,6 +54,73 @@ const ZOOM_STEP = 1.25;
 const NARROW_PX = 560;
 const clamp = (z: number) => Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
 
+/** `route` renders the SAME routed points two ways: "orthogonal" (the default,
+ *  right-angle segments — what the layout audit pins) or "smooth", a rounded
+ *  corner at each bend. Only the PATH STRING differs; the geometry, the label
+ *  boxes and the overlap audit are untouched, so `smooth` can never introduce an
+ *  overlap the orthogonal audit proved absent. */
+function routeD(pts: { x: number; y: number }[], smooth: boolean): string {
+  if (pts.length === 0) return "";
+  if (!smooth || pts.length < 3) return pts.map((p, k) => `${k === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+  let d = `M ${pts[0].x} ${pts[0].y}`;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const p = pts[i];
+    d += ` Q ${p.x} ${p.y} ${(p.x + pts[i + 1].x) / 2} ${(p.y + pts[i + 1].y) / 2}`;
+  }
+  const last = pts[pts.length - 1];
+  d += ` L ${last.x} ${last.y}`;
+  return d;
+}
+
+// ── circuit glyphs (0 new dependencies, pure SVG) ─────────────────────────────
+// A standard component symbol inside the node box. Stroke only — every colour is
+// a CSS class (.ast-cv-dg-glyph), never an inline hex.
+function CircuitGlyph({ symbol, cx, cy }: { symbol: string; cx: number; cy: number }) {
+  const R = 9;
+  const d = {
+    resistor: `M ${cx - R} ${cy} L ${cx - R + 3} ${cy} l 3 -4 l 3 8 l 3 -8 l 3 8 l 3 -8 l 3 4 L ${cx + R} ${cy}`,
+    capacitor: `M ${cx - R} ${cy} L ${cx - 2} ${cy} M ${cx - 2} ${cy - R} L ${cx - 2} ${cy + R} M ${cx + 2} ${cy - R} L ${cx + 2} ${cy + R} M ${cx + 2} ${cy} L ${cx + R} ${cy}`,
+    inductor: `M ${cx - R} ${cy} l 3 0 a 3 3 0 0 1 6 0 l 0 0 a 3 3 0 0 1 6 0 L ${cx + R} ${cy}`,
+    diode: `M ${cx - R} ${cy} L ${cx - 1} ${cy - 6} L ${cx - 1} ${cy + 6} Z M ${cx + 1} ${cy - 6} L ${cx + 1} ${cy + 6} M ${cx + 1} ${cy - 6} L ${cx + R} ${cy - 6} M ${cx + 1} ${cy + 6} L ${cx + R} ${cy + 6} M ${cx + R} ${cy - 6} L ${cx + R} ${cy + 6}`,
+    ground: `M ${cx} ${cy - R} L ${cx} ${cy + 2} M ${cx - 7} ${cy + 2} L ${cx + 7} ${cy + 2} M ${cx - 4} ${cy + 5} L ${cx + 4} ${cy + 5} M ${cx - 1} ${cy + 8} L ${cx + 1} ${cy + 8}`,
+    battery: `M ${cx - R} ${cy - 6} L ${cx - 4} ${cy - 6} M ${cx - R} ${cy + 6} L ${cx - 4} ${cy + 6} M ${cx - 4} ${cy - 8} L ${cx - 4} ${cy + 8} M ${cx + 4} ${cy - 5} L ${cx + 4} ${cy + 5} M ${cx + R} ${cy} L ${cx + 4} ${cy}`,
+    opamp: `M ${cx - R} ${cy - R} L ${cx + 2} ${cy - R} L ${cx + 2} ${cy + R} L ${cx - R} ${cy + R} Z M ${cx - R} ${cy - 3} L ${cx - R - 4} ${cy - 3} M ${cx - R} ${cy + 3} L ${cx - R - 4} ${cy + 3} M ${cx + 2} ${cy} L ${cx + R} ${cy}`,
+    led: `M ${cx - 6} ${cy - 6} L ${cx - 1} ${cy - 6} L ${cx - 1} ${cy + 6} Z M ${cx + 1} ${cy - 6} L ${cx + 1} ${cy + 6} M ${cx + 1} ${cy - 6} L ${cx + 7} ${cy - 6} M ${cx + 1} ${cy + 6} L ${cx + 7} ${cy + 6} M ${cx + 1} ${cy - 10} l 3 -3 M ${cx + 5} ${cy - 11} l 4 1`,
+  }[symbol];
+  if (!d) return null;
+  return <path className="ast-cv-dg-glyph" d={d} />;
+}
+
+/** Crow's-foot terminator for `edge.cardinality`, drawn at the path's far end
+ *  (or near end for a reverse reading). `1` is a single tick, `0..1` a tick plus
+ *  an optional bar, and a `*` end is the fork. */
+function CardFoot({ at, from, to, cardinality }: { at: { x: number; y: number }; from: { x: number; y: number }; to: { x: number; y: number }; cardinality?: string }) {
+  if (!cardinality) return null;
+  const dx = to.x - from.x, dy = to.y - from.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len, uy = dy / len;          // unit vector along the edge
+  const px = -uy, py = ux;                     // perpendicular
+  const many = cardinality.includes("*");
+  const optional = cardinality.startsWith("0");
+  const A = 11;                                // spread of the fork
+  const F = 5;                                 // fork inset
+  const parts: string[] = [];
+  if (many) {
+    parts.push(`M ${at.x} ${at.y} L ${at.x - ux * F + px * A} ${at.y - uy * F + py * A}`);
+    parts.push(`M ${at.x} ${at.y} L ${at.x - ux * F - px * A} ${at.y - uy * F - py * A}`);
+    parts.push(`M ${at.x} ${at.y} L ${at.x - ux * F} ${at.y - uy * F}`);
+  } else {
+    // a single tick across the edge
+    parts.push(`M ${at.x - px * A} ${at.y - py * A} L ${at.x + px * A} ${at.y + py * A}`);
+  }
+  if (optional) {
+    // the "zero" half of the cardinality: a bar one tick further back
+    const bx = at.x - ux * (F + 3), by = at.y - uy * (F + 3);
+    parts.push(`M ${bx - px * A} ${by - py * A} L ${bx + px * A} ${by + py * A}`);
+  }
+  return <path className="ast-cv-dg-glyph" d={parts.join(" ")} strokeWidth={1.2} />;
+}
+
 export function DiagramView({ block, id }: { block: DiagramBlock; id: string }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [bucket, setBucket] = useState<number | null>(null);
@@ -214,14 +281,26 @@ export function DiagramView({ block, id }: { block: DiagramBlock; id: string }) 
                   exactly where its label reads, so a line can never cross its text. */}
               {layout.edges.map((e, i) => {
                 const lit = sel != null && (e.e.from === sel || e.e.to === sel);
+                const card = e.e.cardinality;
+                // A crow's-foot terminator REPLACES the plain arrowhead: an ER
+                // reader needs "many" vs "one", and an arrowhead under a fork
+                // would claim direction where cardinality claims multiplicity.
+                const src = e.pts[0], dst = e.pts[e.pts.length - 1];
                 return (
-                  <path
-                    key={i}
-                    className={`ast-cv-dg-path${dim(e.e.from) && dim(e.e.to) ? " ast-cv-dg-dim" : ""}`}
-                    d={e.pts.map((p, k) => `${k === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ")}
-                    markerEnd={e.self ? undefined : `url(#${id}-arrow)`}
-                    style={lit ? { strokeWidth: 2.4 } : undefined}
-                  />
+                  <g key={i} className={dim(e.e.from) && dim(e.e.to) ? "ast-cv-dg-dim" : undefined}>
+                    <path
+                      className="ast-cv-dg-path"
+                      d={routeD(e.pts, block.route === "smooth")}
+                      markerEnd={e.self || card ? undefined : `url(#${id}-arrow)`}
+                      style={lit ? { strokeWidth: 2.4 } : undefined}
+                    />
+                    {!e.self && card && (
+                      <>
+                        <CardFoot at={dst} from={src} to={dst} cardinality={card} />
+                        <text className="ast-cv-dg-card" x={dst.x - 5} y={dst.y - 9} textAnchor="end">{card}</text>
+                      </>
+                    )}
+                  </g>
                 );
               })}
 
@@ -239,6 +318,46 @@ export function DiagramView({ block, id }: { block: DiagramBlock; id: string }) 
                   }}
                 >
                   <rect x={n.x} y={n.y} width={n.w} height={n.h} rx={10} />
+                  {/* ER / CIRCUIT: the header bar separates the table name from its
+                      columns, and each field is one row. The glyph is text, not
+                      hue — pk is a key, fk an arrow, nullable a dimmed type. */}
+                  {n.fields && (
+                    <>
+                      <rect className="ast-cv-dg-entity-head" x={n.x + 1} y={n.y + 1} width={n.w - 2}
+                        height={S.padY * 2 + n.label.length * S.lhLabel - 2} rx={9} />
+                      <line className="ast-cv-dg-entity-sep" x1={n.x + 1} x2={n.x + n.w - 1}
+                        y1={n.y + S.padY * 2 + n.label.length * S.lhLabel - 2}
+                        y2={n.y + S.padY * 2 + n.label.length * S.lhLabel - 2} />
+                      {n.fields.map((f, fi) => {
+                        const raw = block.nodes.find((x) => x.id === n.id)?.fields?.[fi];
+                        const top = n.y + S.padY * 2 + n.label.length * S.lhLabel + 4 + fi * S.lhField;
+                        return (
+                          <g key={f.name + fi}>
+                            {raw?.pk && (
+                              <text className="ast-cv-dg-field-key" x={n.x + S.padX} y={top + S.lhField - 4} aria-hidden="true">⚿</text>
+                            )}
+                            {raw?.fk && (
+                              <text className="ast-cv-dg-field-key" x={n.x + S.padX + (raw.pk ? 10 : 0)} y={top + S.lhField - 4} aria-hidden="true">→</text>
+                            )}
+                            <text className="ast-cv-dg-field-name"
+                              x={n.x + S.padX + (raw?.pk ? 11 : raw?.fk ? 11 : 0)}
+                              y={top + S.lhField - 4}
+                            >
+                              {f.name}
+                            </text>
+                            {f.type && (
+                              <text className="ast-cv-dg-field-type" x={n.x + n.w - S.padX} y={top + S.lhField - 4}
+                                textAnchor="end" opacity={raw?.nullable ? 0.65 : 1}>
+                                {f.type}
+                                {raw?.nullable ? "?" : ""}
+                              </text>
+                            )}
+                          </g>
+                        );
+                      })}
+                    </>
+                  )}
+                  {n.symbol && <CircuitGlyph symbol={n.symbol} cx={n.x + n.w - 20} cy={n.y + n.h / 2} />}
                   {n.label.map((l, li) => (
                     <text key={li} className="ast-cv-dg-label" x={n.x + S.padX} y={n.y + S.padY + S.lhLabel * (li + 1) - 4}>
                       {l}

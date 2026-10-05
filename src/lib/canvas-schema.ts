@@ -60,8 +60,37 @@ export interface DiagramBlock {
   /** One-to-three sentence reading of the diagram (shown as the summary + used as the aria description). */
   summary?: string;
   caption?: string;
-  nodes: { id: string; label: string; detail?: string; kind?: string; note?: string }[];
-  edges: { from: string; to: string; label?: string; note?: string }[];
+  nodes: DiagramNode[];
+  edges: DiagramEdge[];
+  /** Edge routing: orthogonal (dagre's default, right-angle segments) or smooth. */
+  route?: "orthogonal" | "smooth";
+}
+
+/** A node with `fields` renders as an ENTITY box: header bar + one row per field.
+ *  `shape` only changes the box treatment; the dagre layout already takes an
+ *  explicit {width,height}, so a taller box with internal text needs no layout
+ *  engine work and no new dependency. */
+export interface DiagramNode {
+  id: string;
+  label: string;
+  detail?: string;
+  kind?: string;
+  note?: string;
+  shape?: "box" | "entity" | "store" | "note";
+  /** Column list; only meaningful when shape is "entity" (the ER default for
+   *  layout:"relationship"). pk → key glyph, fk → arrow, nullable → dimmed. */
+  fields?: { name: string; type?: string; pk?: boolean; fk?: boolean; nullable?: boolean }[];
+  /** A standard circuit glyph drawn inside the node box. */
+  symbol?: "resistor" | "capacitor" | "inductor" | "diode" | "ground" | "battery" | "opamp" | "led";
+}
+
+export interface DiagramEdge {
+  from: string;
+  to: string;
+  label?: string;
+  note?: string;
+  /** Crow's-foot terminator at the far end. */
+  cardinality?: "1" | "0..1" | "1..*" | "0..*";
 }
 
 export interface ChecklistBlock {
@@ -475,6 +504,7 @@ const TYPE_ALIASES: Record<string, string> = {
   // no entry here. `plot` stays an alias for a chart.
   plot: "chart",
   flowchart: "diagram", flow: "diagram", map: "diagram", "graph-map": "diagram",
+  er: "diagram", erd: "diagram", "entity-relationship": "diagram", circuit: "diagram", schematic: "diagram",
   list: "checklist", todo: "checklist", tasks: "checklist",
   "ordered-list": "steps", process: "steps",
   note: "callout", warning: "callout", insight: "callout",
@@ -522,6 +552,10 @@ const TYPE_ALIASES: Record<string, string> = {
   // entry here — validateBlock checks TYPE_ALIASES BEFORE BLOCK_TYPES.
   equation: "math", latex: "math", tex: "math", formula: "math", "tex-block": "math",
 };
+
+/** Block TYPES that are inherently relationship (ER) diagrams: an omitted layout
+ *  on one of these means "relationship", not the "flow" default. */
+const ER_TYPES = new Set(["er", "erd", "entity-relationship"]);
 
 /** A `layout` block whose TYPE is one of these carries its mode in the type
  *  itself (`{type:"bento", blocks:[…]}`) — the alias above normalises the type to
@@ -579,6 +613,7 @@ function validateBlockInner(b: any): CanvasBlock | null {
   // Aliases: models reach for near-miss names. Accept the obvious ones instead
   // of dropping the block (and, before per-block tolerance, the whole card).
   const T = b.type;
+  const origType = T;
   b.type = TYPE_ALIASES[T] ?? T;
 
   // chart kind aliases + `type` used instead of `chart`
@@ -596,9 +631,20 @@ function validateBlockInner(b: any): CanvasBlock | null {
     else if (kind === "spider" || kind === "polar") b.chart = "radar";
     else if (kind === "bubble" || kind === "xy" || kind === "points") b.chart = "scatter";
   }
-  // diagram layout alias: a `flowchart` block usually omits `layout`
-  if (b.type === "diagram" && b.layout == null) {
-    b.layout = b.kind === "relationship" || b.kind === "map" ? "relationship" : "flow";
+  // diagram layout aliases, both BEFORE the switch case:
+  //  - `layout:"er"` is a LAYOUT NAME, so it must be normalised before the case
+  //    reads b.layout (and it also means b.layout is non-null, so the omitted-
+  //    layout default must not overwrite it).
+  //  - an omitted layout on an ER block means "relationship". The alias table has
+  //    already rewritten `type`, so the ORIGINAL type name is the only signal that
+  //    this was `{type:"er"}` rather than a flowchart — without it every ER block
+  //    that omitted `layout` rendered as a flowchart.
+  if (b.type === "diagram") {
+    if (b.layout === "er" || b.layout === "erd") b.layout = "relationship";
+    if (b.layout == null) {
+      b.layout = b.kind === "relationship" || b.kind === "map" || b.kind === "er" || b.kind === "erd" || ER_TYPES.has(origType)
+        ? "relationship" : "flow";
+    }
   }
 
   switch (b.type) {
@@ -777,18 +823,45 @@ function validateBlockInner(b: any): CanvasBlock | null {
       // Long agent-authored text is capped so one field cannot bloat the card.
       const nodes: DiagramBlock["nodes"] = [];
       const ids = new Set<string>();
+      const SHAPES = new Set(["box", "entity", "store", "note"]);
+      const SYMBOLS = new Set(["resistor", "capacitor", "inductor", "diode", "ground", "battery", "opamp", "led"]);
       for (const n of b.nodes) {
         if (!n || !isStr(n.id) || !isStr(n.label)) return null;
         ids.add(n.id);
+        // A node with fields IS an entity box even when `shape` was omitted —
+        // models that write an ER diagram rarely restate the shape they just
+        // used fields for.
+        const shape = isStr(n.shape) && SHAPES.has(n.shape) ? n.shape
+          : Array.isArray(n.fields) && n.fields.length > 0 ? "entity" : undefined;
+        let fields: DiagramNode["fields"];
+        if (Array.isArray(n.fields)) {
+          const rows: NonNullable<DiagramNode["fields"]> = [];
+          for (const f of n.fields) {
+            if (!f || !isStr(f.name) || !f.name.trim()) continue;   // fail-soft per field
+            rows.push({
+              name: f.name.slice(0, 80),
+              type: isStr(f.type) ? f.type.slice(0, 40) : undefined,
+              pk: f.pk === true ? true : undefined,
+              fk: f.fk === true ? true : undefined,
+              nullable: f.nullable === true ? true : undefined,
+            });
+            if (rows.length >= 24) break;
+          }
+          fields = rows.length > 0 ? rows : undefined;
+        }
         nodes.push({
           id: n.id,
           label: n.label,
           detail: isStr(n.detail) ? n.detail : undefined,
           kind: isStr(n.kind) ? n.kind : undefined,
           note: isStr(n.note) ? n.note.slice(0, 400) : undefined,
+          shape,
+          fields,
+          symbol: isStr(n.symbol) && SYMBOLS.has(n.symbol) ? (n.symbol as NonNullable<DiagramNode["symbol"]>) : undefined,
         });
       }
       if (!Array.isArray(b.edges)) return null;
+      const CARDS = new Set(["1", "0..1", "1..*", "0..*"]);
       const edges: DiagramBlock["edges"] = [];
       for (const e of b.edges) {
         if (!e || !isStr(e.from) || !isStr(e.to) || !ids.has(e.from) || !ids.has(e.to)) return null;
@@ -797,12 +870,16 @@ function validateBlockInner(b: any): CanvasBlock | null {
           to: e.to,
           label: isStr(e.label) ? e.label : undefined,
           note: isStr(e.note) ? e.note.slice(0, 400) : undefined,
+          cardinality: isStr(e.cardinality) && CARDS.has(e.cardinality)
+            ? (e.cardinality as NonNullable<DiagramEdge["cardinality"]>)
+            : undefined,
         });
       }
       return {
         type: "diagram",
         layout: b.layout,
         direction: b.direction === "lr" ? "lr" : "tb",
+        route: b.route === "smooth" ? "smooth" : b.route === "orthogonal" ? "orthogonal" : undefined,
         summary: isStr(b.summary) ? b.summary.slice(0, 400) : undefined,
         caption: isStr(b.caption) ? b.caption.slice(0, 400) : undefined,
         nodes,

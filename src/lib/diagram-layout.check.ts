@@ -128,8 +128,11 @@ const DIRS = ["tb", "lr"] as const;
 
 // ── tests ──────────────────────────────────────────────────────────────────────
 
-test("the 5 stress fixtures audit to zero violations in both directions", () => {
-  assert.equal(FIXTURES.length, 5, "all five fixtures ship with the repo");
+// f6 is the ER fixture: entity nodes whose height is driven by their FIELD COUNT
+// rather than their label, which is a different box geometry from f1..f5 — so it
+// has to clear the same overlap audit.
+test("the stress fixtures audit to zero violations in both directions", () => {
+  assert.equal(FIXTURES.length, 6, "all six fixtures ship with the repo");
   for (const f of FIXTURES) {
     const block = JSON.parse(readFileSync(join(FIX, f), "utf8"));
     for (const dir of DIRS) {

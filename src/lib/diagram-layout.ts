@@ -30,6 +30,7 @@ export const S = {
   nodeSep: 36, rankSep: 56, edgeSep: 14, margin: 14,
   maxNodeW: 260, minNodeW: 96, maxLabelW: 132,
   fsLabel: 12, lhLabel: 15, fsDetail: 11, lhDetail: 14, fsEdge: 11, lhEdge: 14,
+  fsField: 10.5, lhField: 14,
   maxLinesLabel: 5, maxLinesDetail: 4,
 } as const;
 
@@ -93,8 +94,8 @@ export type Measure = (text: string, fontPx: number) => number;
 export type Dir = "tb" | "lr";
 
 export interface DiagramSource {
-  nodes: { id: string; label: string; detail?: string; note?: string; kind?: string }[];
-  edges: { from: string; to: string; label?: string; note?: string }[];
+  nodes: { id: string; label: string; detail?: string; note?: string; kind?: string; fields?: { name: string; type?: string }[] }[];
+  edges: { from: string; to: string; label?: string; note?: string; cardinality?: string }[];
   direction?: Dir;
 }
 
@@ -106,6 +107,10 @@ export interface LNode {
   note: string | null;
   truncated: boolean;
   kind?: string | null;
+  /** ER/CIRCUIT fields, pre-wrapped. An entity node is a header bar + one row
+   *  per field, so its height is driven by the field COUNT, not by the label. */
+  fields: { name: string; type: string | null }[] | null;
+  symbol?: string | null;
 }
 
 export interface LEdge {
@@ -138,6 +143,8 @@ interface SizedNode {
   note: string | null;
   truncated: boolean;
   kind?: string | null;
+  fields: { name: string; type: string | null }[] | null;
+  symbol?: string | null;
 }
 
 interface SizedEdge {
@@ -148,15 +155,27 @@ function sizeNode(n: DiagramSource["nodes"][number], budget: number, M: Measure)
   const innerMax = Math.min(S.maxNodeW, budget) - 2 * S.padX;
   const lab = wrapWords(n.label, S.fsLabel, innerMax, S.maxLinesLabel, M);
   const det = n.detail ? wrapWords(n.detail, S.fsDetail, innerMax, S.maxLinesDetail, M) : null;
+  // An ENTITY box is a header bar + one row per field, so its height is driven by
+  // the field COUNT. `name type` are measured on ONE line each and the row is
+  // padded to the widest — an ER box that wrapped its columns would misalign
+  // every type against its name, which is the one thing an ER box must not do.
+  const rawFields = Array.isArray(n.fields) ? n.fields : [];
+  const fields = rawFields.length > 0
+    ? rawFields.slice(0, 24).map((f) => ({ name: f.name, type: f.type ?? null }))
+    : null;
+  const fw = fields ? Math.max(0, ...fields.map((f) => M(f.name, S.fsField) + (f.type ? M(f.type, S.fsField) + 18 : 0))) : 0;
   const widest = Math.max(
     ...lab.lines.map((l) => M(l, S.fsLabel)),
-    ...(det ? det.lines.map((l) => M(l, S.fsDetail)) : [0]), 0);
+    ...(det ? det.lines.map((l) => M(l, S.fsDetail)) : [0]), fw, 0);
   const w = Math.max(S.minNodeW, Math.ceil(widest) + 2 * S.padX);
-  const h = S.padY * 2 + lab.lines.length * S.lhLabel + (det ? 2 + det.lines.length * S.lhDetail : 0);
+  const h = S.padY * 2 + lab.lines.length * S.lhLabel
+    + (det ? 2 + det.lines.length * S.lhDetail : 0)
+    + (fields ? fields.length * S.lhField + 6 : 0);
   return {
     id: n.id, w, h, label: lab.lines, detail: det ? det.lines : null,
     note: n.note ?? null, truncated: lab.truncated || !!(det && det.truncated),
-    kind: n.kind ?? null,
+    kind: n.kind ?? null, fields,
+    symbol: (n as { symbol?: string }).symbol ?? null,
   };
 }
 

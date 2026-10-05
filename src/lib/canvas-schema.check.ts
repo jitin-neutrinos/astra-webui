@@ -1751,3 +1751,132 @@ test("math: markdown copy round-trips the TeX source", () => {
   assert.ok(md.includes("$$"), "display math copies as a $$ block");
   assert.ok(md.includes("ratio"), "the label is kept");
 });
+
+
+// ── diagram ER + circuit extension (canvas v1 expansion) ────────────────────────
+// The diagram block is EXTENDED, not replaced: BLOCK_TYPES stays 39 and the dagre
+// layout chunk already ships, so this is a render branch at zero byte cost.
+//
+// The sanitizer rebuilds every node/edge from a literal field list, so any key it
+// does not name is DROPPED on the render path. `kind` used to disappear that way
+// (it drives the legend AND the dim-on-filter), and the same trap applies to
+// fields/symbol/cardinality. Every test below therefore asserts on BOTH sides.
+const dg = (b: unknown) => parseCanvasSpec(JSON.stringify({ v: 1, blocks: [b] }));
+
+const ER = {
+  type: "diagram", layout: "relationship", direction: "lr",
+  nodes: [
+    { id: "u", label: "users", shape: "entity", fields: [
+      { name: "id", type: "uuid", pk: true },
+      { name: "email", type: "text", nullable: true },
+      { name: "org_id", type: "uuid", fk: true },
+    ] },
+    { id: "o", label: "orders", fields: [{ name: "id", type: "uuid", pk: true }] },
+  ],
+  edges: [{ from: "u", to: "o", cardinality: "1..*" }],
+};
+
+test("diagram: entity nodes + fields survive the parser AND the sanitizer", () => {
+  const spec = dg(ER);
+  assert.ok(spec, "an ER diagram parses");
+  const d = spec!.blocks[0] as any;
+  assert.equal(d.layout, "relationship");
+  assert.equal(d.nodes[0].shape, "entity");
+  assert.equal(d.nodes[0].fields.length, 3);
+  assert.equal(d.nodes[0].fields[0].pk, true);
+  assert.equal(d.nodes[0].fields[1].nullable, true);
+  assert.equal(d.nodes[0].fields[2].fk, true);
+  assert.equal(d.nodes[0].fields[1].type, "text");
+  // A node with fields but no explicit shape IS an entity — a model that writes
+  // an ER diagram rarely restates the shape it just used fields for.
+  assert.equal(d.nodes[1].shape, "entity", "fields imply an entity box");
+  assert.equal(d.edges[0].cardinality, "1..*");
+
+  const s = sanitizeCanvasSpec(spec) as any;
+  assert.equal(s.blocks[0].nodes[0].shape, "entity", "shape survives");
+  assert.equal(s.blocks[0].nodes[0].fields.length, 3, "FIELDS survive the sanitizer");
+  assert.equal(s.blocks[0].nodes[0].fields[0].pk, true, "pk survives");
+  assert.equal(s.blocks[0].nodes[0].fields[2].fk, true, "fk survives");
+  assert.equal(s.blocks[0].nodes[0].fields[1].nullable, true, "nullable survives");
+  assert.equal(s.blocks[0].edges[0].cardinality, "1..*", "cardinality survives");
+});
+
+test("diagram: the sanitizer now carries kind/detail/note (they used to be dropped)", () => {
+  const spec = dg({ type: "diagram", layout: "flow",
+    nodes: [{ id: "a", label: "A", kind: "pk_table", detail: "D", note: "N" }],
+    edges: [{ from: "a", to: "a", label: "e", note: "en" }] });
+  assert.ok(spec);
+  const s = sanitizeCanvasSpec(spec) as any;
+  assert.equal(s.blocks[0].nodes[0].kind, "pk_table", "kind drives the legend — it must reach the renderer");
+  assert.equal(s.blocks[0].nodes[0].detail, "D");
+  assert.equal(s.blocks[0].nodes[0].note, "N");
+  assert.equal(s.blocks[0].edges[0].label, "e");
+  assert.equal(s.blocks[0].edges[0].note, "en");
+});
+
+test("diagram: circuit symbols + smooth routing parse; unknown values are dropped, never fatal", () => {
+  const spec = dg({ type: "diagram", layout: "flow", route: "smooth",
+    nodes: [{ id: "r", label: "R1", symbol: "resistor" }, { id: "g", label: "GND", symbol: "ground" }],
+    edges: [{ from: "r", to: "g" }] });
+  assert.ok(spec);
+  const d = spec!.blocks[0] as any;
+  assert.equal(d.route, "smooth");
+  assert.equal(d.nodes[0].symbol, "resistor");
+  assert.equal(d.nodes[1].symbol, "ground");
+  assert.equal(sanitizeCanvasSpec(spec)!.blocks[0].nodes[0].symbol, "resistor", "symbol survives");
+  assert.equal(sanitizeCanvasSpec(spec)!.blocks[0].route, "smooth");
+
+  // Unknown enum values degrade to absent, and the block still renders.
+  const junk = dg({ type: "diagram", layout: "flow", route: "diagonal",
+    nodes: [{ id: "a", label: "A", shape: "hexagon", symbol: "flux-capacitor" }],
+    edges: [{ from: "a", to: "a", cardinality: "many" }] });
+  assert.ok(junk, "an unknown shape/symbol/cardinality must not drop the diagram");
+  const j = junk!.blocks[0] as any;
+  assert.equal(j.route, undefined, "an unknown route is dropped");
+  assert.equal(j.nodes[0].shape, undefined, "an unknown shape is dropped");
+  assert.equal(j.nodes[0].symbol, undefined, "an unknown symbol is dropped");
+  assert.equal(j.edges[0].cardinality, undefined, "an unknown cardinality is dropped");
+  const js = sanitizeCanvasSpec(junk) as any;
+  assert.equal(js.blocks[0].nodes[0].shape, undefined, "the sanitizer drops it too");
+});
+
+test("diagram: layout 'er' aliases to relationship, and er/erd/circuit alias the block type", () => {
+  assert.equal((dg({ ...ER, layout: "er" })!.blocks[0] as any).layout, "relationship");
+  const byType = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "er", nodes: [{ id: "a", label: "A" }], edges: [] }] }));
+  assert.ok(byType, "type:er must parse");
+  assert.equal((byType!.blocks[0] as any).layout, "relationship", "an omitted layout defaults to relationship for er");
+  const circ = parseCanvasSpec(JSON.stringify({ v: 1, blocks: [{ type: "circuit", layout: "flow", nodes: [{ id: "a", label: "R1", symbol: "resistor" }], edges: [] }] }));
+  assert.ok(circ, "type:circuit must parse");
+  assert.equal((circ!.blocks[0] as any).type, "diagram");
+});
+
+test("diagram: fail-soft per field (one bad field never costs the node) and the cap holds", () => {
+  const bad = dg({ type: "diagram", layout: "relationship",
+    nodes: [{ id: "a", label: "A", shape: "entity", fields: [{ nope: 1 }, { name: "" }, { name: "ok", type: "int" }] }],
+    edges: [] });
+  assert.ok(bad, "a node with junk fields still parses");
+  const fields = (bad!.blocks[0] as any).nodes[0].fields;
+  assert.equal(fields.length, 1, "only the usable field survives");
+  assert.equal(fields[0].name, "ok");
+  // An all-junk field list degrades to no fields, and the node still renders.
+  const none = dg({ type: "diagram", layout: "relationship",
+    nodes: [{ id: "a", label: "A", shape: "entity", fields: [{ nope: 1 }] }], edges: [] });
+  assert.ok(none);
+  assert.equal((none!.blocks[0] as any).nodes[0].fields, undefined);
+  assert.equal((none!.blocks[0] as any).nodes[0].shape, "entity", "the explicit shape survives");
+  // The field cap holds (a pathological entity cannot bloat the layout).
+  const many = dg({ type: "diagram", layout: "relationship",
+    nodes: [{ id: "a", label: "A", shape: "entity", fields: Array.from({ length: 80 }, (_, i) => ({ name: `f${i}` })) }],
+    edges: [] });
+  assert.ok((many!.blocks[0] as any).nodes[0].fields.length <= 24, "fields are capped at 24");
+  assert.doesNotThrow(() => dg({ type: "diagram", layout: "relationship", nodes: [{ id: "a", label: "A", fields: "nope" }], edges: [] }));
+});
+
+test("diagram: markdown copy keeps fields and cardinality", () => {
+  const spec = dg(ER);
+  assert.ok(spec);
+  const md = canvasToMarkdown(spec!);
+  assert.ok(md.includes("uuid"), "field types are copied");
+  assert.ok(md.includes("1..*"), "cardinality is copied");
+  assert.ok(md.includes("email"), "field names are copied");
+});

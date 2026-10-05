@@ -37,8 +37,14 @@ function blockToMd(b: CanvasBlock): string {
       return [head, sep, ...b.rows.map((r) => `| ${r.join(" | ")} |`)].join("\n");
     }
     case "diagram": {
-      const nodes = b.nodes.map((n) => `- ${n.label}${n.detail ? ` — ${n.detail}` : ""}`).join("\n");
-      const edges = b.edges.map((e) => `- ${nodeLabel(b, e.from)} → ${nodeLabel(b, e.to)}${e.label ? ` (${e.label})` : ""}`).join("\n");
+      // ER fields and cardinality are part of the reading, so the markdown copy
+      // carries them: a copied card must not lose the schema a reader is judging.
+      const nodes = b.nodes.map((n) => {
+        const head = `- ${n.label}${n.detail ? ` — ${n.detail}` : ""}`;
+        const cols = (n.fields ?? []).map((f) => `    - ${f.pk ? "🔑 " : ""}${f.fk ? "→ " : ""}${f.name}${f.type ? ` : ${f.type}${f.nullable ? "?" : ""}` : ""}`);
+        return cols.length ? `${head}\n${cols.join("\n")}` : head;
+      }).join("\n");
+      const edges = b.edges.map((e) => `- ${nodeLabel(b, e.from)} →${e.cardinality ? ` ${e.cardinality}` : " "}${nodeLabel(b, e.to)}${e.label ? ` (${e.label})` : ""}`).join("\n");
       return `**${b.layout === "flow" ? "Flow" : "Relationships"}**\n\n${nodes}\n\n${edges}`;
     }
     case "checklist":

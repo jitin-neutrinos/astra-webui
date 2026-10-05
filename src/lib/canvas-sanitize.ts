@@ -574,6 +574,14 @@ function sanitizeBlock(b: unknown, depth = 0): CanvasBlock | null {
     }
     case "diagram": {
       if (!Array.isArray(obj.nodes) || !Array.isArray(obj.edges)) return null;
+      // The sanitizer REBUILDS each node/edge from a literal field list, so any
+      // key it does not name here is DROPPED on the render path — the diagram
+      // arrives at the renderer stripped. That is how `kind` (the legend and the
+      // dim-on-filter behaviour) used to disappear. ER fields, symbols and
+      // cardinality are carried for the same reason.
+      const SHAPES = new Set(["box", "entity", "store", "note"]);
+      const SYMBOLS = new Set(["resistor", "capacitor", "inductor", "diode", "ground", "battery", "opamp", "led"]);
+      const CARDS = new Set(["1", "0..1", "1..*", "0..*"]);
       sanitized.nodes = obj.nodes
         .map((n: unknown) => {
           if (!n || typeof n !== "object") return null;
@@ -581,9 +589,31 @@ function sanitizeBlock(b: unknown, depth = 0): CanvasBlock | null {
           const id = typeof no.id === "string" ? truncate(no.id, 50) : "";
           if (!id) return null;
           const label = typeof no.label === "string" ? truncate(no.label, 200) : id;
-          return { id, label };
+          const out: Record<string, unknown> = { id, label };
+          if (typeof no.detail === "string") out.detail = truncate(no.detail, 400);
+          if (typeof no.kind === "string") out.kind = truncate(no.kind, 40);
+          if (typeof no.note === "string") out.note = truncate(no.note, 400);
+          if (typeof no.shape === "string" && SHAPES.has(no.shape)) out.shape = no.shape;
+          if (typeof no.symbol === "string" && SYMBOLS.has(no.symbol)) out.symbol = no.symbol;
+          if (Array.isArray(no.fields)) {
+            const rows: Record<string, unknown>[] = [];
+            for (const f of no.fields) {
+              if (!f || typeof f !== "object") continue;
+              const fo = f as Record<string, unknown>;
+              if (typeof fo.name !== "string" || !fo.name.trim()) continue;
+              const row: Record<string, unknown> = { name: truncate(fo.name, 80) };
+              if (typeof fo.type === "string") row.type = truncate(fo.type, 40);
+              if (fo.pk === true) row.pk = true;
+              if (fo.fk === true) row.fk = true;
+              if (fo.nullable === true) row.nullable = true;
+              rows.push(row);
+              if (rows.length >= 24) break;
+            }
+            if (rows.length > 0) out.fields = rows;
+          }
+          return out;
         })
-        .filter((x: unknown): x is { id: string; label: string } => x !== null)
+        .filter((x: unknown): x is Record<string, unknown> => x !== null)
         .slice(0, 100);
       sanitized.edges = obj.edges
         .map((e: unknown) => {
@@ -592,12 +622,20 @@ function sanitizeBlock(b: unknown, depth = 0): CanvasBlock | null {
           const from = typeof eo.from === "string" ? truncate(eo.from, 50) : "";
           const to = typeof eo.to === "string" ? truncate(eo.to, 50) : "";
           if (!from || !to) return null;
-          return { from, to };
+          const out: Record<string, unknown> = { from, to };
+          if (typeof eo.label === "string") out.label = truncate(eo.label, 200);
+          if (typeof eo.note === "string") out.note = truncate(eo.note, 400);
+          if (typeof eo.cardinality === "string" && CARDS.has(eo.cardinality)) out.cardinality = eo.cardinality;
+          return out;
         })
-        .filter((x: unknown): x is { from: string; to: string } => x !== null)
+        .filter((x: unknown): x is Record<string, unknown> => x !== null)
         .slice(0, 200);
       if (sanitized.nodes.length === 0) return null;
-      if (typeof obj.layout === "string") sanitized.layout = truncate(obj.layout, 20);
+      if (typeof obj.layout === "string" && (obj.layout === "flow" || obj.layout === "relationship")) sanitized.layout = obj.layout;
+      if (obj.route === "smooth" || obj.route === "orthogonal") sanitized.route = obj.route;
+      if (typeof obj.direction === "string" && obj.direction === "lr") sanitized.direction = "lr";
+      if (typeof obj.summary === "string") sanitized.summary = truncate(obj.summary, 400);
+      if (typeof obj.caption === "string") sanitized.caption = truncate(obj.caption, 400);
       break;
     }
     case "heatmap": {
