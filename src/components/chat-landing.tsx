@@ -1883,7 +1883,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
 
           <button type="button" onClick={onNewChatClick}
             aria-label="New chat" title="New chat" data-ncflow={ncFlow} disabled={ncFlow !== "idle"}
-            className="nc-btn flex h-10 items-center gap-2 rounded-lg px-4 text-sm shadow-[0_0_16px_rgba(34,211,238,0.12)] transition-[border-color,background-color,box-shadow,opacity] duration-150 hover:shadow-[0_0_22px_rgba(34,211,238,0.25)] active:scale-[0.97] motion-reduce:transition-none max-lg:h-10 max-lg:w-10 max-lg:justify-center max-lg:p-0">
+            className="nc-btn flex h-10 items-center gap-2 rounded-lg px-4 text-sm motion-reduce:transition-none max-lg:h-10 max-lg:w-10 max-lg:justify-center max-lg:p-0">
             {ncFlow === "idle" && <Plus className="h-4 w-4 max-lg:h-5 max-lg:w-5" strokeWidth={2} />}
             {ncFlow === "press" && (
               <span aria-hidden="true" className="nc-btn-spin-wrap max-lg:absolute max-lg:inset-0 max-lg:flex max-lg:items-center max-lg:justify-center">
