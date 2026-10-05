@@ -1166,8 +1166,11 @@ html.theme-fading body * {
   color: var(--color-void);
   box-shadow: 0 1px 2px rgba(0,0,0,.25);
 }
+/* Icons stay STROKE-ONLY (owner 10-05 correction): only the container is filled.
+   Glyphs inherit the contrast ink colour with no fill — the filled-chip look is
+   flat-by-design and stroke icons read crisper on the accent surface. */
 .composer-bar-card .chat-chip-icon svg,
-.composer-bar-card .chat-chip-options svg { color: var(--color-void); fill: currentColor; }
+.composer-bar-card .chat-chip-options svg { color: var(--color-void); fill: none; }
 .composer-bar-card .chat-chip-icon:hover,
 .composer-bar-card .chat-chip-options:hover {
   filter: brightness(1.12);
@@ -1176,6 +1179,15 @@ html.theme-fading body * {
 .composer-bar-card .chat-chip-options[aria-expanded="true"] {
   border-color: var(--color-void);
   filter: brightness(0.92);
+}
+/* The legacy `chat-chip[aria-expanded]` ink swap (line ~1155) must NOT fire on
+   the filled bar buttons: it recolours the GLYPH ink-on-ink (accent glyph on
+   the accent fill) — the "icon disappears when the model selector opens"
+   report. The filled buttons already signal open state through the border +
+   brightness flip above; their svg keeps the contrast colour. */
+.composer-bar-card .chat-chip-icon[aria-expanded="true"] .cmenu-trigger-ico,
+.composer-bar-card .chat-chip-options[aria-expanded="true"] .cmenu-trigger-ico {
+  color: var(--color-void);
 }
 
 
@@ -2110,7 +2122,7 @@ html.theme-fading body * {
   box-shadow: none;
 }
 [data-theme="light"] .composer-bar-card .chat-chip-icon svg,
-[data-theme="light"] .composer-bar-card .chat-chip-options svg { color: #f8fafc; }
+[data-theme="light"] .composer-bar-card .chat-chip-options svg { color: #f8fafc; fill: none; }
 [data-theme="light"] .composer-bar-card .chat-chip-icon:hover,
 [data-theme="light"] .composer-bar-card .chat-chip-options:hover {
   filter: brightness(1.08);
@@ -2120,6 +2132,10 @@ html.theme-fading body * {
 [data-theme="light"] .composer-bar-card .chat-chip-options[aria-expanded="true"] {
   border-color: #f8fafc;
   filter: brightness(0.95);
+}
+[data-theme="light"] .composer-bar-card .chat-chip-icon[aria-expanded="true"] .cmenu-trigger-ico,
+[data-theme="light"] .composer-bar-card .chat-chip-options[aria-expanded="true"] .cmenu-trigger-ico {
+  color: #f8fafc;
 }
 /* Yolo off keeps the outline style in light too: accent glyph on transparent. */
 [data-theme="light"] .composer-bar-card .chat-chip-yolo {
