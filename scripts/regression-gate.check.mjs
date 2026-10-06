@@ -763,6 +763,55 @@ export const REGRESSIONS = [
     guard: "src/lib/bubble-invariant.check.ts",
   },
   {
+    id: "RG-124",
+    found: "2026-10-05",
+    symptom:
+      "Canvas cards painted a heading and then a skeleton that never resolved, on every reload, with no code error anywhere. Root cause was NOT in the app: the deployed index.html loaded 4 entry files (all 200) while every LAZY chunk the entry referenced returned 404, including canvas-view, canvas-chart, canvas-docs, canvas-diagram, canvas-graph-view and canvas-reactive. The card shell rendered, the dynamic import inside it failed, and a rejected import is not a React error — so CanvasErrorBoundary never fired and the Suspense fallback parked forever. Nothing in the repo caught it: `vite build` exits 0, the served HTML looks healthy, and a spot-check of the entry file returns 200. The mismatch is only visible when a built dist is cross-referenced against its own entry bundle, which is what this check does, so a partial or stale dist upload cannot reach production silently again. Excludes the pdf.js wasm-bindgen worker URL (qcms_bg.js), which is a runtime worker path and never a build artifact.",
+    guard: "scripts/deploy-chunks.check.mjs",
+  },
+  {
+    id: "RG-125",
+    found: "2026-10-06",
+    symptom:
+      "The corner-style setting silently half-worked, or changed the app before the user touched it. Four failure shapes pinned. (1) HALF-TRANSFORMED: the scale steps were mapped but Tailwind's OWN --radius-* namespace was left at stock 6/8/12/16px, so the 199 rounded-* utilities ignored the mode while hand-written CSS followed it — the setting looks broken rather than unmapped. (2) PILLS NOTHING: the sized steps aliased a step instead of composing max(…, --shape-full), so circle mode left every button at 6px. (3) READS AS BROKEN: sharp was a literal 0 scale; a 0 radius on an 18px control reads as a defect, so it is pinned to small NON-ZERO steps. (4) THE DEFAULT MOVED: the first draft aliased --radius-inner/outer onto steps resolving to 10/18px when their pre-engine values were 12/16px, which would have SHRUNK every card and panel in the app before any control was touched. The check now pins each legacy token to its exact pre-engine pixel value at scale 1, and records that cards must NOT pill (9999px on a wide short card is a stadium) as an explicit decision.",
+    guard: "src/lib/shape-scale.check.ts",
+  },
+  {
+    id: "RG-126",
+    found: "2026-10-05",
+    symptom:
+      "The canvas `page` key was accepted by the parser and then dropped by the sanitizer, so an author (or the A4/16:9 rule propagated to 61 prompt surfaces) could declare a page format and the renderer would silently ignore it — a rule naming a discarded key, indistinguishable from a renderer bug. Same row pins the two phantom radius tokens: --radius-cv and --radius-cv-soft were USED 14 times in index.css and DEFINED nowhere in the repo, and a var() with no definition invalidates the whole declaration, so every consumer computed to the initial 0px and rendered perfectly square in production. Proven in Chrome: undefined -> 0px, defined -> its real value. The check now cross-references every var() read against a definition, so a token cannot be used without being declared.",
+    guard: "src/lib/canvas-page-format.check.ts",
+  },
+  {
+    id: "RG-127",
+    found: "2026-10-06",
+    symptom:
+      "A font pick that reports success while the app renders in the old face, or a Google family that 404s for every user. Five shapes pinned. (1) THE LEVER MOVES NOTHING: Tailwind bakes font-family at build time unless the token stays a var() reference and @theme is not `inline`, so the assertion reads the COMPILED bundle for .font-sans/.font-display/.font-mono containing var(--font-) — not the source. (2) DOUBLE-QUOTED FAMILY: \"\"Inter Var\"\" is an invalid declaration, which drops the whole rule and silently reverts the app to the browser default mid-session. (3) EVERY FAMILY 404s: css2's answer begins with a subset comment (\"/* devanagari */\"), so startsWith('@font-face') rejected every VALID response while curl and fetch both returned 200 — the discriminator is content-type plus an @font-face scan ANYWHERE. (4) A .ttf CACHED AS woff2: css2 silently degrades to .ttf for an unrecognised User-Agent, a 10x larger file cached forever with no error. (5) A FILENAME-SOURCED LABEL: DM Sans ships as 'DM Sans 9pt', so the family must come from the file's NAME table or the picker mislabels every upload.",
+    guard: "src/lib/font-engine.check.ts",
+  },
+  {
+    id: "RG-128",
+    found: "2026-10-06",
+    symptom:
+      "An uploaded logo that executes script in this origin, or a legitimate logo that is silently mangled into an empty box. Regex sanitizing is NOT sufficient — measured against 13 payloads, 5 survived a heuristic (XXE entity definitions, external <use>, CSS @import, feImage with a nested base64 SVG, and <handler>), and a regex cannot parse nesting so <scr<script>ipt> passes. scripts/theme-brand.e2e.mjs drives the real handlers over real sockets and asserts all 14 payloads are neutralised AND all 6 legitimate constructs survive — including the two that a plausible-but-wrong sanitizer breaks: viewBox/preserveAspectRatio are camelCase and must not be lowercased before the allowlist lookup, and a control-character strip using \\s eats the spaces inside path data, turning 'M2 2 L38 38' into 'M22L3838'. Both break GOOD logos while a payload-only suite passes. Also pins: a payload-only SVG is refused (422) rather than stored empty, and the manifest icon src is root-relative with purpose split into separate any/maskable entries.",
+    guard: "scripts/theme-brand.e2e.mjs",
+  },
+  {
+    id: "RG-129",
+    found: "2026-10-06",
+    symptom:
+      "The font upload surface accepting a non-font, leaking a dead blob URL to another device, or the Google proxy returning unusable CSS. scripts/theme-font.e2e.mjs drives the real handlers over real sockets: uploads are validated by MAGIC BYTES not extension (an SVG renamed .woff2 is refused), .eot is refused outright (dead format and a script surface), the cap is 4MB rather than the backdrop's 95MB video cap, traversal out of the font dir is refused, Range requests are honoured for a variable face, the stored file serves back byte-identical with font/woff2, the css2 proxy rewrites every gstatic url() to a same-origin path and caches the woff2 on disk, a second call is served from cache, and an unknown family never returns font CSS. The sync layer accepts only /api/theme/font URLs, so a blob: reference — unresolvable on every other device, the exact bug the chat backdrop once had — cannot be persisted.",
+    guard: "scripts/theme-font.e2e.mjs",
+  },
+  {
+    id: "RG-130",
+    found: "2026-10-06",
+    symptom:
+      "The chats sidebar sub-line painted raw markdown ('**Direct link:**', a ```astra-canvas payload, dangling ** from the 220-char cut) and could show the chat's FIRST message because the proxy last-reply enrichment capped at 12 rows while the page shows 15 — rows 13-15 fell back to the gateway preview (no fix to the gateway: it is the upstream checkout). Fixes pinned: inline-only markdown (escape first, fence body collapses, dangling pair-less markers dropped), greet previews filtered (responseText + lastResponseFrom + client RowSub), canvas previews labelled 'Open to read canvas card', per-row animated Thinking/Working via chat.turn events emitted from ws-engine for foreign sessions. Guards: src/lib/row-inline.check.ts (14 cases) + server/last-reply.check.mjs (greet/cap shapes).",
+    guard: "src/lib/row-inline.check.ts",
+  },
+  {
     id: "RG-113",
     found: "2026-10-05",
     symptom:
@@ -840,25 +889,25 @@ id: "RG-114",
     guard: "src/lib/color-chip.check.ts",
   },
   {
-    id: "RG-126",
+    id: "RG-137",
     found: "2026-10-06",
     symptom: "Wave-1 canvas enrichments: charts did not support errorbar, candlestick, waterfall, or violin rendering, nor scale, refline, or p-values. The schema, sanitizer, and markdown outputs are tested for these types to ensure the shape survives to the renderer and serializes safely.",
     guard: "src/lib/canvas-chart-wave1.check.ts",
   },
   {
-    id: "RG-125",
+    id: "RG-138",
     found: "2026-10-06",
     symptom: "colTypes accept/drop, unknown→text, contrast declared-enum pin, bar max computation, sig star computation from p column, footnote/units survive sanitizer + markdown | drop colTypes from sanitizer case → serialized pin fails",
     guard: "src/lib/canvas-table-cols.check.ts",
   },
   {
-    id: "RG-127",
+    id: "RG-139",
     found: "2026-10-06",
     symptom: "timeline ref/party/citation/groupBy, checklist due tint inputs + severity enum, heatmap cells/thresholds/diverging dims, tree meta/sort/1200 cap + pruned, references.cite bracket-verify (SCC round / SCR square / AIR bare) + neutral-first + ¶ pinpoints — parser+sanitizer+markdown | remove cite from sanitizer → pin fails",
     guard: "src/lib/canvas-enrich-structural.check.ts",
   },
   {
-    id: "RG-128",
+    id: "RG-140",
     found: "2026-10-06",
     symptom: "math number/lines normalization, numberMathFamily cross-family consistency (authored override, auto continue, stable across re-render + markdown) | revert auto-continue rule → stability assert fails",
     guard: "src/lib/math-numbering.check.ts",
@@ -870,13 +919,13 @@ id: "RG-114",
     guard: "src/lib/canvas-academic.check.ts",
   },
   {
-    id: "RG-129",
+    id: "RG-141",
     found: "2026-10-06",
     symptom: "palette type: swatch grid with WCAG+APCA verdicts the RENDERER computes | revert logic → palette assertion fails",
     guard: "src/lib/canvas-palette.check.ts",
   },
   {
-    id: "RG-130",
+    id: "RG-142",
     found: "2026-10-06",
     symptom: "scorecard type: heuristic/sus/rice/custom methods, min/max limits | revert logic → scorecard assertion fails",
     guard: "src/lib/canvas-scorecard.check.ts",

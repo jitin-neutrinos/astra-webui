@@ -13,9 +13,34 @@ import {
 
 import { createHmac, timingSafeEqual, randomBytes } from "node:crypto";
 import { readFile, stat, appendFile, mkdir } from "node:fs/promises";
+import { execSync } from "node:child_process";
 import { join, extname, resolve, sep, normalize } from "node:path";
+// Build id = the git HEAD short hash of the astra-webui repo (owner 10-06).
+// The client injects the SAME stamp at build time (vite.config.ts), so both
+// sides compare like for like. Recomputed lazily (5s memo) so a new commit +
+// dist flips the stamp without a server restart; the client reloads when its
+// bundle stamp differs. See /api/build-id + src/lib/build-check.ts.
+const REPO_ROOT = resolve(import.meta.dirname, "..");
+let buildIdCache = { at: 0, id: "" };
+function computeBuildId() {
+  const now = Date.now();
+  if (now - buildIdCache.at < 5_000) return buildIdCache.id;
+  let id = "";
+  try {
+    id = execSync("git rev-parse --short=12 HEAD", { cwd: REPO_ROOT }).toString().trim();
+  } catch { /* no git — empty id, client keeps polling */ }
+  buildIdCache = { at: now, id };
+  return id;
+}
 import { clearHermesCookie } from "./hermes-proxy.mjs";
 import { handleBgUpload, handleBgServe } from "./theme-assets.mjs";
+import {
+  handleFontUpload, handleFontServe, handleGoogleFontCss, handleGoogleFontFile,
+} from "./theme-font.mjs";
+import {
+  handleBrandUpload, handleBrandText, handleBrandIcon,
+  handleBrandState, handleBrandManifest,
+} from "./theme-brand.mjs";
 import { handleThemeState } from "./theme-sync.mjs";
 
 const HERMES_PASSWORD = process.env.ASTRA_HERMES_PASSWORD;
@@ -202,6 +227,23 @@ const server = createServer(async (req, res) => {
   if (path === "/api/health") {
     res.writeHead(200, { "content-type": "application/json" });
     return res.end('{"ok":true}');
+  }
+
+  // Build id for the client update check (2026-10-06). The CF zone rule caches
+  // EVERYTHING at the edge — measured: origin says `cache-control: no-cache`
+  // for index.html, the edge rewrites it to `max-age=31536000` and serves the
+  // year-old copy (cf-cache-status:HIT, age counted in hours). Without CF dash
+  // access the html path cannot be fixed, so the client polls THIS endpoint —
+  // same path class as /api/hx, which the earlier b3deeb8 fix already forced
+  // no-store on — and hard-reloads itself when the server build differs from
+  // the bundle it is running. Deploys then land on the next poll instead of
+  // "never until the edge TTL lapses".
+  if (path === "/api/build-id") {
+    res.writeHead(200, {
+      "content-type": "application/json",
+      "cache-control": "no-store, max-age=0",
+    });
+    return res.end(JSON.stringify({ build: await computeBuildId() }));
   }
 
   if (path === "/api/login" && req.method === "POST") {
@@ -497,6 +539,60 @@ const server = createServer(async (req, res) => {
     catch (err) {
       console.error("[theme-sync]", err?.message || err);
       if (!res.headersSent) { res.writeHead(500, { "content-type": "application/json" }); res.end('{"error":"theme state failed"}'); }
+    }
+  }
+
+  // Brand. The state document and the manifest are UNGATED on purpose: Chrome
+  // fetches a manifest WITHOUT cookies, so gating one makes it 401 and the
+  // browser then requests no icons at all (measured on a probe server). A name
+  // and a logo are not secrets and there is one tenant. The icon FILES stay
+  // gated, because they share the upload path.
+  if (path === "/api/brand/state") return handleBrandState(req, res);
+  if (path === "/api/brand/manifest") return handleBrandManifest(req, res);
+
+  if (path === "/api/brand/icon" || path.startsWith("/api/brand/icon/")) {
+    if (path === "/api/brand/icon") return handleBrandUpload(req, res, validToken);
+    const name = path.slice("/api/brand/icon/".length);
+    try { return handleBrandIcon(req, res, validToken, name); }
+    catch (err) {
+      console.error("[theme-brand]", err?.message || err);
+      if (!res.headersSent) { res.writeHead(500, { "content-type": "application/json" }); res.end('{"error":"brand icon failed"}'); }
+    }
+  }
+
+  if (path === "/api/brand/text") {
+    try { return handleBrandText(req, res, validToken); }
+    catch (err) {
+      console.error("[theme-brand/text]", err?.message || err);
+      if (!res.headersSent) { res.writeHead(500, { "content-type": "application/json" }); res.end('{"error":"brand text failed"}'); }
+    }
+  }
+
+  if (path === "/api/theme/font") return handleFontUpload(req, res, validToken);
+
+  // The google proxy comes FIRST in this branch because its path is the longest:
+  // "/api/theme/font/google/<family>.css" would otherwise be sliced as a plain
+  // font file name and 404 through handleFontServe.
+  if (path.startsWith("/api/theme/font/google/")) {
+    const rest = path.slice("/api/theme/font/google/".length);
+    try {
+      if (rest.endsWith(".css")) {
+        const family = decodeURIComponent(rest.slice(0, -".css".length));
+        return await handleGoogleFontCss(req, res, validToken, family);
+      }
+      return handleGoogleFontFile(req, res, validToken, rest);
+    } catch (err) {
+      console.error("[theme-font/google]", err?.message || err);
+      if (!res.headersSent) { res.writeHead(500, { "content-type": "application/json" }); res.end('{"error":"font proxy failed"}'); }
+    }
+  }
+
+  if (path.startsWith("/api/theme/font/")) {
+    const name = path.slice("/api/theme/font/".length);
+    try { return await handleFontServe(req, res, validToken, name); }
+    catch (err) {
+      console.error("[theme-font]", err?.message || err);
+      if (!res.headersSent) { res.writeHead(500, { "content-type": "application/json" }); res.end('{"error":"font serve failed"}'); }
     }
   }
 

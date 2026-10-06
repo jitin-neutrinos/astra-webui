@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import { useBrand, brandIcon } from "./lib/brand-store";
 import type { FormEvent, ReactNode } from "react";
 import {
   MessageSquare,
@@ -29,6 +30,7 @@ import {
 import { cn } from "@/lib/utils";
 import * as notify from "@/lib/notify";
 import { fetchSessionsOnce, invalidateSessions } from "@/lib/sessions-cache";
+import { startBuildCheck } from "@/lib/build-check";
 import { ChatLanding } from "./components/chat-landing";
 import { ThemeToggle, ThemeIconButton } from "./components/theme-toggle";
 import { ChatsPanel } from "./components/chats-panel";
@@ -131,6 +133,7 @@ function LoginScreen({ password, setPassword, clearError, error, busy, submit }:
   password: string; setPassword: (v: string) => void; clearError: () => void;
   error: string; busy: boolean; submit: (e: FormEvent) => void;
 }) {
+  const { name: brandName } = useBrand();
   const [showPw, setShowPw] = useState(false);
   return (
     <div className="fixed inset-0 overflow-hidden bg-void font-sans">
@@ -147,8 +150,8 @@ function LoginScreen({ password, setPassword, clearError, error, busy, submit }:
           <div className="mb-10 text-center">
             <div className="flex items-center justify-center gap-4">
               <img
-                src="/astra-logo.png"
-                alt="Astra"
+                src={brandIcon(32)}
+                alt={brandName}
                 className="h-[38px] w-[38px] object-contain drop-shadow-[0_0_14px_color-mix(in_srgb,var(--color-accent)_35%,transparent)]"
               />
               <h1 className="font-display text-[38px] leading-none tracking-tight text-brandtext">
@@ -285,6 +288,9 @@ function useUnreadTotal() {
 
 function Shell({ onLogout }: { onLogout: () => void }) {
   useMobileViewport();
+  // Client update check: the CF edge pins index.html for a year, so a running
+  // bundle must poll /api/build-id and reload itself when a deploy happens.
+  startBuildCheck();
   const unreadTotal = useUnreadTotal();
   // Mobile signal (owner 10-05): rail-mode badges render ONLY on mobile
   // drawer + the Android app — never on a desktop collapsed rail, where the
@@ -374,7 +380,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
         <button type="button" onClick={() => setDrawerOpen(true)}
           aria-label="Open navigation" aria-expanded={drawerOpen} aria-controls="astra-sidebar"
           className="flex h-11 w-11 items-center justify-center rounded-lg p-1 hover:bg-white/5">
-          <img src="/astra-logo.png" alt="" aria-hidden="true" className="h-8 w-8 object-contain" />
+          <img src={brandIcon(32)} alt="" aria-hidden="true" className="h-8 w-8 object-contain" />
         </button>
         {unreadTotal > 0 && (
           <span className="ast-unread-badge ast-unread-badge-mobile"
@@ -398,7 +404,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
           onCloseDrawer={closeDrawer}
           onToggleCollapse={toggleSidebar}
           onLogout={() => { closeDrawer(); onLogout(); }}
-          onSelectSession={(id) => { setSelectedSessionId(id); setView('chat'); }}
+          onSelectSession={(id) => { setSelectedSessionId(id); setActiveSessionId(id); setView('chat'); }}
           onEndSession={async (id) => {
             // End session now lives in the sidebar row menu (owner 10-02, moved
             // off the chat header). The API call lives here because only Shell
@@ -418,6 +424,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
               if (id === activeSessionId) {
                 setResetSignal((r) => r + 1);
                 setSelectedSessionId(null);
+                setActiveSessionId(null);
                 setView("chat");
               }
             }
@@ -434,7 +441,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
         <div className={cn("flex flex-1 flex-col overflow-hidden", view !== 'chat' && "hidden")}>
           <ChatLanding resetSignal={resetSignal} selectedSessionId={selectedSessionId} onSessionChange={setActiveSessionId}
             isActiveView={view === 'chat'}
-            onNewChat={() => { setResetSignal(r => r + 1); setView('chat'); setSelectedSessionId(null); }}
+            onNewChat={() => { setResetSignal(r => r + 1); setView('chat'); setSelectedSessionId(null); setActiveSessionId(null); }}
             onOpenNav={() => setDrawerOpen(true)} />
         </div>
         {view === 'files' && (
@@ -473,6 +480,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
 }
 
 function Sidebar({ activeView, collapsed, drawerOpen, isMobile: isMobileProp, activeSessionId, onCloseDrawer, onToggleCollapse, onLogout, onSelectSession, onEndSession, onOpenTracker, onOpenConfig, onOpenApprovals, onOpenVault, onOpenContext, onOpenMemory, onOpenHarness, onOpenTraining }: { activeView: 'chat' | 'files' | 'tracker' | 'config' | 'approvals' | 'vault' | 'context' | 'memory' | 'harness' | 'training' | 'job'; collapsed: boolean; drawerOpen: boolean; isMobile?: boolean; activeSessionId: string | null; onCloseDrawer: () => void; onToggleCollapse: () => void; onLogout: () => void; onSelectSession: (id: string) => void; onEndSession?: (id: string) => Promise<void>; onOpenTracker?: () => void; onOpenConfig?: () => void; onOpenApprovals?: () => void; onOpenVault?: () => void; onOpenContext?: () => void; onOpenMemory?: () => void; onOpenHarness?: () => void; onOpenTraining?: () => void; }) {
+  const { name: brandName } = useBrand();
   const [mode, setMode] = useState<'nav' | 'chats' | 'files'>('nav');
 
   const asideChatsRef = useRef<HTMLElement>(null);
@@ -681,13 +689,13 @@ function Sidebar({ activeView, collapsed, drawerOpen, isMobile: isMobileProp, ac
               // outright, so the touch target grows rather than being traded away.
               !expanded && "grid h-full w-full place-content-center",
             )}>
-            <img src="/astra-logo.png" alt="Astra"
+            <img src={brandIcon(32)} alt={brandName}
               className="h-7 w-7 shrink-0 rounded-lg object-cover" />
           </button>
         </span>
         {expanded && (
           <div className="min-w-0">
-            <p className="truncate font-display text-sm font-semibold tracking-tight text-brandtext">Astra</p>
+            <p className="truncate font-display text-sm font-semibold tracking-tight text-brandtext">{brandName}</p>
             <p className="truncate font-mono text-[8px] uppercase tracking-[0.3em] text-accent/60">Command Center</p>
           </div>
         )}
