@@ -315,6 +315,11 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId, onEndSession }: 
   useEffect(() => {
     const applyText = (sid: string, text: string) => {
       if (!sid || !text) return;
+      // The kickoff turn DOES complete with the greet text on the wire — never
+      // let the live patch re-introduce it into a row the server already
+      // filtered (owner 10-06 "some chats show empty": the greet landed back
+      // on top of a good last_reply through this very path).
+      if (/^New chat just started\./.test(text.trim())) return;
       setSessions((rows) => rows.map((r) => (rowKey(r) === sid ? { ...r, last_reply: text.length > 220 ? text.slice(0, 219) + "…" : text } : r)));
     };
     const onPreview = (e: Event) => {

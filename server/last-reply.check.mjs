@@ -18,25 +18,28 @@ test("skips tool calls, thinking and scaffolding rows", () => {
   assert.equal(responseText({ role: "assistant", content: "[tool_call] terminal ran ls" }), "");
   assert.equal(responseText({ role: "assistant", content: "[Surface: replayed from telegram]" }), "");
   assert.equal(responseText({ role: "assistant", content: "   " }), "");
-  assert.equal(responseText({ role: "user", content: "a user message" }), "");
+  // Owner 10-06: USER rows are now PREVIEWABLE ("the last message from Astra
+  // or me") — an interrupted turn whose newest real row is the user's message
+  // must show it, not a stale reply from an earlier exchange.
+  assert.equal(responseText({ role: "user", content: "a user message" }), "a user message");
 });
 
 test("falls through a tool-only newest row to the real response beneath it", () => {
   const rows = [
     { role: "assistant", content: "the real reply" },
-    { role: "user", content: "next ask" },
     { role: "assistant", content: "[tool_result] ok" },
   ];
   assert.equal(lastResponseFrom(rows), "the real reply");
 });
 
-test("a user message after the last response does not become the preview", () => {
-  // host pages back from the newest; the trailing user turn is the newest row
+test("the newest real row wins even when the user spoke last (owner 10-06)", () => {
+  // interrupted turn, queued follow-up, or a chat awaiting the reply: the user
+  // IS the latest activity — the row shows their message.
   const rows = [
     { role: "assistant", content: "my answer" },
     { role: "user", content: "my next question" },
   ];
-  assert.equal(lastResponseFrom(rows), "my answer");
+  assert.equal(lastResponseFrom(rows), "my next question");
 });
 
 test("accepts text/display_content shapes and trims + caps length", () => {

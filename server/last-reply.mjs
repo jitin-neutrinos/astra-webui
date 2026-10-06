@@ -35,19 +35,24 @@ const SCAFFOLD = /^\[(surface|system|runtime note|context compaction)\b/i;
 // The auto-greet kickoff is a UI convention, mirrors src/lib/notify.ts GREET_RE.
 const GREET = /^New chat just started\./;
 
-/** Assistant text that is a real response, not scaffolding / tool / thinking. */
+/** Assistant-or-user text that is a real message, not scaffolding/tool/thinking.
+ *  Owner 10-06 ("a lot of them still show empty"): the scan used to take only
+ *  ASSISTANT rows. A chat whose 40-row window is tool-call/tool-result rows
+ *  (or one where the USER spoke last — interrupted turn, queued follow-up)
+ *  found nothing, fell back to the gateway preview = the greet kickoff = a
+ *  BLANK row. The owner's spec is "the last message from Astra or me": scan
+ *  both roles, newest first. */
 function responseText(m) {
-  if (!m || m.role !== "assistant") return "";
+  if (!m || (m.role !== "assistant" && m.role !== "user")) return "";
   const raw = typeof m.text === "string" ? m.text
     : typeof m.content === "string" ? m.content
     : typeof m.display_content === "string" ? m.display_content
     : "";
-  const t = (raw || "").replace(/\s+/g, " ").trim();
+  let t = (raw || "").replace(/\s+/g, " ").trim();
   if (!t) return "";
-  if (SCAFFOLD.test(t)) return "";
-  // tool-call-only assistant rows serialize their calls, not prose
   if (/^\[tool_(call|result)\b/i.test(t)) return "";
-  // The greet itself never counts as the last reply
+  if (SCAFFOLD.test(t)) return "";
+  // The greet itself never counts as the last reply (either side)
   if (GREET.test(t)) return "";
   return t;
 }
