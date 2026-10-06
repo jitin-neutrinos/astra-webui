@@ -6785,6 +6785,47 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
 .ast-cv-schema-table { min-width: 0; }
 .ast-cv-schema-cols { min-width: 100%; }
 
+/* Owner 10-06: the live row status replaces the sub text IN PLACE — the
+   same 10.5px/muted box, zero extra padding or height (the old AITextLoading
+   wrapper's px-4 py-2 text-sm centered geometry inflated the row card).
+   Shimmer = the chat streaming gradient sweeping once every ~2.5s. */
+.ast-row-live-shimmer {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+  background: linear-gradient(90deg,
+    rgb(var(--c-8) / 0.55) 0%,
+    rgb(var(--c-10) / 0.95) 45%,
+    rgb(var(--c-11) / 0.95) 55%,
+    rgb(var(--c-8) / 0.55) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: row-live-shimmer 2.5s linear infinite;
+}
+.ast-row-live-think { animation-duration: 2.5s; }
+[data-theme="light"] .ast-row-live-shimmer {
+  background: linear-gradient(90deg,
+    rgb(var(--light-c-8) / 0.45) 0%,
+    rgb(var(--light-c-10) / 0.95) 50%,
+    rgb(var(--light-c-8) / 0.45) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+@keyframes row-live-shimmer {
+  0% { background-position: 200% center; }
+  100% { background-position: -200% center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ast-row-live-shimmer { animation: none; color: var(--color-accent); }
+  [data-theme="light"] .ast-row-live-shimmer { color: rgb(var(--light-c-33) / 1); }
+}
+
 /* Owner 10-06: a last reply that WAS a canvas card reads as an affordance,
    not as body text — accent ink, slightly brighter than the muted sub. */
 .ast-row-sub.ast-row-canvas {

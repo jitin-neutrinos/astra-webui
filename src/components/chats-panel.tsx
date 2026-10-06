@@ -10,8 +10,8 @@ import { cleanTitle } from "@/lib/chat-title";
 import { getUnreadCount, seedFromServer, storedKeyFor } from "@/lib/notify";
 import { rowKey, rowTime, timeAgo, sortRows, mergeRows, type SessionRow } from "@/lib/session-row";
 import { inlineMarkdownHtml, isCanvasPreview, isGreetPreview } from "@/lib/row-inline";
+import { cn } from "@/lib/utils";
 import { UnreadPill } from "./ui/unread-pill";
-import AITextLoading from "@/components/ui/ai-text-loading";
 import { CheckCheck } from "lucide-react";
 
 // Brand glyphs — single-color currentColor marks, no third-party assets.
@@ -108,11 +108,16 @@ const RowSub = memo(function RowSub({ s, inSearch, running, thinking }: {
     : greet ? ""
     : isCanvasPreview(s.last_reply) ? "Open to read canvas card →"
     : s.last_reply || s.preview || "";
-  const isCanvas = isCanvasPreview(s.last_reply);
+  const isCanvas = isCanvasPreview(s.last_reply) && !greet;
   return (
     <div className={"ast-row-sub truncate" + (isCanvas ? " ast-row-canvas" : "")}>
       {live ? (
-        <AITextLoading texts={thinking ? ["Thinking…", "Reasoning…"] : ["Working…", "Almost there…"]} />
+        // Same box, same ink, one line: the shimmer runs on the EXACT sub-line
+        // geometry (10.5px, no padding, left-aligned) — the old AITextLoading
+        // wrapper (px-4 py-2 text-sm centered) inflated the row (owner 10-06).
+        <span className={cn("ast-row-live-shimmer", thinking ? "ast-row-live-think" : "ast-row-live-work")}>
+          {thinking ? "Thinking…" : "Working…"}
+        </span>
       ) : isCanvas ? "Open to read canvas card →" : (
         <span dangerouslySetInnerHTML={{ __html: inlineMarkdownHtml(body) }} />
       )}
