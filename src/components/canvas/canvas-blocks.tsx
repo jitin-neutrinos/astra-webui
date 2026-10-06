@@ -1,10 +1,11 @@
+import { numberMathFamily } from "../../lib/math-numbering";
 // Canvas block renderers — the individual generative-UI surfaces. Pure
 // presentational; data contracts live in canvas-schema.ts. Lazy-loaded as a
 // chunk with CanvasView (recharts never enters the main bundle).
 import { useEffect, useMemo, useState, lazy, Suspense, Fragment } from "react";
 import { useReducedMotion, useSpring, motion } from "motion/react";
 import { cn } from "../../lib/utils";
-import { cssColorOf } from "../../lib/color-chip";
+import { cssColorOf, contrastVerdict } from "../../lib/color-chip";
 import { AREAS, bentoLayout } from "../../lib/bento";
 import { bindNumber, bindPoints, bindVisible, resolveBinding, resolveFrom, type FromBinding, type DataRow } from "../../lib/canvas-bind";
 import { useCanvasStateVersion, useCanvasScope, useCanvasSeeder, type StateValue } from "./canvas-state";
@@ -13,6 +14,7 @@ import { useCanvasStateVersion, useCanvasScope, useCanvasSeeder, type StateValue
 export interface RenderCtx {
   scope: Record<string, unknown>;
   datasets: Map<string, DataRow[]>;
+  mathMap?: Map<object, { family: "eq" | "thm" | "alg", n: number }>;
 }
 
 const isBinding = (v: unknown): boolean => v != null && typeof v === "object";
@@ -248,8 +250,8 @@ export function TableBlockView({ block, ctx }: { block: TableBlock; ctx?: Render
       cols.map(
         (_, j) =>
           rows.length > 0 &&
-          rows.filter((r) => r[j] && r[j].trim() !== "").length >= Math.ceil(rows.length * 0.7) &&
-          rows.every((r) => !r[j] || r[j].trim() === "" || /^[\d.,%+\-$€£₹¥\s]+$/.test(r[j].trim())),
+          rows.filter((r) => r[j] != null && String(r[j]).trim() !== "").length >= Math.ceil(rows.length * 0.7) &&
+          rows.every((r) => r[j] == null || String(r[j]).trim() === "" || /^[\d.,%+\-$€£₹¥\s]+$/.test(String(r[j]).trim())),
       ),
     [cols, rows],
   );
@@ -266,7 +268,8 @@ export function TableBlockView({ block, ctx }: { block: TableBlock; ctx?: Render
   // actually RENDERED (reactive rows included), so a bound table summarises what
   // the reader sees. `tableStats` returns undefined when no column is numeric, so
   // a text table with `stats` set simply has no footer.
-  const stats = tableStats(cols, rows, block.stats);
+  const strRows = rows.map(r => r.map(c => c != null ? String(c) : ""));
+  const stats = tableStats(cols, strRows, block.stats);
 
   return (
     <div className="ast-cv-table-wrap">
@@ -716,24 +719,215 @@ export function HeatmapView({ block }: { block: HeatmapBlock }) {
 // katex lives in a lazy chunk. Until it lands — and forever, if it fails to — the
 // formula is painted as its own SOURCE in the danger role, which is the honest
 // degradation: a reader can see and correct the TeX.
-function MathView({ block }: { block: MathBlock }) {
+
+function TheoremView({ block, ctx }: { block: Extract<CanvasBlock, { type: "theorem" }>; ctx?: RenderCtx }) {
+  const n = ctx?.mathMap?.get(block)?.n;
+  const num = n ? ` ${n}` : (block.number ? ` ${block.number}` : "");
+  return (
+    <div className="ast-cv-theorem">
+      <div className="ast-cv-theorem-head">
+        <strong>{block.kind}{num}</strong>
+        {block.refs && block.refs.length > 0 && (
+          <span className="ast-cv-theorem-refs">{block.refs.join(", ")}</span>
+        )}
+      </div>
+      <div className="ast-cv-theorem-statement">{block.statement}</div>
+      {block.proof && (
+        <details className="ast-cv-theorem-proof" open>
+          <summary>Proof</summary>
+          <div className="ast-cv-theorem-proof-body">{block.proof}</div>
+        </details>
+      )}
+    </div>
+  );
+}
+
+function AlgorithmView({ block, ctx }: { block: Extract<CanvasBlock, { type: "algorithm" }>; ctx?: RenderCtx }) {
+  const n = ctx?.mathMap?.get(block)?.n;
+  const num = n ? ` ${n}` : (block.number ? ` ${block.number}` : "");
+  return (
+    <div className="ast-cv-algorithm">
+      <div className="ast-cv-algorithm-head"><strong>Algorithm{num}</strong></div>
+      <div className="ast-cv-algorithm-steps">
+        {block.steps.map((s, i) => (
+          <div key={i} className="ast-cv-algorithm-step" style={{ paddingLeft: `${(s.indent || 0) * 1.5}rem` }}>
+            <span className="ast-cv-algorithm-gutter" style={{ userSelect: "none" }}>{i + 1}</span>
+            <span className="ast-cv-algorithm-text">{s.text}</span>
+            {s.complexity && <span className="ast-cv-algorithm-complexity">{s.complexity}</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
+
+
+
+function SchemaView({ block }: { block: Extract<CanvasBlock, { type: "schema" }> }) {
+  return (
+    <div className="ast-cv-schema">
+      {block.title && <div className="ast-cv-schema-title"><strong>{block.title}</strong></div>}
+      <div className="ast-cv-schema-tables">
+        {block.tables.map((t, i) => (
+          <div key={i} className="ast-cv-schema-table">
+            <div className="ast-cv-schema-table-head">
+              <strong>{t.name}</strong>
+              {t.rows !== undefined && <span>{t.rows} rows</span>}
+            </div>
+            <table className="ast-cv-schema-cols">
+              <tbody>
+                {t.columns.map((c, j) => (
+                  <tr key={j}>
+                    <td>{c.key ? <span className="ast-cv-schema-key">{c.key}</span> : null}</td>
+                    <td><strong>{c.name}</strong></td>
+                    <td>{c.type}</td>
+                    <td>{c.ref ? <span className="ast-cv-schema-ref">→ {c.ref}</span> : null}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const SequenceLazy = lazy(() => import("./canvas-sequence.js"));
+
+function PaletteView({ block }: { block: Extract<CanvasBlock, { type: "palette" }> }) {
+  return (
+    <div className="ast-cv-palette">
+      {block.title && <div className="ast-cv-palette-title"><strong>{block.title}</strong>{block.against ? ` (against ${block.against})` : ""}</div>}
+      <div className="ast-cv-palette-grid">
+        {block.colors.map((c, i) => {
+          let verdict = null;
+          if (block.against) {
+            const v = contrastVerdict(c.value, block.against);
+            verdict = (v && v.level !== "Fail") ? "Pass" : "Fail";
+          }
+          return (
+            <div key={i} className="ast-cv-palette-color" style={{ backgroundColor: c.value }}>
+              <div className="ast-cv-palette-color-info">
+                <span>{c.name || c.value}</span>
+                {c.role && <span>{c.role}</span>}
+                {verdict && <span>{verdict}</span>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ScorecardView({ block }: { block: Extract<CanvasBlock, { type: "scorecard" }> }) {
+  return (
+    <div className="ast-cv-scorecard">
+      <div className="ast-cv-scorecard-head">
+        <strong>{block.title || "Scorecard"}</strong> <span>({block.method})</span>
+        {block.max && <span> [Max: {block.max}]</span>}
+      </div>
+      <div className="ast-cv-scorecard-items">
+        {block.items.map((item, i) => (
+          <div key={i} className="ast-cv-scorecard-item">
+            <span>{item.criterion}</span>
+            {item.score !== undefined && <span>{item.score}</span>}
+            {item.severity && <span className={`ast-cv-severity-${item.severity}`}>{item.severity}</span>}
+          </div>
+        ))}
+      </div>
+      {block.verdict && <div className="ast-cv-scorecard-verdict">Verdict: {block.verdict}</div>}
+    </div>
+  );
+}
+
+function ComplianceView({ block }: { block: Extract<CanvasBlock, { type: "compliance" }> }) {
+  return (
+    <div className="ast-cv-compliance">
+      <div className="ast-cv-compliance-head">
+        <strong>{block.regime}</strong>
+        {block.asOf && <span> (as of {block.asOf})</span>}
+      </div>
+      <table className="ast-cv-compliance-table">
+        <thead><tr><th>Ref</th><th>Provision</th><th>Obligation</th><th>Status</th></tr></thead>
+        <tbody>
+          {block.items.map((item, i) => (
+            <tr key={i}>
+              <td>{item.ref}</td>
+              <td>{item.provision}</td>
+              <td>{item.obligation}</td>
+              <td className={`ast-cv-status-${item.status}`}>{item.status}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ClauseView({ block }: { block: Extract<CanvasBlock, { type: "clause" }> }) {
+  return (
+    <div className="ast-cv-clause">
+      {block.title && <div className="ast-cv-clause-title"><strong>{block.title}</strong></div>}
+      <div className="ast-cv-clause-items">
+        {block.items.map((item, i) => (
+          <div key={i} className="ast-cv-clause-item">
+            <span className="ast-cv-clause-ref" style={{ userSelect: "all" }}>{item.ref}</span>
+            <span className="ast-cv-clause-text">
+              {item.heading && <strong>{item.heading} </strong>}
+              {item.text}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ObligationsView({ block }: { block: Extract<CanvasBlock, { type: "obligations" }> }) {
+  return (
+    <div className="ast-cv-obligations">
+      {block.title && <div className="ast-cv-obligations-title"><strong>{block.title}</strong></div>}
+      <table className="ast-cv-obligations-table">
+        <thead><tr><th>Party</th><th>Obligation</th><th>Due</th></tr></thead>
+        <tbody>
+          {block.rows.sort((a, b) => (a.due || "").localeCompare(b.due || "")).map((r, i) => (
+            <tr key={i}>
+              <td>{r.party}</td>
+              <td>{r.obligation}</td>
+              <td>{r.due}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function MathView({ block, ctx }: { block: MathBlock; ctx?: RenderCtx }) {
+  const n = ctx?.mathMap?.get(block)?.n;
+  const nStr = n ? ` (${n})` : "";
+  const combinedTex = block.lines ? `\\begin{aligned}\n${block.lines.map((l: any) => l.tex).join("\\\\\n")}\n\\end{aligned}` : (block.tex || "");
   const [html, setHtml] = useState<string | null>(null);
   const display = block.display !== false;
   useEffect(() => {
     let alive = true;
     setHtml(null);
     void import("./canvas-math")
-      .then((m) => m.renderMath(block.tex, display))
+      .then((m) => m.renderMath(combinedTex, display))
       .then((out) => { if (alive) setHtml(out); })
       .catch(() => { if (alive) setHtml(null); });
     return () => { alive = false; };
-  }, [block.tex, display]);
+  }, [combinedTex, display]);
   return (
     <figure className={cn("ast-cv-math", display && "display")}>
       {html
         ? <div dangerouslySetInnerHTML={{ __html: html }} />
-        : <pre className="ast-cv-math-bad">{block.tex}</pre>}
-      {block.label && <figcaption className="ast-cv-math-label">{block.label}</figcaption>}
+        : <pre className="ast-cv-math-bad">{combinedTex}</pre>}
+      {(block.label || nStr) && <figcaption className="ast-cv-math-label">{block.label || "Equation"}{nStr}</figcaption>}
     </figure>
   );
 }
@@ -954,10 +1148,12 @@ export function Blocks({
   const scope = useCanvasScope();
   const localReactive = useMemo(() => blocks.some(isReactiveBlock), [blocks]);
   const localDatasets = useMemo(() => collectData(blocks), [blocks]);
+  
   // Inherited context wins (nested entry): the datasets must be the ROOT card's
   // — a `data` carrier rendered before the tab is invisible to a tab-local
   // collectData — and the scope has to be the same store the controls write.
-  const fullCtx: RenderCtx | undefined = ctx ?? (localReactive ? { scope, datasets: localDatasets } : undefined);
+  const localMathMap = useMemo(() => numberMathFamily(blocks), [blocks]);
+  const fullCtx: RenderCtx | undefined = ctx ?? (localReactive ? { scope, datasets: localDatasets, mathMap: localMathMap } : { scope: {} as any, datasets: localDatasets, mathMap: localMathMap });
   const groups: CanvasBlock[][] = [];
   let rowRun: CanvasBlock[] = [];
   const flush = () => { if (rowRun.length > 0) { groups.push(rowRun); rowRun = []; } };
@@ -1052,7 +1248,22 @@ function renderOne(b: CanvasBlock, id: string, bi: number, ctx?: RenderCtx): Rea
     case "heatmap": return <HeatmapView block={b} />;
     case "tabs": return <TabsView block={b} ctx={ctx} />;
     case "layout": return <LayoutView block={b} ctx={ctx} />;
-    case "math": return <MathView block={b} />;
+    case "palette": return <PaletteView block={b} />;
+    case "scorecard": return <ScorecardView block={b} />;
+    case "compliance": return <ComplianceView block={b} />;
+    case "clause": return <ClauseView block={b} />;
+    case "obligations": return <ObligationsView block={b} />;
+    case "schema": return <SchemaView block={b} />;
+    case "sequence": return <Suspense fallback={<div className="ast-cv-chart-skeleton" aria-busy="true" />}><SequenceLazy block={b} /></Suspense>;
+    case "math": return <MathView block={b} ctx={ctx} />;
+    case "theorem": return <TheoremView block={b} ctx={ctx} />;
+    case "algorithm": return <AlgorithmView block={b} ctx={ctx} />;
+    case "sequence":
+      return (
+        <Suspense fallback={<div className="ast-cv-chart ast-cv-graph-skeleton" aria-busy="true" />}>
+          <SequenceLazy block={b} />
+        </Suspense>
+      );
     case "gitgraph":
       return (
         <Suspense fallback={<div className="ast-cv-git ast-cv-graph-skeleton" aria-busy="true" />}>

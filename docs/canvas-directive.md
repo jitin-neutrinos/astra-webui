@@ -517,4 +517,38 @@ Map the request to its stream and compose blocks in this order:
 - **INCIDENT / POST-MORTEM**: `callout danger(root cause + blast radius) → timeline(what happened when, disproven hypotheses as fail) → gitgraph(the fix's branch history, if the fix merged) → table(affected rows, stats:{compute:["max","p95"]}) → steps(one active) → callout warn(conditions, never people)`.
 - **RESEARCH**: `badges(sources count) → callout(answer first) → kpi×3(key numbers) → table(claim, evidence, confidence) → callout warn(what would change it) → references(real hrefs)`.
 
+## Colour values render as swatches (2026-10-06)
 
+A colour code that is a WHOLE `table` cell or `keyvalue` value — `#020C1B`,
+`rgb(1 2 3)`, `oklch(0.7 0.1 30)` — renders as a swatch dot painted with that
+literal colour plus the code beside it. So a palette / design-token report is
+simply a table of code values: one code per cell, nothing else in the cell.
+
+- **Whole-string match only.** "Navy — #020C1B" in one cell renders as text —
+  split name and code into two columns. Deliberate: "issue #123456" is a ticket
+  reference and must never be painted.
+- The swatch colour is the literal authored value (DATA), not a theme token —
+  exactly what a colour report must show.
+- Recognised: hex 3/6/8-digit and functional notations (rgb/rgba, hsl/hsla,
+  hwb, lab, lch, oklab, oklch, color(...)). 4-digit hex is rejected
+  (ticket-collision class).
+- Never fake swatches with emoji squares or colored text; never describe colour
+  codes in prose when a cell or key/value value can carry them.
+- Contrast verdicts and the designed `palette` block (token → value →
+  derivation → WCAG verdict) arrive with the Wave-1 block set; this rule covers
+  every table/keyvalue today.
+
+
+\n
+## Requirement → stream routing table
+
+| the ask | reach for |
+|---|---|
+| legal report / contract review | clause, obligations, compliance, references.cite, timeline(ref/party) |
+| UX / design-token report | palette, scorecard, table.colTypes(color/contrast), heatmap |
+| paper / methods section | theorem, algorithm, math(number/lines), chart(errorbar), figure captions via image.caption |
+| DB / schema report | schema, tree(size/lines/kind), keyvalue(mono) |
+| wiring / integration | sequence, diagram(flow), table |
+| stats / clinical results | chart errorbar + refline + p, table sig + units + footnote, heatmap diverging |
+| commerce / trading | chart candlestick, waterfall, table delta/units |
+\n

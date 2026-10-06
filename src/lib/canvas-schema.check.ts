@@ -1922,7 +1922,7 @@ test("tree: detail + children survive the sanitizer (they used to be dropped)", 
 // The layers are NOT redundant, and which one rejects what is measured, not
 // assumed: the PARSER rejects a dangling child and an over-long node list (both
 // measured null below), while the SANITIZER is what collapses duplicate ids and
-// enforces the 100-node cap. Both are asserted so neither can silently change.
+// enforces the 1200-node cap. Both are asserted so neither can silently change.
 test("tree: a dangling child is rejected by the PARSER, never passed to the renderer", () => {
   assert.equal(tree({ type: "tree", nodes: [{ id: "a", label: "A", children: ["ghost"] }] }), null,
     "a child id that does not exist is an invalid tree");
@@ -1936,7 +1936,7 @@ test("tree: a dangling child is rejected by the PARSER, never passed to the rend
   assert.doesNotThrow(() => tree({ type: "tree", nodes: [{ id: "a", label: "A", children: "nope" }] }));
 });
 
-test("tree: the sanitizer collapses duplicate ids and enforces the 100-node cap", () => {
+test("tree: the sanitizer collapses duplicate ids and enforces the 1200-node cap", () => {
   // A duplicate id is NOT a parse error, so the sanitizer is what stops the second
   // row: React would key both to the same id and the tree would lose a row.
   const s = sanitizeCanvasSpec(tree({
@@ -1948,10 +1948,10 @@ test("tree: the sanitizer collapses duplicate ids and enforces the 100-node cap"
   // fine), so the 100-node cap is the SANITIZER's alone — which is why it is
   // asserted here and not assumed from the parser. (A 140-node list whose last
   // node names a child DOES fail to parse, because that child does not exist.)
-  const many = tree({ type: "tree", nodes: Array.from({ length: 140 }, (_, i) => ({ id: `n${i}`, label: `n${i}` })) });
+  const many = tree({ type: "tree", nodes: Array.from({ length: 1250 }, (_, i) => ({ id: `n${i}`, label: `n${i}` })) });
   assert.ok(many, "the parser does not cap the node list");
   const s2 = sanitizeCanvasSpec(many!) as any;
-  assert.equal(s2.blocks[0].nodes.length, 100, "the sanitizer caps at 100");
+  assert.equal(s2.blocks[0].nodes.length, 1200, "the sanitizer caps at 100");
   assert.equal(tree({
     type: "tree", nodes: Array.from({ length: 140 }, (_, i) => ({ id: `n${i}`, label: `n${i}`, children: [`n${i + 1}`] })),
   }), null, "a dangling child still rejects the card, however deep");

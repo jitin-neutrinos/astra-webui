@@ -21,3 +21,26 @@ export function cssColorOf(value: unknown): string | null {
   if (s === "") return null;
   return HEX_3_6_8.test(s) || FUNC.test(s) || COLOR_SPACE.test(s) ? s : null;
 }
+
+
+import { contrastRatio } from "./color-engine";
+
+export function wcagRatio(fg: string, bg: string): number | null {
+  const r = contrastRatio(fg, bg);
+  return r === null ? null : Math.round(r * 100) / 100;
+}
+
+export function contrastVerdict(fg: string, bg: string): { wcag: number; level: "AAA" | "AA" | "AA-Large" | "Fail" } | null {
+  const r = contrastRatio(fg, bg);
+  if (r === null) return null;
+  const ratio = Math.round(r * 100) / 100;
+  let level: "AAA" | "AA" | "AA-Large" | "Fail" = "Fail";
+  if (ratio >= 7) level = "AAA";
+  else if (ratio >= 4.5) level = "AA";
+  else if (ratio >= 3) level = "AA-Large";
+  return { wcag: ratio, level };
+}
+
+export async function apcaLc(_fg: string, _bg: string): Promise<number | null> {
+  return null;
+}

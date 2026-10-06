@@ -35,31 +35,39 @@ export interface ChartBlock {
     // bar path. Both take the ordinary `{labels, series[].points}` shape — a box
     // is one series per group, a histogram is one series of raw samples — so
     // neither needs a new authoring key.
-    | "box" | "histogram";
+    | "box" | "histogram" | "errorbar" | "candlestick" | "waterfall" | "violin";
   title?: string;
   labels?: string[];
   series: {
     name: string;
-    /** Reactive cards may author a BINDING here; it resolves at render time.
-     *  A scatter series may carry [x, y] PAIRS (normalised below); every other chart is a flat number list. */
     points: number[];
     items?: { name: string; value: number }[];
-    /** sankey only: the authored edges, preserved so the flow keeps its shape */
     links?: { source: string; target: string; value: number }[];
-    /** Hide one series while the card's state says so. */
+    ohlc?: number[][];
+    error?: { lo: number[]; hi: number[] };
+    waterfallKinds?: string[];
+    kde?: { x: number; y: number }[];
     visible?: unknown;
   }[];
+  scale?: string;
+  p?: number;
+  refline?: { value: number; tone?: string; label?: string };
 }
 
 export interface TableBlock {
   type: "table";
   columns: string[];
-  rows: string[][];
+  rows: (string | number | boolean | null)[][];
   /** Reactive: rows come from a `data` carrier through this reader. */
   bind?: unknown;
   /** Renderer-computed summary footer. The MODEL NEVER does this arithmetic:
    *  ask for the statistics instead of inventing a mean in prose. */
   stats?: TableStats;
+  colTypes?: ("text" | "color" | "contrast" | "bar" | "delta" | "status")[];
+  colMeta?: ({ levels?: string[] } | null)[];
+  footnote?: string;
+  sig?: { column: string; thresholds?: number[] };
+  units?: string[];
 }
 
 /** The summary statistics `table.stats` may request. All computed in the
@@ -115,7 +123,7 @@ export interface DiagramEdge {
 
 export interface ChecklistBlock {
   type: "checklist";
-  items: { text: string; status?: "done" | "open" | "fail" }[];
+  items: { text: string; status?: "done" | "open" | "fail"; severity?: "critical" | "high" | "medium" | "low"; due?: string; ref?: string; consequence?: string }[];
 }
 
 export interface StepsBlock {
@@ -158,7 +166,10 @@ export interface CompareBlock {
 
 export interface TreeBlock {
   type: "tree";
-  nodes: { id: string; label: string; detail?: string; children?: string[] }[];
+  nodes: { id: string; label: string; detail?: string; children?: string[]; size?: number; lines?: number; kind?: string }[];
+  sort?: "manual" | "name" | "size" | "kind";
+  defaultDepth?: number;
+  pruned?: boolean;
 }
 
 export interface CodeBlock {
@@ -172,7 +183,7 @@ export interface CodeBlock {
 
 export interface ReferencesBlock {
   type: "references";
-  items: { title: string; href?: string; note?: string }[];
+  items: { title: string; href?: string; note?: string; cite?: { case?: string; neutral?: string; reporter?: string; parallel?: string; scr?: string; pinpoints?: number[]; coram?: string[]; court?: string; date?: string; style?: "neutral-first" | "scc" | "scr" | "air" | "bluebook" } }[];
 }
 
 export interface QuoteBlock {
@@ -426,12 +437,69 @@ export interface GitGraphBlock {
   commits: GitCommit[];
 }
 
+
+export interface TheoremBlock {
+  type: "theorem";
+  kind: "lemma" | "proposition" | "corollary" | "theorem" | "proof";
+  statement: string;
+  proof?: string;
+  refs?: string[];
+  number?: number;
+}
+export interface AlgorithmBlock {
+  type: "algorithm";
+  steps: { text: string; indent?: number; complexity?: string }[];
+  number?: number;
+}
+
+export interface PaletteBlock {
+  type: "palette";
+  title?: string;
+  against?: string;
+  colors: { name?: string; value: string; role?: string; note?: string }[];
+  scale?: boolean;
+  space?: string;
+  radius?: boolean;
+  shadow?: boolean;
+}
+
+export interface ScorecardBlock {
+  type: "scorecard";
+  title?: string;
+  method: "heuristic" | "sus" | "rice" | "custom";
+  max?: number;
+  items: { criterion: string; score?: number; severity?: "info" | "warn" | "danger"; note?: string; evidence?: string }[];
+  verdict?: string;
+}
+
+export interface ComplianceBlock {
+  type: "compliance";
+  regime: string;
+  asOf?: string;
+  source?: string;
+  items: { ref: string; provision: string; obligation: string; due?: string; status: "pass" | "fail" | "warn" | "na" | "pending"; severity?: "info" | "warn" | "danger"; owner?: string; evidence?: string; consequence?: string; penalty?: string }[];
+}
+
+export interface ClauseBlock {
+  type: "clause";
+  title?: string;
+  items: { ref: string; heading?: string; text: string; children?: boolean; status?: string; risk?: "info" | "warn" | "danger"; flags?: string[]; playbook?: string; note?: string; source?: string }[];
+}
+
+export interface ObligationsBlock {
+  type: "obligations";
+  title?: string;
+  rows: { ref?: string; obligation: string; party: string; trigger?: string; due?: string; recurrence?: string; severity?: "info" | "warn" | "danger"; status?: string; consequence?: string; owner?: string; evidence?: string }[];
+}
+
 export interface MathBlock {
   type: "math";
-  tex: string;
+  tex?: string;
   /** Display (centred, own lines). Default true. */
   display?: boolean;
   label?: string;
+  number?: number | true;
+  lines?: { tex: string; number?: string }[];
 }
 
 
@@ -494,6 +562,26 @@ export interface TextBlock {
 
 // `visible` is accepted on EVERY block (json-render semantics: a binding gates
 // the whole block), so it rides on the union once instead of on 35 interfaces.
+
+export interface SchemaBlock {
+  type: "schema";
+  title?: string;
+  tables: {
+    name: string;
+    rows?: number;
+    columns: { name: string; type: string; key?: "PK" | "FK" | "NN" | "UQ"; ref?: string; note?: string }[];
+    indexes?: string[];
+    note?: string;
+  }[];
+}
+
+export interface SequenceBlock {
+  type: "sequence";
+  title?: string;
+  actors: { id: string; label: string; kind?: string }[];
+  messages: { from: string; to: string; label?: string; kind?: "sync" | "async" | "return" | "self"; at?: string }[];
+}
+
 export type CanvasBlock = (
   | KpiBlock | ChartBlock | TableBlock | DiagramBlock
   | ChecklistBlock | StepsBlock | CalloutBlock
@@ -504,7 +592,7 @@ export type CanvasBlock = (
   | SpreadsheetBlock | SlidesBlock | DocumentBlock | TextBlock
   | SliderBlock | SelectBlock | MultiSelectBlock | SegmentedBlock | ToggleBlock | SearchBlock | DataBlock
   | GraphBlock | ImageBlock | GalleryBlock | VideoBlock
-  | LayoutBlock | MathBlock | GitGraphBlock
+  | LayoutBlock | MathBlock | GitGraphBlock | TheoremBlock | AlgorithmBlock | PaletteBlock | ScorecardBlock | ComplianceBlock | ClauseBlock | ObligationsBlock | SchemaBlock | SequenceBlock
 ) & { visible?: unknown };
 
 export interface CanvasSpec {
@@ -536,9 +624,9 @@ const BLOCK_TYPES = new Set([
   "slider", "select", "multiselect", "segmented", "toggle", "search", "data",
   "graph", "image", "gallery", "video",
   // canvas v1 expansion
-  "layout", "math", "gitgraph",
+  "layout", "math", "gitgraph", "theorem", "algorithm", "palette", "scorecard", "compliance", "clause", "obligations", "schema", "sequence",
 ]);
-const CHART_KINDS = new Set(["line", "area", "bar", "radial", "pie", "donut", "stack", "sankey", "treemap", "funnel", "radar", "scatter", "box", "histogram"]);
+const CHART_KINDS = new Set(["line", "area", "bar", "radial", "pie", "donut", "stack", "sankey", "treemap", "funnel", "radar", "scatter", "box", "histogram", "errorbar", "candlestick", "waterfall", "violin"]);
 const TONES = new Set(["info", "warn", "success", "danger"]);
 // `table.stats` requests. A closed set for the same reason CHART_KINDS is: an
 // unknown statistic name is dropped, so the renderer never has to guess.
@@ -703,7 +791,7 @@ export function validateBlock(b: any): CanvasBlock | null {
   return v;
 }
 
-function validateBlockInner(b: any): CanvasBlock | null {
+export function validateBlockInner(b: any): CanvasBlock | null {
   if (!b || typeof b !== "object" || !isStr(b.type)) return null;
   // Aliases: models reach for near-miss names. Accept the obvious ones instead
   // of dropping the block (and, before per-block tolerance, the whole card).
@@ -770,6 +858,8 @@ function validateBlockInner(b: any): CanvasBlock | null {
         spark: isBind(b.spark) ? (b.spark as unknown as number[]) : spark,
       };
     case "chart": {
+      if (b.chart === "candles" || b.chart === "ohlc") b.chart = "candlestick";
+      if (b.chart === "bridge") b.chart = "waterfall";
       if (!CHART_KINDS.has(b.chart)) return null;
       const chart = b.chart;
       const NEW_KINDS = chart === "sankey" || chart === "treemap" || chart === "funnel" ||
@@ -839,7 +929,20 @@ function validateBlockInner(b: any): CanvasBlock | null {
             kids.push({ name: label, value });
           }
           const series = [{ name: isStr(b.title) ? b.title : chart, points, items: kids }];
-          return { type: "chart", chart, title: isStr(b.title) ? b.title : undefined, labels, series };
+          return {
+            type: "chart",
+            chart,
+            title: isStr(b.title) ? b.title : undefined,
+            labels,
+            series,
+            scale: isStr(b.scale) ? b.scale : undefined,
+            p: typeof b.p === "number" ? b.p : undefined,
+            refline: b.refline && typeof b.refline === "object" && typeof b.refline.value === "number" ? {
+              value: b.refline.value,
+              tone: isStr(b.refline.tone) ? b.refline.tone : undefined,
+              label: isStr(b.refline.label) ? b.refline.label : undefined
+            } : undefined
+          };
         }
       }
 
@@ -850,6 +953,9 @@ function validateBlockInner(b: any): CanvasBlock | null {
         // points: a numeric array (canonical) OR a binding — a bound series
         // keeps its binding in `points`, exactly where the renderer looks.
         const bound = isBind(s.points);
+        const hasOhlc = Array.isArray(s.ohlc);
+        const hasKde = Array.isArray(s.kde);
+        const hasError = s.error && typeof s.error === "object" && Array.isArray(s.error.lo) && Array.isArray(s.error.hi);
         // SCATTER: the natural data is PAIRS. A model writes [[x, y], …] or [{x, y}, …]; both used to fail the
         // numeric-array test below and silently DROP the whole card ("Latency vs payload is blank"). Normalise
         // them to canonical [x, y] pairs, which the renderer reads. Every other chart still demands numbers.
@@ -862,10 +968,10 @@ function validateBlockInner(b: any): CanvasBlock | null {
           if (pairs.every((p) => p !== null)) pts = pairs;
         }
         const isPairs = chart === "scatter" && Array.isArray(pts) && pts.length > 0 && (pts as unknown[]).every((p) => Array.isArray(p));
-        if (!bound && !isPairs && (!Array.isArray(pts) || !(pts as unknown[]).every(isNum))) return null;
+        if (!bound && !isPairs && (!Array.isArray(pts) || !(pts as unknown[]).every(isNum)) && !hasOhlc && !hasKde && !hasError) return null;
         const kids = Array.isArray(s.items)
           ? s.items.filter((it: any) => it && (isStr(it.name) || isStr(it.label)) && isNum(it.value))
-              .map((it: any) => ({ name: isStr(it.name) ? it.name : it.label, value: it.value }))
+              .map((it: any) => ({ name: isStr(it.name) ? it.name : it.label, value: it.value, kind: isStr(it.kind) ? it.kind : undefined }))
           : undefined;
         const links = Array.isArray(s.links)
           ? s.links.filter((l: any) => l && isStr(l.source) && isStr(l.target))
@@ -874,12 +980,29 @@ function validateBlockInner(b: any): CanvasBlock | null {
         series.push({
           name: s.name,
           points: bound ? (s.points as unknown as number[]) : (pts as number[]),
+          ...(hasOhlc ? { ohlc: s.ohlc } : {}),
+          ...(hasKde ? { kde: s.kde } : {}),
+          ...(hasError ? { error: { lo: s.error.lo, hi: s.error.hi } } : {}),
+          ...(chart === "waterfall" && kids ? { waterfallKinds: kids.map((k: any) => k.kind || "delta") } : {}),
           items: kids,
           links,
           visible: isBind(s.visible) ? s.visible : undefined,
         });
       }
-      return { type: "chart", chart, title: isStr(b.title) ? b.title : undefined, labels: b.labels, series };
+      return {
+        type: "chart",
+        chart,
+        title: isStr(b.title) ? b.title : undefined,
+        labels: b.labels,
+        series,
+        scale: isStr(b.scale) ? b.scale : undefined,
+        p: typeof b.p === "number" ? b.p : undefined,
+        refline: b.refline && typeof b.refline === "object" && typeof b.refline.value === "number" ? {
+          value: b.refline.value,
+          tone: isStr(b.refline.tone) ? b.refline.tone : undefined,
+          label: isStr(b.refline.label) ? b.refline.label : undefined
+        } : undefined
+      };
     }
     case "table": {
       // Model near-miss (2026-10-05): `{from:"d"}` instead of `bind:{$from:"d"}`
@@ -907,10 +1030,21 @@ function validateBlockInner(b: any): CanvasBlock | null {
       // name is DROPPED, not fatal. Losing a footer is recoverable; losing the
       // table is not.
       const stats = parseTableStats(b.stats);
+
+      let colTypes: any;
+      if (Array.isArray(b.colTypes)) colTypes = b.colTypes.map((t: any) => ["text", "color", "contrast", "bar", "delta", "status"].includes(t) ? t : "text");
+      let colMeta: any;
+      if (Array.isArray(b.colMeta)) colMeta = b.colMeta.map((m: any) => m && Array.isArray(m.levels) ? { levels: m.levels } : null);
+      let footnote = isStr(b.footnote) ? b.footnote : undefined;
+      let sig: any;
+      if (b.sig && typeof b.sig === "object" && isStr((b.sig as any).column)) sig = { column: (b.sig as any).column, thresholds: Array.isArray((b.sig as any).thresholds) ? (b.sig as any).thresholds : undefined };
+      let units: any;
+      if (Array.isArray(b.units)) units = b.units.filter((u: any) => typeof u === "string");
+
       // Reactive table: rows come from a `data` carrier through `bind.$from`,
       // so an absent/empty `rows` is EXPECTED, not the mangled-header defect.
       if (isBind(b.bind) && isStr(b.bind.$from)) {
-        return { type: "table", columns: b.columns, rows: [], bind: b.bind, stats };
+        return { type: "table", columns: b.columns, rows: [], bind: b.bind, stats, colTypes, colMeta, footnote, sig, units };
       }
       if (!Array.isArray(b.rows) || b.rows.length === 0) return null;
       // A header row with NO body is the "table looks mangled" report (measured:
@@ -932,7 +1066,7 @@ function validateBlockInner(b: any): CanvasBlock | null {
         }
         rows.push(out);
       }
-      return { type: "table", columns: b.columns, rows, stats };
+      return { type: "table", columns: b.columns, rows, stats, colTypes, colMeta, footnote, sig, units };
     }
     case "diagram": {
       if (b.layout !== "flow" && b.layout !== "relationship") return null;
@@ -1079,7 +1213,13 @@ function validateBlockInner(b: any): CanvasBlock | null {
       if (!Array.isArray(b.nodes) || b.nodes.length === 0) return null;
       const ids = new Set<string>();
       const nodes: TreeBlock["nodes"] = [];
-      for (const n of b.nodes) {
+      let rawNodes = b.nodes;
+      let forcePruned = false;
+      if (rawNodes.length > 1200) {
+        rawNodes = rawNodes.slice(0, 1200);
+        forcePruned = true;
+      }
+      for (const n of rawNodes) {
         if (!n || !isStr(n.id) || !isStr(n.label)) return null;
         ids.add(n.id);
         nodes.push({
@@ -1087,12 +1227,18 @@ function validateBlockInner(b: any): CanvasBlock | null {
           label: n.label,
           detail: isStr(n.detail) ? n.detail : undefined,
           children: Array.isArray(n.children) ? n.children.filter(isStr) : undefined,
+          size: typeof n.size === "number" ? n.size : undefined,
+          lines: typeof n.lines === "number" ? n.lines : undefined,
+          kind: isStr(n.kind) ? n.kind : undefined,
         });
       }
       for (const n of nodes) {
-        for (const c of n.children || []) if (!ids.has(c)) return null; // dangling child = invalid
+        if (n.children) {
+          if (forcePruned) n.children = n.children.filter(c => ids.has(c));
+          else for (const c of n.children) if (!ids.has(c)) return null; // dangling child = invalid
+        }
       }
-      return { type: "tree", nodes };
+      return { type: "tree", nodes, sort: ["manual", "name", "size", "kind"].includes(b.sort as any) ? b.sort : undefined, defaultDepth: typeof b.defaultDepth === "number" ? b.defaultDepth : undefined, pruned: forcePruned ? true : (typeof b.pruned === "boolean" ? b.pruned : undefined) };
     }
     case "code":
       if (!isStr(b.code) || b.code.trim() === "") return null;
@@ -1105,7 +1251,23 @@ function validateBlockInner(b: any): CanvasBlock | null {
       for (const it of b.items) {
         if (!it || !isStr(it.title)) return null;
         if (it.href != null && !isStr(it.href)) return null;
-        items.push({ title: it.title, href: isStr(it.href) ? it.href : undefined, note: isStr(it.note) ? it.note : undefined });
+        items.push({
+    title: it.title,
+    href: isStr(it.href) ? it.href : undefined,
+    note: isStr(it.note) ? it.note : undefined,
+    cite: typeof it.cite === "object" && it.cite ? {
+      case: isStr((it.cite as any).case) ? (it.cite as any).case : undefined,
+      neutral: isStr((it.cite as any).neutral) ? (it.cite as any).neutral : undefined,
+      reporter: isStr((it.cite as any).reporter) ? (it.cite as any).reporter : undefined,
+      parallel: isStr((it.cite as any).parallel) ? (it.cite as any).parallel : undefined,
+      scr: isStr((it.cite as any).scr) ? (it.cite as any).scr : undefined,
+      pinpoints: Array.isArray((it.cite as any).pinpoints) ? (it.cite as any).pinpoints.filter(isNum) : undefined,
+      coram: Array.isArray((it.cite as any).coram) ? (it.cite as any).coram.filter(isStr) : undefined,
+      court: isStr((it.cite as any).court) ? (it.cite as any).court : undefined,
+      date: isStr((it.cite as any).date) ? (it.cite as any).date : undefined,
+      style: ["neutral-first", "scc", "scr", "air", "bluebook"].includes((it.cite as any).style) ? (it.cite as any).style : undefined,
+    } : undefined
+  });
       }
       return { type: "references", items };
     }
@@ -1256,18 +1418,183 @@ function validateBlockInner(b: any): CanvasBlock | null {
       const cols = isNum(b.cols) ? Math.max(2, Math.min(4, Math.round(b.cols))) : undefined;
       return { type: "layout", layout: mode, cols, blocks: inner };
     }
+    
+    case "theorem": {
+      if (!isStr(b.kind) || !isStr(b.statement)) return null;
+      return {
+        type: "theorem",
+        kind: ["lemma", "proposition", "corollary", "theorem", "proof"].includes(b.kind) ? b.kind : "theorem",
+        statement: b.statement.slice(0, 4000),
+        proof: isStr(b.proof) ? b.proof.slice(0, 4000) : undefined,
+        refs: Array.isArray(b.refs) ? b.refs.filter(isStr) : undefined,
+        number: typeof b.number === "number" ? b.number : undefined
+      };
+    }
+    case "algorithm": {
+      if (!Array.isArray(b.steps)) return null;
+      return {
+        type: "algorithm",
+        steps: b.steps.slice(0, 60).map((s: any) => ({
+          text: isStr(s.text) ? s.text : "",
+          indent: typeof s.indent === "number" ? s.indent : undefined,
+          complexity: isStr(s.complexity) ? s.complexity : undefined
+        })),
+        number: typeof b.number === "number" ? b.number : undefined
+      };
+    }
+    
+    case "palette": {
+      if (!Array.isArray(b.colors)) return null;
+      return {
+        type: "palette",
+        title: isStr(b.title) ? b.title : undefined,
+        against: isStr(b.against) ? b.against : undefined,
+        colors: b.colors.filter((c: any) => c && isStr(c.value)).map((c: any) => ({
+          name: isStr(c.name) ? c.name : undefined,
+          value: c.value,
+          role: isStr(c.role) ? c.role : undefined,
+          note: isStr(c.note) ? c.note : undefined
+        })),
+        scale: typeof b.scale === "boolean" ? b.scale : undefined,
+        space: isStr(b.space) ? b.space : undefined,
+        radius: typeof b.radius === "boolean" ? b.radius : undefined,
+        shadow: typeof b.shadow === "boolean" ? b.shadow : undefined,
+      };
+    }
+    case "scorecard": {
+      if (!isStr(b.method)) return null;
+      if (!Array.isArray(b.items)) return null;
+      return {
+        type: "scorecard",
+        title: isStr(b.title) ? b.title : undefined,
+        method: b.method as any,
+        max: typeof b.max === "number" ? b.max : undefined,
+        items: b.items.filter((i: any) => i && isStr(i.criterion)).map((i: any) => ({
+          criterion: i.criterion,
+          score: typeof i.score === "number" ? i.score : undefined,
+          severity: isStr(i.severity) ? i.severity : undefined,
+          note: isStr(i.note) ? i.note : undefined,
+          evidence: isStr(i.evidence) ? i.evidence : undefined
+        })),
+        verdict: isStr(b.verdict) ? b.verdict : undefined
+      };
+    }
+    case "compliance": {
+      if (!isStr(b.regime)) return null;
+      if (!Array.isArray(b.items)) return null;
+      return {
+        type: "compliance",
+        regime: b.regime,
+        asOf: isStr(b.asOf) ? b.asOf : undefined,
+        source: isStr(b.source) ? b.source : undefined,
+        items: b.items.filter((i: any) => i && isStr(i.ref) && isStr(i.provision) && isStr(i.obligation) && isStr(i.status)).map((i: any) => ({
+          ref: i.ref,
+          provision: i.provision,
+          obligation: i.obligation,
+          due: isStr(i.due) ? i.due : undefined,
+          status: i.status as any,
+          severity: isStr(i.severity) ? i.severity : undefined,
+          owner: isStr(i.owner) ? i.owner : undefined,
+          evidence: isStr(i.evidence) ? i.evidence : undefined,
+          consequence: isStr(i.consequence) ? i.consequence : undefined,
+          penalty: isStr(i.penalty) ? i.penalty : undefined
+        }))
+      };
+    }
+    case "clause": {
+      if (!Array.isArray(b.items)) return null;
+      return {
+        type: "clause",
+        title: isStr(b.title) ? b.title : undefined,
+        items: b.items.filter((i: any) => i && isStr(i.ref) && isStr(i.text)).map((i: any) => ({
+          ref: i.ref,
+          heading: isStr(i.heading) ? i.heading : undefined,
+          text: i.text,
+          children: typeof i.children === "boolean" ? i.children : undefined,
+          status: isStr(i.status) ? i.status : undefined,
+          risk: isStr(i.risk) ? i.risk : undefined,
+          flags: Array.isArray(i.flags) ? i.flags.filter(isStr) : undefined,
+          playbook: isStr(i.playbook) ? i.playbook : undefined,
+          note: isStr(i.note) ? i.note : undefined,
+          source: isStr(i.source) ? i.source : undefined
+        }))
+      };
+    }
+    case "obligations": {
+      if (!Array.isArray(b.rows)) return null;
+      return {
+        type: "obligations",
+        title: isStr(b.title) ? b.title : undefined,
+        rows: b.rows.filter((r: any) => r && isStr(r.obligation) && isStr(r.party)).map((r: any) => ({
+          ref: isStr(r.ref) ? r.ref : undefined,
+          obligation: r.obligation,
+          party: r.party,
+          trigger: isStr(r.trigger) ? r.trigger : undefined,
+          due: isStr(r.due) ? r.due : undefined,
+          recurrence: isStr(r.recurrence) ? r.recurrence : undefined,
+          severity: isStr(r.severity) ? r.severity : undefined,
+          status: isStr(r.status) ? r.status : undefined,
+          consequence: isStr(r.consequence) ? r.consequence : undefined,
+          owner: isStr(r.owner) ? r.owner : undefined,
+          evidence: isStr(r.evidence) ? r.evidence : undefined
+        }))
+      };
+    }
+
+    case "schema": {
+      if (!Array.isArray(b.tables)) return null;
+      return {
+        type: "schema",
+        title: isStr(b.title) ? b.title : undefined,
+        tables: b.tables.filter((t: any) => t && isStr(t.name) && Array.isArray(t.columns)).map((t: any) => ({
+          name: t.name,
+          rows: typeof t.rows === "number" ? t.rows : undefined,
+          columns: t.columns.filter((c: any) => c && isStr(c.name) && isStr(c.type)).map((c: any) => ({
+            name: c.name,
+            type: c.type,
+            key: isStr(c.key) ? c.key : undefined,
+            ref: isStr(c.ref) ? c.ref : undefined,
+            note: isStr(c.note) ? c.note : undefined
+          })),
+          indexes: Array.isArray(t.indexes) ? t.indexes.filter(isStr) : undefined,
+          note: isStr(t.note) ? t.note : undefined
+        }))
+      };
+    }
+    case "sequence": {
+      if (!Array.isArray(b.actors) || !Array.isArray(b.messages)) return null;
+      return {
+        type: "sequence",
+        title: isStr(b.title) ? b.title : undefined,
+        actors: b.actors.filter((a: any) => a && isStr(a.id) && isStr(a.label)).map((a: any) => ({
+          id: a.id,
+          label: a.label,
+          kind: isStr(a.kind) ? a.kind : undefined
+        })),
+        messages: b.messages.filter((m: any) => m && isStr(m.from) && isStr(m.to)).map((m: any) => ({
+          from: m.from,
+          to: m.to,
+          label: isStr(m.label) ? m.label : undefined,
+          kind: isStr(m.kind) ? m.kind : undefined,
+          at: isStr(m.at) ? m.at : undefined
+        }))
+      };
+    }
+
     case "math": {
       // TeX source. It is NOT rendered here — katex runs in a lazy chunk at
       // paint time with throwOnError:false — so the parser only has to reject a
       // block that carries no formula at all. A formula the highlighter cannot
       // typeset is the RENDERER's problem to degrade, never the parser's.
-      if (!isStr(b.tex) || b.tex.trim() === "") return null;
+      if ((!isStr(b.tex) || b.tex.trim() === "") && (!Array.isArray(b.lines) || b.lines.length === 0)) return null;
       if (b.display != null && typeof b.display !== "boolean") return null;
       return {
         type: "math",
-        tex: b.tex.slice(0, 4000),
+        tex: isStr(b.tex) ? b.tex.slice(0, 4000) : undefined,
         display: b.display === false ? false : true,
         label: isStr(b.label) ? b.label.slice(0, 200) : undefined,
+        number: b.number === true || typeof b.number === "number" ? b.number : undefined,
+        lines: Array.isArray(b.lines) ? b.lines.map((l: any) => ({ tex: isStr(l.tex) ? l.tex : "", number: isStr(l.number) ? l.number : undefined })) : undefined
       };
     }
     case "gitgraph": {

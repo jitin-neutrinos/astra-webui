@@ -839,7 +839,81 @@ id: "RG-114",
       "Owner-reported as 'the canvas does not render color from hex codes for the UI reports and cards': a table cell or key/value holding a hex code rendered as inert text, so a palette or design-token report showed the codes with none of their colours. Colour VALUES are now data: a whole-string CSS colour (hex 3/6/8, rgb/hsl/hwb/lab/lch/oklab/oklch, color(...)) renders as a swatch dot painted with the literal value plus the code beside it. Whole-string matching is the guard — an inline scanner paints 'issue #123456' as a colour, and 4-digit hex is the same collision class. Guards the detector accept/reject sets and both renderer call sites by source pin.",
     guard: "src/lib/color-chip.check.ts",
   },
-    ];
+  {
+    id: "RG-126",
+    found: "2026-10-06",
+    symptom: "Wave-1 canvas enrichments: charts did not support errorbar, candlestick, waterfall, or violin rendering, nor scale, refline, or p-values. The schema, sanitizer, and markdown outputs are tested for these types to ensure the shape survives to the renderer and serializes safely.",
+    guard: "src/lib/canvas-chart-wave1.check.ts",
+  },
+  {
+    id: "RG-125",
+    found: "2026-10-06",
+    symptom: "colTypes accept/drop, unknown→text, contrast declared-enum pin, bar max computation, sig star computation from p column, footnote/units survive sanitizer + markdown | drop colTypes from sanitizer case → serialized pin fails",
+    guard: "src/lib/canvas-table-cols.check.ts",
+  },
+  {
+    id: "RG-127",
+    found: "2026-10-06",
+    symptom: "timeline ref/party/citation/groupBy, checklist due tint inputs + severity enum, heatmap cells/thresholds/diverging dims, tree meta/sort/1200 cap + pruned, references.cite bracket-verify (SCC round / SCR square / AIR bare) + neutral-first + ¶ pinpoints — parser+sanitizer+markdown | remove cite from sanitizer → pin fails",
+    guard: "src/lib/canvas-enrich-structural.check.ts",
+  },
+  {
+    id: "RG-128",
+    found: "2026-10-06",
+    symptom: "math number/lines normalization, numberMathFamily cross-family consistency (authored override, auto continue, stable across re-render + markdown) | revert auto-continue rule → stability assert fails",
+    guard: "src/lib/math-numbering.check.ts",
+  },
+  {
+    id: "RG-135",
+    found: "2026-10-06",
+    symptom: "theorem kind enum + proof default-open data + refs chips; algorithm steps/indent/complexity; both sanitize pins + markdown | drop proof field → assertion-without-evidence pin fails",
+    guard: "src/lib/canvas-academic.check.ts",
+  },
+  {
+    id: "RG-129",
+    found: "2026-10-06",
+    symptom: "palette type: swatch grid with WCAG+APCA verdicts the RENDERER computes | revert logic → palette assertion fails",
+    guard: "src/lib/canvas-palette.check.ts",
+  },
+  {
+    id: "RG-130",
+    found: "2026-10-06",
+    symptom: "scorecard type: heuristic/sus/rice/custom methods, min/max limits | revert logic → scorecard assertion fails",
+    guard: "src/lib/canvas-scorecard.check.ts",
+  },
+  {
+    id: "RG-131",
+    found: "2026-10-06",
+    symptom: "compliance type: regime audits, pass/fail/warn/na/pending | revert logic → compliance assertion fails",
+    guard: "src/lib/canvas-compliance.check.ts",
+  },
+  {
+    id: "RG-132",
+    found: "2026-10-06",
+    symptom: "clause type: tree addressed by legal ref, risk dots | revert logic → clause assertion fails",
+    guard: "src/lib/canvas-clause.check.ts",
+  },
+  {
+    id: "RG-133",
+    found: "2026-10-06",
+    symptom: "obligations type: sorted soonest-due first | revert logic → obligations assertion fails",
+    guard: "src/lib/canvas-obligations.check.ts",
+  },
+  {
+    id: "RG-134",
+    found: "2026-10-06",
+    symptom: "schema type: tables with PK/FK/NN badges, index array, navigation | revert logic → schema assertion fails",
+    guard: "src/lib/canvas-dbschema.check.ts",
+  },
+  {
+    id: "RG-136",
+    found: "2026-10-06",
+    symptom: "sequence type: actors + messages parsed, dropping dangling refs | revert logic → sequence assertion fails",
+    guard: "src/lib/canvas-sequence.check.ts",
+  }
+];
+
+
 
 // ---- gate -----------------------------------------------------------------
 

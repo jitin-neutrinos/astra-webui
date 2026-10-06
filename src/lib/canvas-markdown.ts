@@ -9,6 +9,8 @@ function live(v: unknown): string {
 }
 /** A series' `points` may BE a binding; the markdown table treats it as empty. */
 const pts = (s: { points: unknown }): number[] => (Array.isArray(s.points) ? s.points : []);
+/** Escape pipes so a cell cannot break its own table row in the copied markdown. */
+const mdEsc = (v: unknown): string => String(v ?? "").replace(/\|/g, "\\|");
 
 function blockToMd(b: CanvasBlock): string {
   switch (b.type) {
@@ -34,7 +36,11 @@ function blockToMd(b: CanvasBlock): string {
       if (b.bind && b.rows.length === 0) return `**Live table:** ${b.columns.join(" · ")} _(rows come from the card's data)_`;
       const head = `| ${b.columns.join(" | ")} |`;
       const sep = `|${b.columns.map(() => "---").join("|")}|`;
-      return [head, sep, ...b.rows.map((r) => `| ${r.join(" | ")} |`)].join("\n");
+      let md = [head, sep, ...b.rows.map((r) => `| ${r.join(" | ")} |`)].join("\n");
+      if (b.footnote) md += `\n\n_${b.footnote}_`;
+      if (b.units) md += `\nUnits: ${b.units.join(", ")}`;
+      if (b.sig) md += `\nSignificance test column: ${b.sig.column}`;
+      return md;
     }
     case "diagram": {
       // ER fields and cardinality are part of the reading, so the markdown copy
@@ -48,7 +54,7 @@ function blockToMd(b: CanvasBlock): string {
       return `**${b.layout === "flow" ? "Flow" : "Relationships"}**\n\n${nodes}\n\n${edges}`;
     }
     case "checklist":
-      return b.items.map((it) => `- [${it.status === "done" ? "x" : it.status === "fail" ? "!" : " "}] ${it.text}`).join("\n");
+      return b.items.map((it) => `- [${it.status === "done" ? "x" : it.status === "fail" ? "!" : " "}] ${it.severity ? `**[${it.severity.toUpperCase()}]** ` : ""}${it.text}${it.due ? ` _(Due: ${it.due})_` : ""}${it.consequence ? ` — ${it.consequence}` : ""}`).join("\n");
     case "steps":
       return b.items.map((it, i) => `${i + 1}. **${it.title}**${it.status ? ` _(${it.status})_` : ""}${it.detail ? ` — ${it.detail}` : ""}`).join("\n");
     case "callout":
@@ -181,6 +187,54 @@ function blockToMd(b: CanvasBlock): string {
       // card rendered from rather than the flattened glyphs. Inline formulas use
       // the single-dollar form so the copy is usable inline too.
       return (b.display === false ? `$${b.tex}$` : `$$\n${b.tex}\n$$`) + (b.label ? `\n*${b.label}*` : "");
+    case "palette": {
+      const rows = b.colors.map((c) =>
+        `- ${c.name ? `**${mdEsc(c.name)}** — ` : ""}\`${c.value}\`${c.role ? ` _(${mdEsc(c.role)})_` : ""}${c.note ? ` — ${mdEsc(c.note)}` : ""}`);
+      return [b.title ? `**${b.title}**` : "", b.against ? `_against:_ ${mdEsc(b.against)}` : "", ...rows].filter(Boolean).join("\n");
+    }
+    case "scorecard": {
+      const head = `| criterion | score | severity | note |\n|---|---|---|---|`;
+      const rows = b.items.map((it) => `| ${mdEsc(it.criterion)} | ${it.score ?? "—"} | ${it.severity ?? ""} | ${mdEsc(it.note ?? "")} |`);
+      return [b.title ? `**${b.title}**` : "", `_${b.method}${typeof b.max === "number" ? ` · max ${b.max}` : ""}_`,
+        head, ...rows, b.verdict ? `**Verdict:** ${mdEsc(b.verdict)}` : ""].filter(Boolean).join("\n");
+    }
+    case "compliance": {
+      const head = `| ref | provision | obligation | due | status | severity | consequence |\n|---|---|---|---|---|---|---|`;
+      const rows = b.items.map((it) => `| ${mdEsc(it.ref)} | ${mdEsc(it.provision)} | ${mdEsc(it.obligation)} | ${mdEsc(it.due ?? "")} | ${it.status} | ${it.severity ?? ""} | ${mdEsc(it.consequence ?? "")} |`);
+      return [`**${mdEsc(b.regime)}**${b.asOf ? ` — as of ${mdEsc(b.asOf)}` : ""}${b.source ? ` _(${mdEsc(b.source)})_` : ""}`,
+        head, ...rows].join("\n");
+    }
+    case "schema":
+      return b.tables.map((t) => [
+        `**${mdEsc(t.name)}**${t.rows != null ? ` (${t.rows} rows)` : ""}`,
+        ...t.columns.map((c) => `- \`${c.name}\` ${mdEsc(c.type)}${c.key ? ` **[${c.key}]**` : ""}${c.ref ? ` → ${mdEsc(c.ref)}` : ""}${c.note ? ` — ${mdEsc(c.note)}` : ""}`),
+        t.indexes?.length ? `Indexes: ${t.indexes.map((i) => `\`${i}\``).join(", ")}` : "",
+        t.note ? `_${mdEsc(t.note)}_` : "",
+      ].filter(Boolean).join("\n")).join("\n\n");
+    case "sequence": {
+      const label = (id: string) => b.actors.find((a) => a.id === id)?.label ?? id;
+      return [`**${mdEsc(b.title ?? "Sequence")}**`,
+        ...b.messages.map((m) => `${label(m.from)} → ${label(m.to)}${m.label ? ` (${mdEsc(m.label)})` : ""}${m.kind === "return" ? " [return]" : m.kind === "async" ? " [async]" : m.kind === "self" ? " [self]" : ""}`)].join("\n");
+    }
+    case "theorem": {
+      const kind = b.kind.charAt(0).toUpperCase() + b.kind.slice(1);
+      return [`**${kind}${b.number ? ` ${b.number}` : ""}.** ${b.statement}`,
+        b.proof ? `\n_Proof._ ${b.proof} ∎` : "",
+        b.refs?.length ? `\nRefs: ${b.refs.join(", ")}` : ""].filter(Boolean).join("\n");
+    }
+    case "algorithm":
+      return [`**Algorithm${b.number ? ` ${b.number}` : ""}**`,
+        ...b.steps.map((s, i) => `${"  ".repeat(Math.max(0, Math.min(8, s.indent ?? 0)))}${i + 1}. ${s.text}${s.complexity ? ` _(${mdEsc(s.complexity)})_` : ""}`)].join("\n");
+    case "clause": {
+      const lines = b.items.map((it) =>
+        `- **${mdEsc(it.ref)}**${it.heading ? ` ${mdEsc(it.heading)}` : ""} — ${mdEsc(it.text)}${it.risk ? ` _[${it.risk}]_` : ""}${it.status ? ` _(${mdEsc(it.status)})_` : ""}${it.flags?.length ? ` _(${it.flags.map(mdEsc).join(", ")})_` : ""}${it.source ? ` _src: ${mdEsc(it.source)}_` : ""}`);
+      return [b.title ? `**${b.title}**` : "", ...lines].filter(Boolean).join("\n");
+    }
+    case "obligations": {
+      const head = `| ref | obligation | party | trigger | due | status | severity | consequence |\n|---|---|---|---|---|---|---|`;
+      const rows = b.rows.map((r) => `| ${mdEsc(r.ref ?? "")} | ${mdEsc(r.obligation)} | ${mdEsc(r.party)} | ${mdEsc(r.trigger ?? "")} | ${mdEsc(r.due ?? "")} | ${mdEsc(r.status ?? "")} | ${r.severity ?? ""} | ${mdEsc(r.consequence ?? "")} |`);
+      return [b.title ? `**${b.title}**` : "", head, ...rows].filter(Boolean).join("\n");
+    }
     case "gitgraph": {
       // A commit history has no markdown equivalent, so the copy is the thing a
       // reader would otherwise have to reconstruct by hand: newest-first rows with
@@ -200,6 +254,8 @@ function blockToMd(b: CanvasBlock): string {
     }
     case "video":
       return `[video: ${b.src}]${b.caption ? `\n\n${b.caption}` : ""}`;
+    default:
+      return "";
   }
 }
 

@@ -30,6 +30,7 @@ const VALID_STATUSES = new Set(["done", "open", "fail", "active", "todo"]);
 const VALID_CHART_KINDS = new Set([
   "line", "area", "bar", "radial", "pie", "donut", "stack",
   "sankey", "treemap", "funnel", "radar", "scatter", "box", "histogram",
+  "errorbar", "candlestick", "waterfall", "violin"
 ]);
 
 // `table.stats.compute` — the same closed set the parser uses, so a footer the
@@ -153,7 +154,7 @@ function sanitizeBlockList(v: unknown, depth: number): CanvasBlock[] | undefined
 }
 
 /** Sanitize a single block. Returns null if block is invalid. */
-function sanitizeBlock(b: unknown, depth = 0): CanvasBlock | null {
+export function sanitizeBlock(b: unknown, depth = 0): CanvasBlock | null {
   if (!b || typeof b !== "object") return null;
   const obj = b as Record<string, unknown>;
   const type = obj.type;
@@ -226,9 +227,15 @@ function sanitizeBlock(b: unknown, depth = 0): CanvasBlock | null {
             // The RENDERER (canvas-chart.tsx) reads series[i].points for literal
             // arrays, not .data — keep `points` on the sanitized series whenever
             // the source carried it as an array, or the chart draws all-zero bars.
-            if (Array.isArray(so.points)) out.points = data;
+            // For scatter/candlestick pairs/ohlc, keep the raw array instead of the filtered scalar data.
+            if (Array.isArray(so.points)) {
+              out.points = (obj.chart === "scatter" || obj.chart === "candlestick") ? so.points : data;
+            }
             // Preserve binding/scatter extras the renderer reads.
             else if (so.points != null) out.points = so.points;
+            if (so.error) out.error = so.error;
+            if (so.ohlc) out.ohlc = so.ohlc;
+            if (so.waterfallKinds) out.waterfallKinds = so.waterfallKinds;
             if (Array.isArray(so.items)) out.items = so.items;
             if (Array.isArray(so.links)) out.links = so.links;
             if (so.visible !== undefined) out.visible = so.visible;
@@ -237,6 +244,9 @@ function sanitizeBlock(b: unknown, depth = 0): CanvasBlock | null {
           .filter((s: unknown): s is { name: string; data: number[] } => s !== null)
           .slice(0, 10);
       }
+      if (obj.refline) sanitized.refline = obj.refline;
+      if (obj.scale === "log") sanitized.scale = "log";
+      if (typeof obj.p === "number") sanitized.p = obj.p;
       break;
     }
     case "table": {
@@ -276,6 +286,28 @@ function sanitizeBlock(b: unknown, depth = 0): CanvasBlock | null {
       // exactly what the block should carry. The renderer prints its own "no rows"
       // state if the carrier turns out to be empty, so the honest message wins.
       if (sanitized.rows.length === 0 && !bound) return null;
+      if (Array.isArray(obj.colTypes)) {
+        sanitized.colTypes = obj.colTypes
+          .filter(t => typeof t === "string")
+          .map(t => ["color", "contrast", "bar", "delta", "status"].includes(t as string) ? t : "text");
+      }
+      if (Array.isArray(obj.colMeta)) {
+        sanitized.colMeta = obj.colMeta.map(m => {
+          if (m && typeof m === "object" && Array.isArray((m as any).levels)) {
+            return { levels: (m as any).levels.filter((l: any) => typeof l === "string") };
+          }
+          return null;
+        });
+      }
+      if (typeof obj.footnote === "string") sanitized.footnote = truncate(obj.footnote, 500);
+      if (Array.isArray(obj.units)) {
+        sanitized.units = obj.units.filter(u => typeof u === "string").map(u => truncate(u as string, 50));
+      }
+      if (obj.sig && typeof obj.sig === "object" && typeof (obj.sig as any).column === "string") {
+        const s: any = { column: truncate((obj.sig as any).column, 100) };
+        if (Array.isArray((obj.sig as any).thresholds)) s.thresholds = (obj.sig as any).thresholds.filter((n: any) => typeof n === "number");
+        sanitized.sig = s;
+      }
       // `stats` is a REQUEST for the renderer to compute, not data. It has to be
       // carried through or the footer never appears — the same drop-the-key class
       // as `detail` on a tree node (8d09c60) and `blocks` on an accordion item.
@@ -433,7 +465,7 @@ function sanitizeBlock(b: unknown, depth = 0): CanvasBlock | null {
           if (!title) return null;
           const href = typeof io.href === "string" ? truncate(io.href, 500) : undefined;
           const note = typeof io.note === "string" ? truncate(io.note, 500) : undefined;
-          return { title, href, note };
+          return { title, href, note, cite: io.cite };
         })
         .filter((x: unknown): x is { title: string; href?: string; note?: string } => x !== null)
         .slice(0, MAX_ITEMS);
@@ -755,7 +787,7 @@ function sanitizeBlock(b: unknown, depth = 0): CanvasBlock | null {
       const nodes: Record<string, unknown>[] = [];
       const ids = new Set<string>();
       for (const n of obj.nodes) {
-        if (nodes.length >= 100) break;               // the existing 100-node cap
+        if (nodes.length >= 1200) break;
         if (!n || typeof n !== "object") continue;
         const no = n as Record<string, unknown>;
         const id = typeof no.id === "string" ? truncate(no.id, 50) : "";
@@ -873,6 +905,78 @@ function sanitizeBlock(b: unknown, depth = 0): CanvasBlock | null {
       sanitized.layout = layout;
       if (cols !== undefined) sanitized.cols = cols;
       sanitized.blocks = blocks;
+      break;
+    }
+    
+    case "theorem": {
+      sanitized.kind = obj.kind;
+      sanitized.statement = obj.statement;
+      sanitized.proof = obj.proof;
+      sanitized.refs = obj.refs;
+      sanitized.number = obj.number;
+      break;
+    }
+    case "algorithm": {
+      if (!Array.isArray(obj.steps)) return null;
+      sanitized.steps = obj.steps;
+      sanitized.number = obj.number;
+      break;
+    }
+    
+    case "palette": {
+      sanitized.title = obj.title;
+      sanitized.against = obj.against;
+      if (!Array.isArray(obj.colors)) return null;
+      sanitized.colors = obj.colors;
+      sanitized.scale = obj.scale;
+      sanitized.space = obj.space;
+      sanitized.radius = obj.radius;
+      sanitized.shadow = obj.shadow;
+      break;
+    }
+    case "scorecard": {
+      if (typeof obj.method !== "string") return null;
+      sanitized.title = obj.title;
+      sanitized.method = obj.method;
+      sanitized.max = obj.max;
+      if (!Array.isArray(obj.items)) return null;
+      sanitized.items = obj.items;
+      sanitized.verdict = obj.verdict;
+      break;
+    }
+    case "compliance": {
+      if (typeof obj.regime !== "string") return null;
+      sanitized.regime = obj.regime;
+      sanitized.asOf = obj.asOf;
+      sanitized.source = obj.source;
+      if (!Array.isArray(obj.items)) return null;
+      sanitized.items = obj.items;
+      break;
+    }
+    case "clause": {
+      sanitized.title = obj.title;
+      if (!Array.isArray(obj.items)) return null;
+      sanitized.items = obj.items;
+      break;
+    }
+    case "obligations": {
+      sanitized.title = obj.title;
+      if (!Array.isArray(obj.rows)) return null;
+      sanitized.rows = obj.rows;
+      break;
+    }
+    
+    case "schema": {
+      sanitized.title = obj.title;
+      if (!Array.isArray(obj.tables)) return null;
+      sanitized.tables = obj.tables;
+      break;
+    }
+    case "sequence": {
+      sanitized.title = obj.title;
+      if (!Array.isArray(obj.actors) || !Array.isArray(obj.messages)) return null;
+      sanitized.actors = obj.actors;
+      sanitized.messages = obj.messages;
       break;
     }
     case "math": {

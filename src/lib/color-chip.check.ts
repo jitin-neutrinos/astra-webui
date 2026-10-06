@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { cssColorOf } from "./color-chip.ts";
+import { cssColorOf, wcagRatio, contrastVerdict } from "./color-chip.ts";
 
 test("cssColorOf accepts the colour forms a report actually contains", () => {
   for (const s of [
@@ -69,4 +69,17 @@ test("the renderer paints colour values as swatches (source pin)", () => {
     src.includes("style={{ background: color }}"),
     "the swatch dot paints the authored colour (data, not a theme token)",
   );
+});
+
+
+test("wcagRatio works for valid hex colors", () => {
+  assert.equal(wcagRatio("#000000", "#ffffff"), 21);
+  assert.equal(wcagRatio("#ffffff", "#ffffff"), 1);
+  assert.equal(wcagRatio("invalid", "#ffffff"), null);
+});
+
+test("contrastVerdict works for valid hex colors", () => {
+  assert.deepEqual(contrastVerdict("#000000", "#ffffff"), { wcag: 21, level: "AAA" });
+  assert.deepEqual(contrastVerdict("#ffffff", "#ffffff"), { wcag: 1, level: "Fail" });
+  assert.equal(contrastVerdict("invalid", "#ffffff"), null);
 });

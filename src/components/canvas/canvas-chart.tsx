@@ -20,7 +20,7 @@ import { lazy, Suspense, useMemo } from "react";
 import {
   ResponsiveContainer, AreaChart, Area, LineChart, Line, BarChart, Bar,
   RadialBarChart, RadialBar, PieChart, Pie, Cell, XAxis, YAxis,
-  Tooltip, PolarAngleAxis, type TooltipProps,
+  Tooltip, PolarAngleAxis, ReferenceLine, type TooltipProps,
   // v5 — these four ship in the recharts build we ALREADY load; no new bytes,
   // no new dependency, just four more chart kinds for the same price.
   ScatterChart, Scatter, ZAxis, RadarChart, Radar,
@@ -257,6 +257,181 @@ function BoxShape(props: any) {
   );
 }
 
+// ---- wave-1 kinds (2026-10-06): candlestick / waterfall / errorbar / violin ──
+// All four ride the SAME engine as the box: a Bar whose scaled geometry anchors
+// the drawing, plus the proven ErrorBar where it fits. The pixel contract is
+// BoxShape's, measured: `height` is the span 0..bar-value, so `unit =
+// height / (value || 1)` is the scale and `yOf(v) = y + height - v * unit` is
+// exact for any domain that includes 0 (the domains below always do).
+
+interface CandleRow { name: string; o: number; h: number; l: number; c: number; }
+
+/** One candlestick per `series[0].ohlc` entry: [open, high, low, close]. */
+function candleOf(ohlc: number[][], names: string[]): CandleRow[] {
+  const rows: CandleRow[] = [];
+  ohlc.forEach((q, i) => {
+    if (!Array.isArray(q) || q.length < 4 || !q.every((v) => Number.isFinite(Number(v)))) return;
+    const [o, h, l, c] = [Number(q[0]), Number(q[1]), Number(q[2]), Number(q[3])];
+    rows.push({ name: names[i] ?? String(i + 1), o, h: Math.max(o, h, l, c), l: Math.min(o, h, l, c), c });
+  });
+  return rows;
+}
+
+function padDom(lo: number, hi: number): [number, number] {
+  return [Math.min(0, Math.floor(lo * 1.05)), Math.max(1, Math.ceil(Math.max(1, hi) * 1.08))];
+}
+
+const CandleTip = (p: AnyTooltip) => {
+  if (!p.active || !p.payload?.length) return null;
+  const r = (p.payload[0]?.payload ?? {}) as Partial<CandleRow>;
+  return (
+    <div className="ast-cv-tooltip">
+      <p className="ast-cv-tooltip-label">{String(p.label ?? "")}</p>
+      <p className="ast-cv-tooltip-row">
+        O <span className="ast-cv-tooltip-val">{fmt(r.o ?? 0)}</span>{" · "}
+        H <span className="ast-cv-tooltip-val">{fmt(r.h ?? 0)}</span>{" · "}
+        L <span className="ast-cv-tooltip-val">{fmt(r.l ?? 0)}</span>{" · "}
+        C <span className="ast-cv-tooltip-val">{fmt(r.c ?? 0)}</span>
+      </p>
+    </div>
+  );
+};
+
+const WaterTip = (p: AnyTooltip) => {
+  if (!p.active || !p.payload?.length) return null;
+  const r = (p.payload[0]?.payload ?? {}) as Partial<WaterRow>;
+  return (
+    <div className="ast-cv-tooltip">
+      <p className="ast-cv-tooltip-label">{String(p.label ?? "")}</p>
+      <p className="ast-cv-tooltip-row">
+        <span className="ast-cv-tooltip-val">{fmt(r.from ?? 0)}</span> → <span className="ast-cv-tooltip-val">{fmt(r.to ?? 0)}</span>
+      </p>
+    </div>
+  );
+};
+
+function CandleShape(props: any) {
+  const { x, width, payload, y, height } = props;
+  const p = payload as CandleRow | undefined;
+  if (!p) return null;
+  const unit = height / (p.h || 1);
+  const yOf = (v: number) => y + height - v * unit;
+  const up = p.c >= p.o;
+  const stroke = up ? "var(--color-emerald)" : "var(--color-redx)";
+  const bodyTop = yOf(Math.max(p.o, p.c));
+  const bodyH = Math.max(1.5, Math.abs(yOf(p.o) - yOf(p.c)));
+  return (
+    <g>
+      <line x1={x + width / 2} x2={x + width / 2} y1={yOf(p.l)} y2={yOf(p.h)} stroke={stroke} strokeWidth={1.2} />
+      <rect x={x + width * 0.2} y={bodyTop} width={width * 0.6} height={bodyH} rx={1.5} fill={stroke} />
+    </g>
+  );
+}
+
+interface WaterRow { name: string; base: number; delta: number; from: number; to: number; fill: string; }
+
+/** A waterfall/bridge: `points` are step values, `kinds[i]` marks a running delta
+ *  (default) or an absolute checkpoint ("total"). The invisible `base` bar is
+ *  the classic stacked-bar trick — it only positions the visible step. */
+function waterOf(points: number[], kinds: string[] | undefined, names: string[]): WaterRow[] {
+  const rows: WaterRow[] = [];
+  let run = 0;
+  points.forEach((v, i) => {
+    if (!Number.isFinite(v)) return;
+    const kind = String(kinds?.[i] ?? "delta").toLowerCase();
+    const total = kind === "total" || kind === "absolute" || kind === "sum";
+    const from = total ? 0 : run;
+    const to = total ? v : run + v;
+    run = to;
+    rows.push({
+      name: names[i] ?? String(i + 1),
+      base: Math.min(from, to),
+      delta: Math.abs(to - from) || 0.0001,
+      from, to,
+      fill: total ? "var(--color-accent)" : to >= from ? "var(--color-emerald)" : "var(--color-redx)",
+    });
+  });
+  return rows;
+}
+
+interface ErrRow { name: string; y: number; err: [number, number]; lo: number; hi: number; }
+
+/** Value ± error. `error.lo/hi` are ABSOLUTE bounds (the natural authoring
+ *  shape); the ErrorBar engine wants POSITIVE offsets from the value, which is
+ *  the box's whisker convention — both are clamped >= 0 or the lower cap
+ *  mirrors upwards and the bar lies about its own range. */
+function errOf(points: number[], error: { lo: number[]; hi: number[] } | undefined, names: string[]): ErrRow[] {
+  const rows: ErrRow[] = [];
+  points.forEach((v, i) => {
+    if (!Number.isFinite(v)) return;
+    const lo = Number(error?.lo?.[i]);
+    const hi = Number(error?.hi?.[i]);
+    const a = Math.min(v, Number.isFinite(lo) ? lo : v);
+    const b = Math.max(v, Number.isFinite(hi) ? hi : v);
+    rows.push({ name: names[i] ?? String(i + 1), y: v, err: [Math.max(0, v - a), Math.max(0, b - v)], lo: a, hi: b });
+  });
+  return rows;
+}
+
+interface ViolinRow { name: string; mid: number; top: number; kde: { x: number; y: number }[]; n: number; }
+
+/** Silverman-rule KDE on a 64-point grid, normalised to max density 1 so the
+ *  silhouette encodes SHAPE only — a density axis would be unreadable chrome. */
+function kdeOf(samples: number[]): { x: number; y: number }[] {
+  const lit = samples.filter((n) => Number.isFinite(n));
+  if (lit.length < 2) return [];
+  const n = lit.length;
+  const mean = lit.reduce((a, b) => a + b, 0) / n;
+  const sd = Math.sqrt(lit.reduce((a, b) => a + (b - mean) ** 2, 0) / Math.max(1, n - 1)) || Math.abs(mean) * 0.1 || 1;
+  const h = 1.06 * sd * Math.pow(n, -0.2) || sd;
+  const lo = Math.min(...lit) - 3 * h;
+  const hi = Math.max(...lit) + 3 * h;
+  const grid: { x: number; y: number }[] = [];
+  let max = 0;
+  for (let i = 0; i < 64; i++) {
+    const x = lo + ((hi - lo) * i) / 63;
+    let d = 0;
+    for (const s of lit) d += Math.exp(-0.5 * ((x - s) / h) ** 2);
+    d /= n * h * Math.sqrt(2 * Math.PI);
+    if (d > max) max = d;
+    grid.push({ x, y: d });
+  }
+  return max > 0 ? grid.map((g) => ({ x: g.x, y: g.y / max })) : grid;
+}
+
+/** One violin per series (a group), like a box: samples in `points`, or an
+ *  authored `kde` when the model computed one upstream. */
+function violinOf(series: { name: string; points: number[]; kde?: { x: number; y: number }[] }[], names: string[]): ViolinRow[] {
+  const rows: ViolinRow[] = [];
+  series.forEach((s, i) => {
+    const lit = (Array.isArray(s.points) ? s.points : []).map(Number).filter((n) => Number.isFinite(n));
+    const kde = Array.isArray(s.kde) && s.kde.length > 1 ? s.kde : kdeOf(lit);
+    if (kde.length < 2) return;
+    const sorted = [...lit].sort((a, b) => a - b);
+    const mid = sorted.length ? sorted[Math.floor(sorted.length / 2)] : kde[Math.floor(kde.length / 2)].x;
+    rows.push({ name: names[i] ?? s.name, mid, top: kde[kde.length - 1].x, kde, n: lit.length });
+  });
+  return rows;
+}
+
+function ViolinShape(props: any) {
+  const { x, width, payload, y, height } = props;
+  const p = payload as ViolinRow | undefined;
+  if (!p || p.kde.length < 2) return null;
+  const unit = height / (p.top || 1);
+  const yOf = (v: number) => y + height - v * unit;
+  const cx = x + width / 2;
+  const half = width * 0.42;
+  const left = p.kde.map((k) => `${(cx - k.y * half).toFixed(2)},${yOf(k.x).toFixed(2)}`);
+  const right = [...p.kde].reverse().map((k) => `${(cx + k.y * half).toFixed(2)},${yOf(k.x).toFixed(2)}`);
+  return (
+    <g>
+      <polygon points={[...left, ...right].join(" ")} fill="var(--color-accent)" fillOpacity={0.18} stroke="var(--color-accent)" strokeWidth={1.2} strokeLinejoin="round" />
+      <line x1={cx - half * 0.4} x2={cx + half * 0.4} y1={yOf(p.mid)} y2={yOf(p.mid)} stroke="var(--color-brandtext)" strokeWidth={1.6} />
+    </g>
+  );
+}
+
 /** The y-axis bounds for a box chart: the whiskers' full extent plus headroom.
  *  `floorOf`/`ceilOf` are separate so a NEGATIVE sample range still starts at the
  *  data's own minimum — a box plot of negative values drawn from 0 would waste
@@ -427,21 +602,40 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
   // shape, deliberately not refactored in this change).
   const BOX = block.chart === "box";
   const HIST = block.chart === "histogram";
-  const { boxData, histData } = useMemo(() => {
-    if (!BOX && !HIST) return { boxData: [] as BoxRow[], histData: [] as HistRow[] };
-    if (BOX) return { boxData: boxOf(activeSeries as { name: string; points: number[] }[], labels), histData: [] as HistRow[] };
+  const CANDLE = block.chart === "candlestick";
+  const WATERFALL = block.chart === "waterfall";
+  const ERRBAND = block.chart === "errorbar";
+  const VIOLIN = block.chart === "violin";
+  const ADAPTED = BOX || HIST || CANDLE || WATERFALL || ERRBAND || VIOLIN;
+  const { boxData, histData, candleData, waterData, errData, violinData } = useMemo(() => {
+    const empty = { boxData: [] as BoxRow[], histData: [] as HistRow[], candleData: [] as CandleRow[], waterData: [] as WaterRow[], errData: [] as ErrRow[], violinData: [] as ViolinRow[] };
+    if (!ADAPTED) return empty;
+    if (BOX) return { ...empty, boxData: boxOf(activeSeries as { name: string; points: number[] }[], labels) };
     const raw = (activeSeries[0] as unknown as { points: unknown } | undefined)?.points;
     const pts = raw != null && typeof raw === "object" && ctx ? bindPoints(raw, ctx.scope) : null;
     const lit = pts ?? (Array.isArray(raw) ? (raw as number[]) : []);
-    return {
-      boxData: [] as BoxRow[],
-      histData: histogramOf(lit.map((p) => Number(p)).filter((n) => Number.isFinite(n))),
-    };
-  }, [BOX, HIST, activeSeries, labels, ctx]);
-  // Fail-soft in the same shape every other adapter uses: an empty box/histogram
+    const nums = lit.map((p) => Number(p)).filter((n) => Number.isFinite(n));
+    if (HIST) return { ...empty, histData: histogramOf(nums) };
+    // Wave-1 kinds read their series-level payloads (ohlc / error / kde / items)
+    // off the same resolved series the generic path reads. Names: the block's
+    // labels first, then the waterfall items' own names — items are the natural
+    // place a model puts per-step names.
+    const s0 = activeSeries[0] as unknown as { ohlc?: number[][]; error?: { lo: number[]; hi: number[] }; kde?: { x: number; y: number }[]; items?: { name: string }[] };
+    const names = labels.length ? labels : (Array.isArray(s0?.items) ? s0.items.map((it, i) => it?.name ?? String(i + 1)) : []);
+    if (CANDLE) return { ...empty, candleData: candleOf(Array.isArray(s0?.ohlc) ? s0.ohlc : [], names) };
+    if (WATERFALL) {
+      const kinds = (activeSeries[0] as unknown as { waterfallKinds?: string[] })?.waterfallKinds;
+      return { ...empty, waterData: waterOf(nums, kinds, names) };
+    }
+    if (ERRBAND) return { ...empty, errData: errOf(nums, s0?.error, names) };
+    return { ...empty, violinData: violinOf(activeSeries as { name: string; points: number[]; kde?: { x: number; y: number }[] }[], labels) };
+  }, [ADAPTED, BOX, HIST, CANDLE, WATERFALL, ERRBAND, VIOLIN, activeSeries, labels, ctx]);
+  // Fail-soft in the same shape every other adapter uses: an empty adapter
   // renders the no-data line, never an axis with nothing on it. A box whose only
   // group has a single sample lands here too (see boxOf).
-  const EMPTY_ADAPTER = (BOX && boxData.length === 0) || (HIST && histData.length === 0);
+  const EMPTY_ADAPTER = (BOX && boxData.length === 0) || (HIST && histData.length === 0)
+    || (CANDLE && candleData.length === 0) || (WATERFALL && waterData.length === 0)
+    || (ERRBAND && errData.length === 0) || (VIOLIN && violinData.length === 0);
 
   const TT = (p: AnyTooltip) => {
     if (!p.active || !p.payload?.length) return null;
@@ -489,8 +683,17 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
   const X = <XAxis dataKey="name" tick={tk} tickLine={false} axisLine={{ stroke: AXIS_LINE }} height={24}
     interval={interval} />;
   const Y = <YAxis tick={tk} tickFormatter={(v: number) => fmt(v)} tickLine={false} axisLine={{ stroke: AXIS_LINE }} width={46}
-    tickCount={phone ? 5 : undefined} />;
+    tickCount={phone ? 5 : undefined} scale={block.scale === "log" ? "log" : undefined} />;
   const TIP = <Tooltip content={<TT />} cursor={{ fill: "rgb(var(--c-89) / 0.04)" }} />;
+  // Reference line (wave-1): a threshold/target ruled across the plot, labelled.
+  const REF = block.refline ? (
+    <ReferenceLine
+      y={block.refline.value}
+      stroke="var(--color-muted)"
+      strokeDasharray="4 3"
+      label={{ value: block.refline.label ?? fmt(block.refline.value), position: "insideTopRight", fill: "var(--color-muted)", fontSize: tk.fontSize }}
+    />
+  ) : null;
   // The legend is rendered by <ChartLegend> BELOW the ResponsiveContainer, never
   // as a recharts child — see the comment on ChartLegend for the measurement.
   const LEG_NAMES = activeSeries.map((s) => ({ name: s.name }));
@@ -508,7 +711,7 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
     : block.chart === "funnel" ? (PH ? 170 : 200)
     : block.chart === "treemap" ? (PH ? 190 : 240)
     : block.chart === "sankey" ? (PH ? 220 : 300)
-    : block.chart === "box" || block.chart === "histogram" ? (PH ? 170 : 200) : (PH ? 160 : 180);
+    : BOX || HIST || CANDLE || WATERFALL || ERRBAND || VIOLIN ? (PH ? 170 : 200) : (PH ? 160 : 180);
 
 
   // Donut: single-series composition with the total in the hole. Slice colours
@@ -527,7 +730,12 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
 
   return (
     <figure className="ast-cv-chart">
-      {block.title && <figcaption className="ast-cv-chart-title">{block.title}</figcaption>}
+      {block.title && (
+        <figcaption className="ast-cv-chart-title">
+          {block.title}
+          {typeof block.p === "number" && <span className="ast-cv-chart-p">p = {block.p}</span>}
+        </figcaption>
+      )}
       {/* LAYOUT LAW (owner 2026-10-04: "Where the request budget goes shows blank", "legends at the bottom"):
           the plot and its legend are SIBLINGS inside the figure. Self-sizing charts (sankey/treemap/funnel)
           and the donut carry their own legend row, so they must NOT live inside a fixed-height
@@ -565,6 +773,7 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
               domain={[boxFloor(boxData), boxCeil(boxData)]}
               tickCount={phone ? 5 : undefined}
             />
+            {REF}
             <Tooltip content={<BoxTip rows={boxData} />} cursor={{ fill: "rgb(var(--c-89) / 0.04)" }} />
             <Bar dataKey="q3" shape={<BoxShape />} isAnimationActive={false}>
               {/* The whisker is chrome (it is the range, not a series), so it
@@ -579,8 +788,54 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
           <BarChart data={histData} margin={{ top: 6, right: 6, bottom: 0, left: 0 }} barCategoryGap="6%">
             {X}
             {Y}
+            {REF}
             <Tooltip content={<HistTip rows={histData} />} cursor={{ fill: "rgb(var(--c-89) / 0.04)" }} />
             <Bar dataKey="count" fill={SERIES_COLORS[0]} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+          </BarChart>
+        </ResponsiveContainer>
+      ) : CANDLE ? (
+        <ResponsiveContainer width="100%" height={H}>
+          <BarChart data={candleData} margin={{ top: 6, right: 6, bottom: 0, left: 0 }} barCategoryGap="30%">
+            {X}
+            <YAxis tick={tk} tickFormatter={(v: number) => fmt(v)} tickLine={false} axisLine={{ stroke: AXIS_LINE }} width={46} domain={padDom(candleData.reduce((m, r) => Math.min(m, r.l), 0), candleData.reduce((m, r) => Math.max(m, r.h), 1))} tickCount={phone ? 5 : undefined} scale={block.scale === "log" ? "log" : undefined} />
+            {REF}
+            <Tooltip content={<CandleTip />} cursor={{ fill: "rgb(var(--c-89) / 0.04)" }} />
+            <Bar dataKey="h" shape={<CandleShape />} isAnimationActive={false} />
+          </BarChart>
+        </ResponsiveContainer>
+      ) : WATERFALL ? (
+        <ResponsiveContainer width="100%" height={H}>
+          <BarChart data={waterData} margin={{ top: 6, right: 6, bottom: 0, left: 0 }} barCategoryGap="26%">
+            {X}
+            <YAxis tick={tk} tickFormatter={(v: number) => fmt(v)} tickLine={false} axisLine={{ stroke: AXIS_LINE }} width={46} domain={padDom(waterData.reduce((m, r) => Math.min(m, r.from, r.to), 0), waterData.reduce((m, r) => Math.max(m, r.from, r.to), 1))} tickCount={phone ? 5 : undefined} scale={block.scale === "log" ? "log" : undefined} />
+            {REF}
+            <Tooltip content={<WaterTip />} cursor={{ fill: "rgb(var(--c-89) / 0.04)" }} />
+            <Bar dataKey="base" stackId="wf" fill="transparent" isAnimationActive={false} />
+            <Bar dataKey="delta" stackId="wf" isAnimationActive={false}>
+              {waterData.map((r, i) => <Cell key={i} fill={r.fill} />)}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      ) : ERRBAND ? (
+        <ResponsiveContainer width="100%" height={H}>
+          <BarChart data={errData} margin={{ top: 12, right: 8, bottom: 0, left: 0 }} barCategoryGap="34%">
+            {X}
+            <YAxis tick={tk} tickFormatter={(v: number) => fmt(v)} tickLine={false} axisLine={{ stroke: AXIS_LINE }} width={46} domain={padDom(errData.reduce((m, r) => Math.min(m, r.lo), 0), errData.reduce((m, r) => Math.max(m, r.hi), 1))} tickCount={phone ? 5 : undefined} scale={block.scale === "log" ? "log" : undefined} />
+            {REF}
+            <Tooltip content={<TT />} cursor={{ fill: "rgb(var(--c-89) / 0.04)" }} />
+            <Bar dataKey="y" fill={SERIES_COLORS[0]} radius={[3, 3, 2, 2]} isAnimationActive={false}>
+              <ErrorBar dataKey="err" direction="y" stroke="var(--color-muted)" strokeWidth={1.4} width={8} />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      ) : VIOLIN ? (
+        <ResponsiveContainer width="100%" height={H}>
+          <BarChart data={violinData} margin={{ top: 6, right: 6, bottom: 0, left: 0 }} barCategoryGap="26%">
+            {X}
+            <YAxis tick={tk} tickFormatter={(v: number) => fmt(v)} tickLine={false} axisLine={{ stroke: AXIS_LINE }} width={46} domain={padDom(violinData.reduce((m, r) => Math.min(m, r.kde[0]?.x ?? 0), 0), violinData.reduce((m, r) => Math.max(m, r.top), 1))} tickCount={phone ? 5 : undefined} scale={block.scale === "log" ? "log" : undefined} />
+            {REF}
+            <Tooltip content={<TT />} cursor={{ fill: "rgb(var(--c-89) / 0.04)" }} />
+            <Bar dataKey="top" shape={<ViolinShape />} isAnimationActive={false} />
           </BarChart>
         </ResponsiveContainer>
       ) : block.chart === "donut" ? (
@@ -629,6 +884,7 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
           <LineChart data={data} margin={{ top: 6, right: 6, bottom: 0, left: 0 }}>
             {X}
             {Y}
+            {REF}
             {TIP}
             {activeSeries.map((s, i) => (
               <Line
@@ -648,6 +904,7 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
           <AreaChart data={data} margin={{ top: 6, right: 6, bottom: 0, left: 0 }}>
             {X}
             {Y}
+            {REF}
             {TIP}
             {activeSeries.map((s, i) => (
               <Area
@@ -668,6 +925,7 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
           <BarChart data={data} margin={{ top: 6, right: 6, bottom: 0, left: 0 }} barCategoryGap="22%">
             {X}
             {Y}
+            {REF}
             {TIP}
             {activeSeries.map((s, i) => (
               <Bar
