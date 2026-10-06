@@ -852,18 +852,19 @@ function startTick() {
 }
 
 // R8: ONE shared 25s interval pings every browser socket and reaps zombies.
-// A browser always pongs invisibly; a socket that hasn't ponged since the
-// previous round is dead (Doze-killed WebView, gone NAT) — terminate() it so
-// the close fires and the slot is reclaimed. The 30s no-pong threshold means
-// a socket survives exactly one missed round before eviction.
+// A browser always pongs invisibly; a socket that hasn't ponged for 65s is
+// dead (Doze-killed WebView, gone NAT) — terminate() it so the close fires
+// and the slot is reclaimed. The 65s threshold tolerates TWO consecutive
+// dropped frames (RTT spike, Doze hiccup) before declaring death — the old
+// 30s value reaped healthy sockets whose single pong was a second late.
 let pingTimer = null;
 function startSharedPingLoop() {
   if (pingTimer) return;
   pingTimer = setInterval(() => {
     const now = Date.now();
     for (const [s, info] of browserSockets) {
-      if (now - info.lastPong > 30_000) {
-        console.log(`ws-reap peers=${browserSockets.size - 1}${info.sid ? ` sid=${info.sid}` : ""} at=${new Date().toISOString()}`);
+      if (now - info.lastPong > 65_000) {
+        console.log(`ws-reap peers=${browserSockets.size - 1} dev=${info.device ?? "-"} f=${info.filter ? 1 : 0}${info.sid ? ` sid=${info.sid}` : ""} lq=${new Date(info.lastPong).toISOString()} at=${new Date().toISOString()}`);
         try { s.destroy(); } catch { /* gone */ }
         continue;
       }
@@ -1027,7 +1028,8 @@ export function handleWsUpgrade(req, socket, head) {
   const info = { sid, filter: filterComplete, lastPong: Date.now() };
   const since = url.searchParams.get("since");
   const device = url.searchParams.get("device") || null;
-  
+  info.device = device; // connection-audit: device tag flows with the reap/close logs too
+  console.log(`ws-upgrade filter=${filterComplete ? 1 : 0} since=${since ?? "-"} device=${device ?? "-"} ua=${(req.headers["user-agent"] || "-").slice(0, 80)}`);
   const key = req.headers["sec-websocket-key"];
   const accept = generateAcceptKey(key);
   socket.write(

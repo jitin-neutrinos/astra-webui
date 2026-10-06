@@ -120,6 +120,7 @@ class NtfyPushService : Service() {
     private var chatAttempt = 0
     private var chatRunnable: Runnable? = null
     private var chatPrefRunnable: Runnable? = null
+    private var chatChatDebounce: Runnable? = null
     private var chatCookie: String? = null
     private var appForeground = false
 
@@ -140,8 +141,14 @@ class NtfyPushService : Service() {
             ACTION_APP_FOREGROUND -> appForeground = true
             ACTION_APP_BACKGROUND -> appForeground = false
             ACTION_SESSION_CHANGED -> {
-                chatAttempt = 0
-                reconnectChatLeg("session-changed")
+                // Debounce: chat switches (and stray intents) used to fire this
+                // several times a second; each redial tore down a healthy socket
+                // and opened a new one — the frame churn / socket pile-up source.
+                // 1.5s trailing debounce collapses bursts to one redial.
+                chatChatDebounce?.let { handler.removeCallbacks(it) }
+                val r = Runnable { if (isRunning) reconnectChatLeg("session-changed") }
+                chatChatDebounce = r
+                handler.postDelayed(r, 1500)
             }
             ACTION_CHAT_OPENED -> {
                 val storedKey = intent?.getStringExtra("stored_key")
@@ -298,6 +305,13 @@ class NtfyPushService : Service() {
     // ---------------------------------------------------------------------
     private fun connectWebSocket() {
         if (!isRunning) return
+        // Connection-audit fix (2026-10-06): never overwrite a live socket.
+        // Repeated startService()/onStartCommand bursts used to assign a new
+        // WebSocket over the old one; the orphaned socket still counted as a
+        // peer until the zombie reaper or CF edge closed it — the observed
+        // climb to ~34 concurrent sockets.
+        try { webSocket?.close(1000, "redial") } catch (_: Throwable) { /* gone */ }
+        webSocket = null
 
         val prefs: SharedPreferences = getSharedPreferences("CapacitorStorage", Context.MODE_PRIVATE)
         val connString = prefs.getString("ntfy_conn", "") ?: ""
@@ -423,6 +437,9 @@ class NtfyPushService : Service() {
 
     private fun connectChatLeg() {
         if (!isRunning) return
+        // Same anti-orphan rule as connectWebSocket: close before overwrite.
+        try { chatSocket?.close(1000, "redial") } catch (_: Exception) { /* gone */ }
+        chatSocket = null
         val cookie = readSessionCookie()
         chatCookie = cookie
         if (cookie.isNullOrEmpty()) {
@@ -856,6 +873,7 @@ class NtfyPushService : Service() {
         reconnectRunnable?.let { handler.removeCallbacks(it) }
         chatRunnable?.let { handler.removeCallbacks(it) }
         chatPrefRunnable?.let { handler.removeCallbacks(it) }
+        chatChatDebounce?.let { handler.removeCallbacks(it) }
         handler.removeCallbacks(summaryRunnable)
         webSocket?.close(1000, "Service destroyed")
         chatSocket?.close(1000, "Service destroyed")

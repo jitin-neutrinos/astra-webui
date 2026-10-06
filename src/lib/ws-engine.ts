@@ -508,7 +508,9 @@ export function wakeProbe() { // exported for wake-probe.check.ts (behavioral te
   if (wakeProbeInFlight) return;
   const s = eng.socket;
   if (s && s.readyState === 1) {
-    // OPEN: prove the path with the cheap mtime probe, 3s deadline.
+    // OPEN: prove the path with the cheap mtime probe, 8s deadline.
+    // (was 3s — a tunnel RTT spike past 3s killed HEALTHY sockets on mobile and
+    // kicked the reconnect storm; 8s = generous but still bounded.)
     wakeProbeInFlight = true;
     let settled = false;
     const done = (failed: boolean) => {
@@ -522,7 +524,7 @@ export function wakeProbe() { // exported for wake-probe.check.ts (behavioral te
       if (eng.socket === s) eng.socket = null;
       window.dispatchEvent(new Event("online"));
     };
-    window.setTimeout(() => done(true), 3000);
+    window.setTimeout(() => done(true), 8000);
     rpc("config.get", { key: "mtime" }).then(() => done(false)).catch(() => done(true));
   } else if (s && s.readyState === 0) {
     // CONNECTING: dial in flight — let it land; the 3s-open... nothing to do.
