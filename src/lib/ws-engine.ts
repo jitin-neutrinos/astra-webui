@@ -884,6 +884,14 @@ function onMessage(e: MessageEvent) {
         clearWatchdog();
         setTurnRunning(false);
       }
+      // Cross-session turn tracking (owner 10-06): the sidebar shows "Working…"
+      // on any chat whose turn is running, not just the open one. Frames for
+      // the live session are handled above; other chat's completions land as
+      // chat.turn events so the row status clears. Deliberately silent for the
+      // live session too — no extra listeners needed for those turns.
+      if (!belongsToLive && session_id && type === "message.complete") {
+        emit({ type: "chat.turn", payload: { sid: session_id, running: false } });
+      }
       if (type === "message.error") {
         if (belongsToLive) emit({ type, payload, session_id });
         return;
@@ -904,7 +912,15 @@ function onMessage(e: MessageEvent) {
       return;
     }
 
-    if (session_id && session_id !== wsGet().liveSessionId) return;
+    if (session_id && session_id !== wsGet().liveSessionId) {
+      // Another chat's turn started — surface it for the sidebar's row status
+      // (thinking / working animation there, owner 10-06). Then drop, exactly
+      // as before: a foreign session's frames must never reach the chat UI.
+      if (type === "message.start" || type === "message.complete" || type === "message.error") {
+        emit({ type: "chat.turn", payload: { sid: session_id, running: type === "message.start", thinking: type === "message.start" } });
+      }
+      return;
+    }
 
     if (type === "session.info") {
       applySessionInfo(session_id, payload);

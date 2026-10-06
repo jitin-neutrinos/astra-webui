@@ -6784,3 +6784,20 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
 .ast-cv-schema-tables { overflow-x: auto; overscroll-behavior-x: contain; }
 .ast-cv-schema-table { min-width: 0; }
 .ast-cv-schema-cols { min-width: 100%; }
+
+/* Owner 10-06: a last reply that WAS a canvas card reads as an affordance,
+   not as body text — accent ink, slightly brighter than the muted sub. */
+.ast-row-sub.ast-row-canvas {
+  color: var(--color-accent);
+  opacity: 1;
+  font-weight: 500;
+}
+[data-theme="light"] .ast-row-sub.ast-row-canvas {
+  color: rgb(var(--light-c-9) / 1);
+}
+.ast-row-sub code {
+  font: 400 10px/1.2 var(--font-mono);
+  padding: 0 2px;
+  border-radius: var(--shape-1);
+  background: rgb(var(--c-8) / 0.12);
+}

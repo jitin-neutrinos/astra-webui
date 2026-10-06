@@ -32,6 +32,8 @@ const MSG_WINDOW = 40;
 const MAX_BODY = 4 * 1024 * 1024;
 
 const SCAFFOLD = /^\[(surface|system|runtime note|context compaction)\b/i;
+// The auto-greet kickoff is a UI convention, mirrors src/lib/notify.ts GREET_RE.
+const GREET = /^New chat just started\./;
 
 /** Assistant text that is a real response, not scaffolding / tool / thinking. */
 function responseText(m) {
@@ -45,6 +47,8 @@ function responseText(m) {
   if (SCAFFOLD.test(t)) return "";
   // tool-call-only assistant rows serialize their calls, not prose
   if (/^\[tool_(call|result)\b/i.test(t)) return "";
+  // The greet itself never counts as the last reply
+  if (GREET.test(t)) return "";
   return t;
 }
 
@@ -61,7 +65,7 @@ export function lastResponseFrom(messages) {
   const rows = Array.isArray(messages) ? messages : [];
   for (let i = rows.length - 1; i >= 0; i--) {
     const t = responseText(rows[i]);
-    if (t) return t.length > 220 ? t.slice(0, 219) + "…" : t;
+    if (t && !GREET.test(t)) return t.length > 220 ? t.slice(0, 219) + "…" : t;
   }
   return "";
 }
@@ -122,7 +126,7 @@ export async function lastResponse(sid, activityAt, cookie = "") {
  * `cookie` is the caller's existing upstream session cookie — reusing it avoids
  * a second login and keeps this module free of an import cycle with the proxy.
  */
-export async function enrichLastReplies(rows, { max = 12, cookie = "" } = {}) {
+export async function enrichLastReplies(rows, { max = 16, cookie = "" } = {}) {
   if (!Array.isArray(rows) || !rows.length || !cookie) return rows;
   const slice = rows.slice(0, max);
   await Promise.all(slice.map(async (r) => {

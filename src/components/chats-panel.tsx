@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef, memo } from "react";
 import { SessionsSkeleton } from "./ui/skeletons";
 import {
   ArrowLeft, Search, ChevronLeft, ChevronRight, AlertCircle,
@@ -9,7 +9,9 @@ import { sourcesParam, type SourceModal } from "@/lib/source-filter";
 import { cleanTitle } from "@/lib/chat-title";
 import { getUnreadCount, seedFromServer } from "@/lib/notify";
 import { rowKey, rowTime, timeAgo, sortRows, mergeRows, type SessionRow } from "@/lib/session-row";
+import { inlineMarkdownHtml, isCanvasPreview, isGreetPreview } from "@/lib/row-inline";
 import { UnreadPill } from "./ui/unread-pill";
+import AITextLoading from "@/components/ui/ai-text-loading";
 import { CheckCheck } from "lucide-react";
 
 // Brand glyphs — single-color currentColor marks, no third-party assets.
@@ -86,6 +88,34 @@ export function TokenCostChip({ row }: { row: any }) {
   );
 }
 
+/** Sidebar row sub-line (owner 10-06). Priority order:
+ *   1. turn running on ANY device → animated "Thinking…"/"Working…" (chat.turn events)
+ *   2. latest response was a canvas card → "Open to read canvas card"
+ *   3. the latest response text, INLINE-formatted (bold/italic/code only — the
+ *      one-line row cannot carry block constructs), never raw markdown paint
+ *   4. search snippets pass through as-is (they quote the matched message)
+ *   5. greets/fallbacks blank — a convention text never poses as a reply */
+const RowSub = memo(function RowSub({ s, inSearch, running, thinking }: {
+  s: { last_reply?: string | null; preview?: string | null; snippet?: string | null };
+  inSearch: boolean; running: boolean; thinking: boolean;
+}) {
+  const live = running || thinking;
+  const body = inSearch && s.snippet ? s.snippet
+    : isGreetPreview(s.last_reply) ? ""
+    : isCanvasPreview(s.last_reply) ? "Open to read canvas card →"
+    : s.last_reply || s.preview || "";
+  const isCanvas = isCanvasPreview(s.last_reply);
+  return (
+    <div className={"ast-row-sub truncate" + (isCanvas ? " ast-row-canvas" : "")}>
+      {live ? (
+        <AITextLoading texts={thinking ? ["Thinking…", "Reasoning…"] : ["Working…", "Almost there…"]} />
+      ) : isCanvas ? "Open to read canvas card →" : (
+        <span dangerouslySetInnerHTML={{ __html: inlineMarkdownHtml(body) }} />
+      )}
+    </div>
+  );
+});
+
 export function ChatsPanel({ onBack, onSelect, activeSessionId, onEndSession }: { onBack: () => void; onSelect: (id: string) => void; activeSessionId?: string | null; onEndSession?: (id: string) => Promise<void> }) {
   const [query, setQuery] = useState("");
   const [sessions, setSessions] = useState<SessionRow[]>([]);
@@ -98,6 +128,13 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId, onEndSession }: 
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameText, setRenameText] = useState("");
   const [busySid, setBusySid] = useState<string | null>(null);
+  // Live turn status per row (owner 10-06): any chat whose turn is running,
+  // on any device, shows "Thinking… / Working…" instead of its last reply.
+  // Fed by chat.turn events (ws-engine emits them for OTHER sessions; the open
+  // session's state would only matter if this panel is mounted during a turn,
+  // which is impossible — the chat surface hides the sidebar panel... except
+  // on wide screens where the list is visible alongside, so include it).
+  const [turnSids, setTurnSids] = useState<Map<string, { running: boolean; thinking: boolean }>>(new Map());
   // End session moved HERE from the chat header (owner 10-02). It is a real
   // action, not a read-only command, so it keeps the header's two-step shape:
   // first click arms (menu item becomes "Confirm end"), second click fires.
@@ -120,6 +157,33 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId, onEndSession }: 
       const ev = (e as CustomEvent<{ type?: string }>).detail;
       if (ev && (ev.type === "sessions.changed" || ev.type === "session.started")) {
         setTick(t => t + 1);
+      }
+      // Live turn status for the row sub-lines (owner 10-06).
+      if (ev && ev.type === "chat.turn") {
+        const p = (ev as any).payload || {};
+        const sid = p.sid;
+        if (sid) {
+          setTurnSids((m) => {
+            const next = new Map(m);
+            if (p.running) next.set(sid, { running: true, thinking: !!p.thinking });
+            else next.delete(sid);
+            return next;
+          });
+        }
+      }
+      // Own session's turns: the chat surface already knows, but the wide-screen
+      // panel ALSO shows the open chat's row — mirror its turn state here.
+      if (ev && (ev.type === "message.start" || ev.type === "message.complete" || ev.type === "message.error")) {
+        const sid = (ev as any).session_id;
+        const running = ev.type === "message.start";
+        if (sid) {
+          setTurnSids((m) => {
+            const next = new Map(m);
+            if (running) next.set(sid, { running: true, thinking: true });
+            else next.delete(sid);
+            return next;
+          });
+        }
       }
     };
     window.addEventListener("astra-ws-event", onWs);
@@ -327,6 +391,9 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId, onEndSession }: 
     const t = rowTime(s);
     const editing = renaming === sid;
     const busy = busySid === sid;
+    const turn = turnSids.get(sid || "");
+    const rowRunning = !!turn?.running;
+    const rowThinking = !!turn?.thinking;
 
     return (
       <div
@@ -372,9 +439,11 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId, onEndSession }: 
                 : ((s as any).unread === false && (s as any).last_read_at != null && <CheckCheck className="w-2.5 h-2.5 ast-read-tick" aria-label="Read" />)}
             </div>
             <div className={"ast-row-title truncate " + (unread > 0 ? "ast-row-title-unread" : "")}>{title}</div>
-            <div className="ast-row-sub truncate">
-              {query.trim() !== "" && s.snippet ? s.snippet : ((s as any).last_reply || s.preview || "")}
-            </div>
+            <RowSub s={s as any} inSearch={query.trim() !== ""} running={rowRunning} thinking={rowThinking} />
+            {/* Sub-line is a React subtree (RowSub) so the inline markdown, the
+                canvas-card label and the live "thinking/working" state all live
+                in one place — see src/lib/row-inline.ts + chat.turn events. */}
+
           </button>
         )}
         {!editing && (
