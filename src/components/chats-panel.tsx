@@ -7,7 +7,7 @@ import {
 import { Zap } from "lucide-react";
 import { sourcesParam, type SourceModal } from "@/lib/source-filter";
 import { cleanTitle } from "@/lib/chat-title";
-import { getUnreadCount, seedFromServer } from "@/lib/notify";
+import { getUnreadCount, seedFromServer, storedKeyFor } from "@/lib/notify";
 import { rowKey, rowTime, timeAgo, sortRows, mergeRows, type SessionRow } from "@/lib/session-row";
 import { inlineMarkdownHtml, isCanvasPreview, isGreetPreview } from "@/lib/row-inline";
 import { UnreadPill } from "./ui/unread-pill";
@@ -100,8 +100,12 @@ const RowSub = memo(function RowSub({ s, inSearch, running, thinking }: {
   inSearch: boolean; running: boolean; thinking: boolean;
 }) {
   const live = running || thinking;
+  // Greet texts can ride BOTH fields: the server's last_reply was already
+  // filtered, but `preview` (the gateway's first-user-message) IS the greet
+  // kickoff prompt on every new chat — fall back to it only when it is real.
+  const greet = isGreetPreview(s.last_reply) || isGreetPreview(s.preview);
   const body = inSearch && s.snippet ? s.snippet
-    : isGreetPreview(s.last_reply) ? ""
+    : greet ? ""
     : isCanvasPreview(s.last_reply) ? "Open to read canvas card →"
     : s.last_reply || s.preview || "";
   const isCanvas = isCanvasPreview(s.last_reply);
@@ -161,26 +165,33 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId, onEndSession }: 
       // Live turn status for the row sub-lines (owner 10-06).
       if (ev && ev.type === "chat.turn") {
         const p = (ev as any).payload || {};
-        const sid = p.sid;
-        if (sid) {
+        // Rows key on the STORED id; events arrive keyed on the LIVE id
+        // (rotates on compression). Register under both so the row matches
+        // regardless of which id it holds.
+        const keys = [p.sid, p.stored].filter(Boolean);
+        if (keys.length) {
           setTurnSids((m) => {
             const next = new Map(m);
-            if (p.running) next.set(sid, { running: true, thinking: !!p.thinking });
-            else next.delete(sid);
+            if (p.running) for (const k of keys) next.set(k, { running: true, thinking: !!p.thinking });
+            else for (const k of keys) next.delete(k);
             return next;
           });
         }
       }
       // Own session's turns: the chat surface already knows, but the wide-screen
       // panel ALSO shows the open chat's row — mirror its turn state here.
+      // Same sid-mapping rule as chat.turn above: events carry the LIVE id.
       if (ev && (ev.type === "message.start" || ev.type === "message.complete" || ev.type === "message.error")) {
         const sid = (ev as any).session_id;
+        const stored = (ev as any).payload?.stored_session_id ||
+          ((sid && storedKeyFor(sid)) || "");
+        const keys = [sid, stored].filter(Boolean);
         const running = ev.type === "message.start";
-        if (sid) {
+        if (keys.length) {
           setTurnSids((m) => {
             const next = new Map(m);
-            if (running) next.set(sid, { running: true, thinking: true });
-            else next.delete(sid);
+            if (running) for (const k of keys) next.set(k, { running: true, thinking: true });
+            else for (const k of keys) next.delete(k);
             return next;
           });
         }
