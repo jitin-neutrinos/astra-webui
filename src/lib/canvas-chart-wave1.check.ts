@@ -110,8 +110,10 @@ console.log("ok");
   ok(chartSrc.includes('shape={<CandleShape />}'), "candlestick: custom shape wired");
   ok(chartSrc.includes('shape={<ViolinShape />}'), "violin: custom shape wired");
   ok(chartSrc.includes('<ErrorBar dataKey="err"'), "errorbar: ErrorBar wired to the err offsets");
-  ok(chartSrc.includes('dataKey="base" stackId="wf"') && chartSrc.includes('dataKey="delta" stackId="wf"'), "waterfall: stacked base+delta trick wired");
-  ok(chartSrc.includes('scale={block.scale === "log" ? "log" : undefined}'), "log scale carried on the value axis");
+  ok(chartSrc.includes('shape={<WaterShape />}'), "waterfall: custom shape wired (the stacked base+delta trick composed empty rects; measured 2026-10-06)");
+  ok(chartSrc.includes('shape={<ErrShape />}'), "errorbar: bar body drawn by shape (box pattern: shape + ErrorBar)");
+  ok(chartSrc.includes('scale={block.scale === "log" ? "log" : "auto"}'), "log scale carried on the value axis (explicit 'auto', never undefined — an undefined scale prop silently becomes a POINT scale and flattens every bar; measured 2026-10-06)");
+  ok(!chartSrc.includes('"log" : undefined'), "no explicit-undefined scale prop anywhere (the point-scale trap)");
   ok(chartSrc.includes("block.refline"), "refline reads the parsed field");
   ok(chartSrc.includes("ast-cv-chart-p"), "p-value chip wired to the caption");
 }

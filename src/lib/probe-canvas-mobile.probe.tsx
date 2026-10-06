@@ -87,6 +87,75 @@ const SPECS: { id: string; json: string }[] = [
   { id: "chart-histogram", json: JSON.stringify({ v: 1, blocks: [
     { type: "chart", chart: "histogram", title: "p95 latency (ms)", series: [{ name: "samples", points: [12, 15, 14, 30, 13, 12, 44, 51, 13, 12, 9, 30, 22] }] },
   ] }) },
+  { id: "chart-candlestick", json: JSON.stringify({ v: 1, blocks: [
+    { type: "chart", chart: "candlestick", title: "Weekly OHLC", labels: ["Mon", "Tue", "Wed", "Thu"],
+      series: [{ name: "ACME", points: [], ohlc: [[150, 162, 145, 158], [158, 166, 152, 154], [154, 160, 148, 159], [159, 171, 157, 168]] }] },
+  ] }) },
+  { id: "chart-waterfall", json: JSON.stringify({ v: 1, blocks: [
+    { type: "chart", chart: "waterfall", title: "Cash bridge", labels: ["Open", "Costs", "Revenue", "Tax", "Close"],
+      series: [{ name: "cash", points: [120, -35, 50, -20, 115], items: [
+        { name: "Open", value: 120, kind: "total" }, { name: "Costs", value: -35, kind: "delta" },
+        { name: "Revenue", value: 50, kind: "delta" }, { name: "Tax", value: -20, kind: "delta" },
+        { name: "Close", value: 115, kind: "total" }] }] },
+  ] }) },
+  { id: "chart-errorbar", json: JSON.stringify({ v: 1, blocks: [
+    { type: "chart", chart: "errorbar", title: "p95 latency per deploy", labels: ["v2.1", "v2.2", "v2.3"],
+      series: [{ name: "p95", points: [42, 48, 45], error: { lo: [38, 44, 41], hi: [47, 53, 49] } }],
+      refline: { value: 50, label: "SLO" }, p: 0.032 },
+  ] }) },
+  { id: "chart-violin", json: JSON.stringify({ v: 1, blocks: [
+    { type: "chart", chart: "violin", title: "Response-time distributions", labels: ["Team A", "Team B"],
+      series: [{ name: "Team A", points: [38, 40, 41, 42, 42, 43, 44, 45, 46, 48, 52, 58] },
+               { name: "Team B", points: [30, 33, 35, 36, 38, 40, 44, 49, 55, 62, 70, 81] }] },
+  ] }) },
+  { id: "palette", json: JSON.stringify({ v: 1, blocks: [
+    { type: "palette", title: "Palette", against: "palettes.json", colors: [
+      { name: "Accent", value: "#2bc8f3", role: "accent", note: "cyanx" },
+      { name: "Void", value: "#090c12", role: "background" },
+      { name: "Ink", value: "#f2f3f7", role: "text" }], scale: true, radius: true },
+  ] }) },
+  { id: "scorecard", json: JSON.stringify({ v: 1, blocks: [
+    { type: "scorecard", title: "Heuristics", method: "heuristic", max: 4,
+      items: [{ criterion: "Status visibility", score: 3, severity: "info", note: "ok" },
+              { criterion: "Control", score: 2, severity: "warn", note: "no undo" }],
+      verdict: "12/16" },
+  ] }) },
+  { id: "compliance", json: JSON.stringify({ v: 1, blocks: [
+    { type: "compliance", regime: "DPDP Act 2023", asOf: "2026-10-06",
+      items: [{ ref: "s.4", provision: "Notice", obligation: "Publish notice", status: "pass", severity: "info" },
+              { ref: "s.8(5)", provision: "Breach", obligation: "Notify Board", due: "72h", status: "fail", severity: "danger", consequence: "penalty" }] },
+  ] }) },
+  { id: "schema", json: JSON.stringify({ v: 1, blocks: [
+    { type: "schema", title: "Orders", tables: [{ name: "orders", rows: 18234, columns: [
+      { name: "id", type: "uuid", key: "PK" }, { name: "customer_id", type: "uuid", key: "FK", ref: "customers.id" },
+      { name: "total", type: "numeric(12,2)", key: "NN" }], indexes: ["(customer_id)"] }] },
+  ] }) },
+  { id: "sequence", json: JSON.stringify({ v: 1, blocks: [
+    { type: "sequence", title: "Checkout", actors: [{ id: "app", label: "Mobile app", kind: "actor" },
+      { id: "api", label: "API", kind: "service" }, { id: "pay", label: "Payment GW", kind: "external" }],
+      messages: [{ from: "app", to: "api", label: "POST /checkout", kind: "sync" },
+        { from: "api", to: "pay", label: "authorize", kind: "async" },
+        { from: "pay", to: "api", label: "authorized", kind: "return" },
+        { from: "api", to: "app", label: "201", kind: "return" }] },
+  ] }) },
+  { id: "theorem", json: JSON.stringify({ v: 1, blocks: [
+    { type: "theorem", kind: "theorem", number: 1, statement: "Leaves = n+1 for any non-empty binary tree with n internal nodes.",
+      proof: "Each internal node contributes two child slots.", refs: ["Knuth Vol 1"] },
+  ] }) },
+  { id: "algorithm", json: JSON.stringify({ v: 1, blocks: [
+    { type: "algorithm", number: 1, steps: [{ text: "load samples S", complexity: "O(n)" },
+      { text: "for each group g:", indent: 1 }, { text: "compute quartiles", indent: 2, complexity: "O(1)" }] },
+  ] }) },
+  { id: "clause", json: JSON.stringify({ v: 1, blocks: [
+    { type: "clause", title: "MSA extract", items: [
+      { ref: "12.3(a)", heading: "Liability cap", text: "Cap at 12 months fees.", risk: "warn", flags: ["capped"] },
+      { ref: "12.3(b)(ii)", heading: "Carve-outs", text: "Confidentiality uncapped.", children: true, risk: "danger" }] },
+  ] }) },
+  { id: "obligations", json: JSON.stringify({ v: 1, blocks: [
+    { type: "obligations", title: "Register", rows: [
+      { ref: "12.3(a)", obligation: "Cap liability", party: "Provider", trigger: "Any claim", due: "continuous", status: "open", severity: "warn", consequence: "exposure" },
+      { ref: "8.2", obligation: "Return CI", party: "Both", due: "30 days after completion", status: "open", severity: "info" }] },
+  ] }) },
   { id: "chart-sankey", json: JSON.stringify({ v: 1, blocks: [
     { type: "chart", chart: "sankey", title: "Request budget",
       nodes: [{ id: "gw" }, { id: "tools" }, { id: "sum" }, { id: "ctx" }],

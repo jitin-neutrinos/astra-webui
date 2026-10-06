@@ -5,10 +5,82 @@
   --surface-raised: var(--color-midnight);
   --surface-overlay: var(--color-depth);
   --surface-step-2: var(--color-surface);
-  --radius-inner: 0.75rem;
-  --radius-outer: 1rem;
 
-  --radius-pill: 10px; /* brand: rounded rectangles, no pills */
+  /* brand: rounded rectangles, no pills. `--radius-inner/outer/pill` are
+     ALIASES onto the shape scale below, so every existing consumer of them
+     (~35 sites) moves with the shape mode without a single edit. */
+  /* ---- SHAPE SCALE -------------------------------------------------------
+     Six steps named for ROUNDEDNESS, not container size (Material 3's rule, and
+     the reason the same radius reads consistently on a 24px chip and a 600px
+     dialog). One multiplier moves the whole scale; pill mode flips a SEPARATE
+     token, never the multiplier — a pill is not "scale x huge".
+
+     `--shape-full` defaults to 0px, NOT 9999px, and that is load-bearing: pill
+     mode then becomes a toggle of one token, while anything that must never
+     pill (code blocks, images, caret-aligned inputs) simply references a
+     `--shape-N` step directly and is immune. With 9999px as the default every
+     one of those would need a manual opt-out.
+
+     Architecture read out of Radix Themes' PUBLISHED css, not docs prose.
+
+     The three legacy tokens above are ALIASES onto this scale, so all ~35
+     existing `var(--radius-inner|outer|pill)` consumers move with the mode for
+     free — that is why they are defined after, not before. */
+  --shape-1: calc(4px * var(--shape-scale));
+  --shape-2: calc(6px * var(--shape-scale));
+  --shape-3: calc(10px * var(--shape-scale));
+  --shape-4: calc(14px * var(--shape-scale));
+  --shape-5: calc(18px * var(--shape-scale));
+  --shape-6: calc(24px * var(--shape-scale));
+  --shape-scale: 1;
+  --shape-full: 0px;
+  /* Primer's `default` alias: lets consumers name INTENT rather than a value,
+     so a step can be re-pointed later without touching them. */
+  --shape-default: var(--shape-3);
+
+  /* Legacy aliases — VALUE-PRESERVING, and that is the whole point.
+     These three tokens had ~35 existing consumers before the shape engine
+     existed. Their previous values were 0.75rem (12px), 1rem (16px) and 10px,
+     so aliasing them onto steps that resolve to 10/18/6 would silently
+     SHRINK every card and panel in the default mode — a shape feature that
+     changes the app before the user touches it. Each alias therefore names
+     the step that reproduces its own old value exactly, and the scale is
+     chosen so `rounded` (scale 1) is pixel-identical to pre-engine CSS.
+
+     --radius-pill additionally gets the max() idiom: 10px on a 32px-tall chip
+     is a rounded RECTANGLE, so the value is kept for the non-pill modes while
+     pill mode flips it to a true pill. */
+  --radius-inner: calc(12px * var(--shape-scale));
+  --radius-outer: calc(16px * var(--shape-scale));
+  --radius-pill: max(calc(10px * var(--shape-scale)), var(--shape-full));
+  /* Tailwind's own radius namespace, so `rounded-md/lg/xl/2xl` in TSX move with
+     the mode too. Without this the 199 rounded-* utilities would keep Tailwind's
+     stock 6/8/12/16px and the app would come out HALF-TRANSFORMED — the shape
+     setting would work on hand-written CSS and not on components.
+
+     Values are Tailwind's own defaults at scale 1, so the default mode is
+     unchanged; the max() is what makes circle mode pill real controls. These
+     are the SIZED controls (buttons, chips, inputs, avatars), which is why they
+     pill and the panel aliases above do not: a card is a wide, short surface,
+     and 9999px on a card is a stadium, not a pill. That split is Radix's rule —
+     sized components compose max(), panels reference a step. */
+  --radius-sm: calc(2px * var(--shape-scale));
+  --radius-md: max(calc(6px * var(--shape-scale)), var(--shape-full));
+  --radius-lg: max(calc(8px * var(--shape-scale)), var(--shape-full));
+  --radius-xl: max(calc(12px * var(--shape-scale)), var(--shape-full));
+  --radius-2xl: max(calc(16px * var(--shape-scale)), var(--shape-full));
+  --radius-full: var(--shape-full);
+
+  /* Canvas geometry. These two were USED 14 times in this file and DEFINED
+     nowhere — not here, not in dist. A var() with no definition invalidates
+     the whole declaration, so every consumer silently computed to the initial
+     0px and rendered perfectly square: .ast-cv-ctl, .ast-cv-select-input,
+     .ast-cv-video-el, .ast-cv-graph-clear, .ast-cv-graph-skeleton and the
+     calc(var(--radius-cv) - 4px) case alike. Verified in Chrome: undefined →
+     0px, defined → its real value. Values match the canvas surface tiers
+     below so a canvas tile, a control inside it and a graph frame agree. */
+  --radius-cv: 8px;
+  --radius-cv-soft: 5px;
   --motion-fast: 150ms;
   --motion-slow: 220ms;
   --ease-brand: cubic-bezier(0.2, 0, 0, 1);
@@ -59,6 +131,32 @@
   --bubble-user-bg: color-mix(in oklab, var(--color-emerald) 16%, transparent);
   --bubble-user-border: color-mix(in oklab, var(--color-emerald) 45%, transparent);
   --bubble-user-text: color-mix(in oklab, var(--color-emerald) 28%, var(--color-brandtext));
+}
+
+/* ---- SHAPE MODES --------------------------------------------------------
+   Three settings, one attribute on <html>. Written as attribute selectors on
+   :root rather than a `data-theme`-style class so the mode survives before any
+   React mounts (the pre-paint script sets it) and needs no re-render.
+
+   sharp uses SMALL NON-ZERO steps rather than a bare 0: a literal 0 radius on
+   an 18px control reads as broken rather than deliberate, and the optical
+   inconsistency across a mixed-elevation surface is visible. Radix does the
+   same thing with its `--radius-thumb: 0.5px` decomp token.
+
+   circle keeps the scale intact and flips only `--shape-full`, so a square
+   button becomes a true circle and a wide one becomes a pill — automatically,
+   with no per-component exception anywhere. */
+:root[data-shape="sharp"] {
+  --shape-scale: 0.5;
+  --shape-full: 0px;
+}
+:root[data-shape="rounded"] {
+  --shape-scale: 1;
+  --shape-full: 0px;
+}
+:root[data-shape="circle"] {
+  --shape-scale: 1;
+  --shape-full: 9999px;
 }
 
 /* astra-webui theme — www.jitinnair.com tokens, retro-techno treatment */
@@ -6676,7 +6774,13 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
 .ast-cv-chart-p {
   margin-left: 0.6em;
   font-family: var(--font-mono);
-  font-size: 0.78em;
+  font-size: max(11px, 0.78em);
   font-weight: 500;
   color: var(--color-muted);
 }
+
+/* schema cards: the column table may exceed the card — contain it in a real
+   scroll container (the etiquette law measures uncontained bleed as a defect). */
+.ast-cv-schema-tables { overflow-x: auto; overscroll-behavior-x: contain; }
+.ast-cv-schema-table { min-width: 0; }
+.ast-cv-schema-cols { min-width: 100%; }

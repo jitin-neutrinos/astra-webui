@@ -328,6 +328,21 @@ function CandleShape(props: any) {
   );
 }
 
+function WaterShape(props: any) {
+  const { x, width, payload, y, height } = props;
+  const p = payload as WaterRow | undefined;
+  if (!p) return null;
+  // Zero-baseline convention (BoxShape's measured contract): the bar rect spans
+  // zero..to, so `height / |to|` is pixels-per-unit and the zero line is the rect
+  // edge nearest zero. Works for rises and falls.
+  const unit = height / (Math.abs(p.to) || 1);
+  const y0 = p.to >= 0 ? y + height : y;
+  const yOf = (v: number) => y0 - v * unit;
+  const top = Math.min(yOf(p.from), yOf(p.to));
+  const h = Math.max(1.5, Math.abs(yOf(p.from) - yOf(p.to)));
+  return <rect x={x + width * 0.18} y={top} width={width * 0.64} height={h} rx={1.5} fill={p.fill} />;
+}
+
 interface WaterRow { name: string; base: number; delta: number; from: number; to: number; fill: string; }
 
 /** A waterfall/bridge: `points` are step values, `kinds[i]` marks a running delta
@@ -373,7 +388,20 @@ function errOf(points: number[], error: { lo: number[]; hi: number[] } | undefin
   return rows;
 }
 
-interface ViolinRow { name: string; mid: number; top: number; kde: { x: number; y: number }[]; n: number; }
+interface ViolinRow { name: string; k: string; o: number; h: number; l: number; c: number; }
+
+/** The errorbar bar body — a shaped bar (the box pattern: shape + ErrorBar) so
+ *  composition cannot collapse it the way the default rectangle path did. */
+function ErrShape(props: any) {
+  const { x, width, y, height } = props;
+  if (!Number.isFinite(height) || height <= 0) return null;
+  return <rect x={x} y={y} width={width} height={height} rx={3} fill={SERIES_COLORS[0]} />;
+}
+// The kde lives OUTSIDE the row on purpose: recharts' Bar composition chokes on
+// a row carrying an array-of-objects field (composed y/height come back empty),
+// so the row stays as flat as a candlestick's and the shape looks its curve up
+// by the row's key. Measured 2026-10-06 in real Chromium (height:0, no y).
+const VIOLIN_KDE: Record<string, { x: number; y: number }[]> = {};
 
 /** Silverman-rule KDE on a 64-point grid, normalised to max density 1 so the
  *  silhouette encodes SHAPE only — a density axis would be unreadable chrome. */
@@ -409,7 +437,9 @@ function violinOf(series: { name: string; points: number[]; kde?: { x: number; y
     if (kde.length < 2) return;
     const sorted = [...lit].sort((a, b) => a - b);
     const mid = sorted.length ? sorted[Math.floor(sorted.length / 2)] : kde[Math.floor(kde.length / 2)].x;
-    rows.push({ name: names[i] ?? s.name, mid, top: kde[kde.length - 1].x, kde, n: lit.length });
+    const k = `${i}:${s.name}`;
+    VIOLIN_KDE[k] = kde;
+    rows.push({ name: names[i] ?? s.name, k, o: Math.min(...lit), h: Math.max(...lit), l: Math.min(...lit), c: mid });
   });
   return rows;
 }
@@ -417,17 +447,18 @@ function violinOf(series: { name: string; points: number[]; kde?: { x: number; y
 function ViolinShape(props: any) {
   const { x, width, payload, y, height } = props;
   const p = payload as ViolinRow | undefined;
-  if (!p || p.kde.length < 2) return null;
-  const unit = height / (p.top || 1);
+  const kde = p ? VIOLIN_KDE[p.k] : undefined;
+  if (!p || !kde || kde.length < 2) return null;
+  const unit = height / (p.h || 1);
   const yOf = (v: number) => y + height - v * unit;
   const cx = x + width / 2;
   const half = width * 0.42;
-  const left = p.kde.map((k) => `${(cx - k.y * half).toFixed(2)},${yOf(k.x).toFixed(2)}`);
-  const right = [...p.kde].reverse().map((k) => `${(cx + k.y * half).toFixed(2)},${yOf(k.x).toFixed(2)}`);
+  const left = kde.map((k) => `${(cx - k.y * half).toFixed(2)},${yOf(k.x).toFixed(2)}`);
+  const right = [...kde].reverse().map((k) => `${(cx + k.y * half).toFixed(2)},${yOf(k.x).toFixed(2)}`);
   return (
     <g>
       <polygon points={[...left, ...right].join(" ")} fill="var(--color-accent)" fillOpacity={0.18} stroke="var(--color-accent)" strokeWidth={1.2} strokeLinejoin="round" />
-      <line x1={cx - half * 0.4} x2={cx + half * 0.4} y1={yOf(p.mid)} y2={yOf(p.mid)} stroke="var(--color-brandtext)" strokeWidth={1.6} />
+      <line x1={cx - half * 0.4} x2={cx + half * 0.4} y1={yOf(p.c)} y2={yOf(p.c)} stroke="var(--color-brandtext)" strokeWidth={1.6} />
     </g>
   );
 }
@@ -628,7 +659,8 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
       return { ...empty, waterData: waterOf(nums, kinds, names) };
     }
     if (ERRBAND) return { ...empty, errData: errOf(nums, s0?.error, names) };
-    return { ...empty, violinData: violinOf(activeSeries as { name: string; points: number[]; kde?: { x: number; y: number }[] }[], labels) };
+    const vd = violinOf(activeSeries as { name: string; points: number[]; kde?: { x: number; y: number }[] }[], labels);
+    return { ...empty, violinData: vd };
   }, [ADAPTED, BOX, HIST, CANDLE, WATERFALL, ERRBAND, VIOLIN, activeSeries, labels, ctx]);
   // Fail-soft in the same shape every other adapter uses: an empty adapter
   // renders the no-data line, never an axis with nothing on it. A box whose only
@@ -683,7 +715,7 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
   const X = <XAxis dataKey="name" tick={tk} tickLine={false} axisLine={{ stroke: AXIS_LINE }} height={24}
     interval={interval} />;
   const Y = <YAxis tick={tk} tickFormatter={(v: number) => fmt(v)} tickLine={false} axisLine={{ stroke: AXIS_LINE }} width={46}
-    tickCount={phone ? 5 : undefined} scale={block.scale === "log" ? "log" : undefined} />;
+    tickCount={phone ? 5 : undefined} scale={block.scale === "log" ? "log" : "auto"} />;
   const TIP = <Tooltip content={<TT />} cursor={{ fill: "rgb(var(--c-89) / 0.04)" }} />;
   // Reference line (wave-1): a threshold/target ruled across the plot, labelled.
   const REF = block.refline ? (
@@ -797,7 +829,7 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
         <ResponsiveContainer width="100%" height={H}>
           <BarChart data={candleData} margin={{ top: 6, right: 6, bottom: 0, left: 0 }} barCategoryGap="30%">
             {X}
-            <YAxis tick={tk} tickFormatter={(v: number) => fmt(v)} tickLine={false} axisLine={{ stroke: AXIS_LINE }} width={46} domain={padDom(candleData.reduce((m, r) => Math.min(m, r.l), 0), candleData.reduce((m, r) => Math.max(m, r.h), 1))} tickCount={phone ? 5 : undefined} scale={block.scale === "log" ? "log" : undefined} />
+            <YAxis tick={tk} tickFormatter={(v: number) => fmt(v)} tickLine={false} axisLine={{ stroke: AXIS_LINE }} width={46} domain={padDom(candleData.reduce((m, r) => Math.min(m, r.l), 0), candleData.reduce((m, r) => Math.max(m, r.h), 1))} tickCount={phone ? 5 : undefined} scale={block.scale === "log" ? "log" : "auto"} />
             {REF}
             <Tooltip content={<CandleTip />} cursor={{ fill: "rgb(var(--c-89) / 0.04)" }} />
             <Bar dataKey="h" shape={<CandleShape />} isAnimationActive={false} />
@@ -807,23 +839,24 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
         <ResponsiveContainer width="100%" height={H}>
           <BarChart data={waterData} margin={{ top: 6, right: 6, bottom: 0, left: 0 }} barCategoryGap="26%">
             {X}
-            <YAxis tick={tk} tickFormatter={(v: number) => fmt(v)} tickLine={false} axisLine={{ stroke: AXIS_LINE }} width={46} domain={padDom(waterData.reduce((m, r) => Math.min(m, r.from, r.to), 0), waterData.reduce((m, r) => Math.max(m, r.from, r.to), 1))} tickCount={phone ? 5 : undefined} scale={block.scale === "log" ? "log" : undefined} />
+            <YAxis tick={tk} tickFormatter={(v: number) => fmt(v)} tickLine={false} axisLine={{ stroke: AXIS_LINE }} width={46} domain={padDom(waterData.reduce((m, r) => Math.min(m, r.from, r.to), 0), waterData.reduce((m, r) => Math.max(m, r.from, r.to), 1))} tickCount={phone ? 5 : undefined} scale={block.scale === "log" ? "log" : "auto"} />
             {REF}
             <Tooltip content={<WaterTip />} cursor={{ fill: "rgb(var(--c-89) / 0.04)" }} />
-            <Bar dataKey="base" stackId="wf" fill="transparent" isAnimationActive={false} />
-            <Bar dataKey="delta" stackId="wf" isAnimationActive={false}>
-              {waterData.map((r, i) => <Cell key={i} fill={r.fill} />)}
-            </Bar>
+            {/* One shaped bar, not the stacked base+delta trick: recharts' stack
+                composition returned empty rects for this data (measured 2026-10-06),
+                while a custom shape on a single value bar composes fine (the
+                candlestick pattern). */}
+            <Bar dataKey="to" shape={<WaterShape />} isAnimationActive={false} />
           </BarChart>
         </ResponsiveContainer>
       ) : ERRBAND ? (
         <ResponsiveContainer width="100%" height={H}>
           <BarChart data={errData} margin={{ top: 12, right: 8, bottom: 0, left: 0 }} barCategoryGap="34%">
             {X}
-            <YAxis tick={tk} tickFormatter={(v: number) => fmt(v)} tickLine={false} axisLine={{ stroke: AXIS_LINE }} width={46} domain={padDom(errData.reduce((m, r) => Math.min(m, r.lo), 0), errData.reduce((m, r) => Math.max(m, r.hi), 1))} tickCount={phone ? 5 : undefined} scale={block.scale === "log" ? "log" : undefined} />
+            <YAxis tick={tk} tickFormatter={(v: number) => fmt(v)} tickLine={false} axisLine={{ stroke: AXIS_LINE }} width={46} domain={padDom(errData.reduce((m, r) => Math.min(m, r.lo), 0), errData.reduce((m, r) => Math.max(m, r.hi), 1))} tickCount={phone ? 5 : undefined} scale={block.scale === "log" ? "log" : "auto"} />
             {REF}
             <Tooltip content={<TT />} cursor={{ fill: "rgb(var(--c-89) / 0.04)" }} />
-            <Bar dataKey="y" fill={SERIES_COLORS[0]} radius={[3, 3, 2, 2]} isAnimationActive={false}>
+            <Bar dataKey="y" shape={<ErrShape />} isAnimationActive={false}>
               <ErrorBar dataKey="err" direction="y" stroke="var(--color-muted)" strokeWidth={1.4} width={8} />
             </Bar>
           </BarChart>
@@ -832,10 +865,10 @@ export function ChartBlockView({ block, ctx }: { block: ChartBlock; ctx?: Render
         <ResponsiveContainer width="100%" height={H}>
           <BarChart data={violinData} margin={{ top: 6, right: 6, bottom: 0, left: 0 }} barCategoryGap="26%">
             {X}
-            <YAxis tick={tk} tickFormatter={(v: number) => fmt(v)} tickLine={false} axisLine={{ stroke: AXIS_LINE }} width={46} domain={padDom(violinData.reduce((m, r) => Math.min(m, r.kde[0]?.x ?? 0), 0), violinData.reduce((m, r) => Math.max(m, r.top), 1))} tickCount={phone ? 5 : undefined} scale={block.scale === "log" ? "log" : undefined} />
+            <YAxis tick={tk} tickFormatter={(v: number) => fmt(v)} tickLine={false} axisLine={{ stroke: AXIS_LINE }} width={46} domain={padDom(violinData.reduce((m, r) => Math.min(m, r.l), 0), violinData.reduce((m, r) => Math.max(m, r.h), 1))} tickCount={phone ? 5 : undefined} scale={block.scale === "log" ? "log" : "auto"} />
             {REF}
             <Tooltip content={<TT />} cursor={{ fill: "rgb(var(--c-89) / 0.04)" }} />
-            <Bar dataKey="top" shape={<ViolinShape />} isAnimationActive={false} />
+            <Bar dataKey="h" shape={<ViolinShape />} isAnimationActive={false} />
           </BarChart>
         </ResponsiveContainer>
       ) : block.chart === "donut" ? (

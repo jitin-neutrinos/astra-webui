@@ -39,7 +39,7 @@ export default function SequenceView({ block }: { block: SequenceBlock }) {
             return (
               <g key={`msg-${i}`}>
                 <path d={`M ${m.x1} ${m.y} h 30 v 14 h -30`} fill="none" stroke="var(--color-brandtext)" strokeWidth={1.5} strokeDasharray={isReturn ? "4 4" : "none"} markerEnd={marker} />
-                <text x={m.x1 + 36} y={m.y + 11} fill="var(--color-brandtext)" fontSize={10}>{m.label}</text>
+                <text x={m.x1 + 36} y={m.y + 11} fill="var(--color-brandtext)" fontSize={11}>{m.label}</text>
               </g>
             );
           }
@@ -48,7 +48,7 @@ export default function SequenceView({ block }: { block: SequenceBlock }) {
           return (
             <g key={`msg-${i}`}>
               <line x1={m.x1} y1={m.y} x2={m.x2} y2={m.y} stroke="var(--color-brandtext)" strokeWidth={1.5} strokeDasharray={isReturn ? "4 4" : "none"} markerEnd={marker} />
-              <text x={labelX} y={m.y - 6} textAnchor="middle" fill="var(--color-brandtext)" fontSize={10}>
+              <text x={labelX} y={m.y - 6} textAnchor="middle" fill="var(--color-brandtext)" fontSize={11}>
                 {m.label}
               </text>
             </g>
