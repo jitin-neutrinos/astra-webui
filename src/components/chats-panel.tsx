@@ -163,7 +163,11 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId, onEndSession }: 
       const url = isSearch
         ? `/api/hx/sessions/search?q=${encodeURIComponent(q)}&limit=50&sources=${encodeURIComponent(sourcesParam(filter))}`
         : `/api/hx/sessions?limit=${limit}&offset=${off}&order=recent&sources=${encodeURIComponent(sourcesParam(filter))}`;
-      const res = await fetch(url);
+      // Minute cache-buster on the WIRE url (see src/lib/sessions-cache.ts for
+      // the full story): the CF edge filters override cache-control:no-store and
+      // edge-cached every /api/hx GET per URL — the panel's stable URL rendered
+      // a 90-minute-old list, so new chats and unread state never appeared here.
+      const res = await fetch(url + (url.includes("?") ? "&" : "?") + "_r=" + Math.floor(Date.now() / 60_000));
       if (!res.ok) {
         if (res.status === 503) throw new Error("Agent backend busy (503).");
         if (res.status === 401) throw new Error("Unauthorized (401).");

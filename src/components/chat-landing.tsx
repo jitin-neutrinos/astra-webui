@@ -385,7 +385,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       // above what we already hold. (order=oldest&offset walks from the START
       // and would re-fetch rows we already have, dead-ending pagination.
       // The contract that guarantees this lives in lib/pagination.ts.)
-      const res = await fetch(`/api/hx/sessions/${encodeURIComponent(sid)}/messages?order=latest&limit=${PAGE_SIZE}&offset=${offset}`);
+      const res = await fetch(`/api/hx/sessions/${encodeURIComponent(sid)}/messages?order=latest&limit=${PAGE_SIZE}&offset=${offset}&_r=${Math.floor(Date.now() / 60_000)}`);
       if (!res.ok) return;
       const data = await res.json();
       const older = (data.messages || []).filter((r: any) => r && r.id != null);
@@ -432,7 +432,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   }, []);
   const refreshTitle = useCallback((sid: string | null) => {
     if (!sid) return;
-    fetch(`/api/hx/sessions/${encodeURIComponent(sid)}`)
+    fetch(`/api/hx/sessions/${encodeURIComponent(sid)}?_r=${Math.floor(Date.now() / 60_000)}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => applyTitle(sid, d?.title))
       .catch(() => {});
@@ -803,7 +803,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       activeIdRef.current = null;
       const sid = storedSidRef.current; // hook return not yet declared this early
       if (sid) {
-        fetch(`/api/hx/sessions/${encodeURIComponent(sid)}/messages?order=latest&limit=500`)
+        fetch(`/api/hx/sessions/${encodeURIComponent(sid)}/messages?order=latest&limit=500&_r=${Math.floor(Date.now() / 60_000)}`)
           .then((r) => (r.ok ? r.json() : null))
           .then((d) => { if (d) setMessages(rowsToTurns(d.messages || []).map((r) => ({ ...r, id: r.id || nextId() })) as ChatMsg[]); })
           .catch(() => {});
@@ -1039,7 +1039,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
           // Industry-standard first page only (owner 2026-10-01): the rest pages
           // in as the user scrolls up (loadOlder). order=latest + reverse gives
           // the oldest-first tail page.
-          const res = await fetch(`/api/hx/sessions/${encodeURIComponent(storedSessionId)}/messages?order=latest&limit=${HIST_PAGE}`);
+          const res = await fetch(`/api/hx/sessions/${encodeURIComponent(storedSessionId)}/messages?order=latest&limit=${HIST_PAGE}&_r=${Math.floor(Date.now() / 60_000)}`);
           if (!res.ok) {
             status = res.status;
             if (status === 401) setErrorBanner("Unauthorized. Please log in.");

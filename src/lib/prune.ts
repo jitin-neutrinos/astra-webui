@@ -17,7 +17,7 @@ export async function pruneStaleBgItems(now = Date.now()): Promise<number> {
     const last = Number(localStorage.getItem(PRUNE_AT_KEY) || 0);
     if (now - last < PRUNE_INTERVAL_MS) return 0;
     localStorage.setItem(PRUNE_AT_KEY, String(now));
-    const res = await fetch("/api/hx/sessions?limit=500&order=recent", { credentials: "same-origin" });
+    const res = await fetch("/api/hx/sessions?limit=500&order=recent&_r=" + Math.floor(Date.now() / 60_000), { credentials: "same-origin" });
     if (!res.ok) return 0;
     const data = await res.json();
     const live = new Set<string>(

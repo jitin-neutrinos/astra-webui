@@ -363,6 +363,10 @@ function proxyRest(req, res, targetPath, replayBody, enrich = false) {
           res.writeHead(200, {
             "content-type": "application/json",
             "content-length": String(body.length),
+            // Transient chat data. Without this the Cloudflare edge caches the
+            // lists per URL for its default TTL and a phone/browser sees a
+            // minutes-old chat list (new chats missing, unread counts stale).
+            "cache-control": "no-store",
           });
           res.end(body);
           return resolve();
@@ -392,7 +396,11 @@ function proxyRest(req, res, targetPath, replayBody, enrich = false) {
             // Reuses the cookie this request already authenticated with.
             await enrichLastReplies(rows, { cookie });
             const out = JSON.stringify(data);
-            res.writeHead(200, { "content-type": "application/json" });
+            res.writeHead(200, {
+              "content-type": "application/json",
+              // Same CF-edge-cache class as the history page: transient chat data.
+              "cache-control": "no-store",
+            });
             res.end(out);
             return resolve();
           }
@@ -408,7 +416,12 @@ function proxyRest(req, res, targetPath, replayBody, enrich = false) {
         return resolve();
       }
 
-      res.writeHead(proxyRes.statusCode, proxyRes.headers);
+      // Transient API data never sits in any shared cache: copy the upstream
+      // headers, then override whatever cache policy came through. CF's edge
+      // default (implicit 31d) cached the sessions list per URL with no header
+      // forbidding it — minutes-old chats served to a phone.
+      const headers = { ...proxyRes.headers, "cache-control": "no-store" };
+      res.writeHead(proxyRes.statusCode, headers);
       proxyRes.pipe(res);
       resolve();
     } catch (err) {

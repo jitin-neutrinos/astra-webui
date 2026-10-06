@@ -133,7 +133,16 @@ export async function fetchSessionsOnce(
 }
 
 async function doFetch(url: string, init?: RequestInit): Promise<SessionsPayload> {
-  const res = await fetch(url, { credentials: "same-origin", ...(init || {}) });
+  // Cache-edge buster (2026-10-06). The Cloudflare edge on astra.jitinnair.com
+  // cached /api/hx/sessions per URL for its zone Browser-Cache TTL (measured:
+  // a 90-minute-old list served with cf-cache-status:HIT even after the server
+  // began sending cache-control:no-store — the zone filters override origin
+  // headers). The wire URL must therefore change often enough that no shared
+  // cache ever holds it, WITHOUT changing the cache KEY: normalise() strips
+  // unknown params, so appending `_r=<epoch-minute>` bubbles one-refresh-per-
+  // minute through the edge while the coalescing cache stays a stable key.
+  const wire = url + (url.includes("?") ? "&" : "?") + "_r=" + Math.floor(Date.now() / 60_000);
+  const res = await fetch(wire, { credentials: "same-origin", ...(init || {}) });
   if (!res.ok) {
     // Surface the status so callers can keep their specific 401/503 messaging.
     const err = new Error(`sessions fetch failed: ${res.status}`) as Error & { status?: number };
