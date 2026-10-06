@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useBrand, brandIcon } from "../lib/brand-store";
 import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
 import { ArrowUp, Square, TriangleAlert, RotateCcw, Pencil, ChevronDown, Plus, WifiOff, Loader2, CheckCircle2, Check } from "lucide-react";
 import * as notify from "@/lib/notify";
@@ -266,6 +267,7 @@ function UserBubble({ msg, avatarUrl, onOpenMedia, actions }: { msg: ChatMsg; av
 }
 
 export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, onNewChat, onOpenNav, isActiveView = true }: { resetSignal: number, selectedSessionId: string | null, onSessionChange?: (id: string | null) => void, onNewChat?: () => void, onOpenNav?: () => void, isActiveView?: boolean }) {
+  useBrand(); // repaints the two logo <img>s on a rename
   const [messages, setMessagesState] = useState<ChatMsg[]>([]);
   // history is in flight for this chat: show skeleton feed instead of the
   // empty-state welcome (which flashed before history landed).
@@ -700,6 +702,14 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
           ensureActive(); pushOp({ op: "text-final", text: finalText }, true);
         }
         if (!chatTitleRef.current) refreshTitle(storedSidRef.current); // backstop if the title event was missed
+        // Sidebar preview: fan the final text out to the chats panel (owner 10-06
+        // steer). Same shape as astra:chat-title — the row patching lives there.
+        const stored = payload?.stored_session_id || storedSidRef.current;
+        if (finalText && stored) {
+          window.dispatchEvent(new CustomEvent("astra:chat-preview", {
+            detail: { id: stored, text: finalText },
+          }));
+        }
       }
       // Link the finishing turn's reply to any bg item that just went done, so the
       // dock row can scroll back to its answer later. The active msg id IS the turn.
@@ -1901,7 +1911,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
           <button type="button" onClick={() => onOpenNav?.()}
             aria-label="Open navigation" aria-expanded={false} aria-controls="astra-sidebar"
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg hover:bg-white/5 lg:hidden">
-            <img src="/astra-logo.png" alt="" aria-hidden="true" className="h-7 w-7 object-contain" />
+            <img src={brandIcon(32)} alt="" aria-hidden="true" className="h-7 w-7 object-contain" />
           </button>
           {empty ? (
             <span className="truncate font-mono text-[10px] uppercase tracking-[0.25em] text-slate-500">new session</span>
@@ -1933,7 +1943,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
           <NewChatGreetSkeleton />
         ) : empty ? (
           <div className="chat-welcome">
-            <img src="/astra-logo.png" alt="" aria-hidden="true" className="chat-welcome-glyph" />
+            <img src={brandIcon(32)} alt="" aria-hidden="true" className="chat-welcome-glyph" />
             <h2 className="chat-welcome-title">{greeting}, Jitin</h2>
             <p className="chat-welcome-sub">What are we working on?</p>
             <div className="chat-welcome-grid">

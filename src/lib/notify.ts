@@ -377,9 +377,20 @@ export function seedFromServer(rows: { id: string; unread?: boolean; last_read_a
       overlay[r.id] = { n: 1, t: Date.now() };
       changed = true;
     } else if (!r.unread && overlay[r.id] != null) {
-      // server says read (another device stamped the watermark) — drop our overlay
-      delete overlay[r.id];
-      changed = true;
+      // server says read (another device stamped the watermark) — drop our overlay.
+      // RACE GUARD (owner 10-06 "unread pills glitching"): the server row snapshot
+      // and a live message.complete can arrive out of order — the pill gets
+      // deleted here and re-bumped a second later (or the reverse), which reads
+      // as flicker. A LOCAL bump newer than the server watermark is fresher
+      // truth: keep it for a grace window instead of deleting on sight.
+      const bumpedAt = overlay[r.id]?.t || 0;
+      const snapshotOlderThanBump = typeof r.last_read_at === "number"
+        ? r.last_read_at * 1000 < bumpedAt
+        : false;
+      if (!snapshotOlderThanBump) {
+        delete overlay[r.id];
+        changed = true;
+      }
     }
   }
   void since;
@@ -392,7 +403,6 @@ export function seedFromServer(rows: { id: string; unread?: boolean; last_read_a
 
 // test hooks
 export const _test = { reset: () => { overlay = {}; seenCompletes = {}; save(); }, overlayRef: () => overlay, setNow: (sid: string | null) => { currentStoredSid = sid; }, markReadRef: () => markRead };
-
 /** Notify listeners that the funnels re-read state (overlay changes, watermark, etc). */
 export function notifyChanged() {
   if (typeof window !== "undefined") {

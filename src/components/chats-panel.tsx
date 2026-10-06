@@ -289,6 +289,34 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId, onEndSession }: 
     return () => window.removeEventListener("astra:chat-title", on);
   }, []);
 
+  // Live last-reply for the row previews (owner 10-06 steer): the enriched
+  // `last_reply` from the list fetch is a snapshot — a message completing in
+  // ANOTHER chat (or this tab while the panel shows a different chat) must
+  // patch its row in place instead of waiting for the next poll. Foreign
+  // sessions arrive as chat.turn{text}; the open session as astra:chat-preview.
+  // The panel's own notification feed (notify) handles unread pills; this only
+  // refreshes the SUB text.
+  useEffect(() => {
+    const applyText = (sid: string, text: string) => {
+      if (!sid || !text) return;
+      setSessions((rows) => rows.map((r) => (rowKey(r) === sid ? { ...r, last_reply: text.length > 220 ? text.slice(0, 219) + "…" : text } : r)));
+    };
+    const onPreview = (e: Event) => {
+      const { id, text } = (e as CustomEvent<{ id?: string; text?: string }>).detail || {};
+      applyText(String(id || ""), String(text || ""));
+    };
+    const onTurn = (e: Event) => {
+      const p = (e as CustomEvent<{ sid?: string; running?: boolean; text?: string; thinking?: boolean }>).detail || {};
+      if (!p.running && p.text) applyText(String(p.sid || ""), String(p.text));
+    };
+    window.addEventListener("astra:chat-preview", onPreview);
+    window.addEventListener("astra-ws-event", onTurn);
+    return () => {
+      window.removeEventListener("astra:chat-preview", onPreview);
+      window.removeEventListener("astra-ws-event", onTurn);
+    };
+  }, []);
+
   /**
    * End session (owner 10-02: moved from the chat header to this row menu).
    *

@@ -917,7 +917,7 @@ function onMessage(e: MessageEvent) {
       // (thinking / working animation there, owner 10-06). Then drop, exactly
       // as before: a foreign session's frames must never reach the chat UI.
       if (type === "message.start" || type === "message.complete" || type === "message.error") {
-        emit({ type: "chat.turn", payload: { sid: session_id, running: type === "message.start", thinking: type === "message.start" } });
+        emit({ type: "chat.turn", payload: { sid: session_id, running: type === "message.start", thinking: type === "message.start", text: type === "message.complete" ? String(payload?.text || "") : "" } });
       }
       return;
     }

@@ -6793,7 +6793,8 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
   font-weight: 500;
 }
 [data-theme="light"] .ast-row-sub.ast-row-canvas {
-  color: rgb(var(--light-c-9) / 1);
+  color: var(--color-muted);
+  font-weight: 500;
 }
 .ast-row-sub code {
   font: 400 10px/1.2 var(--font-mono);

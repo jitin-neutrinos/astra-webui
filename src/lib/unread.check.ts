@@ -197,4 +197,18 @@ notify.applyPresence({ devices: [{ device: "android-x", focuses: ["cross-chat"] 
 notify.handleComplete("live-cross", "cross-chat", { text: "done" }, "fid-cross");
 assert.equal(notify.getTotalUnread(), 0, "bump while ANY device focuses the chat = read, not unread");
 
+// 18) RACE GUARD (owner 10-06 "unread pills glitching"): a server row snapshot
+// saying unread:false must NOT delete a LOCAL bump that happened AFTER that
+// watermark was stamped — out-of-order arrival (live bump → stale snapshot on
+// the next seed) used to delete-then-re-bump the pill, which read as flicker.
+notify._test.reset();
+notify.handleComplete("race-chat", "race-chat", { text: "fresh answer" });
+assert.equal(notify.getTotalUnread(), 1, "local bump counted");
+// the snapshot is STALE: its watermark (read just before the bump) predates it
+notify.seedFromServer([{ id: "race-chat", unread: false, last_read_at: (Date.now() - 500) / 1000 }], null);
+assert.equal(notify.getTotalUnread(), 1, "stale read-watermark does NOT drop a newer local bump (no flicker)");
+// but a genuinely NEWER watermark (someone read it for real after the bump) still drops
+notify.seedFromServer([{ id: "race-chat", unread: false, last_read_at: (Date.now() + 2000) / 1000 }], null);
+assert.equal(notify.getTotalUnread(), 0, "newer watermark drops the pill as before");
+
 console.log("unread.check.ts passed");
