@@ -428,7 +428,11 @@ class NtfyPushService : Service() {
         if (client == null) {
             client = OkHttpClient.Builder()
                 .readTimeout(0, TimeUnit.MILLISECONDS)
-                .pingInterval(60, TimeUnit.SECONDS)
+                // 20s < the proxy's 30s ping round: a fresh outbound ping every
+                // round keeps the leg's TCP active so the zombie reaper (65s
+                // no-pong threshold, connection audit 2026-10-06) never has to
+                // guess at a quiet leg. 60s used to straddle two reap rounds.
+                .pingInterval(20, TimeUnit.SECONDS)
                 .retryOnConnectionFailure(true)
                 .build()
         }
