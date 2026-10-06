@@ -95,6 +95,12 @@ export function TokenCostChip({ row }: { row: any }) {
  *      one-line row cannot carry block constructs), never raw markdown paint
  *   4. search snippets pass through as-is (they quote the matched message)
  *   5. greets/fallbacks blank — a convention text never poses as a reply */
+/** Live turn state for one sidebar row. `at` is when the state was last set —
+ *  an interrupted turn emits no completion frame, so a stale entry must expire
+ *  at render rather than stick as a permanent "Thinking…". */
+type TurnState = { running: boolean; thinking: boolean; at: number };
+const TURN_TTL_MS = 15 * 60 * 1000;
+
 const RowSub = memo(function RowSub({ s, inSearch, running, thinking }: {
   s: { last_reply?: string | null; preview?: string | null; snippet?: string | null };
   inSearch: boolean; running: boolean; thinking: boolean;
@@ -143,7 +149,35 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId, onEndSession }: 
   // session's state would only matter if this panel is mounted during a turn,
   // which is impossible — the chat surface hides the sidebar panel... except
   // on wide screens where the list is visible alongside, so include it).
-  const [turnSids, setTurnSids] = useState<Map<string, { running: boolean; thinking: boolean }>>(new Map());
+  const [turnSids, setTurnSids] = useState<Map<string, TurnState>>(new Map());
+  // Seed live turn state from the SERVER on every list fetch (owner 10-06: "I
+  // don't see the thinking/working text on the phone"). The turn frames below
+  // are TRANSIENT — a drawer opened mid-turn has already missed message.start,
+  // so a phone (whose drawer is closed most of the time) saw nothing until the
+  // turn ended. The proxy tracks running turns and stamps `turn_running` on
+  // each row, so a freshly mounted list shows the truth immediately; the frames
+  // then keep it current.
+  //
+  // Server seeding only ADDS. Clearing is the frame handler's job (a completion
+  // frame is authoritative), so a list response that raced a just-started turn
+  // can never blank a row the wire already lit. Staleness is handled by
+  // TURN_TTL_MS at render instead — an interrupted turn emits no completion, and
+  // a permanent "Thinking…" on an idle row is worse than a missing one.
+  const seedTurns = (rows: SessionRow[]) => {
+    const now = Date.now();
+    setTurnSids((m) => {
+      const next = new Map(m);
+      let changed = false;
+      for (const r of rows) {
+        if (!(r as any).turn_running) continue;
+        const keys = [rowKey(r), r.session_id].filter(Boolean) as string[];
+        for (const k of keys) {
+          if (!next.has(k)) { next.set(k, { running: true, thinking: true, at: now }); changed = true; }
+        }
+      }
+      return changed ? next : m;
+    });
+  };
   // End session moved HERE from the chat header (owner 10-02). It is a real
   // action, not a read-only command, so it keeps the header's two-step shape:
   // first click arms (menu item becomes "Confirm end"), second click fires.
@@ -175,9 +209,10 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId, onEndSession }: 
         // regardless of which id it holds.
         const keys = [p.sid, p.stored].filter(Boolean);
         if (keys.length) {
+          const now = Date.now();
           setTurnSids((m) => {
             const next = new Map(m);
-            if (p.running) for (const k of keys) next.set(k, { running: true, thinking: !!p.thinking });
+            if (p.running) for (const k of keys) next.set(k, { running: true, thinking: !!p.thinking, at: now });
             else for (const k of keys) next.delete(k);
             return next;
           });
@@ -193,9 +228,10 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId, onEndSession }: 
         const keys = [sid, stored].filter(Boolean);
         const running = ev.type === "message.start";
         if (keys.length) {
+          const now = Date.now();
           setTurnSids((m) => {
             const next = new Map(m);
-            if (running) for (const k of keys) next.set(k, { running: true, thinking: true });
+            if (running) for (const k of keys) next.set(k, { running: true, thinking: true, at: now });
             else for (const k of keys) next.delete(k);
             return next;
           });
@@ -268,6 +304,7 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId, onEndSession }: 
       } else {
         const rows: SessionRow[] = data.sessions || [];
         seedFromServer(rows as any, null);
+        seedTurns(rows);
         setSessions((prev) => mergeRows(prev, rows));
         setTotal(data.total || 0);
       }
@@ -441,8 +478,11 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId, onEndSession }: 
     const editing = renaming === sid;
     const busy = busySid === sid;
     const turn = turnSids.get(sid || "");
-    const rowRunning = !!turn?.running;
-    const rowThinking = !!turn?.thinking;
+    // Expire a stale entry at render: an interrupted turn emits no completion
+    // frame, so without this the row would read "Thinking…" forever.
+    const turnFresh = !!turn && Date.now() - turn.at < TURN_TTL_MS;
+    const rowRunning = !!turnFresh && !!turn!.running;
+    const rowThinking = !!turnFresh && !!turn!.thinking;
 
     return (
       <div

@@ -959,6 +959,20 @@ id: "RG-114",
     found: "2026-10-06",
     symptom: "sequence type: actors + messages parsed, dropping dangling refs | revert logic → sequence assertion fails",
     guard: "src/lib/canvas-sequence.check.ts",
+  },
+  {
+    id: "RG-143",
+    found: "2026-10-06",
+    symptom:
+      "Sidebar live status never appeared on the phone ('I don't see the thinking/working text on the sidebar chats section on phone'). TWO stacked defects: message.start carries NO payload on the wire (tui_gateway/contracts/events.py declares event('message.start', None)), and the proxy's stored-id stamping sat INSIDE a `if (stored && p.payload && typeof p.payload === 'object')` guard — so a start frame was never stamped AND the client-side payload-mint it relied on was dead code. Second: the row text is fed by TRANSIENT turn frames, so a drawer opened mid-turn (the phone's normal case, its drawer is shut most of the time) had already missed message.start and showed nothing until the turn ENDED. Fix: turn bookkeeping moved OUTSIDE the payload guard, the payload is minted when absent, and the proxy tracks running turns so the sessions list carries `turn_running` for a client that just mounted. Pins the no-payload start path, both-id registration, the list-stamp mount path, and TTL expiry (an interrupted turn emits no completion — a permanent 'Thinking…' is worse than a missing one).",
+    guard: "server/turn-status.check.mjs",
+  },
+  {
+    id: "RG-144",
+    found: "2026-10-06",
+    symptom:
+      "The frame codec KILLED the connection on any fragmented message: it treated every fin=0 data frame as a protocol error ('fragmentation unsupported') and the caller destroyed the socket, so a legitimate RFC 6455 fragmented frame took the whole relay leg down. Found while adding `ws` as a dependency (which handles fragmentation natively and made the gap visible). The decoder now reassembles first-frame + continuation frames, delivers interleaved control frames (ping/pong/close) immediately instead of folding them in, caps a message at 16 MiB, and still reports real protocol errors (orphan continuation, nested start). Pins all four cases plus a real-`ws`-server oracle: OUR hand-built fragment stream must be accepted and reconstructed by the reference implementation, so encoder and decoder are pinned against the spec rather than against each other.",
+    guard: "server/ws-codec.check.mjs",
   }
 ];
 

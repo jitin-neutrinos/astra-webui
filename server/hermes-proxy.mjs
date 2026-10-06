@@ -391,6 +391,12 @@ function proxyRest(req, res, targetPath, replayBody, enrich = false) {
           const rows = data.sessions || data.results || null;
           if (Array.isArray(rows)) {
             enrichSessions(rows);
+            // Live turn truth for a client that just mounted: the sidebar's
+            // Thinking…/Working… row text is fed by turn frames, and a drawer
+            // opened mid-turn has already missed message.start (the phone hits
+            // this far more than the desktop). The proxy saw the frame, so it
+            // answers here. Cheap: a Map lookup per row.
+            stampRunningTurns(rows);
             // Sidebar wants the LATEST response, not the gateway's first-user-message
             // preview. Cached per session + invalidated by activity (see last-reply.mjs).
             // Reuses the cookie this request already authenticated with.
@@ -627,6 +633,84 @@ export function recordSidMapping(liveSid, storedKey) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Live turns, keyed by BOTH the live and the stored session id.
+//
+// WHY THE PROXY OWNS THIS: the sidebar's "Thinking…/Working…" row text is fed
+// by turn frames (message.start / .complete), which are TRANSIENT — a drawer
+// opened mid-turn has already missed the start frame, so the row stayed blank
+// until the turn ENDED (owner 10-06: "I don't see the thinking/working text on
+// the phone" — the phone opens the drawer after the turn began far more often
+// than the desktop, whose sidebar is always on screen). The proxy sees every
+// frame on the way past, so it is the one place that can answer "is this chat
+// running right now?" for a client that just mounted.
+//
+// Entries expire: an interrupted turn may never emit a completion, and a
+// permanent "Thinking…" on an idle row is worse than a missing one.
+const runningTurns = new Map(); // key -> lastSeenMs
+const RUNNING_TTL_MS = 15 * 60 * 1000;
+
+function markTurnRunning(liveSid, storedSid) {
+  const now = Date.now();
+  for (const k of [liveSid, storedSid]) if (k) runningTurns.set(String(k), now);
+}
+
+function markTurnIdle(liveSid, storedSid) {
+  for (const k of [liveSid, storedSid]) if (k) runningTurns.delete(String(k));
+}
+
+/** Is a turn running for any of these ids? Expired entries read as idle. */
+export function isTurnRunning(...keys) {
+  const now = Date.now();
+  for (const k of keys) {
+    if (!k) continue;
+    const at = runningTurns.get(String(k));
+    if (at === undefined) continue;
+    if (now - at > RUNNING_TTL_MS) { runningTurns.delete(String(k)); continue; }
+    return true;
+  }
+  return false;
+}
+
+// Test seam for turn-status.check.mjs (bare-Node, no framework). Exposes the
+// mutators plus a way to age an entry, so the TTL is provable without sleeping.
+export const _turnTest = {
+  markTurnRunning,
+  markTurnIdle,
+  reset: () => runningTurns.clear(),
+  /** Age EVERY live entry. A turn is registered under both its live and its
+   *  stored id, so aging one key of the pair would leave the twin fresh and the
+   *  test would prove nothing (that mistake is what this seam exists to stop). */
+  backdateAll: (ms) => {
+    for (const [k, at] of runningTurns) runningTurns.set(k, at - ms);
+  },
+  size: () => runningTurns.size,
+  /** Register a socket that captures everything broadcastFrame writes, so the
+   *  relay path itself is testable (the stamping regression lived in the relay,
+   *  not in a pure function). Returns the handle for removeSocket. */
+  addCaptureSocket: (fn) => {
+    const sock = { write: (buf) => { try { fn(buf); } catch { /* test-side */ } return true; }, destroy() {} };
+    browserSockets.set(sock, { sid: null, filter: false, lastPong: Date.now() });
+    return sock;
+  },
+  removeSocket: (sock) => browserSockets.delete(sock),
+  socketCount: () => browserSockets.size,
+};
+
+/**
+ * Stamp `turn_running` onto session-list rows so a freshly mounted sidebar
+ * shows the live status for chats whose start frame it never saw. Keyed on the
+ * row's own id (the stored key) plus its live `session_id` when present.
+ */
+export function stampRunningTurns(rows) {
+  if (!Array.isArray(rows)) return rows;
+  for (const r of rows) {
+    if (!r || typeof r !== "object") continue;
+    r.turn_running = isTurnRunning(r.session_id, r.id, r.session_key);
+  }
+  return rows;
+}
+
 // Clean shutdown: flush the chunk-log buffer and checkpoint its WAL. Without
 // this the last ≤33ms of chunks would sit unwritten, and `closeStreamDb` would be
 // an unused export — the exact dead-code trap called out for src/lib/outbox.ts.
@@ -680,44 +764,67 @@ export function broadcastFrame(payload, opcode) {
     if (info.filter) anyCompleteFilter = true;
   }
   
-  if ((anyTagged || anyCompleteFilter) && opcode === 0x1) {
-    try {
-      const msg = JSON.parse(payload.toString());
-      // RPC replies ride the same relay: session.resume/create results
-      // carry {result:{session_id, session_key|stored_session_id}} —
-      // record the live→stored mapping whenever one passes through.
-      const r = msg && msg.result;
-      if (r && r.session_id) {
-        const stored = r.session_key || r.stored_session_id;
-        if (stored) recordSidMapping(r.session_id, stored);
-      }
-      // Envelope: {method:"event", params:{type, session_id, payload}}
-      const p = msg && msg.params;
-      if (p) {
-        parsedType = p.type;
-        // A turn boundary is the natural flush point: everything buffered for
-        // this turn is on disk the moment the turn ends, so a crash seconds
-        // later cannot lose the final chunk. Cost: one write per turn.
-        if (p.type === "message.complete" || p.type === "message.error") {
-          try { flushStreamLog(); } catch { /* never break the relay */ }
+  // ---- turn bookkeeping + stored-id stamping (NOT socket-gated) -----------
+  // This block used to live inside `if ((anyTagged || anyCompleteFilter) …)`,
+  // which meant it only ran while some OTHER client held a sid-tagged or
+  // filter=complete socket. Measured live: after a proxy restart the sidebar's
+  // live status was dead until a chat was opened, because with no tagged socket
+  // the frames were never parsed at all — and once any real client connected,
+  // frames for a fresh chat STILL went out unstamped when the socket list
+  // happened to be otherwise empty. The stamp is what makes the sidebar's row
+  // status work at all, so it must not depend on who else is connected.
+  //
+  // Cost is bounded by the substring pre-test: only turn-boundary and RPC-reply
+  // frames are ever parsed (a cheap `includes` on the rest).
+  let msg = null;
+  if (opcode === 0x1) {
+    const text = payload.toString();
+    const maybeReply = text.includes("session_key") || text.includes("stored_session_id");
+    const maybeTurn = text.includes("message.start") || text.includes("message.complete") || text.includes("message.error");
+    if (maybeReply || maybeTurn) {
+      try {
+        msg = JSON.parse(text);
+        // RPC replies teach the live→stored mapping (session.resume/create).
+        const r = msg && msg.result;
+        if (r && r.session_id) {
+          const stored = r.session_key || r.stored_session_id;
+          if (stored) recordSidMapping(r.session_id, stored);
         }
-        if (p.type === "message.complete" || p.type === "message.error" || p.type === "message.start") {
-          passForTagged = true;
-          parsedSid = p.session_id;
-          const stored = sidMap.get(parsedSid);
-          if (stored && p.payload && typeof p.payload === "object") {
-            p.payload.stored_session_id = stored;
-            // message.start carries NO payload object on the wire (the gateway
-            // emits none) — mint one so the sidebar's live status can key the
-            // row (owner 10-06 "shows nothing": without the stored stamp on
-            // start frames, chats this tab never resumed could not match).
-            payload = Buffer.from(JSON.stringify(msg));
-            frame = encodeFrame(payload, { opcode, masked: false });
+        const p = msg && msg.params;
+        if (p) {
+          parsedType = p.type;
+          // A turn boundary is the natural flush point: everything buffered for
+          // this turn is on disk the moment the turn ends, so a crash seconds
+          // later cannot lose the final chunk. Cost: one write per turn.
+          if (p.type === "message.complete" || p.type === "message.error") {
+            try { flushStreamLog(); } catch { /* never break the relay */ }
+          }
+          if (p.type === "message.complete" || p.type === "message.error" || p.type === "message.start") {
+            passForTagged = true;
+            parsedSid = p.session_id;
+            const stored = sidMap.get(parsedSid);
+            // Turn bookkeeping FIRST, and OUTSIDE the payload guard below:
+            // message.start carries NO payload on the wire (declared in
+            // tui_gateway/contracts/events.py — `event("message.start", None)`),
+            // so the old code inside `if (stored && p.payload …)` could never run
+            // for a start frame.
+            if (p.type === "message.start") markTurnRunning(parsedSid, stored);
+            else markTurnIdle(parsedSid, stored);
+            if (stored) {
+              // MINT the payload when the frame has none (message.start). The
+              // sidebar keys its row on the STORED id while frames arrive on the
+              // LIVE id, so without this stamp a row can never light up.
+              if (!p.payload || typeof p.payload !== "object") p.payload = {};
+              p.payload.stored_session_id = stored;
+              payload = Buffer.from(JSON.stringify(msg));
+              frame = encodeFrame(payload, { opcode, masked: false });
+            }
           }
         }
-      }
-    } catch { /* unparseable: tagged sockets just don't get this frame */ }
+      } catch { /* unparseable: relayed unchanged */ }
+    }
   }
+
   
   for (const [s, info] of browserSockets) {
     if (opcode === 0x1) {

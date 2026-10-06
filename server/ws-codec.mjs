@@ -49,24 +49,36 @@ export class FrameDecoder {
   constructor(onFrame) {
     this.buffer = Buffer.alloc(0);
     this.onFrame = onFrame;
+    // Fragmented-message state (RFC 6455 §5.4). A message may arrive split
+    // across a first frame (fin=0, opcode 0x1/0x2) plus N continuation frames
+    // (opcode 0x0), the last of which sets fin=1. The old decoder treated ANY
+    // fin=0 data frame as a protocol error and killed the socket — so a
+    // legitimate fragmented message took the connection down. Control frames
+    // (0x8/0x9/0xA) may be interleaved and are never fragmented, so they are
+    // delivered immediately rather than being folded into the buffer.
+    this.fragments = null;   // { opcode, parts: Buffer[], size }
   }
-  
+
   push(chunk) {
     this.buffer = Buffer.concat([this.buffer, chunk]);
     while (this.process()) {}
   }
-  
+
+  // A hostile peer must not be able to buffer without bound. Real relay frames
+  // are a few KB; 16 MiB is far above anything legitimate.
+  static MAX_MESSAGE = 16 * 1024 * 1024;
+
   process() {
     if (this.buffer.length < 2) return false;
-    
+
     const byte0 = this.buffer[0];
     const byte1 = this.buffer[1];
-    
+
     const fin = (byte0 & 0x80) !== 0;
     const opcode = byte0 & 0x0f;
     const isMasked = (byte1 & 0x80) !== 0;
     let payloadLen = byte1 & 0x7f;
-    
+
     let offset = 2;
     if (payloadLen === 126) {
       if (this.buffer.length < offset + 2) return false;
@@ -79,16 +91,16 @@ export class FrameDecoder {
       payloadLen = Number(lenBig);
       offset += 8;
     }
-    
+
     if (isMasked) {
       if (this.buffer.length < offset + 4) return false;
       offset += 4;
     }
-    
+
     if (this.buffer.length < offset + payloadLen) return false;
-    
+
     let payload = this.buffer.subarray(offset, offset + payloadLen);
-    
+
     if (isMasked) {
       const mask = this.buffer.subarray(offset - 4, offset);
       const unmasked = Buffer.allocUnsafe(payloadLen);
@@ -99,21 +111,55 @@ export class FrameDecoder {
     } else {
       payload = Buffer.from(payload); // copy so we can slice this.buffer
     }
-    
+
     this.buffer = this.buffer.subarray(offset + payloadLen);
-    
-    if (!fin && opcode !== 0x0) {
-      this.onFrame({ opcode: 0x8, payload: Buffer.from("fragmentation unsupported") }, true);
-      return false; // stop processing
+
+    // Only 0x0 (continuation), 0x1 (text), 0x2 (binary), 0x8/0x9/0xA (control).
+    if (![0x0, 0x1, 0x2, 0x8, 0x9, 0xa].includes(opcode)) {
+      this.onFrame({ opcode: 0x8, payload: Buffer.from("unsupported opcode") }, true);
+      return false;
     }
-    
-    // Only allow 0x1, 0x8, 0x9, 0xA.
-    if (![0x1, 0x8, 0x9, 0xa].includes(opcode)) {
-       this.onFrame({ opcode: 0x8, payload: Buffer.from("unsupported opcode") }, true);
-       return false;
+
+    // ---- control frames: never fragmented, deliver at once ----------------
+    if (opcode === 0x8 || opcode === 0x9 || opcode === 0xa) {
+      this.onFrame({ opcode, payload });
+      return true;
     }
-    
-    this.onFrame({ opcode, payload });
+
+    // ---- data frames: reassemble when fragmented --------------------------
+    if (opcode === 0x0) {
+      // Continuation with nothing in progress is a protocol error.
+      if (!this.fragments) {
+        this.onFrame({ opcode: 0x8, payload: Buffer.from("continuation without start") }, true);
+        return false;
+      }
+      this.fragments.parts.push(payload);
+      this.fragments.size += payload.length;
+      if (this.fragments.size > FrameDecoder.MAX_MESSAGE) {
+        this.fragments = null;
+        this.onFrame({ opcode: 0x8, payload: Buffer.from("message too large") }, true);
+        return false;
+      }
+      if (!fin) return true;
+      const whole = Buffer.concat(this.fragments.parts);
+      const startOpcode = this.fragments.opcode;
+      this.fragments = null;
+      this.onFrame({ opcode: startOpcode, payload: whole });
+      return true;
+    }
+
+    // opcode 0x1 / 0x2
+    if (fin) {
+      this.onFrame({ opcode, payload });
+      return true;
+    }
+    // A second start frame while one is already open is a protocol error.
+    if (this.fragments) {
+      this.fragments = null;
+      this.onFrame({ opcode: 0x8, payload: Buffer.from("nested fragmented start") }, true);
+      return false;
+    }
+    this.fragments = { opcode, parts: [payload], size: payload.length };
     return true;
   }
 }
