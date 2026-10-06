@@ -6796,26 +6796,40 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
   text-overflow: ellipsis;
   white-space: nowrap;
   vertical-align: bottom;
-  background: linear-gradient(90deg,
-    rgb(var(--c-8) / 0.55) 0%,
-    rgb(var(--c-10) / 0.95) 45%,
-    rgb(var(--c-11) / 0.95) 55%,
-    rgb(var(--c-8) / 0.55) 100%);
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: row-live-shimmer 2.5s linear infinite;
+  /* VISIBLE-BY-DEFAULT ink first, shimmer second: background-clip:text is
+     progressively enhanced via @supports. The old shape set color:transparent
+     unconditionally — a renderer where the clip fails (older WebView) painted
+     NOTHING (owner 10-02's lightningcss trap, same shape). */
+  color: var(--color-accent);
+  animation: none;
+}
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .ast-row-live-shimmer {
+    background: linear-gradient(90deg,
+      rgb(var(--c-8) / 0.55) 0%,
+      rgb(var(--c-10) / 0.95) 45%,
+      rgb(var(--c-11) / 0.95) 55%,
+      rgb(var(--c-8) / 0.55) 100%);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: row-live-shimmer 2.5s linear infinite;
+  }
 }
 .ast-row-live-think { animation-duration: 2.5s; }
-[data-theme="light"] .ast-row-live-shimmer {
-  background: linear-gradient(90deg,
-    rgb(var(--light-c-8) / 0.45) 0%,
-    rgb(var(--light-c-10) / 0.95) 50%,
-    rgb(var(--light-c-8) / 0.45) 100%);
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
+[data-theme="light"] .ast-row-live-shimmer { color: var(--color-muted); }
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  [data-theme="light"] .ast-row-live-shimmer {
+    background: linear-gradient(90deg,
+      rgb(var(--light-c-8) / 0.45) 0%,
+      rgb(var(--light-c-10) / 0.95) 50%,
+      rgb(var(--light-c-8) / 0.45) 100%);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
 }
 @keyframes row-live-shimmer {
   0% { background-position: 200% center; }

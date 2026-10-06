@@ -701,12 +701,16 @@ export function broadcastFrame(payload, opcode) {
         if (p.type === "message.complete" || p.type === "message.error") {
           try { flushStreamLog(); } catch { /* never break the relay */ }
         }
-        if (p.type === "message.complete" || p.type === "message.error") {
+        if (p.type === "message.complete" || p.type === "message.error" || p.type === "message.start") {
           passForTagged = true;
           parsedSid = p.session_id;
           const stored = sidMap.get(parsedSid);
           if (stored && p.payload && typeof p.payload === "object") {
             p.payload.stored_session_id = stored;
+            // message.start carries NO payload object on the wire (the gateway
+            // emits none) — mint one so the sidebar's live status can key the
+            // row (owner 10-06 "shows nothing": without the stored stamp on
+            // start frames, chats this tab never resumed could not match).
             payload = Buffer.from(JSON.stringify(msg));
             frame = encodeFrame(payload, { opcode, masked: false });
           }
