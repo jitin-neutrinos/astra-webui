@@ -75,6 +75,24 @@ print('[deploy] purge ok:', d.get('success')) if d.get('success') else print('[d
 }
 
 sync_and_apk() {
+  # The APK bundles NO web assets by design (R6, android/app/build.gradle:80):
+  # server.url points the WebView at the live site, so web fixes flow through
+  # the tunnel as soon as the web deploy lands — the APK only needs rebuilding
+  # when NATIVE code (android/app/src/main/java, plugins, config, permissions)
+  # changes. Skip the whole gradle+telegram loop otherwise; say so plainly.
+  if ! git diff --quiet HEAD~1 HEAD -- android/app/src/main/java android/app/src/main/AndroidManifest.xml android/app/capacitor.build.gradle android/app/src/main/assets/capacitor.config.json 2>/dev/null; then
+    say "native android code changed in the last commit — rebuilding APK"
+  else
+    # an explicit ask ('tools/deploy.sh android') still rebuilds, but the 'all'
+    # path should skip pointless 25s gradle runs that produce byte-identical APKs
+    if [ "${TARGET:-all}" = "android" ]; then
+      say "no staged native changes — FORCE rebuild requested"
+    else
+      git diff --quiet HEAD -- android/app/src/main/java 2>/dev/null || true
+      say "no native android changes since last commit — APK is already current, skipping gradle"
+      return 0
+    fi
+  fi
   say "cap sync android…"
   npx cap sync android >/dev/null
   say "gradle assembleRelease (JDK 21)…"
