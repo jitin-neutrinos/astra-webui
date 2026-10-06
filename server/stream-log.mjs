@@ -144,6 +144,14 @@ export function openStreamDb() {
     CREATE INDEX IF NOT EXISTS idx_stream_events_ts ON stream_events(ts_ms);
     CREATE INDEX IF NOT EXISTS idx_stream_events_mono ON stream_events(sid, mono);
   `);
+  // Seed the per-session counters from disk so this process's own mono stream
+  // continues after the highest row already stored — NEVER restarts at 1 over
+  // rows it cannot see. (Without this, a relay restart interleaves new mono-1..
+  // rows with migrated/live rows and replay order breaks.) Idempotent.
+  try {
+    const rows = db.prepare("SELECT sid, max(mono) m FROM stream_events GROUP BY sid").all();
+    for (const r of rows) monoCounters.set(String(r.sid), Number(r.m || 0));
+  } catch { /* fresh db: nothing to seed */ }
   return db;
 }
 
