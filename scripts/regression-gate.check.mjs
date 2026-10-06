@@ -832,6 +832,13 @@ id: "RG-114",
       "The FIFTH recurrence of the rebuild-a-block class, owner-reported as 'the sanitizer bug again — reactive tables pulling rows from a data block were being dropped'. THREE stacked holes this time, all silent: (1) RENDERER CTX — TabsView/AccordionView/LayoutView re-entered the shared Blocks dispatcher WITHOUT a ctx prop and isReactiveBlock did not look inside containers, so a bound table nested in a tab resolved no rows (a container-local collectData cannot see the card-level `data` carrier either) and degraded to a bare header — identical symptom to the RG-090 sanitizer fix, different layer; (2) a bound table with NO authored columns was rejected by BOTH parser and sanitizer although the referenced data block defines the columns (now synthesised from the sibling dataset, fail-soft when unresolvable); (3) the `from` shorthand normalised to bind.$from and carried for every block type. Guards the exact reported card shape through parser+sanitizer, root-datasets-through-props.ctx (asserting the tab-local collection is NOT the source), the container recursion in isReactiveBlock (structural, over the shipped source), columns synthesis, the shorthand, the static-empty degradation still holding, the full fence round-trip, and the streaming partial paint. Proven by reversal — reverting the three container views' ctx wiring fails the structural pin.",
     guard: "src/lib/canvas-sanitize.nested-table.check.ts",
   },
+  {
+    id: "RG-123",
+    found: "2026-10-05",
+    symptom:
+      "Owner-reported as 'the canvas does not render color from hex codes for the UI reports and cards': a table cell or key/value holding a hex code rendered as inert text, so a palette or design-token report showed the codes with none of their colours. Colour VALUES are now data: a whole-string CSS colour (hex 3/6/8, rgb/hsl/hwb/lab/lch/oklab/oklch, color(...)) renders as a swatch dot painted with the literal value plus the code beside it. Whole-string matching is the guard — an inline scanner paints 'issue #123456' as a colour, and 4-digit hex is the same collision class. Guards the detector accept/reject sets and both renderer call sites by source pin.",
+    guard: "src/lib/color-chip.check.ts",
+  },
     ];
 
 // ---- gate -----------------------------------------------------------------
