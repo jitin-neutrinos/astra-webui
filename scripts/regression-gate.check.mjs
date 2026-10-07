@@ -973,6 +973,13 @@ id: "RG-114",
     symptom:
       "The frame codec KILLED the connection on any fragmented message: it treated every fin=0 data frame as a protocol error ('fragmentation unsupported') and the caller destroyed the socket, so a legitimate RFC 6455 fragmented frame took the whole relay leg down. Found while adding `ws` as a dependency (which handles fragmentation natively and made the gap visible). The decoder now reassembles first-frame + continuation frames, delivers interleaved control frames (ping/pong/close) immediately instead of folding them in, caps a message at 16 MiB, and still reports real protocol errors (orphan continuation, nested start). Pins all four cases plus a real-`ws`-server oracle: OUR hand-built fragment stream must be accepted and reconstructed by the reference implementation, so encoder and decoder are pinned against the spec rather than against each other.",
     guard: "server/ws-codec.check.mjs",
+  },
+  {
+    id: "RG-145",
+    found: "2026-10-08",
+    symptom:
+      "Copy buttons had drifted into five separate implementations: chat actions + code float used the shared AnimatedCopyButton, but the tool-terminal window, the canvas card header and the vault page each hand-rolled their own copied-state machine (differing revert timers 1.2s/1.6s/2s, different hover colors, the DOM-built code buttons hardcoded #34d399 instead of the theme token), and canvas code/terminal/text blocks had no copy at all. One copy system now: copyText() is the only clipboard writer, AnimatedCopyButton (variants action/float/chip) + wireCodeCopyButtons share the .chat-copy-swap/.is-check classes, all skins live in one index.css block. Gate: static sweep that fails if anyone touches navigator.clipboard outside copy-text.ts, hand-rolls a Copy/Check state machine, duplicates a skin rule, or resurrects the deleted .ai-term-copy/.ast-canvas-copy/.ast-cv-copy-swap/.cc-* skins.",
+    guard: "src/lib/copy-system.check.mjs",
   }
 ];
 

@@ -13,6 +13,7 @@ import { useMemo, useState } from "react";
 import { Download, Loader2 } from "lucide-react";
 import { Expandable } from "./canvas-fullscreen";
 import { downloadCanvasFile } from "../../lib/canvas-download";
+import { AnimatedCopyButton } from "../../lib/animated-copy";
 import type {
   SpreadsheetBlock, SlidesBlock, DocumentBlock, TextBlock,
 } from "../../lib/canvas-schema";
@@ -165,6 +166,8 @@ export function TextView({ block, id }: { block: TextBlock; id: string }) {
       <figcaption className="ast-cv-sheet-bar">
         <span className="ast-cv-sheet-tab">{block.title ?? file}</span>
         <span className="ast-cv-sheet-meta">{val.length} chars</span>
+        {/* copy follows the LIVE textarea value; the shared copy system, not a second state machine */}
+        <AnimatedCopyButton variant="chip" label="Copy" title="Copy text" text={val} />
         <DownloadBtn produce={produce} filename={file} mime={MIME[lang as keyof typeof MIME] ?? MIME.txt} />
       </figcaption>
       <textarea

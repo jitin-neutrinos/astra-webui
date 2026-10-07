@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
-import { Vault, LockKeyhole, Eye, EyeOff, Search, Check, RefreshCw, MonitorSmartphone, Copy, ShieldCheck, ChevronsUpDown, ChevronDown, ChevronUp } from "lucide-react";
+import { Vault, LockKeyhole, Eye, EyeOff, Search, RefreshCw, MonitorSmartphone, ShieldCheck, ChevronsUpDown, ChevronDown, ChevronUp } from "lucide-react";
+import { AnimatedCopyButton } from "@/lib/animated-copy";
 
 // --- types ---
 type VaultEntry = {
@@ -67,7 +68,6 @@ export default function VaultPage() {
   const [revealAll, setRevealAll] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [ttlLeft, setTtlLeft] = useState<number | null>(null);
-  const [copied, setCopied] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Auth on EVERY visit/init: status check runs on mount; an expired vault
@@ -144,15 +144,8 @@ export default function VaultPage() {
     });
   }
 
-  async function copyVal(id: string) {
-    const val = values[id];
-    if (!val) return;
-    try {
-      await navigator.clipboard.writeText(val);
-      setCopied(id);
-      setTimeout(() => setCopied((c) => (c === id ? null : c)), 1200);
-    } catch { /* clipboard unavailable */ }
-  }
+  // Vault rows use the shared AnimatedCopyButton (one copy system) with the
+  // row's own skin — same shape/hover as the eye-toggle beside it.
 
   // --- derived: group by service, then filter + sort ---
   //
@@ -504,14 +497,13 @@ export default function VaultPage() {
                             >
                               {shown(e.id) ? <EyeOff className="h-4 w-4" strokeWidth={1.5} aria-hidden /> : <Eye className="h-4 w-4" strokeWidth={1.5} aria-hidden />}
                             </button>
-                            <button
-                              onClick={() => copyVal(e.id)}
+                            <AnimatedCopyButton
+                              variant="action"
+                              title={`Copy ${e.key}`}
                               disabled={!val || !shown(e.id)}
-                              aria-label={`Copy ${e.key}`}
-                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/[0.09] text-muted transition-colors hover:bg-void/60 hover:text-[color:var(--color-accent)] disabled:opacity-40 active:scale-[0.96]"
-                            >
-                              {copied === e.id ? <Check className="h-4 w-4 text-emerald-400" strokeWidth={1.5} aria-hidden /> : <Copy className="h-4 w-4" strokeWidth={1.5} aria-hidden />}
-                            </button>
+                              text={() => values[e.id] ?? ""}
+                              className="!h-8 !w-8 shrink-0 !rounded-lg border !border-white/[0.09] hover:!bg-void/60 hover:!text-[color:var(--color-accent)] disabled:!opacity-40 active:!scale-[0.96]"
+                            />
                           </div>
                         </li>
                       );

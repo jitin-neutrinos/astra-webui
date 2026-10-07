@@ -5,6 +5,7 @@ import { numberMathFamily } from "../../lib/math-numbering";
 import { useEffect, useMemo, useState, lazy, Suspense, Fragment } from "react";
 import { useReducedMotion, useSpring, motion } from "motion/react";
 import { cn } from "../../lib/utils";
+import { AnimatedCopyButton } from "../../lib/animated-copy";
 import { cssColorOf, contrastVerdict } from "../../lib/color-chip";
 import { AREAS, bentoLayout } from "../../lib/bento";
 import { bindNumber, bindPoints, bindVisible, resolveBinding, resolveFrom, type FromBinding, type DataRow } from "../../lib/canvas-bind";
@@ -526,6 +527,8 @@ export function CodeView({ block }: { block: CodeBlock }) {
       <figcaption className="ast-cv-code-head">
         <span className="ast-cv-code-name">{block.filename || block.language || "code"}</span>
         {block.language && <span className="ast-cv-code-lang">{block.language}</span>}
+        {/* shared copy system (2026-10-08): canvas code was the only code surface with no copy */}
+        <AnimatedCopyButton variant="chip" title="Copy code" text={block.code} />
       </figcaption>
       {/* shiki emits its own <pre class="shiki">; the fallback is the same markup
           minus the tokens, so swapping them changes nothing else. */}
@@ -1065,6 +1068,12 @@ function TermLine({ text, language, enabled }: { text: string; language?: string
 
 export function TerminalView({ block }: { block: TerminalBlock }) {
   const hl = block.highlight !== false;
+  // Copy output (command + rows) through the shared copy system. Sanitizing the
+  // ANSI tones away is lossless here — tone colors are presentation, not content.
+  const text = useMemo(
+    () => [block.command, ...block.lines.map((l) => l.text)].filter(Boolean).join("\n"),
+    [block.command, block.lines],
+  );
   return (
     <figure className="ast-cv-term">
       {(block.title || block.command) && (
@@ -1075,6 +1084,7 @@ export function TerminalView({ block }: { block: TerminalBlock }) {
               $ <TermLine text={block.command} language="bash" enabled={hl} />
             </code>
           )}
+          <AnimatedCopyButton variant="chip" title="Copy output" text={text} />
         </figcaption>
       )}
       <pre className="ast-cv-term-body">

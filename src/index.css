@@ -1657,10 +1657,10 @@ html.theme-fading body * {
 .ai-term-dots i { width: 6px; height: 6px; border-radius: 9999px; background:rgb(var(--c-146) / 0.16); }
 .ai-term-dots i:nth-child(1) { background:rgb(var(--c-147)); } .ai-term-dots i:nth-child(2) { background:rgb(var(--c-148)); } .ai-term-dots i:nth-child(3) { background:rgb(var(--c-149)); }
 .ai-term-title { flex: 1; min-width: 0; font: 500 9px/1 var(--font-mono); letter-spacing: .06em; color: var(--color-muted); text-transform: lowercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
-.ai-term-copy { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; flex: none; border:1px solid rgb(var(--c-150) / 0.12); background: transparent; color: var(--color-muted); border-radius: 4px; cursor: pointer; transition: color 140ms ease, border-color 140ms ease, background-color 140ms ease, transform 120ms cubic-bezier(0.23,1,0.32,1); }
-.ai-term-copy:hover { color: var(--color-accent); border-color:rgb(var(--c-4) / 0.4); background:rgb(var(--c-19) / 0.08); }
-.ai-term-copy:active { transform: scale(0.92); }
-.ai-term-copy.is-copied { color:rgb(var(--c-23)); border-color:rgb(var(--c-151) / 0.4); background:rgb(var(--c-152) / 0.08); }
+/* copied affordance for the tool-terminal bar: the float skin made static —
+   same classes, same swap, positioned inline in the title bar. */
+.ai-term-bar .chat-code-copy { position:static; width:22px; height:22px; border-radius:4px; background:transparent; border-color:rgb(var(--c-150) / 0.12); flex:none; }
+.ai-term-bar .chat-code-copy svg { width:15px; height:15px; }
 .ai-term-body { margin: 0; padding: 6px 0; font: 400 11.5px/1.65 var(--font-mono); color: rgb(var(--c-94)); overflow-y: auto; overflow-x: auto; }
 /* One row per output line: gutter + text. Tints come from role tokens so every theme works. */
 .ai-term-line { display: flex; align-items: flex-start; gap: 8px; padding: 0 11px; min-width: max-content; }
@@ -1681,9 +1681,10 @@ html.theme-fading body * {
 [data-theme="light"] .ai-term-dots i { background:rgb(var(--light-c-56) / 0.14); }
 [data-theme="light"] .ai-term-dots i:nth-child(1) { background:rgb(var(--light-c-57)); } [data-theme="light"] .ai-term-dots i:nth-child(2) { background:rgb(var(--light-c-58)); } [data-theme="light"] .ai-term-dots i:nth-child(3) { background:rgb(var(--light-c-20)); }
 [data-theme="light"] .ai-term-body { color:rgb(var(--light-c-36)); }
-[data-theme="light"] .ai-term-copy { border-color:rgb(var(--light-c-56) / 0.14); }
-[data-theme="light"] .ai-term-copy:hover { color:rgb(var(--light-c-34)); border-color:rgb(var(--light-c-43) / 0.4); background:rgb(var(--light-c-59) / 0.07); }
-[data-theme="light"] .ai-term-copy.is-copied { color:rgb(var(--light-c-18)); border-color:rgb(var(--light-c-60) / 0.4); background:rgb(var(--light-c-61) / 0.08); }
+/* tool-terminal copy button: light-theme overrides ride on the shared
+   .chat-code-copy classes (system block near it covers dark + hover). */
+[data-theme="light"] .ai-term-bar .chat-code-copy { border-color:rgb(var(--light-c-56) / 0.14); }
+[data-theme="light"] .ai-term-bar .chat-code-copy:hover { color:rgb(var(--light-c-34)); border-color:rgb(var(--light-c-43) / 0.4); background:rgb(var(--light-c-59) / 0.07); }
 /* field rows: key rail left, value fills; mono values chip-style */
 .ai-io-fields { display: flex; flex-direction: column; gap: 5px; margin: 0; }
 .ai-io-row { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
@@ -1764,21 +1765,8 @@ html.theme-fading body * {
 .user-msg-toggle:active { transform: scale(0.96); }
 [data-theme="light"] .user-msg-toggle { color:rgb(var(--light-c-34)); background:rgb(var(--light-c-70) / 0.06); border-color:rgb(var(--light-c-71) / 0.25); }
 [data-theme="light"] .user-msg-toggle:hover { background:rgb(var(--light-c-72) / 0.12); border-color:rgb(var(--light-c-42) / 0.45); }
-/* Animated copy buttons (shadcn CodeBlockCopyButton pattern): Copy⇄Check
-   crossfade + scale. .chat-copy-swap stacks both glyphs; .is-check on the
-   button flips which one is visible. Works for chat-actions rows and the
-   code-block float alike. */
-.chat-copy-swap { position: relative; display: inline-flex; width: 16px; height: 16px; }
-.chat-copy-swap .chat-copy-ic { position: absolute; inset: 0; width: 100%; height: 100%; transition: opacity 160ms ease, transform 160ms ease; }
-.chat-copy-swap .chat-copy-ic:first-child { opacity: 1; transform: scale(1) rotate(0deg); }
-.chat-copy-swap .chat-copy-ic:last-child { opacity: 0; transform: scale(.5) rotate(-45deg); }
-.is-check .chat-copy-swap .chat-copy-ic:first-child { opacity: 0; transform: scale(.5) rotate(45deg); }
-.is-check .chat-copy-swap .chat-copy-ic:last-child { opacity: 1; transform: scale(1) rotate(0deg); color:rgb(var(--c-23)); }
-.chat-actions-copy { display:inline-flex; align-items:center; justify-content:center; width:44px; height:44px; border-radius:8px; border:none; background:transparent; color:var(--color-muted); cursor:pointer; }
-.chat-actions-copy:hover { color:var(--color-brandtext); background:rgb(var(--c-74) / 0.05); }
-.chat-actions-copy svg { width:16px; height:16px; }
-[data-theme="light"] .chat-actions-copy:hover { background:rgb(var(--light-c-31) / 0.06); }
-[data-theme="light"] .is-check .chat-copy-swap .chat-copy-ic:last-child { color:rgb(var(--light-c-18)); }
+/* Animated copy buttons: consolidated into THE copy-button system near
+   .chat-code-copy (2026-10-08) — swap animation + all three skins live there. */
 .chat-inline-code { font: 400 12.5px/1 var(--font-mono); background:rgb(var(--c-21) / 0.06); border-radius: 4px; padding: 2px 5px; overflow-wrap: break-word; }
 /* no-margin long-token example: OLLAMA_MODELS=/mnt/work/models/ollama bleeds the
    bubble on phones — inline code may break at `=`/`/` and wraps inside the card */
@@ -2052,9 +2040,32 @@ html.theme-fading body * {
 @media (prefers-reduced-motion: reduce) { .chat-jump-live { animation:none; } }
 
 /* ---- code copy ---- */
+/* THE copy-button system — every copy affordance on the site shares these
+   classes: React via AnimatedCopyButton (src/lib/animated-copy.tsx), DOM-built
+   via wireCodeCopyButtons (src/lib/rich-pre.ts). Skins:
+     .chat-code-copy    float over code (abs-positioned here; static variants
+                        for tool-terminal bars below)
+     .chat-actions-copy chat action row icon button
+     .chat-copy-chip    labelled header chip (canvas header, canvas code/term heads)
+   Shared swap animation + palette: .chat-copy-swap / .chat-copy-ic / .is-check. */
 .chat-code-copy { position:absolute; top:6px; right:6px; width:44px; height:44px; background:rgb(var(--c-202) / 0.8); border:1px solid rgb(var(--c-111) / 0.1); border-radius:6px; color:var(--color-muted); cursor:pointer; display:flex; align-items:center; justify-content:center; padding: 0; }
 .chat-code-copy:hover { color:var(--color-accent); }
-.chat-code-copy svg { width:16px; height:16px; }
+.chat-copy-swap { position: relative; display: inline-flex; width: 16px; height: 16px; }
+.chat-copy-swap .chat-copy-ic { position: absolute; inset: 0; width: 100%; height: 100%; transition: opacity 160ms ease, transform 160ms ease; }
+.chat-copy-swap .chat-copy-ic:first-child { opacity: 1; transform: scale(1) rotate(0deg); }
+.chat-copy-swap .chat-copy-ic:last-child { opacity: 0; transform: scale(.5) rotate(-45deg); }
+.is-check .chat-copy-swap .chat-copy-ic:first-child { opacity: 0; transform: scale(.5) rotate(45deg); }
+.is-check .chat-copy-swap .chat-copy-ic:last-child { opacity: 1; transform: scale(1) rotate(0deg); color:rgb(var(--c-23)); }
+.chat-actions-copy { display:inline-flex; align-items:center; justify-content:center; width:44px; height:44px; border-radius:8px; border:none; background:transparent; color:var(--color-muted); cursor:pointer; }
+.chat-actions-copy:hover { color:var(--color-brandtext); background:rgb(var(--c-74) / 0.05); }
+.chat-actions-copy svg { width:16px; height:16px; }
+/* labelled chip (canvas card header, canvas code/terminal heads) */
+.chat-copy-chip { display:inline-flex; align-items:center; gap:5px; min-height:24px; padding:0 8px; border-radius:6px; border:1px solid rgb(var(--c-89) / 0.1); background:transparent; color:var(--color-muted); font:500 11px/1 var(--font-sans); cursor:pointer; margin-left:auto; flex:none; transition: color var(--motion-fast) var(--ease-brand), border-color var(--motion-fast) var(--ease-brand), background-color var(--motion-fast) var(--ease-brand); }
+.chat-copy-chip:hover { background:rgb(var(--c-89) / 0.05); color:var(--color-brandtext); border-color:rgb(var(--c-89) / 0.2); }
+.chat-copy-chip svg { width:14px; height:14px; }
+[data-theme="light"] .chat-actions-copy:hover { background:rgb(var(--light-c-31) / 0.06); }
+[data-theme="light"] .chat-copy-chip:hover { color:rgb(var(--light-c-34)); border-color:rgb(var(--light-c-43) / 0.4); background:rgb(var(--light-c-59) / 0.07); }
+[data-theme="light"] .is-check .chat-copy-swap .chat-copy-ic:last-child { color:rgb(var(--light-c-18)); }
 
 /* ---- chat head link ---- */
 .chat-head-link { display:inline-flex; align-items:center; justify-content:center; padding:2px; border-radius:4px; color:var(--color-muted); cursor:pointer; background:transparent; border:none; transition:color 0.15s, background 0.15s, transform 120ms cubic-bezier(0.23,1,0.32,1); }
@@ -3493,26 +3504,6 @@ html.theme-fading body * {
   min-width: 0;
   overflow: hidden;
   overflow-wrap: break-word;
-}
-
-.ast-canvas-copy {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-height: 28px;
-  padding: 0 10px;
-  border-radius: 6px;
-  border: 1px solid rgb(var(--c-89) / 0.1);
-  background: transparent;
-  color: var(--color-muted);
-  font: 500 11px/1 var(--font-sans);
-  cursor: pointer;
-  transition: all var(--motion-fast) var(--ease-brand);
-}
-.ast-canvas-copy:hover {
-  background: rgb(var(--c-89) / 0.05);
-  color: var(--color-brandtext);
-  border-color: rgb(var(--c-89) / 0.2);
 }
 
 .ast-canvas-body {
@@ -5449,14 +5440,6 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
 .ast-cv-acc-item.open > .ast-cv-acc-body, .ast-cv-acc-item .ast-cv-acc-body[data-open="true"] { grid-template-rows: 1fr; }
 @media (prefers-reduced-motion: reduce) { .ast-cv-acc-item .ast-cv-acc-body { transition: none; } }
 
-/* Copy-confirm: the icon swaps with a small rotate/scale, the label crossfades. */
-.ast-cv-copy-swap { position: relative; display: inline-flex; width: 14px; height: 14px; }
-.ast-cv-copy-swap svg { position: absolute; inset: 0; transition: opacity 160ms var(--ease-brand), transform 160ms var(--ease-brand); }
-.ast-cv-copy-swap svg:last-child { opacity: 0; transform: scale(0.5) rotate(-45deg); }
-.is-checked .ast-cv-copy-swap svg:first-child { opacity: 0; transform: scale(0.5) rotate(45deg); }
-.is-checked .ast-cv-copy-swap svg:last-child { opacity: 1; transform: none; }
-@media (prefers-reduced-motion: reduce) { .ast-cv-copy-swap svg { transition: none; } }
-
 /* Focus visibility for EVERY interactive surface in a canvas. Without this a
    keyboard user could not see where they were at all. */
 .ast-canvas :is(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
@@ -5697,10 +5680,9 @@ input.ast-cv-doc-input { font: 600 15px/1.5 var(--font-sans); }
 .ast-cv-sankey { height: auto; }
 .ast-cv-sankey .nivo-tooltip { display: none; } /* our own legend carries the values */
 
-/* The copy button's icon swap is a 14px box holding a scaled glyph — let it
-   breathe instead of clipping its own edges. */
-.ast-cv-copy-swap { overflow: visible; }
-.ast-canvas-copy { min-width: 0; }
+/* The copy button's icon swap lives in the shared system block (.chat-copy-swap,
+   near .chat-code-copy); the old canvas-header swap rules are gone with it. */
+.ast-canvas-actions { min-width: 0; }
 
 /* Diff line buttons: they overflowed their row on narrow cards. */
 .ast-cv-dl { min-width: 0; }

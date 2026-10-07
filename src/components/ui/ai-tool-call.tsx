@@ -32,7 +32,7 @@ import { describeInput, type IOField } from "../../lib/tool-io";
 import { renderRichHtml } from "../../lib/rich-html";
 import { wireCodeCopyButtons } from "../../lib/rich-pre";
 import { copyText } from "../../lib/copy-text";
-import { Check, Copy } from "lucide-react";
+import { AnimatedCopyButton } from "../../lib/animated-copy";
 
 export type ToolCallState =
   | "pending"
@@ -342,7 +342,6 @@ function TerminalWindow({ title, text, maxHeight, exitCode, status }: {
   title?: string; text: string; maxHeight?: string;
   exitCode?: number | null; status?: "running" | "completed" | "error";
 }) {
-  const [copied, setCopied] = React.useState(false);
   // Copy the SANITIZED text: pasting escape codes into another terminal is a different bug.
   //
   // UNWRAP FIRST: `terminal` / `execute_code` results arrive persisted as a JSON envelope
@@ -358,13 +357,6 @@ function TerminalWindow({ title, text, maxHeight, exitCode, status }: {
     return { lines: r.lines, omitted: r.omitted, summary: r.summary, clean: r.lines.map((l) => l.text).join("\n"), envExit: un.exitCode };
   }, [text]);
   const effExit = exitCode != null ? exitCode : envExit;
-  const onCopy = () => {
-    void copyText(clean).then((ok) => {
-      if (!ok) return;
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1600);
-    });
-  };
   // Exit badge reads the SEGMENT's exit code first, then the envelope's — so a stored
   // `{"output": ..., "exit_code": 1}` surfaces its failure instead of printing "exit_code"
   // as a line of output.
@@ -377,10 +369,7 @@ function TerminalWindow({ title, text, maxHeight, exitCode, status }: {
         <span className="ai-term-title">{title || "terminal"}</span>
         {summary && <span className="ai-term-summary" title="result size">{summary}</span>}
         {shown && <span className={cn("ai-term-status", bad ? "is-err" : status === "running" ? "is-run" : "is-ok")}>{shown}</span>}
-        <button type="button" className={cn("ai-term-copy", copied && "is-copied")} onClick={onCopy}
-          aria-label={copied ? "Copied" : "Copy output"} title={copied ? "Copied" : "Copy output"}>
-          {copied ? <Check className="size-2.5" /> : <Copy className="size-2.5" />}
-        </button>
+        <AnimatedCopyButton variant="float" title="Copy output" text={clean} />
       </div>
       <div className="ai-term-body" style={maxHeight ? { maxHeight } : undefined} tabIndex={0} role="region" aria-label={title || "terminal output"}>
         {lines.length === 0 ? (

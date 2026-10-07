@@ -12,11 +12,9 @@
 // the body; control blocks (slider/select/…) write it; reader blocks resolve
 // `{bind, where, visible,…}` against it. A spec with no `state` renders exactly
 // as before (the provider is inert when nothing binds).
-import { useReducer } from "react";
-import { Copy, Check, Loader2 } from "lucide-react";
-import { cn } from "../../lib/utils";
+import { Loader2 } from "lucide-react";
 import { canvasToMarkdown } from "../../lib/canvas-markdown";
-import { copyText } from "../../lib/copy-text";
+import { AnimatedCopyButton } from "../../lib/animated-copy";
 import { Blocks } from "./canvas-blocks";
 import { CanvasStateProvider } from "./canvas-state";
 import type { CanvasSpec, CanvasBlock } from "../../lib/canvas-schema";
@@ -78,8 +76,6 @@ function deriveTitle(spec: { title?: string; blocks: CanvasBlock[] }): string {
 }
 
 export default function CanvasView({ spec, partial, canvasId = "0" }: { spec?: CanvasSpec; partial?: { title?: string; blocks: CanvasBlock[] }; canvasId: string }) {
-  const [copied, ping] = useReducer(copiedReducer, 0);
-  const done = copied > 0;
   // A card with a CONTROL needs its own store even with no authored `state`:
   // without the provider the control would write into the module-level
   // FALLBACK_STORE, which is shared by every such card on the page (one card's
@@ -110,14 +106,6 @@ export default function CanvasView({ spec, partial, canvasId = "0" }: { spec?: C
   if (!spec) return null;
   const title = deriveTitle(spec);
 
-  const onCopy = async () => {
-    const ok = await copyText(canvasToMarkdown(spec));
-    if (ok) {
-      ping();
-      setTimeout(() => ping(), 1600);
-    }
-  };
-
   const body = (
     <div className="ast-canvas-body">
       <Blocks blocks={spec.blocks} canvasId={canvasId} />
@@ -129,18 +117,15 @@ export default function CanvasView({ spec, partial, canvasId = "0" }: { spec?: C
         <header className="ast-canvas-head">
           <span className="ast-canvas-title">{title}</span>
           <div className="ast-canvas-actions">
-            <button type="button" className={cn("ast-canvas-copy", done && "is-checked")} onClick={onCopy} aria-label="Copy canvas as markdown">
-              <span className="ast-cv-copy-swap" aria-hidden="true">
-                <Copy className="h-3.5 w-3.5" />
-                <Check className="h-3.5 w-3.5" />
-              </span>
-              <span>{done ? "Copied" : "Copy"}</span>
-            </button>
+            <AnimatedCopyButton
+              variant="chip"
+              label="Copy"
+              title="Copy canvas as markdown"
+              text={() => canvasToMarkdown(spec)}
+            />
           </div>
         </header>
         {reactive ? <CanvasStateProvider canvasId={canvasId} initial={spec.state ?? {}}>{body}</CanvasStateProvider> : body}
       </section>
   );
 }
-
-function copiedReducer(x: number): number { return x + 1; }
