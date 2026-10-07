@@ -980,6 +980,13 @@ id: "RG-114",
     symptom:
       "Copy buttons had drifted into five separate implementations: chat actions + code float used the shared AnimatedCopyButton, but the tool-terminal window, the canvas card header and the vault page each hand-rolled their own copied-state machine (differing revert timers 1.2s/1.6s/2s, different hover colors, the DOM-built code buttons hardcoded #34d399 instead of the theme token), and canvas code/terminal/text blocks had no copy at all. One copy system now: copyText() is the only clipboard writer, AnimatedCopyButton (variants action/float/chip) + wireCodeCopyButtons share the .chat-copy-swap/.is-check classes, all skins live in one index.css block. Gate: static sweep that fails if anyone touches navigator.clipboard outside copy-text.ts, hand-rolls a Copy/Check state machine, duplicates a skin rule, or resurrects the deleted .ai-term-copy/.ast-canvas-copy/.ast-cv-copy-swap/.cc-* skins.",
     guard: "src/lib/copy-system.check.mjs",
+  },
+  {
+    id: "RG-146",
+    found: "2026-10-08",
+    symptom:
+      "Canvas card refused to load: 'This card could not be read — the model sent an unreadable payload.' Root-caused to a 25.8 KB A4 report card (session b679d5eb) whose table rows contained a key:value pair INSIDE a string array (`[\"cell\",\"cell\",\"tone\":\"neutral\"]` — the model lost track of container type mid-row). JSON.parse dies at the stray `:`; the async jsonrepair tier only mangles the pair into three junk cells, so the table rendered broken even when rescued. Fix: sync tier 1.65 (fixKeyValueInArray) drops the stray pair cleanly, and the tiers now CHAIN (fixTruncatedString was consuming pre-tier-1.65 text, silently discarding the first fix — the real body carried both defects). All 36 historical fences re-verified parsing; two pinned 'stays broken' tests updated to the strictly-better salvage contract (corrupt elements dropped, valid data kept — never fabricated).",
+    guard: "src/lib/canvas-schema.check.ts",
   }
 ];
 
