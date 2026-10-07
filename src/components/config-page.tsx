@@ -13,6 +13,7 @@ type Schema = {
   fields: Record<string, SchemaField>;
 };
 
+import { getCatalog } from "@/lib/session-files";
 import { ThemePanel } from "./theme-panel";
 import "./theme-panel.css";
 
@@ -80,7 +81,7 @@ export function ConfigPage({ onBack }: { onBack: () => void }) {
       const [cfgRes, schRes, optRes] = await Promise.all([
         fetch("/api/hx/config"),
         fetch("/api/hx/config/schema"),
-        fetch("/api/hx/model/options").catch(() => ({ json: () => ({ models: [] }) } as any))
+        getCatalog(true).then((c) => ({ ok: true, json: async () => c })).catch(() => ({ ok: true, json: async () => ({ models: [] }) }))
       ]);
 
       if (!cfgRes.ok) throw new Error("Failed to load config");

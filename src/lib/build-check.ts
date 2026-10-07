@@ -31,7 +31,9 @@ export function startBuildCheck(): void {
 
   const check = async () => {
     try {
-      const res = await fetch("/api/build-id", { credentials: "same-origin" });
+      // Same poison as the model catalog: a year-pinned /api/build-id means this
+      // tab never notices a deploy, so it never loads the catalog fix either.
+      const res = await fetch(`/api/build-id?live=${Date.now()}`, { credentials: "same-origin", cache: "no-store" });
       if (!res.ok) return;
       const data = await res.json();
       const theirs = String(data?.build || "");

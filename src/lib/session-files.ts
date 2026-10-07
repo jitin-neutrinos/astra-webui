@@ -28,15 +28,25 @@ export function getFileKind(name: string) {
   return "other";
 }
 
-// Catalog = which providers are authenticated + their curated models. It changes when the
-// user adds a key or the gateway updates, so the popup re-fetches on every open (`fresh`);
-// a failed fetch keeps the last good copy instead of caching the failure.
+// A year-pinned copy of this URL (old edge rule, or the phone's WebView disk
+// cache) still answers after a new key is added. `cache: "no-store"` plus a
+// unique query misses that copy. The in-memory `catalogCache` is only for the
+// same page session; the popup passes `fresh` so a just-added key shows up.
+export function catalogRequest(now = Date.now()): { url: string; init: RequestInit } {
+  return {
+    url: `/api/hx/model/options?live=${now}`,
+    init: { cache: "no-store", credentials: "same-origin" },
+  };
+}
+
 export async function getCatalog(fresh = false) {
   if (catalogCache && !fresh) return catalogCache;
-  let res = await fetch("/api/hx/model/options");
-  if (res.status === 503) {
-    res = await fetch("/api/hx/model/options");
-  }
+  const load = () => {
+    const { url, init } = catalogRequest();
+    return fetch(url, init);
+  };
+  let res = await load();
+  if (res.status === 503) res = await load();
   if (!res.ok) {
     if (catalogCache) return catalogCache;
     throw new Error("Failed to load catalog");

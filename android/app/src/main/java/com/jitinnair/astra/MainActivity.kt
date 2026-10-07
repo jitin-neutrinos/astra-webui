@@ -27,9 +27,22 @@ public class MainActivity : BridgeActivity() {
         registerPlugin(AstraBarsPlugin::class.java)
         registerPlugin(AstraThemePlugin::class.java)
         super.onCreate(savedInstanceState)
+        dropPoisonedHttpCache()
         installDownloadListener()
         installBackHandler()
         installRenderProcessHandler()
+    }
+
+    // A WebView that stored /api/hx/model/options with a year-long max-age (the
+    // old edge rule) keeps answering that copy after a new provider key is added.
+    // clearCache once per generation, then the live page's no-store fetch is enough.
+    // Bump GEN to force another clear.
+    private fun dropPoisonedHttpCache() {
+        val gen = 1
+        val prefs = getSharedPreferences("astra", MODE_PRIVATE)
+        if (prefs.getInt("http_cache_gen", 0) >= gen) return
+        try { bridge?.webView?.clearCache(true) } catch (_: Throwable) { /* not up yet */ }
+        prefs.edit().putInt("http_cache_gen", gen).apply()
     }
 
     // R2 (perf audit 2026-10-03): recover from renderer death instead of dying.
