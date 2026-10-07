@@ -1181,13 +1181,19 @@ test("depth repair never touches braces inside string values", () => {
   assert.equal((canv[0].spec.blocks[0] as any).body, "a } b ] c");
 });
 
-test("an unfixable payload still degrades rather than inventing blocks", () => {
-  // Missing `{` on a kpi item — genuinely malformed, and no repair should fake it.
-  const raw = `\`\`\`astra-canvas
-{ "v": 1, "blocks": [ { "type": "kpi", "items": [ { "label": "a", "value": 1 }, "label": "b", "value": 2 } ] } ] }
-\`\`\``;
-  const canv = splitCanvasBlocks(raw, false).filter((p) => p.kind === "canvas");
-  assert.equal(canv.length, 0, "no block may be fabricated from broken JSON");
+test("a payload with nothing salvageable still degrades rather than inventing blocks", () => {
+  // RG-146 rewrite (2026-10-08): the old pin used `"label":"b","value":2` pairs
+  // inside an items array and asserted the card stay broken — tier 1.65 now
+  // repairs that class (corrupt elements dropped, valid data kept, same
+  // philosophy as the async tier's per-block tolerance). Still-degraded shapes
+  // are the ones NO tier can read: a bare unquoted VALUE (quoteBareKeys fixes
+  // keys only) leaves nothing parseable.
+  const salvaged = '{ "v": 1, "blocks": [ { "type": "kpi", "items": [ { "label": "a", "value": 1 }, "label": "b", "value": 2 } ] } ] }';
+  const spec = parseCanvasSpec(salvaged);
+  assert.ok(spec, "pair-in-array corruption is repaired, valid data kept");
+  assert.equal((spec!.blocks[0] as { label?: string }).label, "a", "the valid item's data survived; the corrupt pair was dropped, not faked");
+  const unfixable = '{ "v": 1, "blocks": [ { "type": kpi } ] }';
+  assert.equal(parseCanvasSpec(unfixable), null, "a bare unquoted value stays degraded — no invention");
 });
 
 
@@ -1209,6 +1215,27 @@ test("tier 1 ignores braces inside string values", () => {
 
 test("tier 1 returns null on a truncated value so tier 3 can try", () => {
   assert.equal(extractOutermostJson('{ "v": 1, "blocks": [ { "type": "kpi" '), null);
+});
+
+test("tier 1.65 (key:value pair inside array) repairs synchronously", () => {
+  // RG-146 (2026-10-08): the model emits `"tone":"neutral"` INSIDE a table row
+  // array — JSON.parse dies at the stray `:` and a 25 KB A4 report card went
+  // "unreadable" until the async tier ran (or forever, on surfaces that never
+  // trigger it). The stray pairs are DROPPED cleanly — jsonrepair (async tier)
+  // only splits them into junk cells (`"tone",":","neutral"`), so the row
+  // renders broken there. Verified against the real 25.8 KB b679d5eb body:
+  // 32 blocks, 12ms sync.
+  const broken = '{"v":1,"blocks":[{"type":"table","columns":["Question","Answer"],"rows":[["What is this?","An AI system.","tone":"neutral","tone":"pro"],["Why?","Because."]]},{"type":"code","code":"const a = 1;}"}]}';
+  const spec = parseCanvasSpec(broken);
+  assert.ok(spec, "tier 1.65 must repair the pair-in-array defect synchronously");
+  const tbl = spec!.blocks[0] as { rows?: string[][] };
+  assert.deepEqual(tbl.rows, [["What is this?", "An AI system."], ["Why?", "Because."]], "row cells kept, stray pairs dropped");
+  assert.equal((spec!.blocks[1] as { code?: string }).code, "const a = 1;}", "string values containing } untouched");
+  // Untouched shapes: plain string values, multi-cell rows, object pairs.
+  const plain = parseCanvasSpec('{"v":1,"blocks":[{"type":"callout","tone":"info","body":"a tone: x b"}]}');
+  assert.ok(plain, "object key:value pairs still parse");
+  const rows3 = parseCanvasSpec('{"v":1,"blocks":[{"type":"table","columns":["A","B","C"],"rows":[["1","2","3"]]}]}');
+  assert.deepEqual((rows3!.blocks[0] as { rows?: string[][] }).rows, [["1", "2", "3"]], "multi-cell rows untouched");
 });
 
 test("tier 3 (jsonrepair) rescues classes tiers 1-2 cannot", async () => {
@@ -1233,9 +1260,13 @@ test("tier 3 (jsonrepair) rescues classes tiers 1-2 cannot", async () => {
   assert.ok(await parseCanvasSpecAsync(unclosed), "async agrees");
 });
 
-test("tier 3 refuses to fabricate: a missing brace stays degraded", async () => {
+test("tier 3 agrees with sync on the salvaged pair-in-array shape (RG-146)", async () => {
+  // Was "refuses to fabricate": tier 1.65 (sync) now repairs this class and the
+  // async path must AGREE, never answer differently.
   const broken = '{ "v": 1, "blocks": [ { "type": "kpi", "items": [ { "label": "a", "value": 1 }, "label": "b", "value": 2 } ] } ] }';
-  assert.equal(await parseCanvasSpecAsync(broken), null, "no block may be invented");
+  const direct = await parseCanvasSpecAsync(broken);
+  assert.ok(direct, "async tier salvages the same shape");
+  assert.equal((direct!.blocks[0] as { label?: string }).label, "a", "same salvage decision as sync");
 });
 
 test("the async splitter rescues a card the sync splitter drops", async () => {

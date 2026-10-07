@@ -600,7 +600,40 @@ export interface CanvasSpec {
   title?: string;
   /** Per-canvas initial state for reactive blocks (controls write here). */
   state?: Record<string, string | number | boolean | null>;
+  /**
+   * The page geometry the card renders into. A card is ONE page format, not a
+   * document direction, so there are exactly two values and no third: a report
+   * that is portrait A4 is `a4`, one that is a 16:9 deck is `slide`. `auto`
+   * lets the renderer pick from measured content height.
+   *
+   * Omitted = `auto`, so a card written before this key existed is unchanged.
+   */
+  page?: CanvasPageFormat;
   blocks: CanvasBlock[];
+}
+
+export type CanvasPageFormat = "a4" | "slide" | "auto";
+
+const PAGE_FORMATS = new Set<CanvasPageFormat>(["a4", "slide", "auto"]);
+
+/**
+ * Read a `page` key off a parsed spec object.
+ *
+ * WHY A CLOSED SET: an unknown value is DROPPED, not coerced. A card that said
+ * `page: "portrait"` used to vanish silently (the whole key was discarded),
+ * which is exactly how a rule that names an unsupported value looks like a
+ * renderer bug. Two real formats plus one explicit fallback, nothing else.
+ */
+function pickPage(v: unknown): CanvasPageFormat | undefined {
+  if (typeof v === "string" && PAGE_FORMATS.has(v as CanvasPageFormat)) return v as CanvasPageFormat;
+  // Accept the object spelling too (`page: {format: "a4"}`) since that is how
+  // every other key in the envelope reads, and silently ignoring it would be
+  // the same class of bug this function exists to prevent.
+  if (v && typeof v === "object" && !Array.isArray(v)) {
+    const f = (v as { format?: unknown }).format;
+    if (typeof f === "string" && PAGE_FORMATS.has(f as CanvasPageFormat)) return f as CanvasPageFormat;
+  }
+  return undefined;
 }
 
 export type CanvasPart =
@@ -1992,6 +2025,134 @@ function quoteBareKeys(s: string): string {
 }
 
 /**
+ * Tier 1.65 — a key:value pair emitted INSIDE an array. Real kill (2026-10-08,
+ * RG-146): a 25 KB A4 report card died on
+ *   `"rows":[["What is this?","…evidence packs.","tone":"neutral"],["Why…" ]]`
+ * — the model lost track of container type mid-row and wrote an object pair
+ * into a string array. JSON.parse dies at the `:`; jsonrepair (async tier) only
+ * "fixes" it by splitting the pair into three junk elements, so the row renders
+ * as a broken 5-cell row. Here the stray pair is DROPPED cleanly: the row keeps
+ * its real cells. `tone` on a table row carries no rendering meaning, so losing
+ * it loses nothing.
+ *
+ * Fires only when ALL hold (string-aware scan, like every tier here):
+ *   - a string's closing quote is followed (after whitespace) by `:`,
+ *   - the innermost open container is an ARRAY (in an object this is just a
+ *     normal key:value pair),
+ *   - the value after the `:` is a scalar (string/number/true/false/null).
+ * A structured value (`{`/`[`) bails on the site — no speculative surgery;
+ * the async tier owns that case. Consecutive pairs (`,"k2":"v2"` …) are
+ * consumed until the `]`.
+ */
+function fixKeyValueInArray(s: string): string {
+  const out: string[] = [];
+  const stack: ("{" | "[")[] = [];
+  let inString = false;
+  let escaped = false;
+  let i = 0;
+  const wsAt = (p: number) => { let j = p; while (j < s.length && /\s/.test(s[j])) j++; return j; };
+
+  while (i < s.length) {
+    const c = s[i];
+    if (inString) {
+      out.push(c);
+      if (escaped) escaped = false;
+      else if (c === "\\") escaped = true;
+      else if (c === '"') inString = false;
+      i++;
+      continue;
+    }
+    if (c === "{" || c === "[") { stack.push(c); out.push(c); i++; continue; }
+    if (c === "}" || c === "]") { stack.pop(); out.push(c); i++; continue; }
+    // Quote inside an ARRAY goes through the defect-aware handler below (a
+    // plain string-open here would swallow the key and let the stray `:`
+    // through). Object context keeps the plain handler.
+    if (c === '"' && stack.length && stack[stack.length - 1] === "[") {
+      // Defect check FIRST (a generic open-quote handler would swallow the key
+      // string and let the stray `:` through): is this string a KEY?
+      let j = i + 1;
+      while (j < s.length) {
+        if (s[j] === "\\") { j += 2; continue; }
+        if (s[j] === '"') break;
+        j++;
+      }
+      // "key":  inside an array? (colon right after the closing quote)
+      let k = wsAt(j + 1);
+      if (j < s.length && s[k] === ":") {
+        // Confirmed defect. Strip the comma that precedes this key (if any),
+        // then consume `key : value` — and any further `, key : value` pairs —
+        // up to the array's `]`.
+        let end = out.length;
+        while (end > 0 && /\s/.test(out[end - 1])) end--;
+        if (end > 0 && out[end - 1] === ",") out.length = end - 1;
+        // consume the key token
+        i = k + 1;
+        // consume value: string / scalar; bail on structured values
+        i = wsAt(i);
+        if (s[i] === '"') {
+          i++;
+          while (i < s.length) {
+            if (s[i] === "\\") { i += 2; continue; }
+            if (s[i] === '"') { i++; break; }
+            i++;
+          }
+        } else {
+          const scalar = /^(true|false|null|-?[0-9][0-9.eE+]*)/.exec(s.slice(i));
+          if (!scalar) {
+            // structured or unrecognizable value: leave the site untouched —
+            // emit nothing more here and let the async tier handle it.
+            out.push('"');
+            i = j + 1;
+            continue;
+          }
+          i += scalar[0].length;
+        }
+        // more pairs? `,"k":"v"` … until `]`
+        for (;;) {
+          const a = wsAt(i);
+          if (s[a] !== ",") break;
+          const b = wsAt(a + 1);
+          if (s[b] !== '"') break;
+          // key token
+          let m = b + 1;
+          while (m < s.length) {
+            if (s[m] === "\\") { m += 2; continue; }
+            if (s[m] === '"') break;
+            m++;
+          }
+          const n2 = wsAt(m + 1);
+          if (s[n2] !== ":") break;
+          // value token
+          let v = wsAt(n2 + 1);
+          if (s[v] === '"') {
+            v++;
+            while (v < s.length) {
+              if (s[v] === "\\") { v += 2; continue; }
+              if (s[v] === '"') { v++; break; }
+              v++;
+            }
+          } else {
+            const scalar = /^(true|false|null|-?[0-9][0-9.eE+]*)/.exec(s.slice(v));
+            if (!scalar) break;
+            v += scalar[0].length;
+          }
+          i = v;
+        }
+        continue; // next loop iteration sees the `]` (or whatever follows)
+      }
+      // normal string element: emit it wholesale
+      out.push(s.slice(i, j + 1));
+      i = j + 1;
+      continue;
+    }
+    if (c === '"') { inString = true; out.push(c); i++; continue; }
+    out.push(c);
+    i++;
+  }
+  return out.join("");
+}
+
+/**
  * Tier 1 — locate the outermost JSON value in text that may be wrapped in prose.
  *
  * Ported from the Smartslate Polaris v4 AI-response validator
@@ -2031,9 +2192,18 @@ function lenientJson(raw: string): unknown {
   const commaFixed = fixMissingCommas(newlineFixed);
   try { return attempt(commaFixed); } catch { /* fall through to depth repair */ }
 
+  // Tier 1.65: key:value pair emitted INSIDE an array (model loses track of
+  // container type mid-row: `["cell","cell","tone":"neutral"]`). Dropped
+  // cleanly so table rows keep their real cells — see fixKeyValueInArray.
+  const pairFixed = fixKeyValueInArray(commaFixed);
+  try { return attempt(pairFixed); } catch { /* fall through to depth repair */ }
+
   // Tier 1.7: truncated string (LLM ran out of tokens mid-emission).
-  // Close any unterminated string at the end of the JSON.
-  const truncated = fixTruncatedString(commaFixed);
+  // Close any unterminated string at the end of the JSON. Operates on the
+  // pair-fixed text — the tiers chain, each building on the previous fix
+  // (b679d5eb had BOTH defects: a pair-in-array mid-body AND a truncated
+  // final string; feeding commaFixed here dropped the first fix on the floor).
+  const truncated = fixTruncatedString(pairFixed);
   try { return attempt(truncated); } catch { /* fall through to depth repair */ }
 
   // Tier 2: bracket-depth repair (see balanceBrackets). Handles the surplus
@@ -2270,7 +2440,8 @@ export function repairIsolated(raw: string, repair: (t: string) => string): Canv
   // `state` seeds the card's store; omit the key entirely when absent so a
   // state-less card stays deepEqual to its old shape.
   const state = pickState((out as { state?: unknown }).state);
-  return state ? { v: 1, title, state, blocks } : { v: 1, title, blocks };
+  const page = pickPage((out as { page?: unknown }).page);
+  return buildSpec(title, state, page, blocks);
 }
 
 /**
@@ -2473,7 +2644,28 @@ export function parseCanvasSpec(raw: string): CanvasSpec | null {
   if (blocks.length === 0) return null;
   const title = isStr(data.title) ? data.title : undefined;
   const state = pickState(data.state);
-  return state ? { v: 1, title, state, blocks } : { v: 1, title, blocks };
+  const page = pickPage(data.page);
+  return buildSpec(title, state, page, blocks);
+}
+
+/**
+ * Assemble the envelope from its optional keys.
+ *
+ * An absent key is OMITTED, not set to undefined: several checks deepEqual a
+ * parsed spec against a literal, and a present-but-undefined key fails that
+ * comparison. A card written before `page` existed must keep parsing to the
+ * exact same object it always did.
+ */
+function buildSpec(
+  title: string | undefined,
+  state: Record<string, string | number | boolean | null> | undefined,
+  page: CanvasPageFormat | undefined,
+  blocks: CanvasBlock[],
+): CanvasSpec {
+  const spec: CanvasSpec = { v: 1, title, blocks };
+  if (state) spec.state = state;
+  if (page) spec.page = page;
+  return spec;
 }
 
 interface FenceMatch { start: number; end: number; body: string; }
