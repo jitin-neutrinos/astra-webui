@@ -119,18 +119,17 @@
   --code-tag: #f490b8;
   --code-attr: #7cc4ff;
 
-  /* chat bubbles: Astra = LIGHT tint of the theme ACCENT with text that
-     flips per theme (dark ink on light theme, light text on dark theme —
-     owner 09-26: pale solid was too bright in dark mode, revert); user = light
-     tint of brand accent green (accent-emerald). */
+  /* chat bubbles: Astra = VISIBLE fill of the theme ACCENT (owner 2026-10-07 —
+     the old 7% tint read as plain gray glass, "no colour at all"). User bubble
+     is NEUTRAL GRAY now (owner 2026-10-07 — replacing the emerald tint). */
   /* accent-derived: follows the active theme's brand color */
-  --bubble-ai-bg: color-mix(in oklab, var(--color-accent) 7%, transparent);
-  --bubble-ai-border: color-mix(in oklab, var(--color-accent) 30%, transparent);
-  --bubble-ai-code-bg: color-mix(in srgb, var(--color-accent) 8.0%, transparent);
-  --bubble-ai-inline-bg: color-mix(in srgb, var(--color-accent) 9.0%, transparent);
-  --bubble-user-bg: color-mix(in oklab, var(--color-emerald) 16%, transparent);
-  --bubble-user-border: color-mix(in oklab, var(--color-emerald) 45%, transparent);
-  --bubble-user-text: color-mix(in oklab, var(--color-emerald) 28%, var(--color-brandtext));
+  --bubble-ai-bg: color-mix(in oklab, var(--color-accent) 22%, transparent);
+  --bubble-ai-border: color-mix(in oklab, var(--color-accent) 45%, transparent);
+  --bubble-ai-code-bg: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  --bubble-ai-inline-bg: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  --bubble-user-bg: color-mix(in oklab, rgb(var(--c-110)) 14%, transparent);
+  --bubble-user-border: color-mix(in oklab, rgb(var(--c-110)) 28%, transparent);
+  --bubble-user-text: color-mix(in oklab, rgb(var(--c-110)) 78%, var(--color-brandtext) 22%);
 }
 
 /* ---- SHAPE MODES --------------------------------------------------------
@@ -929,8 +928,8 @@ html.theme-fading body * {
 .sidebar-scroll { scrollbar-width: none; -ms-overflow-style: none; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 .sidebar-scroll::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
-.chat-welcome { max-width: 640px; margin: 0 auto; padding: 32px 28px 24px; display: flex; flex-direction: column; align-items: flex-start; border: 1px solid rgb(255 255 255 / 0.14); border-radius: 20px; background: rgb(255 255 255 / 0.06); backdrop-filter: blur(24px) saturate(1.3); box-shadow: 0 24px 64px rgb(0 0 0 / 0.35); }
-[data-theme="light"] .chat-welcome { border-color: rgb(15 23 42 / 0.10); background: rgb(255 255 255 / 0.45); box-shadow: 0 24px 64px rgb(15 23 42 / 0.12); }
+.chat-welcome { max-width: 640px; margin: 0 auto; padding: 32px 28px 24px; display: flex; flex-direction: column; align-items: flex-start; border: 1px solid color-mix(in oklab, var(--color-accent) 45%, transparent); border-radius: 20px; background: color-mix(in oklab, var(--color-accent) 22%, transparent); backdrop-filter: blur(29px) saturate(1.25); box-shadow: 0 0 24px -4px color-mix(in oklab, var(--color-accent) 45%, transparent), 0 24px 64px rgb(0 0 0 / 0.35); }
+[data-theme="light"] .chat-welcome { border-color: color-mix(in srgb, var(--color-accent) 38%, transparent); background: color-mix(in srgb, var(--color-accent) 24%, #ffffff 76%); box-shadow: 0 0 24px -4px color-mix(in srgb, var(--color-accent) 30%, transparent), 0 24px 64px rgb(15 23 42 / 0.12); }
 /* Mobile: the welcome card must match the chat-bubble column width (the
    16px-inset composer/bubble rail), never bleed edge-to-edge WIDER than the
    bubbles — Jitin 10-05. The transcript feed is a full-width rail inset 16px
@@ -1515,8 +1514,8 @@ html.theme-fading body * {
 @media (prefers-reduced-motion: reduce) {
   .tubes-glow-wash, .tubes-glow-wash::after, .tubes-glow-wash::before { animation: none; }
 }
-/* user bubble: brand-green tint (see :root tokens) */
-.chat-bubble-user { border: 1px solid var(--bubble-user-border); background: var(--bubble-user-bg); backdrop-filter: blur(29px) saturate(1.25); color: var(--bubble-user-text); box-shadow:0 0 20px -2px color-mix(in oklab, var(--color-emerald) 55%, transparent); }
+/* user bubble: neutral gray glass (owner 2026-10-07 — replaced emerald tint) */
+.chat-bubble-user { border: 1px solid var(--bubble-user-border); background: var(--bubble-user-bg); backdrop-filter: blur(29px) saturate(1.25); color: var(--bubble-user-text); box-shadow:0 0 20px -2px color-mix(in oklab, rgb(var(--c-110)) 18%, transparent); }
 /* Astra streaming placeholder pill shares the Astra bubble skin */
 .chat-bubble-ai { border: 1px solid var(--bubble-ai-border); background: var(--bubble-ai-bg); backdrop-filter: blur(29px) saturate(1.25); box-shadow:0 0 18px -4px color-mix(in oklab, var(--color-accent) 35%, transparent); }
 /* markdown inside the Astra bubble follows the bubble ground (bold was
@@ -2190,33 +2189,30 @@ html.theme-fading body * {
   background-color:rgb(var(--light-c-76));
 }
 
-/* Light-mode bubbles — WHITE TINT ADDED (owner 2026-10-04).
-   The baseline was `transparent`, which was correct only while the page ground was
-   always the light paper. With a chat BACKDROP set (a dark photo/video), a
-   transparent bubble let that dark media show straight through and light-mode ink
-   sat on top of it — unreadable. Glassmorphism only works if the glass has a tint:
-   the blur is what makes a surface translucent, and the tint is what keeps it
-   legible over arbitrary media. So light mode now mixes the bubble toward WHITE
-   (the mode's own paper), never toward the backdrop.
-
-   Kept high enough to stay readable over a dark wallpaper (owner asked for visible
-   text), low enough that the wallpaper still reads through the glass. */
+/* Light-mode bubbles — ACCENT-TINTED AI + NEUTRAL-GRAY USER (owner 2026-10-07,
+   refreshed from the 2026-10-04 white-tint baseline).
+   The AI bubble carries a VISIBLE wash of the active accent so it stops reading
+   as plain glass; the user bubble swaps its emerald tint for a neutral ink-gray
+   that follows the active palette. Both stay mixed toward the mode's own paper
+   (white in light, void in dark) so they sit over a chat BACKDROP without
+   letting dark media show straight through. */
 [data-theme="light"] {
-  --bubble-ai-bg: color-mix(in srgb, #ffffff 88%, transparent);
-  --bubble-ai-border: color-mix(in srgb, var(--color-accent) 22%, transparent);
-  --bubble-user-bg: color-mix(in srgb, #ffffff 82%, transparent);
-  --bubble-user-border: color-mix(in srgb, var(--color-emerald) 28%, transparent);
-  --bubble-user-text: #064e3b;
+  --bubble-ai-bg: color-mix(in srgb, var(--color-accent) 24%, #ffffff 76%);
+  --bubble-ai-border: color-mix(in srgb, var(--color-accent) 38%, transparent);
+  --bubble-ai-code-bg: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  --bubble-ai-inline-bg: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  --bubble-user-bg: color-mix(in srgb, #1a1a1f 8%, #ffffff 92%);
+  --bubble-user-border: color-mix(in srgb, #1a1a1f 22%, transparent);
+  --bubble-user-text: #1a1a1f;
 }
-/* An AI bubble is the main text surface, so it gets the strongest paper tint;
-   the user's own bubble sits a step more transparent to read as a different
-   surface while still carrying its own weight. */
-[data-theme="light"] .chat-bubble-ai { background: color-mix(in srgb, #ffffff 88%, transparent); }
-[data-theme="light"] .chat-bubble-user { background: color-mix(in srgb, #ffffff 82%, transparent); }
+/* An AI bubble is the main text surface, so it gets the strongest accent wash;
+   the user's own bubble sits nearly paper-white with a faint ink shadow so the
+   two read as different surfaces without competing hues. */
+[data-theme="light"] .chat-bubble-ai { background: var(--bubble-ai-bg); }
+[data-theme="light"] .chat-bubble-user { background: var(--bubble-user-bg); }
 /* The composer carries typed-but-unsent text, so it gets its own opaque-ish tint
    rather than inheriting the void-based one (which is near-transparent in light). */
 [data-theme="light"] .chat-composer { background: color-mix(in srgb, #ffffff 92%, transparent); }
-[data-theme="light"] .chat-welcome { background: color-mix(in srgb, #ffffff 78%, transparent); }
 
 /* light mode: every button + hover re-balanced to the warm surfaces.
    .chat-chip transparent button → ink text, ink hairline, darkened-cyan hover.
@@ -2569,6 +2565,54 @@ html.theme-fading body * {
 .mg-act { all:unset; box-sizing:border-box; width:32px; height:32px; display:inline-flex; align-items:center; justify-content:center; border-radius:8px; cursor:pointer; background:rgb(var(--c-250) / 0.78); color:var(--color-brandtext); transition:transform 120ms cubic-bezier(0.23,1,0.32,1); }
 .mg-act:active { transform:scale(0.96); }
 .mg-act:focus-visible { outline:2px solid var(--color-accent); }
+
+/* ── mg text-bleed previews (owner 2026-10-07) ────────────────────────────────
+   Doc tiles paint REAL content filling the tile, edge to edge (no centered icon
+   empty gap). Fail-soft: if the preview can't load, the tile falls back to the
+   classic icon treatment (the DocTile switch handles it), never a broken box. */
+.mg-textbleed {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  text-align: left;
+  background: var(--color-midnight);
+}
+.mg-textbleed pre {
+  margin: 0;
+  padding: 8px 10px;
+  font: 400 8.5px/1.35 var(--font-mono);
+  color: var(--color-brandtext);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: hidden;
+  max-height: 100%;
+  opacity: .92;
+}
+.mg-textbleed-fade {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 38%;
+  background: linear-gradient(to bottom, transparent, var(--color-midnight));
+  pointer-events: none;
+}
+.mg-textbleed-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+}
+.mg-textbleed-row { display: flex; gap: 6px; min-width: 0; }
+.mg-textbleed-cell {
+  font: 400 8px/1.3 var(--font-mono);
+  color: var(--color-brandtext);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 33%;
+  opacity: .9;
+}
+/* pdf thumb fills the bleed too */
+.mg-tile img[src] { object-fit: cover; width: 100%; height: 100%; }
 .mg-err { display:flex; flex-direction:column; align-items:center; gap:6px; color:var(--color-muted); font:400 11.5px/1.3 var(--font-sans); padding:8px; text-align:center; }
 .mg-viewall { all:unset; margin-top:6px; padding:6px 10px; border-radius:var(--radius-pill); cursor:pointer; font:500 12px/1 var(--font-sans); color:var(--color-accent); background:rgb(var(--c-19) / 0.08); border:1px solid rgb(var(--c-6) / 0.22); }
 .mg-viewall:focus-visible { outline:2px solid var(--color-accent); outline-offset:2px; }
