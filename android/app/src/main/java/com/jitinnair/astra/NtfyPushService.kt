@@ -121,6 +121,12 @@ class NtfyPushService : Service() {
     private var chatRunnable: Runnable? = null
     private var chatPrefRunnable: Runnable? = null
     private var chatChatDebounce: Runnable? = null
+    // Minimum-lifetime floor for backoff reset: a socket that opens then dies
+    // instantly (server reject, network flap) must NOT reset the attempt
+    // counter, or the backoff never escalates and the redial stays at 1s
+    // forever — a tight reconnect loop instead of a polite backoff.
+    private var chatOpenAt = 0L
+    private var ntfyOpenAt = 0L
     private var chatCookie: String? = null
     private var appForeground = false
 
@@ -343,7 +349,8 @@ class NtfyPushService : Service() {
         webSocket = client?.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 Log.d(TAG, "WebSocket opened")
-                reconnectAttempt = 0
+                ntfyOpenAt = System.currentTimeMillis()
+                if (reconnectAttempt > 0 && lastNtfyLifetimeMs() >= 5_000L) reconnectAttempt = 0
                 ntfyDownSince = 0L
                 ntfyUp = true
                 publishStatus()
@@ -363,11 +370,18 @@ class NtfyPushService : Service() {
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                // Superseded-socket guard: the anti-orphan close in
+                // connectWebSocket() fires THIS callback for the socket it just
+                // replaced. Reacting would schedule a redundant redial, which
+                // closes again — a self-sustaining reconnect loop (measured at
+                // ~1 redial/sec). Only the CURRENT socket may drive reconnects.
+                if (webSocket !== this@NtfyPushService.webSocket) return
                 Log.d(TAG, "WebSocket closed: $reason")
                 scheduleReconnect()
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                if (webSocket !== this@NtfyPushService.webSocket) return
                 Log.e(TAG, "WebSocket failure", t)
                 scheduleReconnect()
             }
@@ -457,7 +471,8 @@ class NtfyPushService : Service() {
         chatSocket = sharedClient().newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(ws: WebSocket, response: Response) {
                 Log.d(TAG, "chat WS opened filter=complete")
-                chatAttempt = 0
+                chatOpenAt = System.currentTimeMillis()
+                if (chatAttempt > 0 && lastChatLifetimeMs() >= 5_000L) chatAttempt = 0
             }
 
             override fun onMessage(ws: WebSocket, text: String) {
@@ -465,11 +480,18 @@ class NtfyPushService : Service() {
             }
 
             override fun onClosed(ws: WebSocket, code: Int, reason: String) {
+                // Superseded-socket guard (same rule as the ntfy leg): the
+                // anti-orphan close / reconnectChatLeg() closes THIS socket on
+                // purpose. Without this guard each close scheduled another
+                // redial whose close scheduled another — a ~1s reconnect loop
+                // that never escalated because onOpen reset chatAttempt to 0.
+                if (ws !== this@NtfyPushService.chatSocket) return
                 Log.d(TAG, "chat WS closed: $reason")
                 scheduleChatReconnect("closed")
             }
 
             override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
+                if (ws !== this@NtfyPushService.chatSocket) return
                 val code = response?.code
                 Log.e(TAG, "chat WS failure code=$code", t)
                 // 401/403 = session cookie dead — long backoff; the prefs
@@ -482,6 +504,14 @@ class NtfyPushService : Service() {
             }
         })
     }
+
+    /** ms the previous chat leg stayed open; 0 when it never opened. */
+    private fun lastChatLifetimeMs(): Long =
+        if (chatOpenAt == 0L) 0L else System.currentTimeMillis() - chatOpenAt
+
+    /** ms the previous ntfy leg stayed open; 0 when it never opened. */
+    private fun lastNtfyLifetimeMs(): Long =
+        if (ntfyOpenAt == 0L) 0L else System.currentTimeMillis() - ntfyOpenAt
 
     private fun scheduleChatReconnect(why: String) {
         if (!isRunning) return
