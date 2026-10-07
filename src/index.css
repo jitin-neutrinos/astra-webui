@@ -2880,106 +2880,26 @@ html.theme-fading body * {
   border: none;
   box-shadow: none;
 }
-/* ---- Selected state, filled mechanism (owner 10-05) ------------------------
-   EVERYWHERE one rule: the selected/focused page's button or icon shows the
-   FULL accent container with the contrast ink glyph/label — the same language
-   as the composer bar's filled buttons, so "selected" reads identically on
-   the nav list, the collapsed rail, and the chat bar. No tint-of-accent dirs. */
-.ast-nav-selected { background: var(--color-accent); }
-/* The icon well and the label must BOTH flip to ink over the fill. The icon
-   well carries its own `text-muted` class — override it under the selected
-   parent (one extra class wins without !important). */
-.ast-nav-selected > span:first-child { color: var(--color-void); }
-.ast-nav-selected > span:first-child svg { color: var(--color-void); }
-.ast-nav-selected > span:nth-child(2) { color: var(--color-void); }
-/* Selected beats unread when both apply (chat open + other chats unread):
-   full accent fill + ink glyph wins over the translucent unread weight. */
-.ast-nav-unread.ast-nav-selected {
-  background: var(--color-accent);
-  border: none;
-  box-shadow: 0 1px 2px rgba(0,0,0,.25);
-}
-.ast-nav-unread.ast-nav-selected > span:first-child,
-.ast-nav-unread.ast-nav-selected > span:first-child svg { color: var(--color-void); }
-.ast-nav-selected > span:nth-child(2) { color: var(--color-void); }
-/* Owner 10-05: the unread COUNT CHIP must stay legible on the solid fill.
-   The badge's own accent-on-accent palette dissolves over the selected fill —
-   same weight as the other flipped children: void-tinted chip, void digits. */
-.ast-nav-selected .ast-unread-badge {
-  background: color-mix(in oklab, var(--color-void) 18%, transparent);
-  color: var(--color-void);
-  border-color: color-mix(in oklab, var(--color-void) 40%, transparent);
-  box-shadow: none;
-  text-shadow: none;
-}
-[data-theme="light"] .ast-nav-selected .ast-unread-badge {
-  background: rgba(248,250,252,.22);
-  color: #f8fafc;
-  border-color: rgba(248,250,252,.45);
-}
-.collapsed .ast-nav-selected,
-.ast-rail .ast-nav-selected { background: var(--color-accent); }
-/* ---- Owner 10-05 tint hierarchy (two new nav tiers) ------------------------
-   Selected item inside a dropdown  = brand-blue LIGHT tint   (.ast-nav-tinted)
-   Item of an OPEN section, unselected = LIGHTER tint of that (.ast-nav-soft)
-   Layering below the existing selected fill so the scale reads, top to bottom:
-   solid fill (selected) > light tint (selected inside group) > soft tint
-   (member of an open group) > quiet. Dark + light twins; light mode remaps
-   onto its own channel tokens per the standing light-theme rule. */
-.ast-nav-tinted {
-  background: color-mix(in oklab, var(--color-accent) 26%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-accent) 55%, transparent);
-  color: var(--color-accent);
-}
-.ast-nav-tinted > span:first-child svg,
-.ast-nav-tinted > span:first-child { color: var(--color-accent); }
-.ast-nav-tinted > span:nth-child(2) { color: var(--color-accent); }
-.ast-nav-soft {
-  background: color-mix(in oklab, var(--color-accent) 10%, transparent);
-  color: color-mix(in oklab, var(--color-accent) 85%, var(--color-brandtext));
-}
-.ast-nav-soft > span:first-child svg,
-.ast-nav-soft > span:first-child { color: color-mix(in oklab, var(--color-accent) 85%, var(--color-brandtext)); }
-[data-theme="light"] .ast-nav-tinted {
-  background: color-mix(in oklab, rgb(var(--light-c-34)) 14%, transparent);
-  color: rgb(var(--light-c-34));
-}
-[data-theme="light"] .ast-nav-tinted > span:first-child svg,
-[data-theme="light"] .ast-nav-tinted > span:first-child,
-[data-theme="light"] .ast-nav-tinted > span:nth-child(2) { color: rgb(var(--light-c-34)); }
-[data-theme="light"] .ast-nav-soft {
-  background: color-mix(in oklab, rgb(var(--light-c-34)) 7%, transparent);
-  color: rgb(var(--light-c-33));
-}
-[data-theme="light"] .ast-nav-soft > span:first-child svg,
-[data-theme="light"] .ast-nav-soft > span:first-child { color: rgb(var(--light-c-33)); }
 /* Mobile: the badge sits under the header logo (the logo button is the only
    child, 44px wide starting at the bar's 12px padding). */
 .ast-unread-badge-mobile {
   position: absolute; left: 30px; bottom: 6px; margin: 0;
   transform: none;
 }
-/* Owner 10-05: unread Chats now uses the FILL mechanism, not outline+glow —
-   a translucent accent container (the "unread" weight of the fill family,
-   between quiet and the solid selected fill). No border, no glow. */
+/* Owner 10-08 revert to the grey-era look: unread Chats is OUTLINE + GLOW on
+   the whole button (the pre-accent treatment), not a translucent fill. */
 .ast-nav-unread {
-  background: color-mix(in oklab, var(--color-accent) 14%, transparent);
-  border: none;
-  box-shadow: none;
+  border: 1px solid color-mix(in oklab, var(--color-accent) 45%, transparent);
+  box-shadow: 0 0 10px color-mix(in oklab, var(--color-accent) 18%, transparent),
+              inset 0 0 8px color-mix(in oklab, var(--color-accent) 5%, transparent);
 }
-/* Unread glyph reads accent over its translucent fill; the label too. */
+/* Unread glyph reads accent inside the outline; the label too. */
 .ast-nav-unread > span:first-child svg { color: var(--color-accent); }
 .ast-nav-unread > span:first-child { color: var(--color-accent); }
 [data-theme="light"] .ast-unread-badge { background:rgb(var(--light-c-72) / 0.12); color:rgb(var(--light-c-34)); border-color:rgb(var(--light-c-43) / 0.4); box-shadow: none; }
-[data-theme="light"] .ast-nav-unread { background: color-mix(in oklab, rgb(var(--light-c-34)) 12%, transparent); border: none; box-shadow: none; }
+[data-theme="light"] .ast-nav-unread { border-color:rgb(var(--light-c-43) / 0.35); box-shadow: none; }
 [data-theme="light"] .ast-nav-unread > span:first-child svg,
 [data-theme="light"] .ast-nav-unread > span:first-child { color: rgb(var(--light-c-34)); }
-[data-theme="light"] .ast-nav-unread.ast-nav-selected {
-  background: rgb(var(--light-c-1));
-  box-shadow: none;
-}
-[data-theme="light"] .ast-nav-unread.ast-nav-selected > span:first-child,
-[data-theme="light"] .ast-nav-unread.ast-nav-selected > span:first-child svg { color: #f8fafc; }
 /* Light mode: an opaque BLACK chip is wrong on paper — invert it to the
    paper surface with an ink-toned border, same shape and placement. */
 [data-theme="light"] .ast-unread-badge-rail { background: var(--color-midnight); border-color:rgb(var(--light-c-66) / 0.35); box-shadow: none; text-shadow: none; }

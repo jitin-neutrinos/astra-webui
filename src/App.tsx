@@ -56,12 +56,6 @@ function sidebarModeIs(name: string, mode: string): boolean | null {
   return null;
 }
 
-/** Is a Work-owned panel (chats/files) currently the sidebar's content?
- *  Module-scope for the same narrowing reason as sidebarModeIs. */
-function workPanelOpen(mode: string): boolean {
-  return mode === "chats" || mode === "files";
-}
-
 /** Low-spec device probe (see composer-trace): set once, gates the expensive
  *  comet glow + band count + composer autosize on weak phones. */
 const LOW_SPEC = isLowSpec();
@@ -706,29 +700,19 @@ function Sidebar({ activeView, collapsed, drawerOpen, isMobile: isMobileProp, ac
           // Group dropdowns are IDENTICAL in rail mode: same shared open state,
           // headers render as chevron-only toggles, items show icons only.
           const open = !!groupOpen[group.label];
-          // Owner 10-05: Work reads selected while a child of it is the focused
-          // page — a chat is open (activeView chat), or the chats/files panel
-          // is on screen in the sidebar (mode).
-          // mode is narrowed to 'nav' here (panel modes early-return above), so
-          // the panel half of the rule goes through module scope too. In the
-          // panel the Work header isn't painted; the flag still guards chat view.
-          const groupSelected = group.label === "Work"
-            && (activeView === "chat" || workPanelOpen(mode));
           return (
           <div key={group.label} className="mb-3">
             {/* group header: icon+label+chevron expanded, icon-only in rail.
-                Owner 10-05: Work is SELECTED while any of its children is the
-                focused page (chat/chats/files) and carries the pending-chats
-                aggregate with the same badge treatment as Chats, collapsed
-                and expanded. Fill/outline convention: selected = filled. */}
+                Owner 10-05: the Work header carries the pending-chats
+                aggregate with the same badge treatment as Chats — shown only
+                when the Work section is closed AND the sidebar is expanded
+                (collapsed rail keeps the chip on the Chats icon instead). */}
             <button type="button"
               onClick={() => setGroupOpen((o) => ({ ...o, [group.label]: !o[group.label] }))}
               aria-expanded={open}
               title={expanded ? `Toggle ${group.label}` : group.label}
               className={cn("flex h-11 w-full items-center rounded-md text-left font-sans text-sm font-medium tracking-[0.08em] transition-colors duration-200",
-                group.label === "Work" && groupSelected
-                  ? "ast-nav-selected text-void"
-                  : open ? "text-accent/90" : "text-slate-600 hover:text-slate-400",
+                open ? "text-accent/90" : "text-slate-600 hover:text-slate-400",
                 expanded ? "justify-between px-3" : "justify-center")}>
               <span className="flex min-w-0 items-center gap-1.5">
                 {group.icon}
@@ -789,16 +773,8 @@ function Sidebar({ activeView, collapsed, drawerOpen, isMobile: isMobileProp, ac
                   // drops its container, so a 48px rail isn't crowded.
                   item.name === "Chats" && unreadTotal > 0 && (open || !expanded) ? (expanded ? "ast-nav-unread" : "ast-nav-unread-rail") : "",
                   active
-                    /* Owner 10-05: an item inside an OPEN dropdown that is the
-                       focused page reads as "selected inside the group" — a
-                       LIGHT brand tint, distinct from the group header's solid
-                       fill. The header keeps the solid fill (selected = filled
-                       at the parent level). */
-                    ? (open ? "ast-nav-tinted" : "ast-nav-selected text-void")
-                    : /* Owner 10-05: members of an OPEN section get a lighter
-                         tint of the selected one so the parent-child wiring
-                         reads at a glance. */
-                    (open ? "ast-nav-soft" : "text-slate-300 hover:bg-white/5 hover:text-white"),
+                    ? "bg-accent/10 text-accent"
+                    : "text-slate-300 hover:bg-white/5 hover:text-white",
                 )}>
                 <span className="grid h-full w-12 shrink-0 place-content-center text-muted">{item.icon}</span>
                 {expanded && <span className="truncate text-sm font-medium">{item.name}</span>}
