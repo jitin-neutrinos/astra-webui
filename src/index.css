@@ -3427,6 +3427,7 @@ html.theme-fading body * {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   margin-bottom: 12px;
   padding-bottom: 8px;
   border-bottom: 1px solid rgb(var(--c-89) / 0.06);
@@ -3437,6 +3438,17 @@ html.theme-fading body * {
   text-transform: uppercase;
   letter-spacing: 0.14em;
   color: var(--color-accent);
+  /* Owner fix 2026-10-07: a long derived title (table column lists, long callout
+     headings) overflowed the card's right edge on narrow phones and even on
+     desktop when the copy button crowded it. The title is a flex CHILD with no
+     shrink floor, so its min-content width wins against the container. min-width:0
+     lets it shrink; overflow-wrap lets it wrap at word boundaries; the
+     letter-spacing:0.14em monospace run makes long unbroken tokens look longer
+     than they are, so the wrap point matters more here than in body text. */
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  overflow-wrap: break-word;
 }
 
 .ast-canvas-copy {
