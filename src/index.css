@@ -937,7 +937,7 @@ html.theme-fading body * {
 .sidebar-scroll { scrollbar-width: none; -ms-overflow-style: none; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 .sidebar-scroll::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
-.chat-welcome { max-width: 640px; margin: 0 auto; padding: 32px 28px 24px; display: flex; flex-direction: column; align-items: flex-start; border: 1px solid color-mix(in oklab, var(--color-accent) 45%, transparent); border-radius: 20px; background: color-mix(in oklab, var(--color-accent) 22%, transparent); backdrop-filter: blur(29px) saturate(1.25); box-shadow: 0 0 24px -4px color-mix(in oklab, var(--color-accent) 45%, transparent), 0 24px 64px rgb(0 0 0 / 0.35); }
+.chat-welcome { max-width: 640px; margin: 0 auto; padding: 32px 28px 30px; display: flex; flex-direction: column; align-items: flex-start; border: 1px solid color-mix(in oklab, var(--color-accent) 45%, transparent); border-radius: 20px; background: color-mix(in oklab, var(--color-accent) 22%, transparent); backdrop-filter: blur(29px) saturate(1.25); box-shadow: 0 0 24px -4px color-mix(in oklab, var(--color-accent) 45%, transparent), 0 24px 64px rgb(0 0 0 / 0.35); }
 [data-theme="light"] .chat-welcome { border-color: color-mix(in srgb, var(--color-accent) 38%, transparent); background: color-mix(in srgb, var(--color-accent) 24%, #ffffff 76%); box-shadow: 0 0 24px -4px color-mix(in srgb, var(--color-accent) 30%, transparent), 0 24px 64px rgb(15 23 42 / 0.12); }
 /* Mobile: the welcome card must match the chat-bubble column width (the
    16px-inset composer/bubble rail), never bleed edge-to-edge WIDER than the
@@ -952,6 +952,9 @@ html.theme-fading body * {
 .chat-welcome-title { font: 500 34px/1.2 var(--font-display); color: var(--color-brandtext); margin: 0 0 6px; letter-spacing: -0.02em; }
 .chat-welcome-sub { font: 400 15px/1.5 var(--font-sans); color: var(--color-muted); margin: 0 0 28px; letter-spacing: 0.01em; }
 .chat-welcome-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; width: 100%; }
+/* Owner 10-08 (steer): suggestion cards must not touch the container's bottom
+   edge — breathing room between the grid and the welcome card's border. */
+.chat-welcome-grid { margin-bottom: 6px; }
 @media (max-width: 640px) {
   .chat-welcome { padding-top: 28px; }
   .chat-welcome-title { font-size: 27px; }
