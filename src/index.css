@@ -922,7 +922,12 @@ html.theme-fading body * {
    overflow ABOVE the start unreachable, and the suggestion grid wraps to two
    rows on narrow viewports.) */
 .chat-scroll:has(> .chat-welcome) { display: flex; flex-direction: column; }
-.chat-scroll > .chat-welcome { margin-top: auto; margin-bottom: auto; }
+/* Owner 10-08 (steer): the welcome card gets the same composer-clearance
+   treatment as the transcript (pb-36 rhythm = 144px) so it never sits behind
+   the floating input+button-bar shell. Bottom auto-margin is capped by that
+   padding; top stays auto so the card keeps its vertical centering. */
+.chat-scroll > .chat-welcome { margin-top: auto; margin-bottom: auto; padding-bottom: 0; }
+.chat-scroll:has(> .chat-welcome)::after { content: ""; flex: 0 0 144px; }
 
 /* brand shape: composer is a rounded rectangle, not a pill */
 
