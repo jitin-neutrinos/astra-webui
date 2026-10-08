@@ -5,6 +5,7 @@
 // via step-prefs; opened-state updates LIVE through controlled `open` state.
 
 import { useEffect, useRef, useState, useMemo, memo } from "react";
+import { useBrand, brandIcon } from "../lib/brand-store";
 import type { ReactNode } from "react";
 import { Check, Loader2, ShieldAlert, X, Clock } from "lucide-react";
 import { cn } from "../lib/utils";
@@ -69,8 +70,19 @@ import { sanitizeCanvasSpec } from "../lib/canvas-sanitize";
 function CanvasHost({ spec, partial, id }: { spec?: CanvasSpec; partial?: { title?: string; blocks: CanvasBlock[] }; id: string }) {
   // Sanitize spec before rendering: strip invalid blocks, normalize enums, cap lengths.
   const safeSpec = spec ? sanitizeCanvasSpec(spec) : undefined;
+  // If the spec parsed but sanitize stripped every block (e.g. all blocks were
+  // unknown types), show a visible placeholder instead of a silent blank card.
+  // This is the "silent-blank" regression: CanvasView returns null when spec is
+  // undefined, so without this guard the card vanishes with no explanation.
+  if (spec && !safeSpec) {
+    return (
+      <div className="ast-canvas ast-canvas-error" role="alert" aria-label="Canvas could not be rendered">
+        <span>This canvas could not be displayed — its content was not recognized.</span>
+      </div>
+    );
+  }
     // The boundary (NOT Suspense) is the outer shell: a lazy chunk that fails to resolve or a render that
-  // throws lands in the placeholder instead of unmounting the whole page (white-screen-of-death bug).
+    // throws lands in the placeholder instead of unmounting the whole page (white-screen-of-death bug).
   return (
     <CanvasErrorBoundary id={id}>
       <Suspense fallback={<div className="ast-canvas ast-canvas-loading" aria-busy="true" />}>
@@ -832,6 +844,7 @@ export const TurnTimeline = memo(function TurnTimeline({ segments, streaming, se
   /** Action row docked INSIDE the bubble's bottom-right (owner 10-02). */
   actions?: ReactNode;
 }) {
+  useBrand(); // repaints the turn logo on a rename
   const isRunning = turnIsRunning(segments, streaming);
     // Reveal policy: only the last segment sweeps (latest response). Everything
     // earlier renders whole; each turn's own 200ms fade supplies the motion.
@@ -915,7 +928,7 @@ export const TurnTimeline = memo(function TurnTimeline({ segments, streaming, se
         data-streaming={isRunning ? "true" : undefined}
       >
         <div className="chat-turn-head">
-          <img src="/astra-logo.png" alt="" aria-hidden="true" className="chat-turn-logo" />
+          <img src={brandIcon(32)} alt="" aria-hidden="true" className="chat-turn-logo" />
           {ts != null && (
             <div className="chat-turn-ts">{new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
           )}
