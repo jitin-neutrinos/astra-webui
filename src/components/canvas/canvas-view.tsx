@@ -119,7 +119,6 @@ export default function CanvasView({ spec, partial, canvasId = "0" }: { spec?: C
           <div className="ast-canvas-actions">
             <AnimatedCopyButton
               variant="chip"
-              label="Copy"
               title="Copy canvas as markdown"
               text={() => canvasToMarkdown(spec)}
             />

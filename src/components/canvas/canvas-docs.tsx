@@ -167,7 +167,7 @@ export function TextView({ block, id }: { block: TextBlock; id: string }) {
         <span className="ast-cv-sheet-tab">{block.title ?? file}</span>
         <span className="ast-cv-sheet-meta">{val.length} chars</span>
         {/* copy follows the LIVE textarea value; the shared copy system, not a second state machine */}
-        <AnimatedCopyButton variant="chip" label="Copy" title="Copy text" text={val} />
+        <AnimatedCopyButton variant="chip" title="Copy text" text={val} />
         <DownloadBtn produce={produce} filename={file} mime={MIME[lang as keyof typeof MIME] ?? MIME.txt} />
       </figcaption>
       <textarea

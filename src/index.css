@@ -2037,12 +2037,13 @@ html.theme-fading body * {
 /* actions docked INSIDE the bubble (owner 10-02, corrected): absolutely
    positioned bottom-right inside the bubble's own box — the row must be FULLY
    inside the glass, never straddling the bottom border. */
-.chat-actions { display:flex; gap:4px; opacity:0; transition:opacity 140ms; justify-content:flex-end; position:absolute; right:10px; bottom:6px; z-index:2; pointer-events:none; }
+.chat-actions { display:flex; gap:4px; opacity:0; transition:opacity 140ms; justify-content:flex-end; position:absolute; right:16px; bottom:12px; z-index:2; pointer-events:none; }
 .chat-actions > * { pointer-events:auto; background:rgb(0 0 0 / 0.22); border-radius:8px; backdrop-filter: blur(8px); }
 [data-theme="light"] .chat-actions > * { background:rgb(255 255 255 / 0.4); }
-/* reserve the docked row inside the bubble: 6px inset + 22px to the icon centre
-   clears the last text line without a slab of dead space. */
-.chat-turn, .chat-bubble-user { padding-bottom: 42px; }
+/* reserve the docked row inside the bubble: 12px inset + 22px to the icon
+   centre + breathing room clears the last text line without a slab of dead
+   space (owner 10-08: the row overlapped the last response line at 42px). */
+.chat-turn, .chat-bubble-user { padding-bottom: 56px; }
 /* the bubbles own the actions now (owner 10-02: "entirely inside the bubble"),
    so each bubble is its own positioning context for the docked row. */
 .chat-turn, .chat-bubble-user { position: relative; }
