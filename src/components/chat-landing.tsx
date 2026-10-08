@@ -1979,7 +1979,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
             </div>
           </div>
         ) : (
-            <div ref={contentRef} className="chat-feed mx-auto flex w-full max-w-[52rem] flex-col gap-6 px-4 pt-8 pb-28">
+            <div ref={contentRef} className="chat-feed mx-auto flex w-full max-w-[52rem] flex-col gap-6 px-4 pt-8 pb-36">
               {olderLoading && (
                 <div className="flex items-center justify-center gap-2 py-2 text-xs text-muted" aria-live="polite">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading earlier messages…
