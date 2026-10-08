@@ -6,6 +6,10 @@
 
 import rawPalettes from "../theme-engine/palettes.json";
 import { readUserThemes, writeUserThemes, type UserTheme } from "./color-engine";
+// Imported for the sync payload's TYPE and for readFonts (which pushes the full
+// role map). A value import, so this is a real dependency — not a type-only one
+// that would vanish at build and leave readFonts undefined at runtime.
+import { readFonts, writeFonts, applyRoleFont, type FontRoleState } from "./font-store";
 
 export interface PaletteVariant { [token: string]: string } // "--color-void": "#0a0a0f"
 export interface Palette {
@@ -43,6 +47,78 @@ export function allPalettes(): Palette[] {
 const LS_KEY = "astra-palette";
 const LS_CUSTOM = "astra-palette-custom";
 const LS_BG = "astra-chat-bg";
+
+/**
+ * Inline custom-property namespaces the colour engine does NOT own, so the
+ * Astra-UI reset below leaves them alone.
+ *
+ * WHY THIS EXISTS: the isDefault branch clears every `--*` on :root, which was
+ * correct while colour was the only subsystem writing them. The moment another
+ * engine persists through the same mechanism — `--shape-*` for the shape
+ * scale, `--font-*` for the font picker, `--brand-*` for branding — a palette
+ * switch to Astra UI, or `resetToAstra()`, silently erased the user's choice
+ * with no error anywhere. Matching by PREFIX rather than by an allowlist of
+ * names is deliberate: a new engine gets protection by existing under its own
+ * namespace, and the colour channels (`--c-N`, `--light-c-N`, `--r-N`,
+ * `--color-*`) are still cleared, which is what the branch is for.
+ *
+ * `--i` is excluded for the pre-existing reason: it is React's own internal
+ * style hook, not a theme token.
+ */
+const FOREIGN_NAMESPACES = ["--shape-", "--font-", "--brand-"];
+
+// ---- shape (corner-radius) setting ---------------------------------------
+
+export type ShapeMode = "sharp" | "rounded" | "circle";
+const SHAPE_MODES = new Set<ShapeMode>(["sharp", "rounded", "circle"]);
+const LS_SHAPE = "astra-shape";
+
+/**
+ * The active corner style, or undefined when unset (= the stylesheet default).
+ *
+ * The whole scale is derived from two tokens in index.css (`--shape-scale` and
+ * `--shape-full`), so this reads the attribute rather than writing any custom
+ * property: one attribute is the entire state, it survives before React mounts,
+ * and there is nothing to keep in sync by hand.
+ */
+export function getShape(): ShapeMode | undefined {
+  try {
+    const v = document.documentElement.getAttribute("data-shape");
+    return v && SHAPE_MODES.has(v as ShapeMode) ? (v as ShapeMode) : undefined;
+  } catch { return undefined; }
+}
+
+/**
+ * Set the shape mode and persist it.
+ *
+ * An unknown value is CLEARED rather than coerced, matching the canvas `page`
+ * key: a typo must not silently render as some other shape the user did not
+ * choose. Dispatched even on clear, so every consumer converges.
+ */
+export function setShape(mode: ShapeMode | null): boolean {
+  const root = document.documentElement;
+  if (mode === null || !SHAPE_MODES.has(mode)) {
+    root.removeAttribute("data-shape");
+    try { localStorage.removeItem(LS_SHAPE); } catch { /* private mode */ }
+  } else {
+    root.setAttribute("data-shape", mode);
+    try { localStorage.setItem(LS_SHAPE, mode); } catch { /* private mode */ }
+  }
+  window.dispatchEvent(new CustomEvent("astra-shape-change", { detail: mode }));
+  return true;
+}
+
+/** Boot-time restore, called from main.tsx before render (no flash). */
+export function restoreShape() {
+  try {
+    const v = localStorage.getItem(LS_SHAPE);
+    if (v && SHAPE_MODES.has(v as ShapeMode)) {
+      document.documentElement.setAttribute("data-shape", v);
+    } else if (v) {
+      localStorage.removeItem(LS_SHAPE); // a stale/renamed value, not a silent keep
+    }
+  } catch { /* private mode */ }
+}
 
 export const getMode = (): ThemeMode =>
   document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
@@ -163,7 +239,9 @@ export function applyPalette(p: Palette, mode: ThemeMode = getMode()) {
   const isDefault = p.id === palettes[0].id;
   if (isDefault) {
     for (const name of [...root.style]) {
-      if (name.startsWith("--") && name !== "--i") root.style.removeProperty(name);
+      if (!name.startsWith("--") || name === "--i") continue;
+      if (FOREIGN_NAMESPACES.some((ns) => name.startsWith(ns))) continue;
+      root.style.removeProperty(name);
     }
     return 0;
   }
@@ -338,7 +416,7 @@ try {
 let syncRev = 0;
 let applyingRemote = false;
 let pushTimer: ReturnType<typeof setTimeout> | null = null;
-type SyncState = { palette?: string; mode?: ThemeMode; bg?: ChatBg | null; custom?: CustomEdits; userThemes?: UserTheme[]; rev?: number };
+type SyncState = { palette?: string; mode?: ThemeMode; bg?: ChatBg | null; custom?: CustomEdits; userThemes?: UserTheme[]; shape?: ShapeMode | null; fonts?: FontRoleState | null; rev?: number };
 
 async function pushSync(patch: Partial<SyncState>) {
   try {
@@ -385,20 +463,59 @@ function applyRemote(st: SyncState) {
         window.dispatchEvent(new CustomEvent("astra-chat-bg-change", { detail: st.bg }));
       }
     }
+    // Shape: last-write-wins like everything else here. Validated against the
+    // closed set rather than assigned, so a STALE client (an app left open
+    // across a deploy) cannot push a mode this build does not know.
+    if (st.shape !== undefined) {
+      const next = st.shape === null || SHAPE_MODES.has(st.shape) ? st.shape : null;
+      if (getShape() !== (next ?? undefined)) setShape(next);
+    }
+    // Fonts: applied through the same entry point the UI uses, so a remote pick
+    // gets its @font-face injected too. Only a same-origin /api/theme/font URL
+    // is honoured — a blob: or data: one is dead on this device and would look
+    // like the sync silently dropped the change.
+    if (st.fonts !== undefined) {
+      const cur = readFonts();
+      const next: FontRoleState = { sans: null, display: null, mono: null };
+      for (const role of ["sans", "display", "mono"] as const) {
+        const p = st.fonts?.[role];
+        if (p && typeof p.family === "string" && typeof p.url === "string"
+          && p.url.startsWith("/api/theme/font/")) {
+          next[role] = { family: p.family, url: p.url, variable: !!p.variable, source: p.source === "upload" ? "upload" : "google" };
+        }
+      }
+      if (JSON.stringify(cur) !== JSON.stringify(next)) {
+        writeFonts(next);
+        for (const role of ["sans", "display", "mono"] as const) applyRoleFont(role, next[role]);
+        window.dispatchEvent(new CustomEvent("astra-font-change", { detail: { remote: true } }));
+      }
+    }
   } finally { applyingRemote = false; }
 }
 /** Boot the sync loop: pull now, poll every 5s, push local changes. */
+
+// The zone on astra.jitinnair.com edge-caches stable-URL GETs per URL and
+// overrides the origin's cache-control:no-store (measured 2026-10-06:
+// cf-cache-status:HIT, max-age=31536000, age:6594 on /api/theme/state). A
+// cached GET re-applied the OLD palette every 5s and silently reverted every
+// theme switch ("Water won't change to Astra UI"). The _r minute-buster gives
+// each poll a distinct URL, same fix as the /api/hx GETs (commit b3deeb8). The
+// route matches on pathname, so the query is ignored server-side.
+function stateUrl(): string {
+  return `/api/theme/state?_r=${Math.floor(Date.now() / 60000)}`;
+}
+
 export function startThemeSync() {
   void (async () => {
     try {
-      const res = await fetch("/api/theme/state", { credentials: "same-origin" });
+      const res = await fetch(stateUrl(), { credentials: "same-origin" });
       if (res.ok) { const st = await res.json(); if (st.rev > 0) applyRemote(st); }
     } catch { /* offline */ }
   })();
   window.setInterval(async () => {
     if (document.hidden) return;
     try {
-      const res = await fetch("/api/theme/state", { credentials: "same-origin" });
+      const res = await fetch(stateUrl(), { credentials: "same-origin" });
       if (!res.ok) return;
       const st = await res.json();
       if (typeof st.rev === "number" && st.rev !== syncRev) applyRemote(st);
@@ -419,6 +536,14 @@ export function startThemeSync() {
   window.addEventListener("astra-theme-change", (e) => {
     const m = (e as CustomEvent).detail;
     if (m === "light" || m === "dark") schedulePush({ mode: m });
+  });
+  window.addEventListener("astra-shape-change", (e) => {
+    schedulePush({ shape: ((e as CustomEvent).detail ?? null) as ShapeMode | null });
+  });
+  window.addEventListener("astra-font-change", () => {
+    // Read from the store rather than the event detail: the payload is the FULL
+    // role map, so a device that changes two roles in one push cannot lose one.
+    schedulePush({ fonts: readFonts() });
   });
 }
 

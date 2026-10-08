@@ -20,6 +20,17 @@
           }
         } catch (e) {}
       })();
+      // Corner style, same reason and same pattern: the whole scale derives from
+      // two tokens, so setting one attribute pre-paint is the entire restore and
+      // there is nothing to flash.
+      (function () {
+        try {
+          var s = localStorage.getItem("astra-shape");
+          if (s === "sharp" || s === "rounded" || s === "circle") {
+            document.documentElement.setAttribute("data-shape", s);
+          }
+        } catch (e) {}
+      })();
     </script>
     <!-- Self-hosted brand fonts (perf audit R4): same families/weights as the
          old fonts.googleapis.com link, but served from our own origin. That

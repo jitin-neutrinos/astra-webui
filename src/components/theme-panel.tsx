@@ -17,12 +17,14 @@ import { cn } from "../lib/utils";
 import {
   allPalettes, currentPaletteId, setPalette, getMode,
   readCustom, clearCustom, setToken, mergeCustom, readChatBg, writeChatBg,
-  youtubeId, type Palette, type ThemeMode,
+  getShape, setShape, youtubeId, type Palette, type ThemeMode, type ShapeMode,
 } from "../lib/theme-store";
 import {
   generateVariant, wcagAA, saveUserTheme, deleteUserTheme,
   slugifyThemeName, CONTRACT_TOKENS, type UserTheme,
 } from "../lib/color-engine";
+import { FontPicker } from "./font-picker";
+import { BrandPicker } from "./brand-picker";
 import { useTheme } from "./theme-toggle";
 
 const SWATCH_TOKENS = ["--color-void", "--color-midnight", "--color-depth", "--color-surface", "--color-cyanx", "--color-violetx"];
@@ -58,6 +60,7 @@ export function ThemePanel({ onUpload: _legacyOnUpload }: { onUpload?: (file: Fi
   const [bgUrl, setBgUrl] = useState("");
   const [busyUp, setBusyUp] = useState(false);
   const [bgWarn, setBgWarn] = useState<string | null>(null);
+  const [shape, setShapeState] = useState<ShapeMode | undefined>(getShape);
   const [themeListTick, setThemeListTick] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -81,9 +84,14 @@ export function ThemePanel({ onUpload: _legacyOnUpload }: { onUpload?: (file: Fi
     // A theme arriving from another device must appear in the picker without a reload.
     const onThemes = () => setThemeListTick((t) => t + 1);
     window.addEventListener("astra-user-themes-change", onThemes);
+    // A shape set on ANOTHER device lands via the sync layer; the panel must
+    // follow it or the radio group shows a selection the app is not using.
+    const onShape = () => setShapeState(getShape());
+    window.addEventListener("astra-shape-change", onShape);
     return () => {
       window.removeEventListener("astra-theme-change", onMode);
       window.removeEventListener("astra-user-themes-change", onThemes);
+      window.removeEventListener("astra-shape-change", onShape);
     };
   }, []);
 
@@ -336,6 +344,30 @@ export function ThemePanel({ onUpload: _legacyOnUpload }: { onUpload?: (file: Fi
             onClick={() => { if (!isLight) toggleTheme(null); }}>Light</button>
         </div>
       </div>
+
+      {/* ---------- shape ---------- */}
+      <div className="tf-section">
+        <div className="tf-section-head">
+          <span className="tf-section-title">Corner style</span>
+          <span className="tf-sub">applies to every button, card and input</span>
+        </div>
+        <div className="tf-modes" role="radiogroup" aria-label="Corner style">
+          {(["sharp", "rounded", "circle"] as const).map((m) => (
+            <button key={m} type="button" role="radio" aria-checked={shape === m}
+              className={cn("tf-mode", shape === m && "tf-mode-on")}
+              onClick={() => { setShape(m); setShapeState(m); }}>
+              <i className={cn("tf-shape-dot", `tf-shape-${m}`)} aria-hidden="true" />
+              {m === "circle" ? "Pill" : m[0]!.toUpperCase() + m.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ---------- typography ---------- */}
+      <FontPicker />
+
+      {/* ---------- brand ---------- */}
+      <BrandPicker />
 
       {/* ---------- colours, moved into their own menu ---------- */}
       <div className="tf-section">

@@ -15,11 +15,19 @@ import { CanvasFullscreenProvider } from './components/canvas/canvas-fullscreen'
 import { RootErrorBoundary } from './components/root-error-boundary'
 // Theme engine: restore the saved palette (no-op when it is the default Astra UI)
 // before first paint so a non-default palette never flashes the stock colors.
-import { restorePalette, startThemeSync } from './lib/theme-store'
+import { restorePalette, restoreShape, startThemeSync } from './lib/theme-store'
+import { restoreFonts } from './lib/font-store'
+import { loadBrand } from './lib/brand-store'
 
 try { sessionStorage.removeItem('astra:chunk-reload'); } catch {}
 startThemeSync()   // listener first: restorePalette's broadcast must land on it
 restorePalette()
+restoreShape()    // same reason: a saved corner style must not flash the default
+restoreFonts()    // and a saved font family must not flash the stock face
+// The brand name/logo arrive over the network, so they CANNOT be pre-painted
+// the way shape and fonts are. It is fired and not awaited: the app renders with
+// the defaults immediately and the identity swaps in when the fetch lands.
+void loadBrand();
 initAndroidShell().catch(() => { /* never block app boot on shell glue */ })
 initShellTheme().catch(() => { /* never block app boot on shell glue */ })
 
