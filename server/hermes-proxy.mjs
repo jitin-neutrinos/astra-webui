@@ -223,6 +223,57 @@ export async function handleHxProxy(req, res) {
     return;
   }
 
+  // ---- title search (owner: search by chat title) ----
+  // The gateway's /api/sessions/search searches MESSAGES, not titles. This route
+  // paginates through ALL sessions and filters by title match (case-insensitive).
+  if (req.method === "GET" && /^\/api\/hx\/sessions\/titles\/?(\?|$)/.test(req.url)) {
+    try {
+      const u = new URL(req.url, "http://x");
+      const q = (u.searchParams.get("q") || "").trim().toLowerCase();
+      const sources = u.searchParams.get("sources") || "";
+      const cookie = await getHermesCookie();
+
+      // Paginate through all sessions (gateway limit=100 per page)
+      const allSessions = [];
+      let offset = 0;
+      const pageSize = 100;
+      let total = 0;
+
+      do {
+        const data = await gatewayGetJson(
+          `/api/sessions?limit=${pageSize}&offset=${offset}&order=recent${sources ? `&sources=${encodeURIComponent(sources)}` : ""}`,
+          cookie
+        );
+        if (!data || !Array.isArray(data.sessions)) break;
+        total = data.total || 0;
+        allSessions.push(...data.sessions);
+        offset += pageSize;
+      } while (offset < total);
+
+      // Filter by title match
+      const matches = q
+        ? allSessions.filter(s => (s.title || "").toLowerCase().includes(q))
+        : allSessions;
+
+      // Enrich matches (read markers, last replies, turn status)
+      enrichSessions(matches);
+      stampRunningTurns(matches);
+      await enrichLastReplies(matches, { cookie });
+
+      res.writeHead(200, {
+        "content-type": "application/json",
+        "cache-control": "no-store",
+      });
+      res.end(JSON.stringify({ sessions: matches, total: matches.length }));
+      return;
+    } catch (e) {
+      console.error("[title-search] failed:", e?.message || e);
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ sessions: [], total: 0, error: "title search unavailable" }));
+      return;
+    }
+  }
+
   // ---- live slash-command registry (dynamic command palette, 2026-10-02) ----
   // Served from the upstream Hermes CLI registry, never forwarded: the gateway
   // has no such route, so without this the palette would 404 and fall back to

@@ -277,7 +277,7 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId, onEndSession }: 
     try {
       const isSearch = q.trim() !== "";
       const url = isSearch
-        ? `/api/hx/sessions/search?q=${encodeURIComponent(q)}&limit=50&sources=${encodeURIComponent(sourcesParam(filter))}`
+        ? `/api/hx/sessions/titles?q=${encodeURIComponent(q)}&sources=${encodeURIComponent(sourcesParam(filter))}`
         : `/api/hx/sessions?limit=${limit}&offset=${off}&order=recent&sources=${encodeURIComponent(sourcesParam(filter))}`;
       // Minute cache-buster on the WIRE url (see src/lib/sessions-cache.ts for
       // the full story): the CF edge filters override cache-control:no-store and
@@ -291,14 +291,10 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId, onEndSession }: 
       }
       const data = await res.json();
       if (isSearch) {
-        // search rows are messages-with-session-hints; dedupe by session id
-        const seen = new Set<string>();
-        const rows = (data.results || []).filter((r: SessionRow) => {
-          const sid = rowKey(r);
-          if (!sid || seen.has(sid)) return false;
-          seen.add(sid);
-          return true;
-        });
+        // Title search returns session rows directly (already deduped server-side)
+        const rows: SessionRow[] = data.sessions || [];
+        seedFromServer(rows as any, null);
+        seedTurns(rows);
         setSessions(rows);
         setTotal(rows.length);
       } else {
@@ -460,8 +456,12 @@ export function ChatsPanel({ onBack, onSelect, activeSessionId, onEndSession }: 
   };
 
   const visible = useMemo(
-    () => (query.trim() !== "" ? sessions : sortRows(sessions)),
-    [sessions, query]
+    () => {
+      if (query.trim() !== "") return sessions;
+      const sorted = sortRows(sessions);
+      return sorted.slice(offset, offset + limit);
+    },
+    [sessions, query, offset, limit]
   );
 
   const maxOffset = Math.max(0, total - (total % limit || limit));
