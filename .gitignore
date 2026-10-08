@@ -63,3 +63,9 @@ scratch-*.mjs
 scratch/*.diff
 scratch/*.patch
 *.pre-tok
+
+data/read-state.json
+data/theme-state.json
+data/gate-ledger.jsonl
+data/test-ledger.jsonl
+.cache/command-registry.json
