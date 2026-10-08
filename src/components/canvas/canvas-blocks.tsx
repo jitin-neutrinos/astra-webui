@@ -1268,12 +1268,6 @@ function renderOne(b: CanvasBlock, id: string, bi: number, ctx?: RenderCtx): Rea
     case "math": return <MathView block={b} ctx={ctx} />;
     case "theorem": return <TheoremView block={b} ctx={ctx} />;
     case "algorithm": return <AlgorithmView block={b} ctx={ctx} />;
-    case "sequence":
-      return (
-        <Suspense fallback={<div className="ast-cv-chart ast-cv-graph-skeleton" aria-busy="true" />}>
-          <SequenceLazy block={b} />
-        </Suspense>
-      );
     case "gitgraph":
       return (
         <Suspense fallback={<div className="ast-cv-git ast-cv-graph-skeleton" aria-busy="true" />}>
