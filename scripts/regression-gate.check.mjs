@@ -1029,6 +1029,30 @@ id: "RG-114",
     symptom:
       "New provider key invisible until a hard reload: the model-options catalog fetch went through the browser HTTP cache, and the pinned copy answered for up to a year (edge rule class). session-files.check.ts pins catalogRequest(): unique live=<ts> query per call (a pinned copy can never match), no-store, same-origin credentials.",
     guard: "src/lib/session-files.check.ts",
+  },
+  {
+    id: "RG-153",
+    found: "2026-10-08",
+    symptom: "Message origins untracked in backend database",
+    guard: "server/message-origins.check.mjs",
+  },
+  {
+    id: "RG-154",
+    found: "2026-10-08",
+    symptom: "Surface tags missing on ws-engine prompts",
+    guard: "src/lib/surface-tag.check.ts",
+  },
+  {
+    id: "RG-155",
+    found: "2026-10-08",
+    symptom: "Surface strip missing external status",
+    guard: "src/lib/surface-strip.check.ts",
+  },
+  {
+    id: "RG-156",
+    found: "2026-10-08",
+    symptom: "Origin badges missing or malformed",
+    guard: "src/lib/origin-badges.check.ts",
   }
 ];
 

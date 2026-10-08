@@ -1,5 +1,6 @@
 import { request as httpRequest } from "node:http";
 import { claim as claimUserMessageKey, sweep as sweepDedupeKeys, bindStoredForLive } from "./message-dedupe.mjs";
+import { noteSubmit, bindRowId, rebindStoredSid, enrichOrigins, externalOriginForSession } from "./message-origins.mjs";
 import { recordEvent as recordStreamEvent, flushNow as flushStreamLog, closeStreamDb } from "./stream-log.mjs";
 import { handleStreamRoutes } from "./stream-routes.mjs";
 import { handleSessionTitle } from "./session-title.mjs";
@@ -12,6 +13,46 @@ import { notifyGateRequest, noteWebChatAnswer } from "./ntfy-notify.mjs";
 import { markRead, getMark, enrichSessions } from "./read-state.mjs";
 import { enrichLastReplies } from "./last-reply.mjs";
 import { getCommandRegistry } from "./command-registry.mjs";
+import { DatabaseSync } from "node:sqlite";
+import { join } from "node:path";
+import { homedir } from "node:os";
+
+const STATE_DB_PATH = join(homedir(), ".hermes", "state.db");
+function queryStateSessions() {
+  try {
+    // READ-ONLY by contract (owner rule: astra never writes Hermes state).
+    // mode=ro also fails open below on a locked/missing db (reviewer R2).
+    const db = new DatabaseSync(`file:${STATE_DB_PATH}?mode=ro`, { readOnly: true });
+    const rows = db.prepare("SELECT source, max(last_activity_at) as last_active FROM sessions WHERE source IN ('telegram', 'cli', 'tui') GROUP BY source").all();
+    db.close();
+    return rows;
+  } catch (e) {
+    return [];
+  }
+}
+
+let lastExternalStatus = "";
+function pollExternalStatus() {
+  const rows = queryStateSessions();
+  const sources = {};
+  for (const r of rows) {
+    sources[r.source] = { last_active: r.last_active };
+  }
+  const statusStr = JSON.stringify(sources);
+  if (statusStr !== lastExternalStatus) {
+    lastExternalStatus = statusStr;
+    const msg = JSON.stringify({
+      method: "event",
+      params: { type: "external.status", payload: { sources } }
+    });
+    const frame = encodeFrame(msg, { opcode: 0x1, masked: false });
+    for (const s of browserSockets.keys()) {
+      try { s.write(frame); } catch {}
+    }
+  }
+  return sources;
+}
+setInterval(pollExternalStatus, 30000).unref();
 
 const HERMES_URL = "http://127.0.0.1:9119";
 const PASSWORD = process.env.ASTRA_HERMES_PASSWORD;
@@ -409,7 +450,7 @@ function proxyRest(req, res, targetPath, replayBody, enrich = false) {
         for await (const c of proxyRes) chunks.push(c);
         try {
           const data = JSON.parse(Buffer.concat(chunks).toString());
-          const trimmed = trimHistoryPayload(data);
+          const trimmed = enrichOrigins(trimHistoryPayload(data));
           const body = Buffer.from(JSON.stringify(trimmed.payload));
           res.writeHead(200, {
             "content-type": "application/json",
@@ -530,16 +571,21 @@ function presenceSnapshot() {
   for (const info of presence.values()) {
     if (!info.device) continue;
     const cur = byDevice.get(info.device) || { device: info.device, focus: null, focuses: new Set(), connections: 0 };
-    // A device name covers MANY sockets (every browser tab reports "webui"), and
-    // each can be on a different chat. `focus` (last-writer-wins) collapsed them,
-    // so a second tab silently erased the first tab's focus and its chat went
-    // unread. Collect the full set; `focus` stays for back-compat.
     if (info.focus) { cur.focus = info.focus; cur.focuses.add(info.focus); }
     cur.connections++;
     byDevice.set(info.device, cur);
   }
+  
+  let externalSources = {};
+  try {
+    if (lastExternalStatus) {
+      externalSources = JSON.parse(lastExternalStatus);
+    }
+  } catch (e) {}
+
   return {
     devices: [...byDevice.values()].map((d) => ({ ...d, focuses: [...d.focuses] })),
+    external_sources: externalSources,
     count: presence.size,
     v: ++presenceSeq,
   };
@@ -681,8 +727,10 @@ export function recordSidMapping(liveSid, storedKey) {
     // mapping is known, backfill them so a replay ack names the right chat.
     // Never throws: a dedupe write must not break session bookkeeping.
     try { bindStoredForLive(String(liveSid), String(storedKey)); } catch { /* best effort */ }
+    try { rebindStoredSid(String(liveSid), String(storedKey)); } catch { /* best effort */ }
   }
 }
+
 
 // ---------------------------------------------------------------------------
 // Live turns, keyed by BOTH the live and the stored session id.
@@ -762,12 +810,16 @@ export function stampRunningTurns(rows) {
   return rows;
 }
 
+import { closeOriginsDb } from "./message-origins.mjs";
 // Clean shutdown: flush the chunk-log buffer and checkpoint its WAL. Without
 // this the last ≤33ms of chunks would sit unwritten, and `closeStreamDb` would be
 // an unused export — the exact dead-code trap called out for src/lib/outbox.ts.
 // `once` so it cannot double-register; never let it throw on the way out.
 if (typeof process !== "undefined" && typeof process.once === "function") {
-  process.once("exit", () => { try { closeStreamDb(); } catch { /* best effort */ } });
+  process.once("exit", () => { 
+    try { closeStreamDb(); } catch { /* best effort */ } 
+    try { closeOriginsDb(); } catch { /* best effort */ }
+  });
 }
 
 // 14-day retention sweeper (Phase 6). Started HERE rather than in server.mjs
@@ -1012,6 +1064,34 @@ async function connectUpstream() {
             if (r && r.session_id && stored) recordSidMapping(r.session_id, stored);
           } catch { /* not an RPC reply */ }
         }
+        if (frame.payload.length < 8192 && frame.payload.includes("\"user_row_id\"")) {
+          try {
+            const j = JSON.parse(frame.payload.toString());
+            if (j.id && j.result && typeof j.result.user_row_id === "number") {
+              const bound = bindRowId(j.id, j.result.user_row_id, {
+                resolveStoredSid: (live) => sidMap.get(String(live || "")) || null
+              });
+              if (bound) {
+                const msg = JSON.stringify({
+                  method: "event",
+                  params: {
+                    type: "message.origin",
+                    session_id: bound.storedSid,
+                    payload: {
+                      stored_sid: bound.storedSid,
+                      row_id: bound.rowId,
+                      device: bound.device
+                    }
+                  }
+                });
+                const originFrame = encodeFrame(msg, { opcode: 0x1, masked: false });
+                for (const s of browserSockets.keys()) {
+                  try { s.write(originFrame); } catch {}
+                }
+              }
+            }
+          } catch { /* not an origin response */ }
+        }
         // Gate deep links must carry the STORED session key — the live transport
         // sid 404s in /api/hx ("unable to load history"). Same fix class as the
         // v1.8.0 sid-bridge: consult sidMap before the click URL is minted.
@@ -1153,6 +1233,20 @@ export function handleWsUpgrade(req, socket, head) {
         try {
           const j = JSON.parse(frame.payload.toString());
           if (j && j.method === "prompt.submit") {
+            // Queued submits get NO origin stamp: their result frames carry no
+            // user_row_id (upstream contract), so a stamp here would bind the
+            // rpc id to a row that never returns. Steered submits look
+            // identical to normal ones on the wire (steer-ness is server-side
+            // busy-mode config) — they are covered by the same contract: the
+            // result carries no user_row_id, bindRowId returns null, nothing
+            // is stamped, and the pending entry is swept.
+            if (j.params?.queued !== true) {
+              try {
+                noteSubmit(j.id, { device: presence.get(socket)?.device ?? null, liveSid: j.params?.session_id ?? null });
+              } catch (e) {
+                console.error("[origins] noteSubmit failed:", e);
+              }
+            }
             const key = j.params?.idempotency_key ?? j.params?.client_msg_id ?? null;
             // A dedupe-store failure must NEVER cost the user their message:
             // on any error we fall through and forward normally. Losing

@@ -36,6 +36,7 @@ import { ComposerControls, filesToAttachments, type Attachment } from "./compose
 import { AttachmentTray } from "./attachment-tray";
 import { RotatingPlaceholder } from "./composer-anim";
 import { ComposerTrace, isLowSpec } from "./composer-trace";
+import { SurfaceStrip } from "./SurfaceStrip";
 import { CommandPalette } from "./command-palette";
 import { CommandSurface, type CommandSurfaceItem } from "./command-surface";
 import { surfaceFor, execSlashCommand } from "@/lib/command-exec";
@@ -237,7 +238,7 @@ function thinkingOf(payload: any): string {
 // WRAPPED lines, not just newlines) with an inline toggle. Overflow is measured
 // after paint via scrollHeight, so the toggle only appears when the clamp
 // actually cut something.
-function UserBubble({ msg, avatarUrl, onOpenMedia, actions }: { msg: ChatMsg; avatarUrl: string; onOpenMedia: (items: MediaItem[], index: number) => void; actions?: ReactNode }) {
+function UserBubble({ sid, msg, avatarUrl, onOpenMedia, actions }: { sid: string; msg: ChatMsg; avatarUrl: string; onOpenMedia: (items: MediaItem[], index: number) => void; actions?: ReactNode }) {
   const [expanded, setExpanded] = useState(false);
   const [overflows, setOverflows] = useState(false);
   const clampRef = useRef<HTMLDivElement | null>(null);
@@ -254,6 +255,7 @@ function UserBubble({ msg, avatarUrl, onOpenMedia, actions }: { msg: ChatMsg; av
         {msg.ts != null && (
           <div className="chat-turn-ts">{new Date(msg.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
         )}
+        <OriginBadge sid={sid} rowId={Number(msg.id)} />
       </div>
       {msg.files && msg.files.length > 0 && (
         <MediaGrid className="mb-2" items={msg.files.map((f) => toItem(f.path, f.name))} onOpen={onOpenMedia} />
@@ -394,6 +396,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       const res = await fetch(`/api/hx/sessions/${encodeURIComponent(sid)}/messages?order=latest&limit=${PAGE_SIZE}&offset=${offset}&_r=${Math.floor(Date.now() / 60_000)}`);
       if (!res.ok) return;
       const data = await res.json();
+      useOriginsStore.getState().ingestHistory(data);
       const older = (data.messages || []).filter((r: any) => r && r.id != null);
       const before = rawRowsRef.current.length;
       // Id-keyed dedupe: the server commonly re-sends the boundary row.
@@ -834,7 +837,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       if (sid) {
         fetch(`/api/hx/sessions/${encodeURIComponent(sid)}/messages?order=latest&limit=500&_r=${Math.floor(Date.now() / 60_000)}`)
           .then((r) => (r.ok ? r.json() : null))
-          .then((d) => { if (d) setMessages(rowsToTurns(d.messages || []).map((r) => ({ ...r, id: r.id || nextId() })) as ChatMsg[]); })
+          .then((d) => { if (d) { useOriginsStore.getState().ingestHistory(d); setMessages(rowsToTurns(d.messages || []).map((r) => ({ ...r, id: r.id || nextId() })) as ChatMsg[]); } })
           .catch(() => {});
       }
       return;
@@ -1077,6 +1080,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
             if (liveSidRef.current !== storedSessionId) setMessages([]);
           } else {
             const data = await res.json();
+            useOriginsStore.getState().ingestHistory(data);
             // rowsToTurns reconstructs thinking/tool segments from the persisted
             // reasoning/tool_calls/tool-result rows — approval/clarify segments
             // are the only kind never persisted, so restored turns never have them.
@@ -1860,7 +1864,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
                 <div className="min-w-0 w-full">
                   {m.role === "user" ? (
                     <div>
-                      <UserBubble msg={m} avatarUrl={avatarUrl} onOpenMedia={openMedia} actions={actions} />
+                      <UserBubble sid={storedSessionId || liveSidRef.current || ""} msg={m} avatarUrl={avatarUrl} onOpenMedia={openMedia} actions={actions} />
                     </div>
                   ) : m.segments.length ? (
                     <TurnTimeline segments={m.segments} streaming={m.isStreaming} sessionId={storedSessionId || ""} ts={m.ts} onToggleTool={toggleToolCollapse} onApprovalRespond={respondApproval} onGateRespond={respondGate} onClarifyAnswer={respondClarify} onOpenMedia={openMedia} actions={actions} />
@@ -1955,6 +1959,8 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         </span>
       </header>
 
+      <SurfaceStrip />
+
       <div ref={listRef} onScroll={onScroll} className="chat-scroll relative z-10 min-h-0 flex-1" role="log" aria-label="Conversation">
         {histLoading && messages.length === 0 ? (
           <ChatFeedSkeleton />
@@ -1976,7 +1982,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
             </div>
           </div>
         ) : (
-            <div ref={contentRef} className="chat-feed mx-auto flex w-full max-w-[52rem] flex-col gap-6 px-4 py-8">
+            <div ref={contentRef} className="chat-feed mx-auto flex w-full max-w-[52rem] flex-col gap-6 px-4 pt-8 pb-44">
               {olderLoading && (
                 <div className="flex items-center justify-center gap-2 py-2 text-xs text-muted" aria-live="polite">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading earlier messages…
@@ -1987,7 +1993,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         )}
       </div>
 
-      <div className="relative z-10 px-3 pb-3 lg:px-6 lg:pb-6">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 px-3 pb-3 lg:px-6 lg:pb-6 [&>*]:pointer-events-auto">
         <SubagentPanel subs={roster} open={suba.open} setOpen={suba.setOpen} now={suba.now} rpc={rpc} sessionId={liveSessionId || storedSessionId || null} />
         <BgDock items={bgItems} onSubmitFollowUp={handleFollowUpBg} onDismiss={dismissBgItem} onOpenItem={openBgItem} />
         {cmdSurfaces.map((it) => (

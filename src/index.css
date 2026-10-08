@@ -123,8 +123,12 @@
      the old 7% tint read as plain gray glass, "no colour at all"). User bubble
      is NEUTRAL GRAY now (owner 2026-10-07 — replacing the emerald tint). */
   /* accent-derived: follows the active theme's brand color */
-  --bubble-ai-bg: color-mix(in oklab, var(--color-accent) 22%, transparent);
-  --bubble-ai-border: color-mix(in oklab, var(--color-accent) 45%, transparent);
+  /* Owner 10-08 (steer): color quotient UP — 22%/45% read as tinted glass, not
+     "a colored bubble". 34% fill + 60% border keeps oklab mixing smooth while
+     the accent clearly wins the surface. Shell plate shares these vars, so the
+     master container follows automatically (owner: same treatment requested). */
+  --bubble-ai-bg: color-mix(in oklab, var(--color-accent) 34%, transparent);
+  --bubble-ai-border: color-mix(in oklab, var(--color-accent) 60%, transparent);
   --bubble-ai-code-bg: color-mix(in srgb, var(--color-accent) 16%, transparent);
   --bubble-ai-inline-bg: color-mix(in srgb, var(--color-accent) 18%, transparent);
   --bubble-user-bg: color-mix(in oklab, rgb(var(--c-110)) 14%, transparent);
@@ -998,11 +1002,13 @@ html.theme-fading body * {
 
    Owner 2026-10-05: the shell is now also the PARENT rounded rectangle — a
    subtle plate wrapping both cards (hairline accent border, faint void fill,
-   its own focus ring). NO backdrop-filter here: nested backdrop blur is a
-   known jank trap on the Android APK and the inner cards already blur.
    Gap tightened 8px -> 5px (owner: "minimal aesthetic subtle space").
    Tokens, not channel vars: --color-accent/--color-void re-point per theme
-   mode, so the plate adapts to light/dark without a duplicate block. */
+   mode, so the plate adapts to light/dark without a duplicate block.
+   (Owner 10-08: the plate DOES carry backdrop-filter now — blur(29px)
+   saturate(1.25), the same treatment as .chat-bubble-ai. The old "NO
+   backdrop-filter" note referred to the pre-plate design; nested-blur jank is
+   watched, not assumed.) */
 .chat-composer-shell {
   position: relative; display: flex; flex-direction: column; gap: 5px;
   padding: 4px; border-radius: 16px;
@@ -2336,7 +2342,11 @@ html.theme-fading body * {
 .chat-turn .chat-code-copy { background: transparent; border-color:rgb(var(--c-7) / 0.1); color: var(--color-muted); }
 .chat-turn .chat-code-copy:hover { color: var(--color-accent); }
 [data-theme="light"] .chat-turn .chat-code-copy { border-color:rgb(var(--light-c-56) / 0.14); }
-.chat-bubble-ai { color: var(--color-accent); text-shadow:0 0 8px rgb(var(--c-20) / 0.25); }
+/* Owner 10-08 (steer): body text was var(--color-accent) — accent-on-accent
+   against the tinted fill, the report's low-visibility cause. Neutral bright
+   text now; accent stays on links, code tokens, and emphasis (they carry their
+   own colors). Glow softened to a neutral lift. */
+.chat-bubble-ai { color: var(--color-brandtext); text-shadow:0 0 6px rgb(0 0 0 / 0.22); }
 
 /* ── Sub-agent live status panel (dark base; light overrides pinned below) ── */
 .suba-wrap { margin-bottom: 10px; }
