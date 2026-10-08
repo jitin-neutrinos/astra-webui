@@ -36,7 +36,6 @@ import { ComposerControls, filesToAttachments, type Attachment } from "./compose
 import { AttachmentTray } from "./attachment-tray";
 import { RotatingPlaceholder } from "./composer-anim";
 import { ComposerTrace, isLowSpec } from "./composer-trace";
-import { SurfaceStrip, OriginBadge } from "./SurfaceStrip";
 import { CommandPalette } from "./command-palette";
 import { CommandSurface, type CommandSurfaceItem } from "./command-surface";
 import { surfaceFor, execSlashCommand } from "@/lib/command-exec";
@@ -239,7 +238,7 @@ function thinkingOf(payload: any): string {
 // WRAPPED lines, not just newlines) with an inline toggle. Overflow is measured
 // after paint via scrollHeight, so the toggle only appears when the clamp
 // actually cut something.
-function UserBubble({ sid, msg, avatarUrl, onOpenMedia, actions }: { sid: string; msg: ChatMsg; avatarUrl: string; onOpenMedia: (items: MediaItem[], index: number) => void; actions?: ReactNode }) {
+function UserBubble({ msg, avatarUrl, onOpenMedia, actions }: { msg: ChatMsg; avatarUrl: string; onOpenMedia: (items: MediaItem[], index: number) => void; actions?: ReactNode }) {
   const [expanded, setExpanded] = useState(false);
   const [overflows, setOverflows] = useState(false);
   const clampRef = useRef<HTMLDivElement | null>(null);
@@ -256,7 +255,6 @@ function UserBubble({ sid, msg, avatarUrl, onOpenMedia, actions }: { sid: string
         {msg.ts != null && (
           <div className="chat-turn-ts">{new Date(msg.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
         )}
-        <OriginBadge sid={sid} rowId={Number(msg.id)} />
       </div>
       {msg.files && msg.files.length > 0 && (
         <MediaGrid className="mb-2" items={msg.files.map((f) => toItem(f.path, f.name))} onOpen={onOpenMedia} />
@@ -1865,7 +1863,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
                 <div className="min-w-0 w-full">
                   {m.role === "user" ? (
                     <div>
-                      <UserBubble sid={storedSessionId || liveSidRef.current || ""} msg={m} avatarUrl={avatarUrl} onOpenMedia={openMedia} actions={actions} />
+                      <UserBubble msg={m} avatarUrl={avatarUrl} onOpenMedia={openMedia} actions={actions} />
                     </div>
                   ) : m.segments.length ? (
                     <TurnTimeline segments={m.segments} streaming={m.isStreaming} sessionId={storedSessionId || ""} ts={m.ts} onToggleTool={toggleToolCollapse} onApprovalRespond={respondApproval} onGateRespond={respondGate} onClarifyAnswer={respondClarify} onOpenMedia={openMedia} actions={actions} />
@@ -1959,8 +1957,6 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
           </button>
         </span>
       </header>
-
-      <SurfaceStrip />
 
       <div ref={listRef} onScroll={onScroll} className="chat-scroll relative z-10 min-h-0 flex-1" role="log" aria-label="Conversation">
         {histLoading && messages.length === 0 ? (
