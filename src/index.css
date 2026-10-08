@@ -1054,44 +1054,31 @@ html.theme-fading body * {
      input: 28 (textarea) + 5 + 5 + 2 border                     = 40px -> 5/4.5 trims it
      bar:   28 (send)     + 4 + 4 + 2 border                     = 38px
    Touch target is NOT regressed: .chat-send keeps a 44px hit area via ::after. */
-/* Owner 10-08: bar card padding asymmetric-none — the chip groups sit close to
-   the card edges (subtle 6px, was 10px), per "move the entire group to the left,
-   only a subtle padding with the rounded rectangle outline". Same treatment
-   right: the send buttons ride the same 6px. */
-.composer-input-card { padding: 4px 12px; }
-.composer-bar-card { padding: 4px 6px; }
+/* Owner 10-08 (steer): outlines REMOVED from both inner cards entirely — the
+   shell plate carries the only outline now (bubble material). Button clusters
+   move tighter to the edges: 6px -> 3.6px (another 40% off each side). */
+.composer-input-card { padding: 4px 12px; border: none; background: color-mix(in srgb, var(--color-void) 70%, transparent); }
+.composer-bar-card { padding: 4px 3.6px; border: none; background: transparent; }
 .chat-composer-bar { border-top: none; padding-top: 0; margin-top: 0; }
-/* Owner 10-05: both cards carry a brand-accent PERSISTENT subtle glow (not
-   focus-only): a two-layer box-shadow — a tight inspection ring + a soft
-   ambient halo — sitting on top of the base elevation shadow. Focus deepens
-   it. Token-routed so light/dark both follow the re-pointed --color-accent. */
+/* Owner 10-08 (steer): the per-card glow rings are gone with the outlines —
+   elevation shadow only. The shell carries the accent glow now. */
 .chat-composer.composer-input-card,
 .chat-composer.composer-bar-card {
-  box-shadow:
-    0 1px 2px rgba(0,0,0,.18),
-    0 0 0 1px color-mix(in srgb, var(--color-accent) 14%, transparent),
-    0 0 14px -4px color-mix(in srgb, var(--color-accent) 30%, transparent);
+  box-shadow: 0 1px 2px rgba(0,0,0,.18);
+  border-color: transparent;
 }
 .chat-composer.composer-input-card:focus-within,
 .chat-composer.composer-bar-card:focus-within {
-  box-shadow:
-    0 1px 2px rgba(0,0,0,.18),
-    0 0 0 1px color-mix(in srgb, var(--color-accent) 24%, transparent),
-    0 0 20px -5px color-mix(in srgb, var(--color-accent) 42%, transparent);
+  box-shadow: 0 1px 2px rgba(0,0,0,.18);
 }
 [data-theme="light"] .chat-composer.composer-input-card,
 [data-theme="light"] .chat-composer.composer-bar-card {
-  box-shadow:
-    0 1px 2px rgba(15,23,42,.06),
-    0 0 0 1px color-mix(in srgb, var(--color-accent) 18%, transparent),
-    0 0 14px -4px color-mix(in srgb, var(--color-accent) 24%, transparent);
+  box-shadow: 0 1px 2px rgba(15,23,42,.06);
+  border-color: transparent;
 }
 [data-theme="light"] .chat-composer.composer-input-card:focus-within,
 [data-theme="light"] .chat-composer.composer-bar-card:focus-within {
-  box-shadow:
-    0 1px 2px rgba(15,23,42,.06),
-    0 0 0 1px color-mix(in srgb, var(--color-accent) 30%, transparent),
-    0 0 20px -5px color-mix(in srgb, var(--color-accent) 32%, transparent);
+  box-shadow: 0 1px 2px rgba(15,23,42,.06);
 }
 .chat-composer.drag-over { border-color:rgb(var(--c-13) / 0.6); }
 .chat-composer.drag-over::before { opacity: 1; }
