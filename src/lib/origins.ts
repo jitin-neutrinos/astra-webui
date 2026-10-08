@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { Terminal, Send, Monitor, Smartphone, MessageCircle } from "lucide-react";
+import { Terminal, Monitor, Smartphone, MessageCircle } from "lucide-react";
 import type { ElementType } from "react";
 
 export type OriginBadgeInfo = {

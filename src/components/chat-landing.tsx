@@ -36,10 +36,11 @@ import { ComposerControls, filesToAttachments, type Attachment } from "./compose
 import { AttachmentTray } from "./attachment-tray";
 import { RotatingPlaceholder } from "./composer-anim";
 import { ComposerTrace, isLowSpec } from "./composer-trace";
-import { SurfaceStrip } from "./SurfaceStrip";
+import { SurfaceStrip, OriginBadge } from "./SurfaceStrip";
 import { CommandPalette } from "./command-palette";
 import { CommandSurface, type CommandSurfaceItem } from "./command-surface";
 import { surfaceFor, execSlashCommand } from "@/lib/command-exec";
+import { useOriginsStore } from "@/lib/origins";
 import { fetchCommandRegistry, knownCommandNames } from "@/lib/command-registry";
 import { newId, uniqueUploadName } from "@/lib/upload-names";
 import { loadDraft, saveDraft, clearDraft, moveDraft } from "@/lib/drafts";
