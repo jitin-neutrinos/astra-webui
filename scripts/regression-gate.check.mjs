@@ -1001,6 +1001,20 @@ id: "RG-114",
     symptom:
       "The canvas status card REPORTING the previous unreadable-payload fixes itself failed with 'unreadable payload' — live reproduction on the system's own emission. Root cause: the directive's recipes (badges -> callout -> kpi x3 -> table) teach block ORDER, but never state the mandatory {v:1, blocks:[]} envelope. A model following a recipe literally emits block-type names as TOP-LEVEL KEYS ({\"badges\":{...},\"kpi\":[...]}) — valid JSON, every block valid, but coerceToBlocks had no case for a type-keyed root and returned [], so the whole card died. The most likely source of EVERY 'recurring' unreadable card not explained by RG-146/147. Fix: coercion case E collects known block-type keys in order (object -> one block of that type, array -> one block per element); title/state/page still read from the root; duplicates follow JSON.parse last-key-wins (documented as emitter's bug). Directive doc and SOUL.md now state the envelope rule explicitly. Verified on the real failing card: 8 blocks recovered (badges, kpi x3, table, callout, steps, checklist).",
     guard: "src/lib/canvas-schema.check.ts",
+  },
+  {
+    id: "RG-149",
+    found: "2026-10-08",
+    symptom:
+      "Retry-with-feedback for dead cards (owner: 'mangled or broken cards never reach my screen'). card-repair.ts: on message.complete, every astra-canvas fence is checked against the renderer's REAL parser; a fence it rejects (and only those — RG-147/148 lenient rescues must not double-fire) triggers ONE repair turn via prompt.submit carrying the strict validator's exact errors plus the envelope rule. Guards: per-message dedupe, 60s cooldown, 5-per-session budget. The strict validator (canvas-validate.ts) + generated schema (docs/canvas.schema.json) + the two agreement checks pin the whole contract.",
+    guard: "scripts/card-repair.check.mjs",
+  },
+  {
+    id: "RG-150",
+    found: "2026-10-08",
+    symptom:
+      "Strict-schema emission contract: docs/canvas.schema.json (generated from canvas-schema.ts, envelope pinned const v:1, blocks = array of the 49-variant union) + canvas-validate.ts browser-safe validator. Agreement check proves strict-accepts is a strict subset of renderer-accepts, with RG-147/148 lenient rescues as the only divergence.",
+    guard: "scripts/canvas-validate.check.mjs",
   }
 ];
 

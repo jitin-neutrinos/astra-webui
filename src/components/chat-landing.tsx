@@ -43,6 +43,10 @@ import { fetchCommandRegistry, knownCommandNames } from "@/lib/command-registry"
 import { newId, uniqueUploadName } from "@/lib/upload-names";
 import { loadDraft, saveDraft, clearDraft, moveDraft } from "@/lib/drafts";
 import { toast } from "@/lib/toast";
+import {
+  findDeadCards, repairPromptFor, repairAllowed, markRepairAttempted, markRepairSettled,
+} from "@/lib/card-repair";
+import { parseCanvasSpec } from "@/lib/canvas-schema";
 import { SubagentPanel, useSubagents } from "./subagent-panel";
 import { harnessRowFromToolStart, harnessRowId, mergeRoster, type HarnessRow } from "@/lib/harness-agents";
 import { lazy, Suspense } from "react";
@@ -700,6 +704,21 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         // settled + re-pulled from history (or the frame replayed) - never paint it twice.
         if (finalText && !(activeIdRef.current == null && lastAssistantHasText(messagesRef.current, finalText))) {
           ensureActive(); pushOp({ op: "text-final", text: finalText }, true);
+        }
+        // Card repair (owner 10-08): a mangled canvas card in the final text gets
+        // ONE retry-with-feedback turn instead of reaching the screen as an error
+        // placeholder. Deduped on the text hash (payload carries no turn id), rate-
+        // limited, budget-capped — see card-repair.ts.
+        if (finalText && !payload?.status?.startsWith?.("repair")) {
+          const dead = findDeadCards(finalText, (body) => {
+            try { return !!parseCanvasSpec(body); } catch { return false; }
+          });
+          const turnKey = `repair:${finalText.length}:${finalText.slice(-120)}`;
+          if (dead.length > 0 && repairAllowed(turnKey, /* not streaming: this IS the completion event */ false).allowed) {
+            markRepairAttempted(turnKey);
+            submitPrompt(repairPromptFor(dead));
+            markRepairSettled();
+          }
         }
         if (!chatTitleRef.current) refreshTitle(storedSidRef.current); // backstop if the title event was missed
         // Sidebar preview: fan the final text out to the chats panel (owner 10-06
