@@ -987,6 +987,13 @@ id: "RG-114",
     symptom:
       "Canvas card refused to load: 'This card could not be read — the model sent an unreadable payload.' Root-caused to a 25.8 KB A4 report card (session b679d5eb) whose table rows contained a key:value pair INSIDE a string array (`[\"cell\",\"cell\",\"tone\":\"neutral\"]` — the model lost track of container type mid-row). JSON.parse dies at the stray `:`; the async jsonrepair tier only mangles the pair into three junk cells, so the table rendered broken even when rescued. Fix: sync tier 1.65 (fixKeyValueInArray) drops the stray pair cleanly, and the tiers now CHAIN (fixTruncatedString was consuming pre-tier-1.65 text, silently discarding the first fix — the real body carried both defects). All 36 historical fences re-verified parsing; two pinned 'stays broken' tests updated to the strictly-better salvage contract (corrupt elements dropped, valid data kept — never fabricated).",
     guard: "src/lib/canvas-schema.check.ts",
+  },
+  {
+    id: "RG-147",
+    found: "2026-10-08",
+    symptom:
+      "'Unreadable payload' recurring on every chat reopen since yesterday. Full-history audit (all 454 canvas fences ever streamed, replayed through the real parser) found 8 dead fences = 4 unique cards in 3 classes: (1) MISNESTED CLOSERS that cancel in any brace count — the model closes the blocks array while a row object is still open, then keeps writing, so no missing closers ever appear at EOF; the naive truncation tier counted zero and appended nothing, and worse, its phantom bracket-completion ran BEFORE any healer and made the body unhealable. Fixed with tier 1.75 healMisnestedClosers (implied closers inserted at the mismatch site, strays dropped, EOF completed), tried on both truncated and un-truncated text. (2) callout blocks written with `detail:` instead of `body:` — valid JSON, spec validation rejected every block, whole card died; aliased (body wins). (3) tier 1.65's structured-value bail actively corrupted misnested bodies (stripped a comma, left a stray quote) — now peeks the value first and emits legit keys untouched. 452/454 fences now recover; the 2 remaining are prose that leaked into an unclosed fence (no JSON existed) and fail soft as markdown. Guards: tier 1.75 + detail-alias + untouched-form tests in canvas-schema.check.ts.",
+    guard: "src/lib/canvas-schema.check.ts",
   }
 ];
 
