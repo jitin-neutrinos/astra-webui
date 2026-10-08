@@ -21,6 +21,9 @@ const KNOWN_TYPES = new Set([
   "spreadsheet", "slides", "document", "text",
   "slider", "select", "multiselect", "segmented", "toggle", "search", "data",
   "graph", "image", "gallery", "video", "layout", "math", "gitgraph",
+  // canvas v1 expansion (wave-1, 2026-10-05) — must match BLOCK_TYPES in canvas-schema.ts
+  "theorem", "algorithm", "palette", "scorecard", "compliance",
+  "clause", "obligations", "schema", "sequence",
 ]);
 
 // Valid enum values
@@ -1162,6 +1165,13 @@ export function sanitizeCanvasSpec(spec: CanvasSpec | null): CanvasSpec | null {
   }
   if (spec.state && typeof spec.state === "object") {
     out.state = spec.state;
+  }
+  // `page` must survive sanitising, or every card renders in the default
+  // format and the A4/16:9 rule an author followed is silently discarded one
+  // layer downstream of the parser that accepted it. Same closed set the
+  // parser uses — an unknown value is dropped, never coerced.
+  if (spec.page === "a4" || spec.page === "slide" || spec.page === "auto") {
+    out.page = spec.page;
   }
 
   return out;
