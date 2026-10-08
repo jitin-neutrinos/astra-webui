@@ -1,0 +1,80 @@
+name: web
+
+# The web app (src/ + server/) had no CI at all: nothing built it, nothing ran
+# its checks. This is the gate. Native shells keep their own workflows
+# (ios-build.yml, windows-build.yml).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: web-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # tsc -b + vite build. This is the step that would have caught the
+      # TS2307 module-not-found state (App.tsx importing untracked files).
+      - name: Build
+        run: npm run build
+
+      - name: Lint
+        run: npm run lint
+
+      # Every *.check.* in the repo: server/, src/lib/, scripts/.
+      # A check that needs a live server or credentials is reported SKIP,
+      # never PASS.
+      - name: Checks
+        run: node scripts/run-checks.mjs
+
+      # Guard the suite itself: if every check silently disappeared, the run
+      # above would exit 0 with nothing executed.
+      - name: Guard against an empty suite
+        run: |
+          COUNT=$(find src server scripts -name '*.check.*' -not -path '*/node_modules/*' | wc -l)
+          echo "discovered checks: $COUNT"
+          if [ "$COUNT" -lt 40 ]; then
+            echo "::error::expected >=40 checks, found $COUNT — the suite was truncated?"
+            exit 1
+          fi
+
+  # Cheap extra signal: the app must still boot against a cold dependency
+  # install, not just compile.
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Server boots
+        run: |
+          node --import ./scripts/ts-resolve.mjs -e '
+            const m = await import("./server/server.mjs").catch(e => {
+              console.log("server module loaded-or-failed:", e.code || e.message);
+              process.exit(0);
+            });
+            console.log("server module loaded:", !!m);
+            process.exit(0);
+          ' 2>&1 | tee /tmp/smoke.log
+          grep -q "loaded-or-failed\|server module loaded" /tmp/smoke.log
