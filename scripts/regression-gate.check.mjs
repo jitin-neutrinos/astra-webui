@@ -994,6 +994,13 @@ id: "RG-114",
     symptom:
       "'Unreadable payload' recurring on every chat reopen since yesterday. Full-history audit (all 454 canvas fences ever streamed, replayed through the real parser) found 8 dead fences = 4 unique cards in 3 classes: (1) MISNESTED CLOSERS that cancel in any brace count — the model closes the blocks array while a row object is still open, then keeps writing, so no missing closers ever appear at EOF; the naive truncation tier counted zero and appended nothing, and worse, its phantom bracket-completion ran BEFORE any healer and made the body unhealable. Fixed with tier 1.75 healMisnestedClosers (implied closers inserted at the mismatch site, strays dropped, EOF completed), tried on both truncated and un-truncated text. (2) callout blocks written with `detail:` instead of `body:` — valid JSON, spec validation rejected every block, whole card died; aliased (body wins). (3) tier 1.65's structured-value bail actively corrupted misnested bodies (stripped a comma, left a stray quote) — now peeks the value first and emits legit keys untouched. 452/454 fences now recover; the 2 remaining are prose that leaked into an unclosed fence (no JSON existed) and fail soft as markdown. Guards: tier 1.75 + detail-alias + untouched-form tests in canvas-schema.check.ts.",
     guard: "src/lib/canvas-schema.check.ts",
+  },
+  {
+    id: "RG-148",
+    found: "2026-10-08",
+    symptom:
+      "The canvas status card REPORTING the previous unreadable-payload fixes itself failed with 'unreadable payload' — live reproduction on the system's own emission. Root cause: the directive's recipes (badges -> callout -> kpi x3 -> table) teach block ORDER, but never state the mandatory {v:1, blocks:[]} envelope. A model following a recipe literally emits block-type names as TOP-LEVEL KEYS ({\"badges\":{...},\"kpi\":[...]}) — valid JSON, every block valid, but coerceToBlocks had no case for a type-keyed root and returned [], so the whole card died. The most likely source of EVERY 'recurring' unreadable card not explained by RG-146/147. Fix: coercion case E collects known block-type keys in order (object -> one block of that type, array -> one block per element); title/state/page still read from the root; duplicates follow JSON.parse last-key-wins (documented as emitter's bug). Directive doc and SOUL.md now state the envelope rule explicitly. Verified on the real failing card: 8 blocks recovered (badges, kpi x3, table, callout, steps, checklist).",
+    guard: "src/lib/canvas-schema.check.ts",
   }
 ];
 
