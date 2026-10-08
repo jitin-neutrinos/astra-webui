@@ -44,7 +44,8 @@ export function AttachmentTray({ items, onRemove, onRetry, countLabel }: {
   return (
     <div className="at-tray">
       {items.map((a) => (
-        <div key={a.id} className="at-item" data-status={a.status} title={a.name}>
+        <div key={a.id} className="at-item" data-status={a.status} aria-label={`File: ${a.name}`} title={a.name}>
+          <span className="at-file-name">{a.name}</span>
           <Thumb att={a} />
           {a.status === "uploading" && (
             <svg className="at-ring" width="32" height="32" viewBox="0 0 32 32" role="progressbar" aria-valuenow={a.progress ?? 0} aria-valuemin={0} aria-valuemax={100} aria-label={`Uploading ${a.name}`}>
