@@ -143,15 +143,16 @@ check('trace focus-hide scoped to the shell (comet runs on the plate)',
   'selector scoping rule');
 check('stale composer-scoped trace hide rule is gone',
   !cssN.includes('.chat-composer:focus-within.composer-trace'));
-// Both cards carry a persistent accent glow: find each card rule that sets a
-// box-shadow containing the token-routed accent color-mix, resting + focus.
-const glowCards = ['.composer-input-card', '.composer-bar-card'];
-for (const card of glowCards) {
-  const sel = '.chat-composer' + card;
-  const glow = matches(sel).find((r) => [...r.decls].some((d) => d.startsWith('box-shadow:') && d.includes('color-mix(insrgb,var(--color-accent)')));
-  check(`persistent accent glow on ${card} (resting)`, !!glow,
-    glow ? (glow.decls.find ? [...glow.decls].find((d) => d.startsWith('box-shadow'))?.slice(0, 80) : '') : 'no rule');
+// Owner 10-08 (steer, supersedes the old persistent-glow pin): the inner cards
+// carry NO outline and NO accent glow ring any more — the SHELL plate carries
+// the bubble material (fill/border/blur/glow). Pin the new contract: cards are
+// borderless, the shell keeps both.
+for (const card of ['.composer-input-card', '.composer-bar-card']) {
+  check(`inner card outline removed: ${card}`, !matches('.chat-composer' + card).some((r) => [...r.decls].some((d) => d.startsWith('border:') && d.includes('solid'))),
+    'border:none expected');
 }
+check('shell carries the bubble outline', matches('.chat-composer-shell').some((r) => [...r.decls].some((d) => d.startsWith('border:') && d.includes('var(--bubble-ai-border'))),
+  'bubble border token on the shell');
 
 // --- 3. chat scrollbars on brand accent primary, theme-reactive -------------
 // The @supports branch is the one real browsers take; assert the var() form is
