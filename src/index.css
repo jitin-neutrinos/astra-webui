@@ -2966,6 +2966,25 @@ html.theme-fading body * {
 .ast-chat-row.ast-row-active .ast-tok-chip { color: var(--color-void); border-color: color-mix(in srgb, var(--color-void) 35%, transparent); }
 .ast-chat-row.ast-row-active .ast-read-tick { color: var(--color-void); opacity: 1; }
 .ast-chat-row.ast-row-active:hover .ast-read-tick { opacity: 1; }
+/* Owner 10-08: the Thinking…/Working… shimmer was INVISIBLE on the selected row —
+   the fill is var(--color-accent) and the shimmer paints accent/dark-gradient
+   text on top of it (its own @supports block re-set color:transparent AFTER the
+   row's ink pass, and the gradient stops are tone-tuned for the ROW background,
+   not the fill). On the fill: solid ink, no background-clip (it depends on the
+   underlying gradient, which is wrong here), life via an opacity pulse. Ink
+   (--color-void) re-points per theme, so both modes get full contrast. */
+.ast-chat-row.ast-row-active .ast-row-live-shimmer {
+  background: none;
+  -webkit-background-clip: border-box;
+  background-clip: border-box;
+  color: var(--color-void);
+  -webkit-text-fill-color: var(--color-void);
+  animation: row-live-ink-pulse 2.5s ease-in-out infinite;
+}
+@keyframes row-live-ink-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) {
+  .ast-chat-row.ast-row-active .ast-row-live-shimmer { animation: none; }
+}
 /* Owner 10-05: on the accent-filled selected row, the read tick and the source
    icon must flip to INK too (the muted tick was invisible on the fill, and the
    legacy accent recolour above defeated the ink pass). */
