@@ -278,10 +278,17 @@ function flushPendingPreTurnRpcs(sid: string) {
 function flushQueueForSession(sid: string) {
   flushPendingPreTurnRpcs(sid);
   // A create reply lands with the fresh sid; a resume reply with the stored
-  // one. A "fresh"-mode queued prompt must flush on the CREATE reply even when
-  // it carries no sessionId, so flush everything that doesn't explicitly
-  // target a DIFFERENT session.
-  const q = wsQueueAll().filter((p) => p.mode === "fresh" || (!p.sessionId || p.sessionId === sid));
+  // one. A queued prompt flushes on the reply of the session it TARGETS:
+  //   fresh  → created for whatever session this reply minted (no sid yet)
+  //   resume → ONLY when p.sessionId === sid
+  // The old `p.mode === "fresh" || (!p.sessionId || p.sessionId === sid)`
+  // flushed a resume-mode row on ANY later create/reply: an Android offline
+  // send (mode "resume", sessionId = chat A) that survived a chat switch to
+  // chat B fired into B's fresh session the moment B's create reply landed —
+  // message sent to A, reply streamed in B. A resume row now only ever fires
+  // into its own recorded session.
+  const q = wsQueueAll().filter((p) =>
+    p.mode === "fresh" ? true : !!p.sessionId && p.sessionId === sid);
   if (!q.length) return;
   const remaining = wsQueueAll().filter((p) => !q.includes(p));
   wsQueueSet(remaining);
