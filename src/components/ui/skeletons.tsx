@@ -28,7 +28,10 @@ function BubbleSkeleton({ ai }: { ai?: boolean }) {
 
 function ChatFeedSkeleton() {
   return (
-    <div className="chat-feed mx-auto flex w-full max-w-[52rem] flex-col gap-6 px-4 py-8" aria-busy="true" aria-label="Loading conversation">
+    // pb-44 matches .chat-feed's live clearance (owner 10-08): the composer
+    // floats over the transcript now, so skeleton rows must stop ABOVE it —
+    // never render under/behind the input+button-bar shell.
+    <div className="chat-feed mx-auto flex w-full max-w-[52rem] flex-col gap-6 px-4 pt-8 pb-44" aria-busy="true" aria-label="Loading conversation">
       <BubbleSkeleton />
       <BubbleSkeleton ai />
       <BubbleSkeleton />
@@ -89,7 +92,7 @@ function FilesSkeleton({ n = 4 }: { n?: number }) {
 // has streamed yet; replaced the moment the first segment lands.
 function NewChatGreetSkeleton() {
   return (
-    <div className="chat-feed mx-auto flex w-full max-w-[52rem] flex-col gap-6 px-4 py-8" aria-busy="true" aria-label="Starting new chat">
+    <div className="chat-feed mx-auto flex w-full max-w-[52rem] flex-col gap-6 px-4 pt-8 pb-44" aria-busy="true" aria-label="Starting new chat">
       <div className="chat-turn">
         <div className="flex items-center gap-2 mb-2.5">
           <Skeleton className="h-[22px] w-[22px] rounded-md" />
