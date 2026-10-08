@@ -1009,14 +1009,20 @@ html.theme-fading body * {
   /* Owner 10-08: the master plate's outline is the SAME weight as the two inner
      cards (1px @ 26%) — persistent, including while the trace runs. Previously
      16%, which read as a different (fainter) outline family. */
-  border: 1px solid color-mix(in srgb, var(--color-accent) 26%, transparent);
-  background: color-mix(in srgb, var(--color-void) 55%, transparent);
-  box-shadow: 0 1px 2px rgba(0,0,0,.15), 0 10px 32px -20px rgba(0,0,0,.5);
+  /* Owner 10-08 (steer): fill/blur mirror Astra's response bubbles — the AI
+     bubble tokens (--bubble-ai-bg/border, blur(29px) saturate(1.25), accent
+     glow) so the composer reads as the same material family as the replies
+     above it. Tokens re-point per theme, so light follows automatically. */
+  border: 1px solid var(--bubble-ai-border, color-mix(in srgb, var(--color-accent) 26%, transparent));
+  background: var(--bubble-ai-bg, color-mix(in srgb, var(--color-void) 55%, transparent));
+  backdrop-filter: blur(29px) saturate(1.25);
+  -webkit-backdrop-filter: blur(29px) saturate(1.25);
+  box-shadow: 0 0 18px -4px color-mix(in oklab, var(--color-accent) 35%, transparent), 0 1px 2px rgba(0,0,0,.15);
   transition: border-color 220ms cubic-bezier(0.23,1,0.32,1), box-shadow 220ms cubic-bezier(0.23,1,0.32,1);
 }
 .chat-composer-shell:focus-within {
-  border-color: color-mix(in srgb, var(--color-accent) 32%, transparent);
-  box-shadow: 0 1px 2px rgba(0,0,0,.15), 0 0 0 3px color-mix(in srgb, var(--color-accent) 8%, transparent), 0 10px 32px -20px rgba(0,0,0,.5);
+  border-color: var(--bubble-ai-border, color-mix(in srgb, var(--color-accent) 32%, transparent));
+  box-shadow: 0 0 22px -4px color-mix(in oklab, var(--color-accent) 45%, transparent), 0 0 0 3px color-mix(in srgb, var(--color-accent) 8%, transparent), 0 1px 2px rgba(0,0,0,.15);
 }
 .chat-composer-shell.drag-over .chat-composer { border-color: rgb(var(--c-13) / 0.6); }
 /* Composer height: ONE line of text plus a subtle padding (owner 2026-10-04).
