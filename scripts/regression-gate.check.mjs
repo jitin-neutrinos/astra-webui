@@ -1015,6 +1015,13 @@ id: "RG-114",
     symptom:
       "Strict-schema emission contract: docs/canvas.schema.json (generated from canvas-schema.ts, envelope pinned const v:1, blocks = array of the 49-variant union) + canvas-validate.ts browser-safe validator. Agreement check proves strict-accepts is a strict subset of renderer-accepts, with RG-147/148 lenient rescues as the only divergence.",
     guard: "scripts/canvas-validate.check.mjs",
+  },
+  {
+    id: "RG-151",
+    found: "2026-10-08",
+    symptom:
+      "New provider key invisible until a hard reload: the model-options catalog fetch went through the browser HTTP cache, and the pinned copy answered for up to a year (edge rule class). session-files.check.ts pins catalogRequest(): unique live=<ts> query per call (a pinned copy can never match), no-store, same-origin credentials.",
+    guard: "src/lib/session-files.check.ts",
   }
 ];
 
