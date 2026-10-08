@@ -1241,6 +1241,21 @@ test("callout accepts the model's `detail` variant as body (RG-147 alias)", () =
   assert.equal((both!.blocks[0] as { body?: string }).body, "real");
 });
 
+test("coerce case E: block-type-keyed root (directive recipe shorthand without envelope)", () => {
+  // RG-148: the SOUL.md recipes teach "badges → callout → kpi ×3 → table" —
+  // models following them WITHOUT the blocks envelope emitted
+  // {"badges":{…},"kpi":[…]} and every prior coercion case returned [],
+  // killing the whole card. The canvas system hit this live on its own card.
+  const shorthand = '{"title":"My card","badges":{"items":[{"label":"a","tone":"info"}]},"kpi":[{"label":"x","value":1},{"label":"y","value":2}],"callout":{"tone":"info","body":"b"},"checklist":{"items":[{"text":"t","status":"done"}]}}';
+  const spec = parseCanvasSpec(shorthand);
+  assert.ok(spec, "block-type-keyed root coerces to blocks");
+  assert.equal(spec!.blocks.length, 5, "badges + 2 kpi + callout + checklist");
+  assert.deepEqual(spec!.blocks.map((b) => b.type), ["badges", "kpi", "kpi", "callout", "checklist"]);
+  assert.equal(spec!.title, "My card", "title still read from the root");
+  // duplicate type keys: JSON.parse keeps the last — the parser cannot recover
+  // the first; that loss is the emitter's bug and is documented in the directive.
+});
+
 test("tier 1.65 (key:value pair inside array) repairs synchronously", () => {
   // RG-146 (2026-10-08): the model emits `"tone":"neutral"` INSIDE a table row
   // array — JSON.parse dies at the stray `:` and a 25 KB A4 report card went

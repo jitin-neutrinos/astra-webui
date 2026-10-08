@@ -2622,6 +2622,29 @@ function coerceToBlocks(data: any): any[] {
   for (const field of ["items", "nodes", "series", "rows"]) {
     if (Array.isArray(data[field]) && data[field].length > 0) return [{ ...data, items: data[field] }];
   }
+  // E: block-type-keyed root — the directive's recipe shorthand
+  // (`badges → callout → kpi ×3 → table`) emitted WITHOUT the blocks envelope:
+  // {"badges":{…},"kpi":[{…},{…}],"callout":{…}}. Valid JSON, every block
+  // valid — and every prior case returned [] here, so the whole card died as
+  // "unreadable payload" (RG-148: the canvas system itself hit this live).
+  // Collect each KNOWN block-type key in order: object → one block of that
+  // type; array of objects → one block per element. Non-type keys (title,
+  // state, page) are untouched — parseCanvasSpec reads them from `data`.
+  const typeKeys = Object.keys(data).filter((k) => looksLikeBlockType(k));
+  if (typeKeys.length > 0) {
+    const out: any[] = [];
+    for (const k of typeKeys) {
+      const v = (data as Record<string, unknown>)[k];
+      if (Array.isArray(v)) {
+        for (const x of v) {
+          if (x && typeof x === "object" && !Array.isArray(x)) out.push({ ...x, type: k });
+        }
+      } else if (v && typeof v === "object") {
+        out.push({ ...v, type: k });
+      }
+    }
+    if (out.length > 0) return out;
+  }
   return [];
 }
 

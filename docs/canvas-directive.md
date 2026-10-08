@@ -25,6 +25,13 @@ Emit one or more fenced blocks tagged `astra-canvas`:
 ```
 ````
 
+**The `blocks` array is NOT optional — it is the card.** The recipes later in
+this doc (`badges → callout → kpi ×3 → table …`) describe the ORDER of blocks
+INSIDE `"blocks"`; they are not a key layout. Emitting `{"badges":{…},"kpi":[…]}`
+with block-type names as top-level keys is an invalid card (no envelope) —
+this exact mistake killed real cards repeatedly (RG-148). Every block goes
+inside `"blocks":[ … ]`, in recipe order.
+
 ### Page format — declare it
 
 ```
