@@ -1711,7 +1711,10 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         endWelcomeRef.current = false;
         greetPendingRef.current = false;
       } else {
-        greetPendingRef.current = true;
+        // Owner 10-08 (steer): New chat → LANDING PAGE (welcome card), not a
+        // minted chat where Astra greets first. No auto-greet is armed; the
+        // user's first message starts the session from the landing card.
+        greetPendingRef.current = false;
       }
     }
   }, [resetSignal, resetSession]);
@@ -1738,6 +1741,10 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
   // of yanking the user off to a fresh chat. Compare against the sid observed
   // when the flow started — a merely-truthy storedSessionId is the NORMAL
   // new-chat-from-existing-chat path and must not cancel anything.
+  // Owner 10-08 (steer): New chat shows the LANDING PAGE (welcome card), not a
+  // greet skeleton → Astra-responds-first chat. The skeleton is skipped
+  // entirely (this flag stays false) and no auto-greet is armed.
+  const ncShowGreetSkeleton = false;
   const ncPrevSidRef = useRef<string | null | undefined>(undefined);
   useEffect(() => {
     if (ncFlow === "skeleton") {
@@ -1961,7 +1968,7 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
       <div ref={listRef} onScroll={onScroll} className="chat-scroll relative z-10 min-h-0 flex-1" role="log" aria-label="Conversation">
         {histLoading && messages.length === 0 ? (
           <ChatFeedSkeleton />
-        ) : ncFlow === "skeleton" ? (
+        ) : ncFlow === "skeleton" && ncShowGreetSkeleton ? (
           <NewChatGreetSkeleton />
         ) : empty ? (
           <div className="chat-welcome">
