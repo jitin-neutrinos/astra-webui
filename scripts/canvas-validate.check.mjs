@@ -33,6 +33,7 @@ const GOLDEN = {
   // strict=FAIL but renders=PASS — lenient repairs (documented divergence, must be the ONLY such class)
   "type-keyed root (RG-148)": '{"title":"t","badges":{"items":[{"label":"a","tone":"info"}]},"kpi":[{"label":"x","value":1}]}',
   "callout detail variant (RG-147)": '{"v":1,"blocks":[{"type":"callout","tone":"info","detail":"d"}]}',
+  "android envelope alias (RG-152)": '{"markdown":"m","artifacts":{"blocks":[{"type":"kpi","label":"x","value":1}]},"spec":{"page":"a4"}}',
   // strict=FAIL + renders=FAIL — true garbage
   "no blocks": '{"v":1,"title":"t"}',
   "bad type": '{"v":1,"blocks":[{"type":"nonsense"}]}',
@@ -50,7 +51,7 @@ for (const line of out.trim().split("\n")) {
   const strictAllows = r.strict, rendererRenders = r.renders;
   // invariants:
   //  1. renderer renders  => strict MUST allow OR the name is in the documented-lenient set
-  const lenient = /RG-147|RG-148/.test(r.name);
+  const lenient = /RG-147|RG-148|RG-152/.test(r.name);
   if (rendererRenders && !strictAllows && !lenient) { console.log(`FAIL ${r.name}: renderer accepts but strict rejects (undocumented divergence)`); fail++; continue; }
   if (!rendererRenders && strictAllows) { console.log(`FAIL ${r.name}: strict accepts but renderer rejects — strict must be a SUBSET`); fail++; continue; }
   console.log(`ok   ${r.name} (strict=${strictAllows ? "pass" : "reject"}, renderer=${rendererRenders ? "render" : "reject"})`);

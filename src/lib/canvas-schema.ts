@@ -2645,7 +2645,62 @@ function coerceToBlocks(data: any): any[] {
     }
     if (out.length > 0) return out;
   }
+  // F: cross-harness canvas envelopes (Android app shape, 2026-10-08 live RG):
+  // {markdown, artifacts:{blocks:[…]}, spec:{page}} — the block LIST nests one
+  // level down under a wrapper key ("artifacts") that is not itself a block
+  // type. Alias IN PLACE on the throwaway parse object (blocks to the root,
+  // title/page/state hoisted from `spec`), then re-enter: parseCanvasSpec reads
+  // title/state/page off `data` after this returns, so the hoist must land there.
+  for (const k of Object.keys(data)) {
+    if (k === "blocks") continue;
+    const v = (data as Record<string, unknown>)[k];
+    if (!v || typeof v !== "object" || Array.isArray(v)) continue;
+    const wrapper = v as { blocks?: unknown };
+    if (!Array.isArray(wrapper.blocks)) continue;
+    const root: Record<string, unknown> = {};
+    for (const o of [data.spec, data]) {
+      if (o && typeof o === "object" && !Array.isArray(o)) Object.assign(root, o);
+    }
+    const blocks: any[] = wrapper.blocks.filter(
+      (x: any) => x && typeof x === "object" && !Array.isArray(x),
+    );
+    // Residual prose the sender carried alongside the card (the Android
+    // `markdown`) is not lost: it ships as a text block AFTER the real ones.
+    if (isStr(root.markdown) && root.markdown.trim()) {
+      blocks.push({ type: "text", title: "Summary", content: root.markdown });
+    }
+    if (blocks.length === 0) continue;
+    const d = data as Record<string, unknown>;
+    if (d.blocks === undefined) d.blocks = blocks;
+    if (d.title === undefined && isStr(root.title)) d.title = root.title;
+    if (d.page === undefined && root.page !== undefined) d.page = root.page;
+    if (d.state === undefined && root.state !== undefined) d.state = root.state;
+    return coerceToBlocks(d);
+  }
   return [];
+}
+
+/**
+ * G — the UNFENCED card (2026-10-08 live RG): a sender wrapped its card in the
+ * wrong envelope AND never claimed a fence at all, so the body sits in plain
+ * message text between prose ("Report:\n{...}\nPhone note: …"). The fence
+ * pipeline never sees it and the card paints as raw JSON.
+ *
+ * `aliasSpecFromText` is the last-resort consumer guardrail for that shape:
+ * isolate the outermost JSON value from the surrounding prose, parse it, and
+ * require the result to read as a CANVAS (a blocks list, a bare block, or the
+ * alias envelope F). Anything else — code samples, config snippets, a model's
+ * literal JSON example — returns null and renders exactly as it did before.
+ * Cheap pre-gates keep the O(n) isolation off ordinary chat text.
+ */
+export function aliasSpecFromText(text: string): CanvasSpec | null {
+  const start = text.search(/[{[]/);
+  if (start === -1) return null;
+  const candidate = extractOutermostJson(text.slice(start));
+  if (!candidate || candidate.length < 24) return null;
+  const spec = parseCanvasSpec(candidate);
+  if (spec && spec.blocks.length > 0) return spec;
+  return null;
 }
 
 /** A healed misnested fence leaves its type as a lone marker object. */
@@ -2874,6 +2929,21 @@ export function splitCanvasBlocks(text: string, streaming = false): CanvasPart[]
     const open = OPEN_FENCE_RE.exec(tail);
     if (open) tail = tail.slice(0, open.index);
   }
+  // Last-resort rescue (2026-10-08 RG): a sender left the card UNFENCED in the
+  // text — no `astra-canvas` opener anywhere, so no fence scan can claim it.
+  // Only a valid canvas payload aliases out; ordinary prose/JSON renders as
+  // before. FINALIZED turns only: mid-stream a bare `{` is far more likely a
+  // half-written fence than a finished card.
+  if (!streaming && tail) {
+    const rescued = aliasSpecFromText(tail);
+    if (rescued) {
+      if (tail.slice(0, tail.search(/[{[]/)).trim()) {
+        parts.push({ kind: "md", text: tail.slice(0, tail.search(/[{[]/)) });
+      }
+      parts.push({ kind: "canvas", spec: rescued });
+      return parts;
+    }
+  }
   if (tail) parts.push({ kind: "md", text: tail });
   return parts;
 }
@@ -2881,7 +2951,8 @@ export function splitCanvasBlocks(text: string, streaming = false): CanvasPart[]
 /** True when the text contains at least one VALID closed canvas (mount gate for lazy chunk). */
 export function hasCanvas(text: string): boolean {
   text = healMisnestedFence(text);
-  return scanFences(text).some((f) => parseCanvasSpec(f.body) !== null);
+  if (scanFences(text).some((f) => parseCanvasSpec(f.body) !== null)) return true;
+  return aliasSpecFromText(text) !== null;
 }
 
 /**

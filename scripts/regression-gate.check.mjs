@@ -1017,6 +1017,13 @@ id: "RG-114",
     guard: "scripts/canvas-validate.check.mjs",
   },
   {
+    id: "RG-152",
+    found: "2026-10-08",
+    symptom:
+      "The canvas report rendered as CODE AND TEXT, not a card (owner report, session 20261008_005547 msg[113]). TWO stacked defects: (1) PRODUCER — the reply carried the ANDROID app's envelope {markdown, artifacts:{blocks:[…]}, spec:{page}} bare in the message text with NO ```astra-canvas fence, so the fence pipeline never saw it; coerceToBlocks had no case for the wrapper key and returned []. (2) CONSUMER — even a canonical unfenced card had no rescue: only fences are scanned. Fix: coercion case F aliases wrapper-held blocks arrays in place (blocks to the root, title/page/state hoisted from `spec`, residual `markdown` ships as a trailing text Summary block); aliasSpecFromText() rescues a FINALIZED turn whose tail isolates to a valid canvas payload (streaming never rescues; <24-char JSON, non-canvas JSON, prose all untouched); hasCanvas() fires the lazy mount for rescued cards. Guardrails beyond the parser: canvas-alias.check.ts (positives on the real production bytes + 6 negative controls, mutation-proven both directions), fence-discipline rule synced into SOUL.md + all 4 harness rulebooks + ~50 skills by canvas-surface-sync, RG-152 golden shape added to the strict-validator agreement check as a documented lenient class.",
+    guard: "src/lib/canvas-alias.check.ts",
+  },
+  {
     id: "RG-151",
     found: "2026-10-08",
     symptom:
