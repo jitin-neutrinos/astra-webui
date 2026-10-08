@@ -1,0 +1,5481 @@
+{
+ "$schema": "http://json-schema.org/draft-07/schema#",
+ "title": "Astra canvas card",
+ "type": "object",
+ "required": [
+  "v",
+  "blocks"
+ ],
+ "properties": {
+  "v": {
+   "const": 1
+  },
+  "title": {
+   "type": "string"
+  },
+  "page": {
+   "enum": [
+    "a4",
+    "slide",
+    "auto"
+   ]
+  },
+  "state": {
+   "type": "object"
+  },
+  "blocks": {
+   "type": "array",
+   "items": {
+    "anyOf": [
+     {
+      "additionalProperties": false,
+      "properties": {
+       "delta": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "$ref": "#/definitions/Binding"
+         }
+        ]
+       },
+       "label": {
+        "type": "string"
+       },
+       "spark": {
+        "description": "Optional inline sparkline (3-24 finite points). Degrades silently if bad.",
+        "items": {
+         "type": "number"
+        },
+        "type": "array"
+       },
+       "trend": {
+        "$ref": "#/definitions/Trend"
+       },
+       "type": {
+        "const": "kpi",
+        "type": "string"
+       },
+       "value": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "number"
+         },
+         {
+          "$ref": "#/definitions/Binding"
+         }
+        ],
+        "description": "A reactive card may author the figure as a binding instead of a literal."
+       },
+       "visible": {}
+      },
+      "required": [
+       "label",
+       "type",
+       "value"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "chart": {
+        "enum": [
+         "line",
+         "area",
+         "bar",
+         "radial",
+         "pie",
+         "donut",
+         "stack",
+         "sankey",
+         "treemap",
+         "funnel",
+         "radar",
+         "scatter",
+         "box",
+         "histogram",
+         "errorbar",
+         "candlestick",
+         "waterfall",
+         "violin"
+        ],
+        "type": "string"
+       },
+       "labels": {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       "p": {
+        "type": "number"
+       },
+       "refline": {
+        "additionalProperties": false,
+        "properties": {
+         "label": {
+          "type": "string"
+         },
+         "tone": {
+          "type": "string"
+         },
+         "value": {
+          "type": "number"
+         }
+        },
+        "required": [
+         "value"
+        ],
+        "type": "object"
+       },
+       "scale": {
+        "type": "string"
+       },
+       "series": {
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "error": {
+           "additionalProperties": false,
+           "properties": {
+            "hi": {
+             "items": {
+              "type": "number"
+             },
+             "type": "array"
+            },
+            "lo": {
+             "items": {
+              "type": "number"
+             },
+             "type": "array"
+            }
+           },
+           "required": [
+            "lo",
+            "hi"
+           ],
+           "type": "object"
+          },
+          "items": {
+           "items": {
+            "additionalProperties": false,
+            "properties": {
+             "name": {
+              "type": "string"
+             },
+             "value": {
+              "type": "number"
+             }
+            },
+            "required": [
+             "name",
+             "value"
+            ],
+            "type": "object"
+           },
+           "type": "array"
+          },
+          "kde": {
+           "items": {
+            "additionalProperties": false,
+            "properties": {
+             "x": {
+              "type": "number"
+             },
+             "y": {
+              "type": "number"
+             }
+            },
+            "required": [
+             "x",
+             "y"
+            ],
+            "type": "object"
+           },
+           "type": "array"
+          },
+          "links": {
+           "items": {
+            "additionalProperties": false,
+            "properties": {
+             "source": {
+              "type": "string"
+             },
+             "target": {
+              "type": "string"
+             },
+             "value": {
+              "type": "number"
+             }
+            },
+            "required": [
+             "source",
+             "target",
+             "value"
+            ],
+            "type": "object"
+           },
+           "type": "array"
+          },
+          "name": {
+           "type": "string"
+          },
+          "ohlc": {
+           "items": {
+            "items": {
+             "type": "number"
+            },
+            "type": "array"
+           },
+           "type": "array"
+          },
+          "points": {
+           "items": {
+            "type": "number"
+           },
+           "type": "array"
+          },
+          "visible": {},
+          "waterfallKinds": {
+           "items": {
+            "type": "string"
+           },
+           "type": "array"
+          }
+         },
+         "required": [
+          "name",
+          "points"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "title": {
+        "type": "string"
+       },
+       "type": {
+        "const": "chart",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "chart",
+       "series",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "bind": {
+        "description": "Reactive: rows come from a `data` carrier through this reader."
+       },
+       "colMeta": {
+        "items": {
+         "anyOf": [
+          {
+           "additionalProperties": false,
+           "properties": {
+            "levels": {
+             "items": {
+              "type": "string"
+             },
+             "type": "array"
+            }
+           },
+           "type": "object"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "type": "array"
+       },
+       "colTypes": {
+        "items": {
+         "enum": [
+          "text",
+          "color",
+          "contrast",
+          "bar",
+          "delta",
+          "status"
+         ],
+         "type": "string"
+        },
+        "type": "array"
+       },
+       "columns": {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       "footnote": {
+        "type": "string"
+       },
+       "rows": {
+        "items": {
+         "items": {
+          "type": [
+           "string",
+           "number",
+           "boolean",
+           "null"
+          ]
+         },
+         "type": "array"
+        },
+        "type": "array"
+       },
+       "sig": {
+        "additionalProperties": false,
+        "properties": {
+         "column": {
+          "type": "string"
+         },
+         "thresholds": {
+          "items": {
+           "type": "number"
+          },
+          "type": "array"
+         }
+        },
+        "required": [
+         "column"
+        ],
+        "type": "object"
+       },
+       "stats": {
+        "$ref": "#/definitions/TableStats",
+        "description": "Renderer-computed summary footer. The MODEL NEVER does this arithmetic: ask for the statistics instead of inventing a mean in prose."
+       },
+       "type": {
+        "const": "table",
+        "type": "string"
+       },
+       "units": {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       "visible": {}
+      },
+      "required": [
+       "columns",
+       "rows",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "caption": {
+        "type": "string"
+       },
+       "direction": {
+        "enum": [
+         "tb",
+         "lr"
+        ],
+        "type": "string"
+       },
+       "edges": {
+        "items": {
+         "$ref": "#/definitions/DiagramEdge"
+        },
+        "type": "array"
+       },
+       "layout": {
+        "enum": [
+         "flow",
+         "relationship"
+        ],
+        "type": "string"
+       },
+       "nodes": {
+        "items": {
+         "$ref": "#/definitions/DiagramNode"
+        },
+        "type": "array"
+       },
+       "route": {
+        "description": "Edge routing: orthogonal (dagre's default, right-angle segments) or smooth.",
+        "enum": [
+         "orthogonal",
+         "smooth"
+        ],
+        "type": "string"
+       },
+       "summary": {
+        "description": "One-to-three sentence reading of the diagram (shown as the summary + used as the aria description).",
+        "type": "string"
+       },
+       "type": {
+        "const": "diagram",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "edges",
+       "layout",
+       "nodes",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "items": {
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "consequence": {
+           "type": "string"
+          },
+          "due": {
+           "type": "string"
+          },
+          "ref": {
+           "type": "string"
+          },
+          "severity": {
+           "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low"
+           ],
+           "type": "string"
+          },
+          "status": {
+           "enum": [
+            "done",
+            "open",
+            "fail"
+           ],
+           "type": "string"
+          },
+          "text": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "text"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "type": {
+        "const": "checklist",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "items",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "items": {
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "detail": {
+           "type": "string"
+          },
+          "status": {
+           "enum": [
+            "done",
+            "active",
+            "todo",
+            "fail"
+           ],
+           "type": "string"
+          },
+          "title": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "title"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "type": {
+        "const": "steps",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "items",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "body": {
+        "type": "string"
+       },
+       "title": {
+        "type": "string"
+       },
+       "tone": {
+        "enum": [
+         "info",
+         "warn",
+         "success",
+         "danger"
+        ],
+        "type": "string"
+       },
+       "type": {
+        "const": "callout",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "body",
+       "tone",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "detail": {
+        "type": "string"
+       },
+       "label": {
+        "type": "string"
+       },
+       "max": {
+        "type": "number"
+       },
+       "status": {
+        "enum": [
+         "ok",
+         "warn",
+         "fail"
+        ],
+        "type": "string"
+       },
+       "type": {
+        "const": "progress",
+        "type": "string"
+       },
+       "unit": {
+        "type": "string"
+       },
+       "value": {
+        "anyOf": [
+         {
+          "type": "number"
+         },
+         {
+          "$ref": "#/definitions/Binding"
+         }
+        ],
+        "description": "Reactive cards may author the figure as a binding."
+       },
+       "visible": {}
+      },
+      "required": [
+       "label",
+       "type",
+       "value"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "items": {
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "detail": {
+           "type": "string"
+          },
+          "status": {
+           "enum": [
+            "done",
+            "active",
+            "todo",
+            "fail"
+           ],
+           "type": "string"
+          },
+          "time": {
+           "type": "string"
+          },
+          "title": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "title"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "type": {
+        "const": "timeline",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "items",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "items": {
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "badge": {
+           "type": "string"
+          },
+          "caption": {
+           "type": "string"
+          },
+          "name": {
+           "type": "string"
+          },
+          "points": {
+           "items": {
+            "additionalProperties": false,
+            "properties": {
+             "text": {
+              "type": "string"
+             },
+             "tone": {
+              "enum": [
+               "pro",
+               "con",
+               "neutral"
+              ],
+              "type": "string"
+             }
+            },
+            "required": [
+             "text"
+            ],
+            "type": "object"
+           },
+           "type": "array"
+          }
+         },
+         "required": [
+          "name",
+          "points"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "type": {
+        "const": "compare",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "items",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "defaultDepth": {
+        "type": "number"
+       },
+       "nodes": {
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "children": {
+           "items": {
+            "type": "string"
+           },
+           "type": "array"
+          },
+          "detail": {
+           "type": "string"
+          },
+          "id": {
+           "type": "string"
+          },
+          "kind": {
+           "type": "string"
+          },
+          "label": {
+           "type": "string"
+          },
+          "lines": {
+           "type": "number"
+          },
+          "size": {
+           "type": "number"
+          }
+         },
+         "required": [
+          "id",
+          "label"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "pruned": {
+        "type": "boolean"
+       },
+       "sort": {
+        "enum": [
+         "manual",
+         "name",
+         "size",
+         "kind"
+        ],
+        "type": "string"
+       },
+       "type": {
+        "const": "tree",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "nodes",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "code": {
+        "type": "string"
+       },
+       "filename": {
+        "type": "string"
+       },
+       "highlight": {
+        "description": "false = skip the (lazy) syntax highlighter; render the bare <pre>.",
+        "type": "boolean"
+       },
+       "language": {
+        "type": "string"
+       },
+       "type": {
+        "const": "code",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "code",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "items": {
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "cite": {
+           "additionalProperties": false,
+           "properties": {
+            "case": {
+             "type": "string"
+            },
+            "coram": {
+             "items": {
+              "type": "string"
+             },
+             "type": "array"
+            },
+            "court": {
+             "type": "string"
+            },
+            "date": {
+             "type": "string"
+            },
+            "neutral": {
+             "type": "string"
+            },
+            "parallel": {
+             "type": "string"
+            },
+            "pinpoints": {
+             "items": {
+              "type": "number"
+             },
+             "type": "array"
+            },
+            "reporter": {
+             "type": "string"
+            },
+            "scr": {
+             "type": "string"
+            },
+            "style": {
+             "enum": [
+              "neutral-first",
+              "scc",
+              "scr",
+              "air",
+              "bluebook"
+             ],
+             "type": "string"
+            }
+           },
+           "type": "object"
+          },
+          "href": {
+           "type": "string"
+          },
+          "note": {
+           "type": "string"
+          },
+          "title": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "title"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "type": {
+        "const": "references",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "items",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "attribution": {
+        "type": "string"
+       },
+       "context": {
+        "type": "string"
+       },
+       "role": {
+        "type": "string"
+       },
+       "text": {
+        "type": "string"
+       },
+       "type": {
+        "const": "quote",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "text",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "items": {
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "key": {
+           "type": "string"
+          },
+          "mono": {
+           "type": "boolean"
+          },
+          "value": {
+           "type": [
+            "string",
+            "number"
+           ]
+          }
+         },
+         "required": [
+          "key",
+          "value"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "title": {
+        "type": "string"
+       },
+       "type": {
+        "const": "keyvalue",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "items",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "filename": {
+        "type": "string"
+       },
+       "highlight": {
+        "description": "false = skip the (lazy) syntax highlighter on the row text.",
+        "type": "boolean"
+       },
+       "hunks": {
+        "description": "One hunk = one titled change. `lines` carries the unified-diff rows.",
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "header": {
+           "type": "string"
+          },
+          "lines": {
+           "items": {
+            "additionalProperties": false,
+            "properties": {
+             "op": {
+              "$ref": "#/definitions/DiffOp"
+             },
+             "text": {
+              "type": "string"
+             }
+            },
+            "required": [
+             "op",
+             "text"
+            ],
+            "type": "object"
+           },
+           "type": "array"
+          }
+         },
+         "required": [
+          "lines"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "language": {
+        "type": "string"
+       },
+       "type": {
+        "const": "diff",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "hunks",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "cols": {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       "rows": {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       "title": {
+        "type": "string"
+       },
+       "type": {
+        "const": "heatmap",
+        "type": "string"
+       },
+       "values": {
+        "description": "values[r][c] \u2014 must match rows\u00d7cols; numbers are scaled to the grid max.",
+        "items": {
+         "items": {
+          "type": "number"
+         },
+         "type": "array"
+        },
+        "type": "array"
+       },
+       "visible": {}
+      },
+      "required": [
+       "cols",
+       "rows",
+       "type",
+       "values"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "items": {
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "blocks": {
+           "items": {
+            "$ref": "#/definitions/CanvasBlock"
+           },
+           "type": "array"
+          },
+          "label": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "label",
+          "blocks"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "type": {
+        "const": "tabs",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "items",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "items": {
+        "description": "Collapsed by default unless `open: true`; first item defaults open.",
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "blocks": {
+           "items": {
+            "$ref": "#/definitions/CanvasBlock"
+           },
+           "type": "array"
+          },
+          "body": {
+           "type": "string"
+          },
+          "open": {
+           "type": "boolean"
+          },
+          "title": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "title"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "type": {
+        "const": "accordion",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "items",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "command": {
+        "type": "string"
+       },
+       "exitCode": {
+        "type": "number"
+       },
+       "highlight": {
+        "description": "false = skip the (lazy) syntax highlighter on the command / flagged lines.",
+        "type": "boolean"
+       },
+       "lines": {
+        "description": "Raw output lines; accept {text, tone} objects or plain strings.",
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "text": {
+           "type": "string"
+          },
+          "tone": {
+           "$ref": "#/definitions/TermTone"
+          }
+         },
+         "required": [
+          "text"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "title": {
+        "type": "string"
+       },
+       "type": {
+        "const": "terminal",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "lines",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "items": {
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "label": {
+           "type": "string"
+          },
+          "tone": {
+           "enum": [
+            "info",
+            "warn",
+            "success",
+            "danger",
+            "neutral"
+           ],
+           "type": "string"
+          }
+         },
+         "required": [
+          "label"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "type": {
+        "const": "badges",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "items",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "label": {
+        "type": "string"
+       },
+       "type": {
+        "const": "divider",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "columns": {
+        "description": "Explicit column labels; derived from row 0 when omitted.",
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       "filename": {
+        "type": "string"
+       },
+       "header": {
+        "description": "Row 0 treated as the header row. Default true.",
+        "type": "boolean"
+       },
+       "rows": {
+        "description": "Each row is a cell array; ragged rows are allowed and pad on render.",
+        "items": {
+         "items": {
+          "type": [
+           "string",
+           "number"
+          ]
+         },
+         "type": "array"
+        },
+        "type": "array"
+       },
+       "sheets": {
+        "description": "Sheet names in tab order. First one is shown when nothing else applies.",
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       "title": {
+        "type": "string"
+       },
+       "type": {
+        "const": "spreadsheet",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "rows",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "filename": {
+        "type": "string"
+       },
+       "slides": {
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "bullets": {
+           "items": {
+            "type": "string"
+           },
+           "type": "array"
+          },
+          "heading": {
+           "type": "string"
+          },
+          "layout": {
+           "description": "Optional per-slide layout hint.",
+           "enum": [
+            "title",
+            "bullets"
+           ],
+           "type": "string"
+          },
+          "note": {
+           "description": "Optional speaker note, rendered small under the slide.",
+           "type": "string"
+          }
+         },
+         "required": [
+          "heading"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "title": {
+        "type": "string"
+       },
+       "type": {
+        "const": "slides",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "slides",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "content": {
+        "description": "Heading + paragraph + bullet outline.",
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "heading": {
+           "type": "string"
+          },
+          "kind": {
+           "description": "\"p\" | \"h2\" | \"h3\" | \"li\" \u2014 plain text, rendered in order.",
+           "type": "string"
+          },
+          "level": {
+           "enum": [
+            1,
+            2,
+            3
+           ],
+           "type": "number"
+          },
+          "text": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "text"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "filename": {
+        "type": "string"
+       },
+       "title": {
+        "type": "string"
+       },
+       "type": {
+        "const": "document",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "content",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "content": {
+        "description": "Plain text or markdown source; edited as text, copied verbatim.",
+        "type": "string"
+       },
+       "filename": {
+        "type": "string"
+       },
+       "language": {
+        "description": "language tag for the download extension when filename has none.",
+        "type": "string"
+       },
+       "title": {
+        "type": "string"
+       },
+       "type": {
+        "const": "text",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "content",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "bind": {
+        "description": "State key the current value is stored under.",
+        "type": "string"
+       },
+       "format": {
+        "description": "Free-text format shown beside the value (\"$18,000\" via money/compact\u2026).",
+        "enum": [
+         "plain",
+         "money",
+         "compact",
+         "pct"
+        ],
+        "type": "string"
+       },
+       "label": {
+        "type": "string"
+       },
+       "max": {
+        "type": "number"
+       },
+       "min": {
+        "type": "number"
+       },
+       "step": {
+        "type": "number"
+       },
+       "type": {
+        "const": "slider",
+        "type": "string"
+       },
+       "unit": {
+        "type": "string"
+       },
+       "value": {
+        "description": "Initial/current value; a control with no current state writes this first.",
+        "type": "number"
+       },
+       "visible": {}
+      },
+      "required": [
+       "bind",
+       "label",
+       "max",
+       "min",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "bind": {
+        "type": "string"
+       },
+       "label": {
+        "type": "string"
+       },
+       "options": {
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "label": {
+           "type": "string"
+          },
+          "value": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "label",
+          "value"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "type": {
+        "const": "select",
+        "type": "string"
+       },
+       "value": {
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "bind",
+       "label",
+       "options",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "bind": {
+        "type": "string"
+       },
+       "label": {
+        "type": "string"
+       },
+       "options": {
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "label": {
+           "type": "string"
+          },
+          "value": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "label",
+          "value"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "type": {
+        "const": "multiselect",
+        "type": "string"
+       },
+       "value": {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       "visible": {}
+      },
+      "required": [
+       "bind",
+       "label",
+       "options",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "bind": {
+        "type": "string"
+       },
+       "label": {
+        "type": "string"
+       },
+       "options": {
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "label": {
+           "type": "string"
+          },
+          "value": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "label",
+          "value"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "type": {
+        "const": "segmented",
+        "type": "string"
+       },
+       "value": {
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "bind",
+       "options",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "bind": {
+        "type": "string"
+       },
+       "label": {
+        "type": "string"
+       },
+       "type": {
+        "const": "toggle",
+        "type": "string"
+       },
+       "value": {
+        "type": "boolean"
+       },
+       "visible": {}
+      },
+      "required": [
+       "bind",
+       "label",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "bind": {
+        "type": "string"
+       },
+       "label": {
+        "type": "string"
+       },
+       "placeholder": {
+        "type": "string"
+       },
+       "type": {
+        "const": "search",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "bind",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "columns": {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       "header": {
+        "type": "boolean"
+       },
+       "name": {
+        "description": "Name every `$from` points at. Never rendered as a surface.",
+        "type": "string"
+       },
+       "rows": {
+        "items": {
+         "items": {
+          "type": [
+           "string",
+           "number",
+           "boolean",
+           "null"
+          ]
+         },
+         "type": "array"
+        },
+        "type": "array"
+       },
+       "type": {
+        "const": "data",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "name",
+       "rows",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "edges": {
+        "items": {
+         "$ref": "#/definitions/GraphEdge"
+        },
+        "type": "array"
+       },
+       "height": {
+        "description": "Render height clamp (320..720); the card fits it, fullscreen uses more.",
+        "type": "number"
+       },
+       "nodes": {
+        "items": {
+         "$ref": "#/definitions/GraphNode"
+        },
+        "type": "array"
+       },
+       "title": {
+        "type": "string"
+       },
+       "type": {
+        "const": "graph",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "edges",
+       "nodes",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "alt": {
+        "type": "string"
+       },
+       "caption": {
+        "type": "string"
+       },
+       "src": {
+        "description": "Host file path or /api/\u2026 URL; mapped through linkHref().",
+        "type": "string"
+       },
+       "type": {
+        "const": "image",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "src",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "items": {
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "alt": {
+           "type": "string"
+          },
+          "caption": {
+           "type": "string"
+          },
+          "src": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "src"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "layout": {
+        "enum": [
+         "2col",
+         "3col"
+        ],
+        "type": "string"
+       },
+       "type": {
+        "const": "gallery",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "items",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "caption": {
+        "type": "string"
+       },
+       "captions": {
+        "type": "string"
+       },
+       "poster": {
+        "type": "string"
+       },
+       "src": {
+        "type": "string"
+       },
+       "type": {
+        "const": "video",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "src",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "blocks": {
+        "items": {
+         "$ref": "#/definitions/CanvasBlock"
+        },
+        "type": "array"
+       },
+       "cols": {
+        "description": "Grid columns for `grid`/`split` (2-4); masonry ignores it.",
+        "type": "number"
+       },
+       "layout": {
+        "$ref": "#/definitions/LayoutMode"
+       },
+       "type": {
+        "const": "layout",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "blocks",
+       "layout",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "display": {
+        "description": "Display (centred, own lines). Default true.",
+        "type": "boolean"
+       },
+       "label": {
+        "type": "string"
+       },
+       "lines": {
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "number": {
+           "type": "string"
+          },
+          "tex": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "tex"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "number": {
+        "anyOf": [
+         {
+          "type": "number"
+         },
+         {
+          "const": true,
+          "type": "boolean"
+         }
+        ]
+       },
+       "tex": {
+        "type": "string"
+       },
+       "type": {
+        "const": "math",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "branches": {
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "head": {
+           "type": "string"
+          },
+          "name": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "name"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "commits": {
+        "description": "Newest first \u2014 the order they are drawn in.",
+        "items": {
+         "$ref": "#/definitions/GitCommit"
+        },
+        "type": "array"
+       },
+       "title": {
+        "type": "string"
+       },
+       "type": {
+        "const": "gitgraph",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "commits",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "kind": {
+        "enum": [
+         "lemma",
+         "proposition",
+         "corollary",
+         "theorem",
+         "proof"
+        ],
+        "type": "string"
+       },
+       "number": {
+        "type": "number"
+       },
+       "proof": {
+        "type": "string"
+       },
+       "refs": {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       "statement": {
+        "type": "string"
+       },
+       "type": {
+        "const": "theorem",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "kind",
+       "statement",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "number": {
+        "type": "number"
+       },
+       "steps": {
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "complexity": {
+           "type": "string"
+          },
+          "indent": {
+           "type": "number"
+          },
+          "text": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "text"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "type": {
+        "const": "algorithm",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "steps",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "against": {
+        "type": "string"
+       },
+       "colors": {
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "name": {
+           "type": "string"
+          },
+          "note": {
+           "type": "string"
+          },
+          "role": {
+           "type": "string"
+          },
+          "value": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "value"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "radius": {
+        "type": "boolean"
+       },
+       "scale": {
+        "type": "boolean"
+       },
+       "shadow": {
+        "type": "boolean"
+       },
+       "space": {
+        "type": "string"
+       },
+       "title": {
+        "type": "string"
+       },
+       "type": {
+        "const": "palette",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "colors",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "items": {
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "criterion": {
+           "type": "string"
+          },
+          "evidence": {
+           "type": "string"
+          },
+          "note": {
+           "type": "string"
+          },
+          "score": {
+           "type": "number"
+          },
+          "severity": {
+           "enum": [
+            "info",
+            "warn",
+            "danger"
+           ],
+           "type": "string"
+          }
+         },
+         "required": [
+          "criterion"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "max": {
+        "type": "number"
+       },
+       "method": {
+        "enum": [
+         "heuristic",
+         "sus",
+         "rice",
+         "custom"
+        ],
+        "type": "string"
+       },
+       "title": {
+        "type": "string"
+       },
+       "type": {
+        "const": "scorecard",
+        "type": "string"
+       },
+       "verdict": {
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "items",
+       "method",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "asOf": {
+        "type": "string"
+       },
+       "items": {
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "consequence": {
+           "type": "string"
+          },
+          "due": {
+           "type": "string"
+          },
+          "evidence": {
+           "type": "string"
+          },
+          "obligation": {
+           "type": "string"
+          },
+          "owner": {
+           "type": "string"
+          },
+          "penalty": {
+           "type": "string"
+          },
+          "provision": {
+           "type": "string"
+          },
+          "ref": {
+           "type": "string"
+          },
+          "severity": {
+           "enum": [
+            "info",
+            "warn",
+            "danger"
+           ],
+           "type": "string"
+          },
+          "status": {
+           "enum": [
+            "pass",
+            "fail",
+            "warn",
+            "na",
+            "pending"
+           ],
+           "type": "string"
+          }
+         },
+         "required": [
+          "ref",
+          "provision",
+          "obligation",
+          "status"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "regime": {
+        "type": "string"
+       },
+       "source": {
+        "type": "string"
+       },
+       "type": {
+        "const": "compliance",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "items",
+       "regime",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "items": {
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "children": {
+           "type": "boolean"
+          },
+          "flags": {
+           "items": {
+            "type": "string"
+           },
+           "type": "array"
+          },
+          "heading": {
+           "type": "string"
+          },
+          "note": {
+           "type": "string"
+          },
+          "playbook": {
+           "type": "string"
+          },
+          "ref": {
+           "type": "string"
+          },
+          "risk": {
+           "enum": [
+            "info",
+            "warn",
+            "danger"
+           ],
+           "type": "string"
+          },
+          "source": {
+           "type": "string"
+          },
+          "status": {
+           "type": "string"
+          },
+          "text": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "ref",
+          "text"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "title": {
+        "type": "string"
+       },
+       "type": {
+        "const": "clause",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "items",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "rows": {
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "consequence": {
+           "type": "string"
+          },
+          "due": {
+           "type": "string"
+          },
+          "evidence": {
+           "type": "string"
+          },
+          "obligation": {
+           "type": "string"
+          },
+          "owner": {
+           "type": "string"
+          },
+          "party": {
+           "type": "string"
+          },
+          "recurrence": {
+           "type": "string"
+          },
+          "ref": {
+           "type": "string"
+          },
+          "severity": {
+           "enum": [
+            "info",
+            "warn",
+            "danger"
+           ],
+           "type": "string"
+          },
+          "status": {
+           "type": "string"
+          },
+          "trigger": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "obligation",
+          "party"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "title": {
+        "type": "string"
+       },
+       "type": {
+        "const": "obligations",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "rows",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "tables": {
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "columns": {
+           "items": {
+            "additionalProperties": false,
+            "properties": {
+             "key": {
+              "enum": [
+               "PK",
+               "FK",
+               "NN",
+               "UQ"
+              ],
+              "type": "string"
+             },
+             "name": {
+              "type": "string"
+             },
+             "note": {
+              "type": "string"
+             },
+             "ref": {
+              "type": "string"
+             },
+             "type": {
+              "type": "string"
+             }
+            },
+            "required": [
+             "name",
+             "type"
+            ],
+            "type": "object"
+           },
+           "type": "array"
+          },
+          "indexes": {
+           "items": {
+            "type": "string"
+           },
+           "type": "array"
+          },
+          "name": {
+           "type": "string"
+          },
+          "note": {
+           "type": "string"
+          },
+          "rows": {
+           "type": "number"
+          }
+         },
+         "required": [
+          "name",
+          "columns"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "title": {
+        "type": "string"
+       },
+       "type": {
+        "const": "schema",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "tables",
+       "type"
+      ],
+      "type": "object"
+     },
+     {
+      "additionalProperties": false,
+      "properties": {
+       "actors": {
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "id": {
+           "type": "string"
+          },
+          "kind": {
+           "type": "string"
+          },
+          "label": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "id",
+          "label"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "messages": {
+        "items": {
+         "additionalProperties": false,
+         "properties": {
+          "at": {
+           "type": "string"
+          },
+          "from": {
+           "type": "string"
+          },
+          "kind": {
+           "enum": [
+            "sync",
+            "async",
+            "return",
+            "self"
+           ],
+           "type": "string"
+          },
+          "label": {
+           "type": "string"
+          },
+          "to": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "from",
+          "to"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "title": {
+        "type": "string"
+       },
+       "type": {
+        "const": "sequence",
+        "type": "string"
+       },
+       "visible": {}
+      },
+      "required": [
+       "actors",
+       "messages",
+       "type"
+      ],
+      "type": "object"
+     }
+    ]
+   },
+   "minItems": 1
+  }
+ },
+ "definitions": {
+  "Binding": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "number"
+    },
+    {
+     "type": "boolean"
+    },
+    {
+     "type": "null"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "$expr": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "$expr"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "expr": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "expr"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "path": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "path"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "$state": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "$state"
+     ],
+     "type": "object"
+    }
+   ],
+   "description": "Anything a block prop can carry: scalar, expression, or pointer."
+  },
+  "CanvasBlock": {
+   "anyOf": [
+    {
+     "additionalProperties": false,
+     "properties": {
+      "delta": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "$ref": "#/definitions/Binding"
+        }
+       ]
+      },
+      "label": {
+       "type": "string"
+      },
+      "spark": {
+       "description": "Optional inline sparkline (3-24 finite points). Degrades silently if bad.",
+       "items": {
+        "type": "number"
+       },
+       "type": "array"
+      },
+      "trend": {
+       "$ref": "#/definitions/Trend"
+      },
+      "type": {
+       "const": "kpi",
+       "type": "string"
+      },
+      "value": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "number"
+        },
+        {
+         "$ref": "#/definitions/Binding"
+        }
+       ],
+       "description": "A reactive card may author the figure as a binding instead of a literal."
+      },
+      "visible": {}
+     },
+     "required": [
+      "label",
+      "type",
+      "value"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "chart": {
+       "enum": [
+        "line",
+        "area",
+        "bar",
+        "radial",
+        "pie",
+        "donut",
+        "stack",
+        "sankey",
+        "treemap",
+        "funnel",
+        "radar",
+        "scatter",
+        "box",
+        "histogram",
+        "errorbar",
+        "candlestick",
+        "waterfall",
+        "violin"
+       ],
+       "type": "string"
+      },
+      "labels": {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      "p": {
+       "type": "number"
+      },
+      "refline": {
+       "additionalProperties": false,
+       "properties": {
+        "label": {
+         "type": "string"
+        },
+        "tone": {
+         "type": "string"
+        },
+        "value": {
+         "type": "number"
+        }
+       },
+       "required": [
+        "value"
+       ],
+       "type": "object"
+      },
+      "scale": {
+       "type": "string"
+      },
+      "series": {
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "error": {
+          "additionalProperties": false,
+          "properties": {
+           "hi": {
+            "items": {
+             "type": "number"
+            },
+            "type": "array"
+           },
+           "lo": {
+            "items": {
+             "type": "number"
+            },
+            "type": "array"
+           }
+          },
+          "required": [
+           "lo",
+           "hi"
+          ],
+          "type": "object"
+         },
+         "items": {
+          "items": {
+           "additionalProperties": false,
+           "properties": {
+            "name": {
+             "type": "string"
+            },
+            "value": {
+             "type": "number"
+            }
+           },
+           "required": [
+            "name",
+            "value"
+           ],
+           "type": "object"
+          },
+          "type": "array"
+         },
+         "kde": {
+          "items": {
+           "additionalProperties": false,
+           "properties": {
+            "x": {
+             "type": "number"
+            },
+            "y": {
+             "type": "number"
+            }
+           },
+           "required": [
+            "x",
+            "y"
+           ],
+           "type": "object"
+          },
+          "type": "array"
+         },
+         "links": {
+          "items": {
+           "additionalProperties": false,
+           "properties": {
+            "source": {
+             "type": "string"
+            },
+            "target": {
+             "type": "string"
+            },
+            "value": {
+             "type": "number"
+            }
+           },
+           "required": [
+            "source",
+            "target",
+            "value"
+           ],
+           "type": "object"
+          },
+          "type": "array"
+         },
+         "name": {
+          "type": "string"
+         },
+         "ohlc": {
+          "items": {
+           "items": {
+            "type": "number"
+           },
+           "type": "array"
+          },
+          "type": "array"
+         },
+         "points": {
+          "items": {
+           "type": "number"
+          },
+          "type": "array"
+         },
+         "visible": {},
+         "waterfallKinds": {
+          "items": {
+           "type": "string"
+          },
+          "type": "array"
+         }
+        },
+        "required": [
+         "name",
+         "points"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "title": {
+       "type": "string"
+      },
+      "type": {
+       "const": "chart",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "chart",
+      "series",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "bind": {
+       "description": "Reactive: rows come from a `data` carrier through this reader."
+      },
+      "colMeta": {
+       "items": {
+        "anyOf": [
+         {
+          "additionalProperties": false,
+          "properties": {
+           "levels": {
+            "items": {
+             "type": "string"
+            },
+            "type": "array"
+           }
+          },
+          "type": "object"
+         },
+         {
+          "type": "null"
+         }
+        ]
+       },
+       "type": "array"
+      },
+      "colTypes": {
+       "items": {
+        "enum": [
+         "text",
+         "color",
+         "contrast",
+         "bar",
+         "delta",
+         "status"
+        ],
+        "type": "string"
+       },
+       "type": "array"
+      },
+      "columns": {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      "footnote": {
+       "type": "string"
+      },
+      "rows": {
+       "items": {
+        "items": {
+         "type": [
+          "string",
+          "number",
+          "boolean",
+          "null"
+         ]
+        },
+        "type": "array"
+       },
+       "type": "array"
+      },
+      "sig": {
+       "additionalProperties": false,
+       "properties": {
+        "column": {
+         "type": "string"
+        },
+        "thresholds": {
+         "items": {
+          "type": "number"
+         },
+         "type": "array"
+        }
+       },
+       "required": [
+        "column"
+       ],
+       "type": "object"
+      },
+      "stats": {
+       "$ref": "#/definitions/TableStats",
+       "description": "Renderer-computed summary footer. The MODEL NEVER does this arithmetic: ask for the statistics instead of inventing a mean in prose."
+      },
+      "type": {
+       "const": "table",
+       "type": "string"
+      },
+      "units": {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      "visible": {}
+     },
+     "required": [
+      "columns",
+      "rows",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "caption": {
+       "type": "string"
+      },
+      "direction": {
+       "enum": [
+        "tb",
+        "lr"
+       ],
+       "type": "string"
+      },
+      "edges": {
+       "items": {
+        "$ref": "#/definitions/DiagramEdge"
+       },
+       "type": "array"
+      },
+      "layout": {
+       "enum": [
+        "flow",
+        "relationship"
+       ],
+       "type": "string"
+      },
+      "nodes": {
+       "items": {
+        "$ref": "#/definitions/DiagramNode"
+       },
+       "type": "array"
+      },
+      "route": {
+       "description": "Edge routing: orthogonal (dagre's default, right-angle segments) or smooth.",
+       "enum": [
+        "orthogonal",
+        "smooth"
+       ],
+       "type": "string"
+      },
+      "summary": {
+       "description": "One-to-three sentence reading of the diagram (shown as the summary + used as the aria description).",
+       "type": "string"
+      },
+      "type": {
+       "const": "diagram",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "edges",
+      "layout",
+      "nodes",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "items": {
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "consequence": {
+          "type": "string"
+         },
+         "due": {
+          "type": "string"
+         },
+         "ref": {
+          "type": "string"
+         },
+         "severity": {
+          "enum": [
+           "critical",
+           "high",
+           "medium",
+           "low"
+          ],
+          "type": "string"
+         },
+         "status": {
+          "enum": [
+           "done",
+           "open",
+           "fail"
+          ],
+          "type": "string"
+         },
+         "text": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "text"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "type": {
+       "const": "checklist",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "items",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "items": {
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "detail": {
+          "type": "string"
+         },
+         "status": {
+          "enum": [
+           "done",
+           "active",
+           "todo",
+           "fail"
+          ],
+          "type": "string"
+         },
+         "title": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "title"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "type": {
+       "const": "steps",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "items",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "body": {
+       "type": "string"
+      },
+      "title": {
+       "type": "string"
+      },
+      "tone": {
+       "enum": [
+        "info",
+        "warn",
+        "success",
+        "danger"
+       ],
+       "type": "string"
+      },
+      "type": {
+       "const": "callout",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "body",
+      "tone",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "detail": {
+       "type": "string"
+      },
+      "label": {
+       "type": "string"
+      },
+      "max": {
+       "type": "number"
+      },
+      "status": {
+       "enum": [
+        "ok",
+        "warn",
+        "fail"
+       ],
+       "type": "string"
+      },
+      "type": {
+       "const": "progress",
+       "type": "string"
+      },
+      "unit": {
+       "type": "string"
+      },
+      "value": {
+       "anyOf": [
+        {
+         "type": "number"
+        },
+        {
+         "$ref": "#/definitions/Binding"
+        }
+       ],
+       "description": "Reactive cards may author the figure as a binding."
+      },
+      "visible": {}
+     },
+     "required": [
+      "label",
+      "type",
+      "value"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "items": {
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "detail": {
+          "type": "string"
+         },
+         "status": {
+          "enum": [
+           "done",
+           "active",
+           "todo",
+           "fail"
+          ],
+          "type": "string"
+         },
+         "time": {
+          "type": "string"
+         },
+         "title": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "title"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "type": {
+       "const": "timeline",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "items",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "items": {
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "badge": {
+          "type": "string"
+         },
+         "caption": {
+          "type": "string"
+         },
+         "name": {
+          "type": "string"
+         },
+         "points": {
+          "items": {
+           "additionalProperties": false,
+           "properties": {
+            "text": {
+             "type": "string"
+            },
+            "tone": {
+             "enum": [
+              "pro",
+              "con",
+              "neutral"
+             ],
+             "type": "string"
+            }
+           },
+           "required": [
+            "text"
+           ],
+           "type": "object"
+          },
+          "type": "array"
+         }
+        },
+        "required": [
+         "name",
+         "points"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "type": {
+       "const": "compare",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "items",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "defaultDepth": {
+       "type": "number"
+      },
+      "nodes": {
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "children": {
+          "items": {
+           "type": "string"
+          },
+          "type": "array"
+         },
+         "detail": {
+          "type": "string"
+         },
+         "id": {
+          "type": "string"
+         },
+         "kind": {
+          "type": "string"
+         },
+         "label": {
+          "type": "string"
+         },
+         "lines": {
+          "type": "number"
+         },
+         "size": {
+          "type": "number"
+         }
+        },
+        "required": [
+         "id",
+         "label"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "pruned": {
+       "type": "boolean"
+      },
+      "sort": {
+       "enum": [
+        "manual",
+        "name",
+        "size",
+        "kind"
+       ],
+       "type": "string"
+      },
+      "type": {
+       "const": "tree",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "nodes",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "code": {
+       "type": "string"
+      },
+      "filename": {
+       "type": "string"
+      },
+      "highlight": {
+       "description": "false = skip the (lazy) syntax highlighter; render the bare <pre>.",
+       "type": "boolean"
+      },
+      "language": {
+       "type": "string"
+      },
+      "type": {
+       "const": "code",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "code",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "items": {
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "cite": {
+          "additionalProperties": false,
+          "properties": {
+           "case": {
+            "type": "string"
+           },
+           "coram": {
+            "items": {
+             "type": "string"
+            },
+            "type": "array"
+           },
+           "court": {
+            "type": "string"
+           },
+           "date": {
+            "type": "string"
+           },
+           "neutral": {
+            "type": "string"
+           },
+           "parallel": {
+            "type": "string"
+           },
+           "pinpoints": {
+            "items": {
+             "type": "number"
+            },
+            "type": "array"
+           },
+           "reporter": {
+            "type": "string"
+           },
+           "scr": {
+            "type": "string"
+           },
+           "style": {
+            "enum": [
+             "neutral-first",
+             "scc",
+             "scr",
+             "air",
+             "bluebook"
+            ],
+            "type": "string"
+           }
+          },
+          "type": "object"
+         },
+         "href": {
+          "type": "string"
+         },
+         "note": {
+          "type": "string"
+         },
+         "title": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "title"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "type": {
+       "const": "references",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "items",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "attribution": {
+       "type": "string"
+      },
+      "context": {
+       "type": "string"
+      },
+      "role": {
+       "type": "string"
+      },
+      "text": {
+       "type": "string"
+      },
+      "type": {
+       "const": "quote",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "text",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "items": {
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "key": {
+          "type": "string"
+         },
+         "mono": {
+          "type": "boolean"
+         },
+         "value": {
+          "type": [
+           "string",
+           "number"
+          ]
+         }
+        },
+        "required": [
+         "key",
+         "value"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "title": {
+       "type": "string"
+      },
+      "type": {
+       "const": "keyvalue",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "items",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "filename": {
+       "type": "string"
+      },
+      "highlight": {
+       "description": "false = skip the (lazy) syntax highlighter on the row text.",
+       "type": "boolean"
+      },
+      "hunks": {
+       "description": "One hunk = one titled change. `lines` carries the unified-diff rows.",
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "header": {
+          "type": "string"
+         },
+         "lines": {
+          "items": {
+           "additionalProperties": false,
+           "properties": {
+            "op": {
+             "$ref": "#/definitions/DiffOp"
+            },
+            "text": {
+             "type": "string"
+            }
+           },
+           "required": [
+            "op",
+            "text"
+           ],
+           "type": "object"
+          },
+          "type": "array"
+         }
+        },
+        "required": [
+         "lines"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "language": {
+       "type": "string"
+      },
+      "type": {
+       "const": "diff",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "hunks",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "cols": {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      "rows": {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      "title": {
+       "type": "string"
+      },
+      "type": {
+       "const": "heatmap",
+       "type": "string"
+      },
+      "values": {
+       "description": "values[r][c] \u2014 must match rows\u00d7cols; numbers are scaled to the grid max.",
+       "items": {
+        "items": {
+         "type": "number"
+        },
+        "type": "array"
+       },
+       "type": "array"
+      },
+      "visible": {}
+     },
+     "required": [
+      "cols",
+      "rows",
+      "type",
+      "values"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "items": {
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "blocks": {
+          "items": {
+           "$ref": "#/definitions/CanvasBlock"
+          },
+          "type": "array"
+         },
+         "label": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "label",
+         "blocks"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "type": {
+       "const": "tabs",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "items",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "items": {
+       "description": "Collapsed by default unless `open: true`; first item defaults open.",
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "blocks": {
+          "items": {
+           "$ref": "#/definitions/CanvasBlock"
+          },
+          "type": "array"
+         },
+         "body": {
+          "type": "string"
+         },
+         "open": {
+          "type": "boolean"
+         },
+         "title": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "title"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "type": {
+       "const": "accordion",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "items",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "command": {
+       "type": "string"
+      },
+      "exitCode": {
+       "type": "number"
+      },
+      "highlight": {
+       "description": "false = skip the (lazy) syntax highlighter on the command / flagged lines.",
+       "type": "boolean"
+      },
+      "lines": {
+       "description": "Raw output lines; accept {text, tone} objects or plain strings.",
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "text": {
+          "type": "string"
+         },
+         "tone": {
+          "$ref": "#/definitions/TermTone"
+         }
+        },
+        "required": [
+         "text"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "title": {
+       "type": "string"
+      },
+      "type": {
+       "const": "terminal",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "lines",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "items": {
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "label": {
+          "type": "string"
+         },
+         "tone": {
+          "enum": [
+           "info",
+           "warn",
+           "success",
+           "danger",
+           "neutral"
+          ],
+          "type": "string"
+         }
+        },
+        "required": [
+         "label"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "type": {
+       "const": "badges",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "items",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "label": {
+       "type": "string"
+      },
+      "type": {
+       "const": "divider",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "columns": {
+       "description": "Explicit column labels; derived from row 0 when omitted.",
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      "filename": {
+       "type": "string"
+      },
+      "header": {
+       "description": "Row 0 treated as the header row. Default true.",
+       "type": "boolean"
+      },
+      "rows": {
+       "description": "Each row is a cell array; ragged rows are allowed and pad on render.",
+       "items": {
+        "items": {
+         "type": [
+          "string",
+          "number"
+         ]
+        },
+        "type": "array"
+       },
+       "type": "array"
+      },
+      "sheets": {
+       "description": "Sheet names in tab order. First one is shown when nothing else applies.",
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      "title": {
+       "type": "string"
+      },
+      "type": {
+       "const": "spreadsheet",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "rows",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "filename": {
+       "type": "string"
+      },
+      "slides": {
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "bullets": {
+          "items": {
+           "type": "string"
+          },
+          "type": "array"
+         },
+         "heading": {
+          "type": "string"
+         },
+         "layout": {
+          "description": "Optional per-slide layout hint.",
+          "enum": [
+           "title",
+           "bullets"
+          ],
+          "type": "string"
+         },
+         "note": {
+          "description": "Optional speaker note, rendered small under the slide.",
+          "type": "string"
+         }
+        },
+        "required": [
+         "heading"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "title": {
+       "type": "string"
+      },
+      "type": {
+       "const": "slides",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "slides",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "content": {
+       "description": "Heading + paragraph + bullet outline.",
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "heading": {
+          "type": "string"
+         },
+         "kind": {
+          "description": "\"p\" | \"h2\" | \"h3\" | \"li\" \u2014 plain text, rendered in order.",
+          "type": "string"
+         },
+         "level": {
+          "enum": [
+           1,
+           2,
+           3
+          ],
+          "type": "number"
+         },
+         "text": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "text"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "filename": {
+       "type": "string"
+      },
+      "title": {
+       "type": "string"
+      },
+      "type": {
+       "const": "document",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "content",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "content": {
+       "description": "Plain text or markdown source; edited as text, copied verbatim.",
+       "type": "string"
+      },
+      "filename": {
+       "type": "string"
+      },
+      "language": {
+       "description": "language tag for the download extension when filename has none.",
+       "type": "string"
+      },
+      "title": {
+       "type": "string"
+      },
+      "type": {
+       "const": "text",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "content",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "bind": {
+       "description": "State key the current value is stored under.",
+       "type": "string"
+      },
+      "format": {
+       "description": "Free-text format shown beside the value (\"$18,000\" via money/compact\u2026).",
+       "enum": [
+        "plain",
+        "money",
+        "compact",
+        "pct"
+       ],
+       "type": "string"
+      },
+      "label": {
+       "type": "string"
+      },
+      "max": {
+       "type": "number"
+      },
+      "min": {
+       "type": "number"
+      },
+      "step": {
+       "type": "number"
+      },
+      "type": {
+       "const": "slider",
+       "type": "string"
+      },
+      "unit": {
+       "type": "string"
+      },
+      "value": {
+       "description": "Initial/current value; a control with no current state writes this first.",
+       "type": "number"
+      },
+      "visible": {}
+     },
+     "required": [
+      "bind",
+      "label",
+      "max",
+      "min",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "bind": {
+       "type": "string"
+      },
+      "label": {
+       "type": "string"
+      },
+      "options": {
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "label": {
+          "type": "string"
+         },
+         "value": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "label",
+         "value"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "type": {
+       "const": "select",
+       "type": "string"
+      },
+      "value": {
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "bind",
+      "label",
+      "options",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "bind": {
+       "type": "string"
+      },
+      "label": {
+       "type": "string"
+      },
+      "options": {
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "label": {
+          "type": "string"
+         },
+         "value": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "label",
+         "value"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "type": {
+       "const": "multiselect",
+       "type": "string"
+      },
+      "value": {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      "visible": {}
+     },
+     "required": [
+      "bind",
+      "label",
+      "options",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "bind": {
+       "type": "string"
+      },
+      "label": {
+       "type": "string"
+      },
+      "options": {
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "label": {
+          "type": "string"
+         },
+         "value": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "label",
+         "value"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "type": {
+       "const": "segmented",
+       "type": "string"
+      },
+      "value": {
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "bind",
+      "options",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "bind": {
+       "type": "string"
+      },
+      "label": {
+       "type": "string"
+      },
+      "type": {
+       "const": "toggle",
+       "type": "string"
+      },
+      "value": {
+       "type": "boolean"
+      },
+      "visible": {}
+     },
+     "required": [
+      "bind",
+      "label",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "bind": {
+       "type": "string"
+      },
+      "label": {
+       "type": "string"
+      },
+      "placeholder": {
+       "type": "string"
+      },
+      "type": {
+       "const": "search",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "bind",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "columns": {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      "header": {
+       "type": "boolean"
+      },
+      "name": {
+       "description": "Name every `$from` points at. Never rendered as a surface.",
+       "type": "string"
+      },
+      "rows": {
+       "items": {
+        "items": {
+         "type": [
+          "string",
+          "number",
+          "boolean",
+          "null"
+         ]
+        },
+        "type": "array"
+       },
+       "type": "array"
+      },
+      "type": {
+       "const": "data",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "name",
+      "rows",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "edges": {
+       "items": {
+        "$ref": "#/definitions/GraphEdge"
+       },
+       "type": "array"
+      },
+      "height": {
+       "description": "Render height clamp (320..720); the card fits it, fullscreen uses more.",
+       "type": "number"
+      },
+      "nodes": {
+       "items": {
+        "$ref": "#/definitions/GraphNode"
+       },
+       "type": "array"
+      },
+      "title": {
+       "type": "string"
+      },
+      "type": {
+       "const": "graph",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "edges",
+      "nodes",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "alt": {
+       "type": "string"
+      },
+      "caption": {
+       "type": "string"
+      },
+      "src": {
+       "description": "Host file path or /api/\u2026 URL; mapped through linkHref().",
+       "type": "string"
+      },
+      "type": {
+       "const": "image",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "src",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "items": {
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "alt": {
+          "type": "string"
+         },
+         "caption": {
+          "type": "string"
+         },
+         "src": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "src"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "layout": {
+       "enum": [
+        "2col",
+        "3col"
+       ],
+       "type": "string"
+      },
+      "type": {
+       "const": "gallery",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "items",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "caption": {
+       "type": "string"
+      },
+      "captions": {
+       "type": "string"
+      },
+      "poster": {
+       "type": "string"
+      },
+      "src": {
+       "type": "string"
+      },
+      "type": {
+       "const": "video",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "src",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "blocks": {
+       "items": {
+        "$ref": "#/definitions/CanvasBlock"
+       },
+       "type": "array"
+      },
+      "cols": {
+       "description": "Grid columns for `grid`/`split` (2-4); masonry ignores it.",
+       "type": "number"
+      },
+      "layout": {
+       "$ref": "#/definitions/LayoutMode"
+      },
+      "type": {
+       "const": "layout",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "blocks",
+      "layout",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "display": {
+       "description": "Display (centred, own lines). Default true.",
+       "type": "boolean"
+      },
+      "label": {
+       "type": "string"
+      },
+      "lines": {
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "number": {
+          "type": "string"
+         },
+         "tex": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "tex"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "number": {
+       "anyOf": [
+        {
+         "type": "number"
+        },
+        {
+         "const": true,
+         "type": "boolean"
+        }
+       ]
+      },
+      "tex": {
+       "type": "string"
+      },
+      "type": {
+       "const": "math",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "branches": {
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "head": {
+          "type": "string"
+         },
+         "name": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "name"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "commits": {
+       "description": "Newest first \u2014 the order they are drawn in.",
+       "items": {
+        "$ref": "#/definitions/GitCommit"
+       },
+       "type": "array"
+      },
+      "title": {
+       "type": "string"
+      },
+      "type": {
+       "const": "gitgraph",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "commits",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "enum": [
+        "lemma",
+        "proposition",
+        "corollary",
+        "theorem",
+        "proof"
+       ],
+       "type": "string"
+      },
+      "number": {
+       "type": "number"
+      },
+      "proof": {
+       "type": "string"
+      },
+      "refs": {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      "statement": {
+       "type": "string"
+      },
+      "type": {
+       "const": "theorem",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "kind",
+      "statement",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "number": {
+       "type": "number"
+      },
+      "steps": {
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "complexity": {
+          "type": "string"
+         },
+         "indent": {
+          "type": "number"
+         },
+         "text": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "text"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "type": {
+       "const": "algorithm",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "steps",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "against": {
+       "type": "string"
+      },
+      "colors": {
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "note": {
+          "type": "string"
+         },
+         "role": {
+          "type": "string"
+         },
+         "value": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "value"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "radius": {
+       "type": "boolean"
+      },
+      "scale": {
+       "type": "boolean"
+      },
+      "shadow": {
+       "type": "boolean"
+      },
+      "space": {
+       "type": "string"
+      },
+      "title": {
+       "type": "string"
+      },
+      "type": {
+       "const": "palette",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "colors",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "items": {
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "criterion": {
+          "type": "string"
+         },
+         "evidence": {
+          "type": "string"
+         },
+         "note": {
+          "type": "string"
+         },
+         "score": {
+          "type": "number"
+         },
+         "severity": {
+          "enum": [
+           "info",
+           "warn",
+           "danger"
+          ],
+          "type": "string"
+         }
+        },
+        "required": [
+         "criterion"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "max": {
+       "type": "number"
+      },
+      "method": {
+       "enum": [
+        "heuristic",
+        "sus",
+        "rice",
+        "custom"
+       ],
+       "type": "string"
+      },
+      "title": {
+       "type": "string"
+      },
+      "type": {
+       "const": "scorecard",
+       "type": "string"
+      },
+      "verdict": {
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "items",
+      "method",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "asOf": {
+       "type": "string"
+      },
+      "items": {
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "consequence": {
+          "type": "string"
+         },
+         "due": {
+          "type": "string"
+         },
+         "evidence": {
+          "type": "string"
+         },
+         "obligation": {
+          "type": "string"
+         },
+         "owner": {
+          "type": "string"
+         },
+         "penalty": {
+          "type": "string"
+         },
+         "provision": {
+          "type": "string"
+         },
+         "ref": {
+          "type": "string"
+         },
+         "severity": {
+          "enum": [
+           "info",
+           "warn",
+           "danger"
+          ],
+          "type": "string"
+         },
+         "status": {
+          "enum": [
+           "pass",
+           "fail",
+           "warn",
+           "na",
+           "pending"
+          ],
+          "type": "string"
+         }
+        },
+        "required": [
+         "ref",
+         "provision",
+         "obligation",
+         "status"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "regime": {
+       "type": "string"
+      },
+      "source": {
+       "type": "string"
+      },
+      "type": {
+       "const": "compliance",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "items",
+      "regime",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "items": {
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "children": {
+          "type": "boolean"
+         },
+         "flags": {
+          "items": {
+           "type": "string"
+          },
+          "type": "array"
+         },
+         "heading": {
+          "type": "string"
+         },
+         "note": {
+          "type": "string"
+         },
+         "playbook": {
+          "type": "string"
+         },
+         "ref": {
+          "type": "string"
+         },
+         "risk": {
+          "enum": [
+           "info",
+           "warn",
+           "danger"
+          ],
+          "type": "string"
+         },
+         "source": {
+          "type": "string"
+         },
+         "status": {
+          "type": "string"
+         },
+         "text": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "ref",
+         "text"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "title": {
+       "type": "string"
+      },
+      "type": {
+       "const": "clause",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "items",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "rows": {
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "consequence": {
+          "type": "string"
+         },
+         "due": {
+          "type": "string"
+         },
+         "evidence": {
+          "type": "string"
+         },
+         "obligation": {
+          "type": "string"
+         },
+         "owner": {
+          "type": "string"
+         },
+         "party": {
+          "type": "string"
+         },
+         "recurrence": {
+          "type": "string"
+         },
+         "ref": {
+          "type": "string"
+         },
+         "severity": {
+          "enum": [
+           "info",
+           "warn",
+           "danger"
+          ],
+          "type": "string"
+         },
+         "status": {
+          "type": "string"
+         },
+         "trigger": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "obligation",
+         "party"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "title": {
+       "type": "string"
+      },
+      "type": {
+       "const": "obligations",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "rows",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "tables": {
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "columns": {
+          "items": {
+           "additionalProperties": false,
+           "properties": {
+            "key": {
+             "enum": [
+              "PK",
+              "FK",
+              "NN",
+              "UQ"
+             ],
+             "type": "string"
+            },
+            "name": {
+             "type": "string"
+            },
+            "note": {
+             "type": "string"
+            },
+            "ref": {
+             "type": "string"
+            },
+            "type": {
+             "type": "string"
+            }
+           },
+           "required": [
+            "name",
+            "type"
+           ],
+           "type": "object"
+          },
+          "type": "array"
+         },
+         "indexes": {
+          "items": {
+           "type": "string"
+          },
+          "type": "array"
+         },
+         "name": {
+          "type": "string"
+         },
+         "note": {
+          "type": "string"
+         },
+         "rows": {
+          "type": "number"
+         }
+        },
+        "required": [
+         "name",
+         "columns"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "title": {
+       "type": "string"
+      },
+      "type": {
+       "const": "schema",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "tables",
+      "type"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "actors": {
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "id": {
+          "type": "string"
+         },
+         "kind": {
+          "type": "string"
+         },
+         "label": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "id",
+         "label"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "messages": {
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "at": {
+          "type": "string"
+         },
+         "from": {
+          "type": "string"
+         },
+         "kind": {
+          "enum": [
+           "sync",
+           "async",
+           "return",
+           "self"
+          ],
+          "type": "string"
+         },
+         "label": {
+          "type": "string"
+         },
+         "to": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "from",
+         "to"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "title": {
+       "type": "string"
+      },
+      "type": {
+       "const": "sequence",
+       "type": "string"
+      },
+      "visible": {}
+     },
+     "required": [
+      "actors",
+      "messages",
+      "type"
+     ],
+     "type": "object"
+    }
+   ]
+  },
+  "CanvasPageFormat": {
+   "enum": [
+    "a4",
+    "slide",
+    "auto"
+   ],
+   "type": "string"
+  },
+  "CanvasSpec": {
+   "additionalProperties": false,
+   "properties": {
+    "blocks": {
+     "items": {
+      "$ref": "#/definitions/CanvasBlock"
+     },
+     "type": "array"
+    },
+    "page": {
+     "$ref": "#/definitions/CanvasPageFormat",
+     "description": "The page geometry the card renders into. A card is ONE page format, not a document direction, so there are exactly two values and no third: a report that is portrait A4 is `a4`, one that is a 16:9 deck is `slide`. `auto` lets the renderer pick from measured content height.\n\nOmitted = `auto`, so a card written before this key existed is unchanged."
+    },
+    "state": {
+     "additionalProperties": {
+      "type": [
+       "string",
+       "number",
+       "boolean",
+       "null"
+      ]
+     },
+     "description": "Per-canvas initial state for reactive blocks (controls write here).",
+     "type": "object"
+    },
+    "title": {
+     "type": "string"
+    },
+    "v": {
+     "const": 1,
+     "type": "number"
+    }
+   },
+   "required": [
+    "v",
+    "blocks"
+   ],
+   "type": "object"
+  },
+  "DiagramEdge": {
+   "additionalProperties": false,
+   "properties": {
+    "cardinality": {
+     "description": "Crow's-foot terminator at the far end.",
+     "enum": [
+      "1",
+      "0..1",
+      "1..*",
+      "0..*"
+     ],
+     "type": "string"
+    },
+    "from": {
+     "type": "string"
+    },
+    "label": {
+     "type": "string"
+    },
+    "note": {
+     "type": "string"
+    },
+    "to": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "from",
+    "to"
+   ],
+   "type": "object"
+  },
+  "DiagramNode": {
+   "additionalProperties": false,
+   "description": "A node with `fields` renders as an ENTITY box: header bar + one row per field. `shape` only changes the box treatment; the dagre layout already takes an explicit {width,height}, so a taller box with internal text needs no layout engine work and no new dependency.",
+   "properties": {
+    "detail": {
+     "type": "string"
+    },
+    "fields": {
+     "description": "Column list; only meaningful when shape is \"entity\" (the ER default for layout:\"relationship\"). pk \u2192 key glyph, fk \u2192 arrow, nullable \u2192 dimmed.",
+     "items": {
+      "additionalProperties": false,
+      "properties": {
+       "fk": {
+        "type": "boolean"
+       },
+       "name": {
+        "type": "string"
+       },
+       "nullable": {
+        "type": "boolean"
+       },
+       "pk": {
+        "type": "boolean"
+       },
+       "type": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "name"
+      ],
+      "type": "object"
+     },
+     "type": "array"
+    },
+    "id": {
+     "type": "string"
+    },
+    "kind": {
+     "type": "string"
+    },
+    "label": {
+     "type": "string"
+    },
+    "note": {
+     "type": "string"
+    },
+    "shape": {
+     "enum": [
+      "box",
+      "entity",
+      "store",
+      "note"
+     ],
+     "type": "string"
+    },
+    "symbol": {
+     "description": "A standard circuit glyph drawn inside the node box.",
+     "enum": [
+      "resistor",
+      "capacitor",
+      "inductor",
+      "diode",
+      "ground",
+      "battery",
+      "opamp",
+      "led"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "label"
+   ],
+   "type": "object"
+  },
+  "DiffOp": {
+   "enum": [
+    "add",
+    "del",
+    "ctx"
+   ],
+   "type": "string"
+  },
+  "GitCommit": {
+   "additionalProperties": false,
+   "properties": {
+    "author": {
+     "type": "string"
+    },
+    "branch": {
+     "type": "string"
+    },
+    "id": {
+     "description": "Opaque short id; the only identity the renderer needs.",
+     "type": "string"
+    },
+    "merge": {
+     "description": "Rounds the row and merges lanes (a merge commit).",
+     "type": "boolean"
+    },
+    "message": {
+     "type": "string"
+    },
+    "parents": {
+     "description": "Parent commit ids. A parent on ANOTHER branch is what draws the fork.",
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "tags": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "when": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "message"
+   ],
+   "type": "object"
+  },
+  "GraphEdge": {
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "description": "\"asserted\" (dashed, analyst-added) vs anything else (solid, measured).",
+     "type": "string"
+    },
+    "label": {
+     "type": "string"
+    },
+    "source": {
+     "type": "string"
+    },
+    "target": {
+     "type": "string"
+    },
+    "weight": {
+     "type": "number"
+    }
+   },
+   "required": [
+    "source",
+    "target"
+   ],
+   "type": "object"
+  },
+  "GraphNode": {
+   "additionalProperties": false,
+   "properties": {
+    "detail": {
+     "type": "string"
+    },
+    "id": {
+     "type": "string"
+    },
+    "kind": {
+     "description": "Free-form grouping; drives the cross-filter chips and the opacity tier.",
+     "type": "string"
+    },
+    "label": {
+     "type": "string"
+    },
+    "weight": {
+     "type": "number"
+    }
+   },
+   "required": [
+    "id",
+    "label"
+   ],
+   "type": "object"
+  },
+  "LayoutMode": {
+   "enum": [
+    "stack",
+    "bento",
+    "split",
+    "masonry",
+    "grid"
+   ],
+   "type": "string"
+  },
+  "TableStat": {
+   "description": "The summary statistics `table.stats` may request. All computed in the renderer from the rendered rows, so a wrong number cannot be authored.",
+   "enum": [
+    "mean",
+    "median",
+    "sd",
+    "min",
+    "max",
+    "p95",
+    "count"
+   ],
+   "type": "string"
+  },
+  "TableStats": {
+   "additionalProperties": false,
+   "properties": {
+    "columns": {
+     "description": "Which columns to summarise. Omitted = every numeric column.",
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "compute": {
+     "description": "Omitted = every statistic, for the chosen columns.",
+     "items": {
+      "$ref": "#/definitions/TableStat"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "TermTone": {
+   "enum": [
+    "stdout",
+    "stderr",
+    "info",
+    "success",
+    "dim"
+   ],
+   "type": "string"
+  },
+  "Trend": {
+   "enum": [
+    "up",
+    "down",
+    "flat"
+   ],
+   "type": "string"
+  }
+ },
+ "additionalProperties": false
+}
