@@ -1066,8 +1066,15 @@ html.theme-fading body * {
 /* Owner 10-08 (steer): clusters at MINIMAL padding — bar-card horizontal padding
    1.8px (6 -> 3.6 -> 1.8, 50% each round). The clusters nearly touch the rounded
    corners; the shell's own 4px padding is the visual margin. */
-.composer-input-card { padding: 4px 12px; border: none; background: color-mix(in srgb, var(--color-void) 70%, transparent); }
-.composer-bar-card { padding: 4px 1.8px; border: none; background: color-mix(in srgb, var(--color-void) 70%, transparent); }
+/* Owner 10-08 (steer): the inner cards go FULLY TRANSPARENT — the shell plate
+   carries the ONE blurred surface (blur(29px) saturate(1.25), the bubble
+   treatment). Previously each card painted a 70% void fill + its own
+   blur(35px), which stacked three layers of differing material and hid the
+   shell's frosted look entirely (the "input has no bubble blur" report).
+   One blurred surface also avoids the nested-backdrop-filter jank class the
+   Android APK is known for. Elevation shadow only on the cards. */
+.composer-input-card { padding: 4px 12px; border: none; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.composer-bar-card { padding: 4px 1.8px; border: none; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
 .chat-composer-bar { border-top: none; padding-top: 0; margin-top: 0; }
 /* Owner 10-08 (steer): the per-card glow rings are gone with the outlines —
    elevation shadow only. The shell carries the accent glow now. */
