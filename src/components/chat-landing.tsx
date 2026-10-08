@@ -1950,18 +1950,22 @@ export function ChatLanding({ resetSignal, selectedSessionId, onSessionChange, o
         </span>
         <span className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.25em] text-slate-500">
 
-          <button type="button" onClick={onNewChatClick}
-            aria-label="New chat" title="New chat" data-ncflow={ncFlow} disabled={ncFlow !== "idle"}
-            className="nc-btn flex h-10 items-center gap-2 rounded-lg px-4 text-sm motion-reduce:transition-none max-lg:h-10 max-lg:w-10 max-lg:justify-center max-lg:p-0">
-            {ncFlow === "idle" && <Plus className="h-4 w-4 max-lg:h-5 max-lg:w-5" strokeWidth={2} />}
-            {ncFlow === "press" && (
-              <span aria-hidden="true" className="nc-btn-spin-wrap max-lg:absolute max-lg:inset-0 max-lg:flex max-lg:items-center max-lg:justify-center">
-                <Loader2 className="nc-btn-spin h-4 w-4 max-lg:h-5 max-lg:w-5" strokeWidth={2} />
-              </span>
-            )}
-            {ncFlow === "press" && <span className="nc-btn-progress" aria-hidden="true" />}
-            <span className="max-lg:hidden">{ncFlow === "press" ? "Starting…" : "New chat"}</span>
-          </button>
+          {/* Owner 10-08 (steer): no New-chat button on the landing page — it's
+              already the landing; the button only makes sense inside a chat. */}
+          {!empty && (
+            <button type="button" onClick={onNewChatClick}
+              aria-label="New chat" title="New chat" data-ncflow={ncFlow} disabled={ncFlow !== "idle"}
+              className="nc-btn flex h-10 items-center gap-2 rounded-lg px-4 text-sm motion-reduce:transition-none max-lg:h-10 max-lg:w-10 max-lg:justify-center max-lg:p-0">
+              {ncFlow === "idle" && <Plus className="h-4 w-4 max-lg:h-5 max-lg:w-5" strokeWidth={2} />}
+              {ncFlow === "press" && (
+                <span aria-hidden="true" className="nc-btn-spin-wrap max-lg:absolute max-lg:inset-0 max-lg:flex max-lg:items-center max-lg:justify-center">
+                  <Loader2 className="nc-btn-spin h-4 w-4 max-lg:h-5 max-lg:w-5" strokeWidth={2} />
+                </span>
+              )}
+              {ncFlow === "press" && <span className="nc-btn-progress" aria-hidden="true" />}
+              <span className="max-lg:hidden">{ncFlow === "press" ? "Starting…" : "New chat"}</span>
+            </button>
+          )}
         </span>
       </header>
 
