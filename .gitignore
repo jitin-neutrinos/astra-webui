@@ -44,3 +44,22 @@ data/vault-registry.json
 data/vault-registry.check.json
 data/astra-training.db*
 data/training-exports/
+
+# --- runtime data & debris (cleanup 2026-10-08) ---
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/backups/
+data/backfill.lock
+data/theme-bg/
+patch_*.cjs
+parity-out/
+dist-cssprobe/
+gtest-*
+test-run.ts
+test_*.mjs
+solo4.json
+scratch-*.mjs
+scratch/*.diff
+scratch/*.patch
+*.pre-tok
