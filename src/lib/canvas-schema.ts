@@ -1192,9 +1192,16 @@ export function validateBlockInner(b: any): CanvasBlock | null {
         });
       }
       return { type: "steps", items: sitems };
-    case "callout":
-      if (!TONES.has(b.tone) || !isStr(b.body)) return null;
-      return { type: "callout", tone: b.tone, title: isStr(b.title) ? b.title : undefined, body: b.body };
+    case "callout": {
+      // Model-variant alias (RG-147, 56651cd3): the model sometimes writes the
+      // callout text as `detail` (steps/algorithm vocabulary) instead of `body`
+      // — spec validation then rejects EVERY block and the whole card dies as
+      // "unreadable payload" even though the JSON is valid. Accept `detail`
+      // as a fallback; `body` keeps precedence.
+      const text = isStr(b.body) ? b.body : isStr(b.detail) ? b.detail : undefined;
+      if (!TONES.has(b.tone) || !text) return null;
+      return { type: "callout", tone: b.tone, title: isStr(b.title) ? b.title : undefined, body: text };
+    }
     case "progress":
       if (!isStr(b.label) || (!isNum(b.value) && !isBind(b.value))) return null;
       if (b.max != null && !isNum(b.max)) return null;
@@ -2079,34 +2086,42 @@ function fixKeyValueInArray(s: string): string {
       // "key":  inside an array? (colon right after the closing quote)
       let k = wsAt(j + 1);
       if (j < s.length && s[k] === ":") {
-        // Confirmed defect. Strip the comma that precedes this key (if any),
-        // then consume `key : value` — and any further `, key : value` pairs —
-        // up to the array's `]`.
+        // Peek the value BEFORE touching the output: a structured (`{`/`[`) or
+        // unrecognizable value means this is NOT a pair-in-array defect — it is
+        // a legit object key seen through a MISNESTED context (RG-147: the
+        // callout object is still open, so the root key `"badges":[…]` looks
+        // like an array element with a colon). Emit the key string untouched;
+        // the misnested-closer healer owns the structure. The old bail here
+        // stripped the preceding comma and left a stray quote — active corrupt-
+        // ion on every misnested body that reached this tier.
+        let v = wsAt(k + 1);
+        let consumeEnd = -1;
+        if (s[v] === '"') {
+          v++;
+          while (v < s.length) {
+            if (s[v] === "\\") { v += 2; continue; }
+            if (s[v] === '"') { v++; break; }
+            v++;
+          }
+          consumeEnd = v;
+        } else {
+          const scalar = /^(true|false|null|-?[0-9][0-9.eE+]*)/.exec(s.slice(v));
+          if (scalar) consumeEnd = v + scalar[0].length;
+        }
+        if (consumeEnd === -1) {
+          out.push(s.slice(i, j + 1));
+          i = j + 1;
+          continue;
+        }
+        // Confirmed defect (scalar/string value). Strip the comma that precedes
+        // this key (if any), consume `key : value` — and any further
+        // `,"key" : value` pairs — up to the array's `]`.
         let end = out.length;
         while (end > 0 && /\s/.test(out[end - 1])) end--;
         if (end > 0 && out[end - 1] === ",") out.length = end - 1;
         // consume the key token
         i = k + 1;
-        // consume value: string / scalar; bail on structured values
-        i = wsAt(i);
-        if (s[i] === '"') {
-          i++;
-          while (i < s.length) {
-            if (s[i] === "\\") { i += 2; continue; }
-            if (s[i] === '"') { i++; break; }
-            i++;
-          }
-        } else {
-          const scalar = /^(true|false|null|-?[0-9][0-9.eE+]*)/.exec(s.slice(i));
-          if (!scalar) {
-            // structured or unrecognizable value: leave the site untouched —
-            // emit nothing more here and let the async tier handle it.
-            out.push('"');
-            i = j + 1;
-            continue;
-          }
-          i += scalar[0].length;
-        }
+        i = consumeEnd;
         // more pairs? `,"k":"v"` … until `]`
         for (;;) {
           const a = wsAt(i);
@@ -2123,20 +2138,20 @@ function fixKeyValueInArray(s: string): string {
           const n2 = wsAt(m + 1);
           if (s[n2] !== ":") break;
           // value token
-          let v = wsAt(n2 + 1);
-          if (s[v] === '"') {
-            v++;
-            while (v < s.length) {
-              if (s[v] === "\\") { v += 2; continue; }
-              if (s[v] === '"') { v++; break; }
-              v++;
+          let v2 = wsAt(n2 + 1);
+          if (s[v2] === '"') {
+            v2++;
+            while (v2 < s.length) {
+              if (s[v2] === "\\") { v2 += 2; continue; }
+              if (s[v2] === '"') { v2++; break; }
+              v2++;
             }
           } else {
-            const scalar = /^(true|false|null|-?[0-9][0-9.eE+]*)/.exec(s.slice(v));
-            if (!scalar) break;
-            v += scalar[0].length;
+            const scalar2 = /^(true|false|null|-?[0-9][0-9.eE+]*)/.exec(s.slice(v2));
+            if (!scalar2) break;
+            v2 += scalar2[0].length;
           }
-          i = v;
+          i = v2;
         }
         continue; // next loop iteration sees the `]` (or whatever follows)
       }
@@ -2204,7 +2219,20 @@ function lenientJson(raw: string): unknown {
   // (b679d5eb had BOTH defects: a pair-in-array mid-body AND a truncated
   // final string; feeding commaFixed here dropped the first fix on the floor).
   const truncated = fixTruncatedString(pairFixed);
-  try { return attempt(truncated); } catch { /* fall through to depth repair */ }
+  try { return attempt(truncated); } catch { /* fall through */ }
+
+  // Tier 1.75: misnested closers — BEFORE truncation completion in spirit, so
+  // it runs on text the truncation tier has not yet "completed" (fixTruncatedString
+  // closes phantom brackets around a misnesting and makes it unhealable; heal
+  // the structure FIRST, then completion is unnecessary — the healer also
+  // completes EOF itself). RG-147 (c03b8079).
+  const healed = healMisnestedClosers(truncated);
+  try { return attempt(healed); } catch { /* fall through */ }
+
+  // The truncation tier's phantom-completion can corrupt a healable body; if
+  // healing the UN-completed text works, prefer that answer.
+  const healedRaw = healMisnestedClosers(pairFixed);
+  try { return attempt(healedRaw); } catch { /* fall through to depth repair */ }
 
   // Tier 2: bracket-depth repair (see balanceBrackets). Handles the surplus
   // trailing closer the model emits at the end of a card.
@@ -2249,6 +2277,61 @@ function fixUnescapedNewlines(s: string): string {
  * Fix truncated JSON where the LLM ran out of tokens mid-string.
  * Closes the unterminated string, then closes any open brackets/braces.
  */
+/**
+ * Tier 1.7 — misnested closer healing + EOF completion (RG-147, c03b8079).
+ *
+ * Two defects the depth counter cannot see because they cancel out numerically:
+ *   a) the model writes a closer that does not match the innermost open
+ *      container (`blocks:[ … {"x":1}],` — the `]` closes the array while the
+ *      object is still open, so its implied `}` is missing);
+ *   b) a whole run of closers is missing at EOF (a truncated fence whose brace
+ *      COUNT happens to balance because early misnesting paid for it —
+ *      `fixTruncatedString`'s naive count then appends nothing).
+ *
+ * Healing rule: a closer matching an outer container first closes everything
+ * inside it (emitting the implied closers), then itself. At EOF the remaining
+ * open containers close in reverse order. Valid JSON passes through untouched
+ * (every closer matches the top of the stack) — this is a no-op unless the
+ * text is already broken, and it never DROPS content: everything written is
+ * kept, only implied closers are added.
+ */
+function healMisnestedClosers(s: string): string {
+  const out: string[] = [];
+  const stack: ("{" | "[")[] = [];
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inString) {
+      out.push(c);
+      if (escaped) escaped = false;
+      else if (c === "\\") escaped = true;
+      else if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') { inString = true; out.push(c); continue; }
+    if (c === "{" || c === "[") { stack.push(c); out.push(c); continue; }
+    if (c === "}" || c === "]") {
+      const want = c === "}" ? "{" : "[";
+      const at = stack.lastIndexOf(want);
+      if (at === -1) {
+        // closer with nothing open of its kind: stray — drop it (the depth
+        // repair tier used to balance around it; dropping the stray is the
+        // minimal honest repair)
+        continue;
+      }
+      // close everything above the matching container, then the container
+      for (let k = stack.length - 1; k >= at; k--) out.push(stack[k] === "{" ? "}" : "]");
+      stack.length = at;
+      continue;
+    }
+    out.push(c);
+  }
+  // EOF: close whatever is still open, innermost first
+  for (let k = stack.length - 1; k >= 0; k--) out.push(stack[k] === "{" ? "}" : "]");
+  return out.join("");
+}
+
 function fixTruncatedString(s: string): string {
   let inString = false;
   let escaped = false;

@@ -1217,6 +1217,30 @@ test("tier 1 returns null on a truncated value so tier 3 can try", () => {
   assert.equal(extractOutermostJson('{ "v": 1, "blocks": [ { "type": "kpi" '), null);
 });
 
+test("tier 1.75 (misnested closers) heals defects that cancel in a depth count", () => {
+  // RG-147 (c03b8079): the model closed `blocks`' array while a row object was
+  // still open, then kept writing (`,"badges":[…]`) — the missing `}`s never
+  // appear anywhere, so the naive brace count is ZERO and the old truncation
+  // tier appended nothing. The healer closes implied containers, drops strays,
+  // completes EOF.
+  const realDefect = '{"v":1,"blocks":[{"type":"callout","tone":"info","body":"a"],"badges":[{"label":"x","tone":"pro"}]}';
+  const healed = parseCanvasSpec(realDefect);
+  assert.ok(healed, "misnested closers heal");
+  assert.equal(healed!.blocks.length, 1, "callout kept");
+  assert.ok(healed!.blocks.some(() => true), "blocks survive");
+});
+
+test("callout accepts the model's `detail` variant as body (RG-147 alias)", () => {
+  // 56651cd3: every callout used `detail:` instead of `body:` — valid JSON, all
+  // blocks rejected, card died as "unreadable payload". Alias, body wins.
+  const spec = parseCanvasSpec('{"v":1,"blocks":[{"type":"callout","tone":"warn","title":"t","detail":"hello"}]}');
+  assert.ok(spec, "detail-variant callout parses");
+  assert.equal((spec!.blocks[0] as { body?: string }).body, "hello");
+  // body still wins when both exist
+  const both = parseCanvasSpec('{"v":1,"blocks":[{"type":"callout","tone":"info","body":"real","detail":"old"}]}');
+  assert.equal((both!.blocks[0] as { body?: string }).body, "real");
+});
+
 test("tier 1.65 (key:value pair inside array) repairs synchronously", () => {
   // RG-146 (2026-10-08): the model emits `"tone":"neutral"` INSIDE a table row
   // array — JSON.parse dies at the stray `:` and a 25 KB A4 report card went
