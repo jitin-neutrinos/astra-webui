@@ -969,7 +969,7 @@ html.theme-fading body * {
 .chat-suggest-label { font: 500 13.5px/1.4 var(--font-sans); color: var(--color-brandtext); }
 .chat-suggest-hint { font: 400 11.5px/1.4 var(--font-mono); color: var(--color-muted); }
 
-.chat-composer { position: relative; background: color-mix(in srgb, var(--color-void) 96%, transparent); backdrop-filter: blur(35px) saturate(1.3); /* Idle outline: a faint hairline at the SAME weight and colour as the field/buttons separator, so the box is always readable as a box. The running trace animates on top of it (owner 2026-10-03: "even for the unfocused input, put a faint thin outline along with the running line"). Previously transparent on the theory that the trace alone was the outline, but an idle box then had no edge at all. Owner 10-08: weight reduced — both cards' outline was visually heavier than the shell's; now 26% (was 40%). */ border: 1px solid color-mix(in srgb, var(--color-accent) 26%, transparent); border-radius: 12px; padding: 10px 12px 8px; box-shadow: 0 1px 2px rgba(0,0,0,.18), 0 10px 32px -18px rgba(0,0,0,.55); transition: border-color 220ms cubic-bezier(0.23,1,0.32,1), box-shadow 220ms cubic-bezier(0.23,1,0.32,1); }
+.chat-composer { position: relative; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; /* Owner 10-08 (steer): .chat-composer is BOTH cards' base class — its own fill+blur fought the shell's single bubble blur (the "cards look frosted themselves" report). The blur lives ONLY on .chat-composer-shell now. Idle outline kept: a faint hairline at the SAME weight as the shell's (26%) so the box is always readable as a box; the running trace animates on top. */ border: 1px solid color-mix(in srgb, var(--color-accent) 26%, transparent); border-radius: 12px; padding: 10px 12px 8px; box-shadow: 0 1px 2px rgba(0,0,0,.18), 0 10px 32px -18px rgba(0,0,0,.55); transition: border-color 220ms cubic-bezier(0.23,1,0.32,1), box-shadow 220ms cubic-bezier(0.23,1,0.32,1); }
 /* running brand accent line: an SVG stroke on a rounded <rect> (composer-trace.tsx).
    The dash IS the rounded path, so the lit run bends through the corners exactly.
    A straight bar on an offset-path cannot: over an arc of radius r a bar of length
@@ -1066,15 +1066,14 @@ html.theme-fading body * {
 /* Owner 10-08 (steer): clusters at MINIMAL padding — bar-card horizontal padding
    1.8px (6 -> 3.6 -> 1.8, 50% each round). The clusters nearly touch the rounded
    corners; the shell's own 4px padding is the visual margin. */
-/* Owner 10-08 (steer): the inner cards go FULLY TRANSPARENT — the shell plate
-   carries the ONE blurred surface (blur(29px) saturate(1.25), the bubble
-   treatment). Previously each card painted a 70% void fill + its own
-   blur(35px), which stacked three layers of differing material and hid the
-   shell's frosted look entirely (the "input has no bubble blur" report).
-   One blurred surface also avoids the nested-backdrop-filter jank class the
-   Android APK is known for. Elevation shadow only on the cards. */
-.composer-input-card { padding: 4px 12px; border: none; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
-.composer-bar-card { padding: 4px 1.8px; border: none; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
+/* Owner 10-08 (steer, corrected): the inner cards keep their OLD look — the
+   70% void fill that makes them read as two distinct rounded rectangles — but
+   WITHOUT their own backdrop-filter. The blur lives ONLY on the shell plate
+   (the parent with the running line): blur(29px) saturate(1.25), the bubble
+   material. The previous "all transparent" attempt made the cards themselves
+   frosted, which read wrong. */
+.composer-input-card { padding: 4px 12px; border: none; background: color-mix(in srgb, var(--color-void) 70%, transparent); backdrop-filter: none; -webkit-backdrop-filter: none; }
+.composer-bar-card { padding: 4px 1.8px; border: none; background: color-mix(in srgb, var(--color-void) 70%, transparent); backdrop-filter: none; -webkit-backdrop-filter: none; }
 .chat-composer-bar { border-top: none; padding-top: 0; margin-top: 0; }
 /* Owner 10-08 (steer): the per-card glow rings are gone with the outlines —
    elevation shadow only. The shell carries the accent glow now. */
