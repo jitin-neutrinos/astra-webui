@@ -922,11 +922,11 @@ html.theme-fading body * {
    overflow ABOVE the start unreachable, and the suggestion grid wraps to two
    rows on narrow viewports.) */
 .chat-scroll:has(> .chat-welcome) { display: flex; flex-direction: column; }
-/* Owner 10-08 (steer): the welcome card gets the same composer-clearance
-   treatment as the transcript (pb-36 rhythm = 144px) so it never sits behind
-   the floating input+button-bar shell. Bottom auto-margin is capped by that
-   padding; top stays auto so the card keeps its vertical centering. */
-.chat-scroll > .chat-welcome { margin-top: auto; margin-bottom: auto; padding-bottom: 0; }
+/* Owner 10-08 (steer, corrected): the welcome card gets composer clearance via
+   the spacer below — the card KEEPS its own bottom padding (a previous
+   `padding-bottom: 0` here zeroed it and shoved the last suggestion card onto
+   the container edge). Card breathes: 680px wide, 36/28/32 padding frame. */
+.chat-scroll > .chat-welcome { margin-top: auto; margin-bottom: auto; }
 .chat-scroll:has(> .chat-welcome)::after { content: ""; flex: 0 0 144px; }
 
 /* brand shape: composer is a rounded rectangle, not a pill */
@@ -937,7 +937,7 @@ html.theme-fading body * {
 .sidebar-scroll { scrollbar-width: none; -ms-overflow-style: none; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 .sidebar-scroll::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
-.chat-welcome { max-width: 640px; margin: 0 auto; padding: 34px 28px 30px; display: flex; flex-direction: column; align-items: flex-start; border: 1px solid color-mix(in oklab, var(--color-accent) 45%, transparent); border-radius: 20px; background: color-mix(in oklab, var(--color-accent) 22%, transparent); backdrop-filter: blur(29px) saturate(1.25); box-shadow: 0 0 24px -4px color-mix(in oklab, var(--color-accent) 45%, transparent), 0 24px 64px rgb(0 0 0 / 0.35); }
+.chat-welcome { max-width: 680px; margin: 0 auto; padding: 36px 30px 32px; display: flex; flex-direction: column; align-items: flex-start; border: 1px solid color-mix(in oklab, var(--color-accent) 45%, transparent); border-radius: 20px; background: color-mix(in oklab, var(--color-accent) 22%, transparent); backdrop-filter: blur(29px) saturate(1.25); box-shadow: 0 0 24px -4px color-mix(in oklab, var(--color-accent) 45%, transparent), 0 24px 64px rgb(0 0 0 / 0.35); }
 [data-theme="light"] .chat-welcome { border-color: color-mix(in srgb, var(--color-accent) 38%, transparent); background: color-mix(in srgb, var(--color-accent) 24%, #ffffff 76%); box-shadow: 0 0 24px -4px color-mix(in srgb, var(--color-accent) 30%, transparent), 0 24px 64px rgb(15 23 42 / 0.12); }
 /* Mobile: the welcome card must match the chat-bubble column width (the
    16px-inset composer/bubble rail), never bleed edge-to-edge WIDER than the
